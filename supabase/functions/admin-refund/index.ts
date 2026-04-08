@@ -40,13 +40,20 @@ serve(async (req: Request) => {
       });
     }
 
+    // Check if admin or tablet user
     const { data: adminUser } = await supabase
       .from("admin_users")
       .select("email")
       .eq("email", user.email)
       .single();
 
-    if (!adminUser) {
+    const { data: tabletRestaurant } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("tablet_email", user.email)
+      .single();
+
+    if (!adminUser && !tabletRestaurant) {
       return new Response(JSON.stringify({ error: "Access denied" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -75,6 +82,14 @@ serve(async (req: Request) => {
       return new Response(
         JSON.stringify({ error: "Order not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Tablet users can only refund their own restaurant's orders
+    if (!adminUser && tabletRestaurant && order.restaurant_id !== tabletRestaurant.id) {
+      return new Response(
+        JSON.stringify({ error: "Access denied — not your restaurant's order" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 

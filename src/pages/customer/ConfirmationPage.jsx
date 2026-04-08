@@ -7,31 +7,6 @@ export default function ConfirmationPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { state } = useLocation()
-  const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
-
-  // Poll for order number if it wasn't available immediately (webhook may be delayed)
-  useEffect(() => {
-    if (orderNumber || !state?.paymentIntentId || !supabase) return
-
-    let attempts = 0
-    const interval = setInterval(async () => {
-      attempts++
-      const { data } = await supabase
-        .from('orders')
-        .select('order_number')
-        .eq('stripe_payment_intent_id', state.paymentIntentId)
-        .single()
-
-      if (data?.order_number) {
-        setOrderNumber(data.order_number)
-        clearInterval(interval)
-      }
-
-      if (attempts >= 15) clearInterval(interval) // stop after ~30s
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [orderNumber, state?.paymentIntentId])
 
   // If no state (direct navigation), send back to menu
   if (!state) {
@@ -65,6 +40,32 @@ export default function ConfirmationPage() {
     restaurantName,
     restaurantPhone,
   } = state
+
+  const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
+
+  // Poll for order number if it wasn't available immediately (webhook may be delayed)
+  useEffect(() => {
+    if (orderNumber || !state?.paymentIntentId || !supabase) return
+
+    let attempts = 0
+    const interval = setInterval(async () => {
+      attempts++
+      const { data } = await supabase
+        .from('orders')
+        .select('order_number')
+        .eq('stripe_payment_intent_id', state.paymentIntentId)
+        .single()
+
+      if (data?.order_number) {
+        setOrderNumber(data.order_number)
+        clearInterval(interval)
+      }
+
+      if (attempts >= 15) clearInterval(interval) // stop after ~30s
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [orderNumber, state?.paymentIntentId])
 
   return (
     <div className="min-h-screen bg-white">

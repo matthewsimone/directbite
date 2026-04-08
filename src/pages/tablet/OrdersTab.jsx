@@ -116,32 +116,66 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
   async function updateStatus(newStatus) {
     setUpdating(true)
-    const { error } = await supabase
-      .from('orders')
-      .update({ status: newStatus })
-      .eq('id', order.id)
 
-    if (!error) {
-      onStatusChange({ ...order, status: newStatus })
+    if (newStatus === 'cancelled') {
+      // Trigger Stripe refund via edge function
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-refund`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ order_id: order.id, type: 'full' }),
+          }
+        )
+        const result = await res.json()
+        if (!result.success) {
+          console.error('Refund failed:', result.error)
+        }
+      } catch (err) {
+        console.error('Refund request failed:', err)
+      }
+    } else {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: newStatus })
+        .eq('id', order.id)
+
+      if (error) {
+        setUpdating(false)
+        return
+      }
     }
+
+    onStatusChange({ ...order, status: newStatus })
     setUpdating(false)
     setShowStatusOptions(false)
     setShowCancelConfirm(false)
   }
 
   async function handleReprint() {
-    // Placeholder for PrintNode integration
-    const { error } = await supabase.from('print_logs').insert({
-      order_id: order.id,
-      order_number: order.order_number,
-      restaurant_id: restaurant.id,
-      attempt_number: printLogs.length + 1,
-      status: 'success',
-    })
-
-    if (!error) {
-      fetchOrderDetails()
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/retry-print`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ order_id: order.id }),
+        }
+      )
+      await res.json()
+    } catch (err) {
+      console.error('Reprint failed:', err)
     }
+    fetchOrderDetails()
     setShowReprint(false)
   }
 
