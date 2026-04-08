@@ -16,6 +16,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/login" element={<AdminPage />} />
           <Route path="/:slug" element={<MenuPage />} />
           <Route path="/:slug/checkout" element={<CheckoutPage />} />
           <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
