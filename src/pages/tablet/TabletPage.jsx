@@ -7,6 +7,7 @@ import OrdersTab from './OrdersTab'
 import MenuTab from './MenuTab'
 import PromotionsTab from './PromotionsTab'
 import SettingsTab from './SettingsTab'
+import PwaInstallPrompt from '../../components/PwaInstallPrompt'
 
 const TABS = [
   { key: 'orders', label: 'Orders', icon: OrdersIcon },
@@ -94,6 +95,9 @@ export default function TabletPage() {
         {activeTab === 'promotions' && <PromotionsTab restaurant={restaurant} />}
         {activeTab === 'settings' && <SettingsTab restaurant={restaurant} setRestaurant={setRestaurant} />}
       </main>
+
+      {/* PWA install prompt — tablet only */}
+      <PwaInstallPrompt />
 
       {/* Pulse animation style */}
       <style>{`
