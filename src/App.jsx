@@ -20,6 +20,7 @@ export default function App() {
           <Route path="/:slug/checkout" element={<CheckoutPage />} />
           <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
           <Route path="/:slug/tablet" element={<TabletPage />} />
+          <Route path="/:slug/tablet/login" element={<TabletPage />} />
         </Routes>
       </CartProvider>
     </BrowserRouter>
