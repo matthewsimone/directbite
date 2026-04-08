@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadStripe } from '@stripe/stripe-js'
 import {
@@ -8,7 +8,6 @@ import {
   useElements,
 } from '@stripe/react-stripe-js'
 import toast from 'react-hot-toast'
-import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
@@ -17,8 +16,8 @@ import { formatCurrency } from '../../utils/format'
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
 
 // ---------- Tip Selector ----------
-function TipSelector({ subtotal, tip, onTipChange }) {
-  const [tipType, setTipType] = useState(null) // '10','15','20','custom','none'
+function TipSelector({ subtotal, onTipChange }) {
+  const [tipType, setTipType] = useState(null)
   const [customTip, setCustomTip] = useState('')
 
   function selectPreset(pct) {
@@ -108,37 +107,118 @@ function TipSelector({ subtotal, tip, onTipChange }) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, loading, setLoading }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant }) {
   const stripe = useStripe()
   const elements = useElements()
+  const [loading, setLoading] = useState(false)
+  const [paymentType, setPaymentType] = useState(null) // 'card', 'apple_pay', 'google_pay', etc.
+
+  function handlePaymentElementChange(event) {
+    if (event.value?.type) {
+      setPaymentType(event.value.type)
+    }
+  }
+
+  const isWalletPayment = paymentType === 'apple_pay' || paymentType === 'google_pay' || paymentType === 'link'
 
   async function handleSubmit(e) {
     e.preventDefault()
     if (!stripe || !elements) return
 
+    // Validate contact fields for card payments
+    if (!isWalletPayment) {
+      if (!customerInfo.name.trim() || !customerInfo.phone.trim() || !customerInfo.email.trim()) {
+        toast.error('Please fill in all contact fields')
+        return
+      }
+    }
+
+    if (orderData.order_type === 'delivery') {
+      if (!orderData.delivery_address) {
+        toast.error('Please fill in delivery address')
+        return
+      }
+    }
+
     setLoading(true)
 
-    const { error } = await stripe.confirmPayment({
+    const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/${slug}/confirmation`,
+        payment_method_data: {
+          billing_details: {
+            name: customerInfo.name.trim() || undefined,
+            email: customerInfo.email.trim() || undefined,
+            phone: customerInfo.phone.trim() || undefined,
+          },
+        },
+      },
       redirect: 'if_required',
     })
 
     if (error) {
       toast.error(error.message || 'Payment failed')
       setLoading(false)
-    } else {
-      onSuccess()
+      return
+    }
+
+    // Payment succeeded without redirect
+    if (paymentIntent && paymentIntent.status === 'succeeded') {
+      onSuccess(paymentIntent.id)
     }
   }
 
   return (
     <form onSubmit={handleSubmit}>
       <PaymentElement
+        onChange={handlePaymentElementChange}
         options={{
           layout: 'tabs',
           wallets: { applePay: 'auto', googlePay: 'auto' },
+          fields: {
+            billingDetails: {
+              name: isWalletPayment ? 'auto' : 'never',
+              email: isWalletPayment ? 'auto' : 'never',
+              phone: isWalletPayment ? 'auto' : 'never',
+            },
+          },
         }}
       />
+
+      {/* Contact fields shown only for card payments */}
+      {!isWalletPayment && (
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+            Contact Information
+          </h3>
+          <div className="space-y-3">
+            <input
+              type="text"
+              value={customerInfo.name}
+              onChange={e => customerInfo.setName(e.target.value)}
+              placeholder="Full Name"
+              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+            />
+            <input
+              type="tel"
+              value={customerInfo.phone}
+              onChange={e => customerInfo.setPhone(e.target.value)}
+              placeholder="Phone Number"
+              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+            />
+            <input
+              type="email"
+              value={customerInfo.email}
+              onChange={e => customerInfo.setEmail(e.target.value)}
+              placeholder="Email Address"
+              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Floating payment bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-5 py-4">
         <div className="max-w-lg mx-auto">
           <div className="text-center mb-3">
@@ -149,7 +229,14 @@ function PaymentForm({ onSuccess, total, loading, setLoading }) {
             disabled={!stripe || loading}
             className="w-full bg-[#16A34A] text-white font-bold text-lg py-4 rounded-xl disabled:opacity-50 active:scale-[0.98] transition-transform"
           >
-            {loading ? 'Processing...' : `Pay ${formatCurrency(total)}`}
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Processing...
+              </span>
+            ) : (
+              `Pay ${formatCurrency(total)}`
+            )}
           </button>
         </div>
       </div>
@@ -175,8 +262,8 @@ export default function CheckoutPage() {
   const [deliveryCity, setDeliveryCity] = useState('')
   const [deliveryZip, setDeliveryZip] = useState('')
   const [clientSecret, setClientSecret] = useState(null)
-  const [paymentLoading, setPaymentLoading] = useState(false)
-  const [creatingIntent, setCreatingIntent] = useState(false)
+  const [paymentIntentId, setPaymentIntentId] = useState(null)
+  const [initError, setInitError] = useState(null)
 
   const discountPercentage = promotion ? Number(promotion.discount_percentage) : 0
   const discountAmount = Math.round(subtotal * (discountPercentage / 100) * 100) / 100
@@ -192,6 +279,44 @@ export default function CheckoutPage() {
       ? restaurant?.estimated_pickup_minutes
       : restaurant?.estimated_delivery_minutes
 
+  // Build full delivery address string
+  const fullDeliveryAddress = orderType === 'delivery' && deliveryAddress.trim()
+    ? `${deliveryAddress.trim()}${deliveryApt.trim() ? `, ${deliveryApt.trim()}` : ''}, ${deliveryCity.trim()}, ${deliveryZip.trim()}`
+    : null
+
+  // Build order_data to pass to edge function (and ultimately to webhook)
+  const buildOrderData = useCallback(() => ({
+    restaurant_id: restaurant?.id,
+    order_type: orderType,
+    customer_name: customerName.trim(),
+    customer_phone: customerPhone.trim(),
+    customer_email: customerEmail.trim(),
+    delivery_address: fullDeliveryAddress,
+    subtotal,
+    discount_amount: discountAmount,
+    discount_percentage: discountPercentage,
+    delivery_fee: deliveryFee,
+    tax_amount: taxAmount,
+    tip_amount: tip,
+    service_fee: serviceFee,
+    total_amount: total,
+    items: items.map(item => ({
+      menu_item_id: item.menuItemId,
+      item_size_id: item.itemSizeId || null,
+      item_name: item.itemName,
+      size_name: item.sizeName || null,
+      base_price: item.basePrice,
+      quantity: item.quantity,
+      special_instructions: item.specialInstructions || null,
+      toppings: (item.toppings || []).map(t => ({
+        topping_id: t.toppingId,
+        topping_name: t.toppingName,
+        placement: t.placement,
+        price_charged: t.price,
+      })),
+    })),
+  }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, subtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, items])
+
   // Redirect to menu if cart is empty
   useEffect(() => {
     if (!restLoading && items.length === 0) {
@@ -199,128 +324,111 @@ export default function CheckoutPage() {
     }
   }, [items.length, restLoading, navigate, slug])
 
-  async function handleCreatePaymentIntent() {
-    if (!customerName.trim() || !customerPhone.trim() || !customerEmail.trim()) {
-      toast.error('Please fill in all contact fields')
-      return
-    }
-    if (orderType === 'delivery' && (!deliveryAddress.trim() || !deliveryCity.trim() || !deliveryZip.trim())) {
-      toast.error('Please fill in delivery address')
-      return
-    }
+  // Create payment intent on page load (once restaurant is ready)
+  const intentCreated = useRef(false)
+  useEffect(() => {
+    if (!restaurant || items.length === 0 || intentCreated.current) return
+    intentCreated.current = true
 
-    setCreatingIntent(true)
+    async function createIntent() {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-    try {
-      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin
-      const res = await fetch(`${appUrl}/api/create-payment-intent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          restaurantId: restaurant.id,
-          amount: Math.round(total * 100),
-          stripeAccountId: restaurant.stripe_account_id,
-        }),
-      })
-      const data = await res.json()
-      setClientSecret(data.clientSecret)
-    } catch (err) {
-      toast.error('Failed to initialize payment. Please try again.')
-    } finally {
-      setCreatingIntent(false)
-    }
-  }
+        // Initial payment intent — we'll update order_data via metadata before confirm
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/create-payment-intent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              restaurant_id: restaurant.id,
+              amount: Math.round(total * 100),
+              order_data: buildOrderData(),
+            }),
+          }
+        )
 
-  async function handlePaymentSuccess() {
-    try {
-      // Write order to Supabase
-      const fullAddress = orderType === 'delivery'
-        ? `${deliveryAddress}${deliveryApt ? `, ${deliveryApt}` : ''}, ${deliveryCity}, ${deliveryZip}`
-        : null
-
-      const { data: order, error: orderErr } = await supabase
-        .from('orders')
-        .insert({
-          restaurant_id: restaurant.id,
-          status: 'new',
-          order_type: orderType,
-          customer_name: customerName.trim(),
-          customer_phone: customerPhone.trim(),
-          customer_email: customerEmail.trim(),
-          delivery_address: fullAddress,
-          subtotal: subtotal,
-          discount_amount: discountAmount,
-          discount_percentage: discountPercentage,
-          delivery_fee: deliveryFee,
-          tax_amount: taxAmount,
-          tip_amount: tip,
-          service_fee: serviceFee,
-          total_amount: total,
-          stripe_payment_intent_id: clientSecret?.split('_secret_')[0] || null,
-        })
-        .select()
-        .single()
-
-      if (orderErr) throw orderErr
-
-      // Write order items
-      for (const item of items) {
-        const { data: orderItem, error: oiErr } = await supabase
-          .from('order_items')
-          .insert({
-            order_id: order.id,
-            menu_item_id: item.menuItemId,
-            item_size_id: item.itemSizeId || null,
-            item_name: item.itemName,
-            size_name: item.sizeName || null,
-            base_price: item.basePrice,
-            quantity: item.quantity,
-            special_instructions: item.specialInstructions || null,
-          })
-          .select()
-          .single()
-
-        if (oiErr) throw oiErr
-
-        // Write order item toppings
-        if (item.toppings && item.toppings.length > 0) {
-          const toppingRows = item.toppings.map(t => ({
-            order_item_id: orderItem.id,
-            topping_id: t.toppingId,
-            topping_name: t.toppingName,
-            placement: t.placement,
-            price_charged: t.price,
-          }))
-
-          const { error: tErr } = await supabase.from('order_item_toppings').insert(toppingRows)
-          if (tErr) throw tErr
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || 'Failed to create payment')
         }
-      }
 
-      clearCart()
-      navigate(`/${slug}/confirmation`, {
-        state: {
-          orderNumber: order.order_number,
-          customerName: customerName.trim(),
-          orderType,
-          estimatedTime,
-          items,
-          subtotal,
-          discountAmount,
-          discountPercentage,
-          deliveryFee,
-          taxAmount,
-          tip,
-          serviceFee,
-          total,
-          restaurantName: restaurant.name,
-          restaurantPhone: restaurant.phone,
-        },
-      })
-    } catch (err) {
-      toast.error('Order saved but there was an issue. Please contact the restaurant.')
-      setPaymentLoading(false)
+        const data = await res.json()
+        setClientSecret(data.clientSecret)
+        setPaymentIntentId(data.paymentIntentId)
+      } catch (err) {
+        console.error('Payment init error:', err)
+        setInitError(err.message)
+      }
     }
+
+    createIntent()
+  }, [restaurant, items.length, total, buildOrderData])
+
+  // Update payment intent metadata when order details change
+  const updateTimer = useRef(null)
+  useEffect(() => {
+    if (!paymentIntentId || !restaurant) return
+
+    // Debounce updates
+    clearTimeout(updateTimer.current)
+    updateTimer.current = setTimeout(async () => {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+        await fetch(
+          `${supabaseUrl}/functions/v1/create-payment-intent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+            },
+            body: JSON.stringify({
+              restaurant_id: restaurant.id,
+              amount: Math.round(total * 100),
+              order_data: buildOrderData(),
+              payment_intent_id: paymentIntentId,
+            }),
+          }
+        )
+      } catch (err) {
+        // Silent fail on metadata update — the initial data is already stored
+        console.warn('Failed to update payment intent metadata:', err)
+      }
+    }, 800)
+
+    return () => clearTimeout(updateTimer.current)
+  }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, buildOrderData])
+
+  function handlePaymentSuccess(piId) {
+    // Order will be written by the webhook, but we navigate immediately for good UX
+    clearCart()
+    navigate(`/${slug}/confirmation`, {
+      state: {
+        orderNumber: null, // Will show "Processing..." until webhook writes it
+        customerName: customerName.trim(),
+        orderType,
+        estimatedTime,
+        items,
+        subtotal,
+        discountAmount,
+        discountPercentage,
+        deliveryFee,
+        taxAmount,
+        tip,
+        serviceFee,
+        total,
+        restaurantName: restaurant.name,
+        restaurantPhone: restaurant.phone,
+        paymentIntentId: piId,
+      },
+    })
   }
 
   if (restLoading) {
@@ -338,10 +446,23 @@ export default function CheckoutPage() {
         clientSecret,
         appearance: {
           theme: 'stripe',
-          variables: { colorPrimary: '#16A34A', borderRadius: '12px' },
+          variables: {
+            colorPrimary: '#16A34A',
+            borderRadius: '12px',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+          },
         },
       }
     : null
+
+  const customerInfo = {
+    name: customerName,
+    phone: customerPhone,
+    email: customerEmail,
+    setName: setCustomerName,
+    setPhone: setCustomerPhone,
+    setEmail: setCustomerEmail,
+  }
 
   return (
     <div className="min-h-screen bg-white pb-40">
@@ -395,36 +516,6 @@ export default function CheckoutPage() {
           </p>
         </div>
 
-        {/* Contact Info */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-            Contact Information
-          </h3>
-          <div className="space-y-3">
-            <input
-              type="text"
-              value={customerName}
-              onChange={e => setCustomerName(e.target.value)}
-              placeholder="Full Name"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-            <input
-              type="tel"
-              value={customerPhone}
-              onChange={e => setCustomerPhone(e.target.value)}
-              placeholder="Phone Number"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-            <input
-              type="email"
-              value={customerEmail}
-              onChange={e => setCustomerEmail(e.target.value)}
-              placeholder="Email Address"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-          </div>
-        </div>
-
         {/* Delivery Address */}
         {orderType === 'delivery' && (
           <div>
@@ -470,7 +561,7 @@ export default function CheckoutPage() {
         )}
 
         {/* Tip */}
-        <TipSelector subtotal={discountedSubtotal} tip={tip} onTipChange={setTip} />
+        <TipSelector subtotal={discountedSubtotal} onTipChange={setTip} />
 
         {/* Order Summary */}
         <div>
@@ -556,21 +647,31 @@ export default function CheckoutPage() {
             Payment
           </h3>
 
-          {!clientSecret ? (
-            <button
-              onClick={handleCreatePaymentIntent}
-              disabled={creatingIntent}
-              className="w-full bg-[#16A34A] text-white font-bold text-lg py-4 rounded-xl disabled:opacity-50 active:scale-[0.98] transition-transform"
-            >
-              {creatingIntent ? 'Loading...' : `Continue to Payment — ${formatCurrency(total)}`}
-            </button>
+          {initError ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-sm text-red-700 font-medium">Unable to load payment</p>
+              <p className="text-sm text-red-600 mt-1">{initError}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-3 text-sm font-semibold text-[#16A34A] hover:underline"
+              >
+                Try again
+              </button>
+            </div>
+          ) : !clientSecret ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-gray-500">Loading payment...</span>
+            </div>
           ) : (
             <Elements stripe={stripePromise} options={stripeOptions}>
               <PaymentForm
                 onSuccess={handlePaymentSuccess}
                 total={total}
-                loading={paymentLoading}
-                setLoading={setPaymentLoading}
+                customerInfo={customerInfo}
+                orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
+                slug={slug}
+                restaurant={restaurant}
               />
             </Elements>
           )}

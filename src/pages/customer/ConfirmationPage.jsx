@@ -1,10 +1,37 @@
+import { useState, useEffect } from 'react'
 import { useParams, useLocation, useNavigate } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
 import { formatCurrency, formatPhone } from '../../utils/format'
 
 export default function ConfirmationPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { state } = useLocation()
+  const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
+
+  // Poll for order number if it wasn't available immediately (webhook may be delayed)
+  useEffect(() => {
+    if (orderNumber || !state?.paymentIntentId || !supabase) return
+
+    let attempts = 0
+    const interval = setInterval(async () => {
+      attempts++
+      const { data } = await supabase
+        .from('orders')
+        .select('order_number')
+        .eq('stripe_payment_intent_id', state.paymentIntentId)
+        .single()
+
+      if (data?.order_number) {
+        setOrderNumber(data.order_number)
+        clearInterval(interval)
+      }
+
+      if (attempts >= 15) clearInterval(interval) // stop after ~30s
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [orderNumber, state?.paymentIntentId])
 
   // If no state (direct navigation), send back to menu
   if (!state) {
@@ -22,7 +49,7 @@ export default function ConfirmationPage() {
   }
 
   const {
-    orderNumber,
+    orderNumber: initialOrderNumber,
     customerName,
     orderType,
     estimatedTime,
@@ -59,7 +86,14 @@ export default function ConfirmationPage() {
         {/* Order meta */}
         <div className="mt-6 bg-gray-50 rounded-2xl p-5 space-y-2 text-center">
           <p className="text-sm text-gray-500">{restaurantName}</p>
-          <p className="text-2xl font-bold text-gray-900">#{orderNumber}</p>
+          <p className="text-2xl font-bold text-gray-900">
+            {orderNumber ? `#${orderNumber}` : (
+              <span className="flex items-center justify-center gap-2 text-base text-gray-500">
+                <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                Confirming...
+              </span>
+            )}
+          </p>
           <p className="text-sm text-gray-600">
             {orderType === 'pickup'
               ? `Estimated pickup in ~${estimatedTime} mins`
