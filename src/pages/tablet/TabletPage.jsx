@@ -90,7 +90,7 @@ export default function TabletPage() {
 
       {/* Tab content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'orders' && <OrdersTab restaurant={restaurant} hours={hours} />}
+        {activeTab === 'orders' && <OrdersTab restaurant={restaurant} setRestaurant={setRestaurant} hours={hours} />}
         {activeTab === 'menu' && <MenuTab restaurant={restaurant} />}
         {activeTab === 'promotions' && <PromotionsTab restaurant={restaurant} />}
         {activeTab === 'settings' && <SettingsTab restaurant={restaurant} setRestaurant={setRestaurant} />}

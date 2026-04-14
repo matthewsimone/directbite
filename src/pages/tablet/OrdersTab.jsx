@@ -501,7 +501,7 @@ function Row({ label, value, className = '' }) {
 }
 
 // ── Main OrdersTab ──
-export default function OrdersTab({ restaurant, hours }) {
+export default function OrdersTab({ restaurant, setRestaurant, hours }) {
   const [subTab, setSubTab] = useState('new')
   const [orders, setOrders] = useState([])
   const [selectedOrder, setSelectedOrder] = useState(null)
@@ -625,8 +625,32 @@ export default function OrdersTab({ restaurant, hours }) {
     )
   }
 
+  async function toggleDelivery() {
+    const newVal = !restaurant.delivery_available
+    const { data } = await supabase
+      .from('restaurants')
+      .update({ delivery_available: newVal })
+      .eq('id', restaurant.id)
+      .select()
+      .single()
+    if (data) setRestaurant(data)
+  }
+
   return (
     <div className="h-full flex flex-col">
+      {/* Delivery toggle */}
+      <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-100">
+        <span className={`text-sm font-medium ${restaurant.delivery_available ? 'text-gray-900' : 'text-gray-400'}`}>
+          Delivery: {restaurant.delivery_available ? 'ON' : 'OFF'}
+        </span>
+        <button
+          onClick={toggleDelivery}
+          className={`relative w-12 h-7 rounded-full transition-colors ${restaurant.delivery_available ? 'bg-[#16A34A]' : 'bg-gray-300'}`}
+        >
+          <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${restaurant.delivery_available ? 'left-5.5' : 'left-0.5'}`} />
+        </button>
+      </div>
+
       {/* Sub-tabs */}
       <div className="flex border-b border-gray-200 bg-white">
         {subTabs.map(tab => (
