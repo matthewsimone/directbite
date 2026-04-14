@@ -45,7 +45,8 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
       .from('restaurants')
       .update({
         tax_rate: parseFloat(data.tax_rate) || 0,
-        delivery_fee: parseFloat(data.delivery_fee) || 0,
+        delivery_fee_type: data.delivery_fee_type || 'flat',
+        delivery_fee: data.delivery_fee_type === 'none' ? 0 : (parseFloat(data.delivery_fee) || 0),
         estimated_pickup_minutes: parseInt(data.estimated_pickup_minutes) || 30,
         estimated_delivery_minutes: parseInt(data.estimated_delivery_minutes) || 60,
         stripe_account_id: data.stripe_account_id || null,
@@ -110,7 +111,21 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Settings</h4>
           {field('Tax Rate', 'tax_rate', 'number')}
-          {field('Delivery Fee ($)', 'delivery_fee', 'number')}
+          <div>
+              <label className="text-xs text-gray-500">Delivery Fee Type</label>
+              <div className="flex gap-1 mt-1">
+                {[['flat', 'Flat $'], ['percentage', '%'], ['none', 'Free']].map(([val, label]) => (
+                  <button key={val} onClick={() => setData(prev => ({ ...prev, delivery_fee_type: val }))}
+                    className={`flex-1 h-8 rounded-lg text-xs font-semibold transition-colors ${
+                      (data.delivery_fee_type || 'flat') === val ? 'bg-[#16A34A] text-white' : 'border border-gray-300 text-gray-700'
+                    }`}>{label}</button>
+                ))}
+              </div>
+            </div>
+            {(data.delivery_fee_type || 'flat') !== 'none' && field(
+              (data.delivery_fee_type || 'flat') === 'percentage' ? 'Delivery Fee (%)' : 'Delivery Fee ($)',
+              'delivery_fee', 'number'
+            )}
           {field('Est. Pickup Minutes', 'estimated_pickup_minutes', 'number')}
           {field('Est. Delivery Minutes', 'estimated_delivery_minutes', 'number')}
           {field('Stripe Account ID', 'stripe_account_id')}

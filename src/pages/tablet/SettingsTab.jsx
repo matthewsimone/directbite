@@ -59,6 +59,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [pickupMinutes, setPickupMinutes] = useState(restaurant?.estimated_pickup_minutes || 30)
   const [deliveryMinutes, setDeliveryMinutes] = useState(restaurant?.estimated_delivery_minutes || 60)
   const [deliveryAvailable, setDeliveryAvailable] = useState(restaurant?.delivery_available || false)
+  const [deliveryFeeType, setDeliveryFeeType] = useState(restaurant?.delivery_fee_type || 'flat')
   const [deliveryFee, setDeliveryFee] = useState(restaurant?.delivery_fee || 0)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
@@ -162,7 +163,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       .from('restaurants')
       .update({
         delivery_available: deliveryAvailable,
-        delivery_fee: parseFloat(deliveryFee) || 0,
+        delivery_fee_type: deliveryFeeType,
+        delivery_fee: deliveryFeeType === 'none' ? 0 : (parseFloat(deliveryFee) || 0),
         delivery_note: deliveryNote,
       })
       .eq('id', restaurant.id)
@@ -290,19 +292,37 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
           </div>
           {deliveryAvailable && (
             <>
-              <FieldRow label="Delivery Fee">
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={deliveryFee}
-                    onChange={e => setDeliveryFee(e.target.value)}
-                    className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                  />
+              <div>
+                <label className="text-sm font-medium text-gray-700 mb-2 block">Fee Type</label>
+                <div className="flex gap-2">
+                  {[['flat', 'Flat $'], ['percentage', 'Percentage %'], ['none', 'No Charge']].map(([val, label]) => (
+                    <button key={val} onClick={() => setDeliveryFeeType(val)}
+                      className={`flex-1 h-11 rounded-xl text-sm font-semibold transition-colors ${
+                        deliveryFeeType === val ? 'bg-[#16A34A] text-white' : 'border border-gray-300 text-gray-700'
+                      }`}>{label}</button>
+                  ))}
                 </div>
-              </FieldRow>
+              </div>
+              {deliveryFeeType === 'flat' && (
+                <FieldRow label="Delivery Fee">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                    <input type="number" min="0" step="0.01" value={deliveryFee}
+                      onChange={e => setDeliveryFee(e.target.value)}
+                      className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                  </div>
+                </FieldRow>
+              )}
+              {deliveryFeeType === 'percentage' && (
+                <FieldRow label="Delivery Fee">
+                  <div className="relative">
+                    <input type="number" min="0" step="0.1" value={deliveryFee}
+                      onChange={e => setDeliveryFee(e.target.value)}
+                      className="w-full h-11 px-3 pr-8 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
+                  </div>
+                </FieldRow>
+              )}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Delivery Note</label>
                 <input

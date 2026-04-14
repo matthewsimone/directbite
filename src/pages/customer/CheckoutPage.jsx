@@ -268,7 +268,13 @@ export default function CheckoutPage() {
   const discountPercentage = promotion ? Number(promotion.discount_percentage) : 0
   const discountAmount = Math.round(subtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = subtotal - discountAmount
-  const deliveryFee = orderType === 'delivery' ? Number(restaurant?.delivery_fee || 0) : 0
+  const deliveryFeeType = restaurant?.delivery_fee_type || 'flat'
+  const deliveryFeeRaw = Number(restaurant?.delivery_fee || 0)
+  const deliveryFee = orderType === 'delivery'
+    ? deliveryFeeType === 'percentage'
+      ? Math.round(discountedSubtotal * (deliveryFeeRaw / 100) * 100) / 100
+      : deliveryFeeType === 'none' ? 0 : deliveryFeeRaw
+    : 0
   const taxRate = Number(restaurant?.tax_rate || 0)
   const taxAmount = Math.round(discountedSubtotal * taxRate * 100) / 100
   const serviceFee = 1.50
@@ -617,10 +623,10 @@ export default function CheckoutPage() {
                 <span>-{formatCurrency(discountAmount)}</span>
               </div>
             )}
-            {deliveryFee > 0 && (
+            {orderType === 'delivery' && (
               <div className="flex justify-between text-gray-600">
-                <span>Delivery Fee</span>
-                <span>{formatCurrency(deliveryFee)}</span>
+                <span>Delivery Fee{deliveryFeeType === 'percentage' ? ` (${deliveryFeeRaw}%)` : ''}</span>
+                <span>{deliveryFee === 0 ? 'Free' : formatCurrency(deliveryFee)}</span>
               </div>
             )}
             <div className="flex justify-between text-gray-600">
