@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import ImageUpload from '../../components/ImageUpload'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
 // ── Item Editor Panel ──
-function ItemEditor({ item, categoryId, restaurantId, toppingGroups, onClose, onSaved }) {
+function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGroups, onClose, onSaved }) {
   const [name, setName] = useState(item?.name || '')
   const [description, setDescription] = useState(item?.description || '')
   const [imageUrl, setImageUrl] = useState(item?.image_url || '')
@@ -109,9 +110,14 @@ function ItemEditor({ item, categoryId, restaurantId, toppingGroups, onClose, on
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
         </div>
         <div>
-          <label className="text-xs text-gray-500">Image URL</label>
-          <input value={imageUrl} onChange={e => setImageUrl(e.target.value)}
-            className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+          <label className="text-xs text-gray-500 mb-1 block">Item Photo</label>
+          <ImageUpload
+            currentImageUrl={imageUrl}
+            bucketName="menu-images"
+            storagePath={`${restaurantSlug}/${item?.id || 'new'}.jpg`}
+            onUpload={url => setImageUrl(url)}
+            placeholder="Upload Photo"
+          />
         </div>
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium">Available</span>
@@ -355,7 +361,7 @@ export default function MenuManagementTab() {
 
   // Editor state
   const [editingItem, setEditingItem] = useState(null) // { item, categoryId }
-  const [editingGroup, setEditingGroup] = useState(null) // topping group or null for new
+  const [editingGroup, setEditingGroup] = useState(undefined) // undefined=closed, null=new, object=editing
 
   // Inline add/edit
   const [addingCategory, setAddingCategory] = useState(false)
@@ -364,7 +370,7 @@ export default function MenuManagementTab() {
   const [editCatName, setEditCatName] = useState('')
 
   useEffect(() => {
-    supabase.from('restaurants').select('id, name').order('name').then(({ data }) => {
+    supabase.from('restaurants').select('id, name, slug').order('name').then(({ data }) => {
       setRestaurants(data || [])
     })
   }, [])
@@ -557,6 +563,7 @@ export default function MenuManagementTab() {
             item={editingItem.item}
             categoryId={editingItem.categoryId}
             restaurantId={selectedRestaurant}
+            restaurantSlug={restaurants.find(r => r.id === selectedRestaurant)?.slug || selectedRestaurant}
             toppingGroups={toppingGroups}
             onClose={() => setEditingItem(null)}
             onSaved={() => { setEditingItem(null); fetchMenu() }}

@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+html {
+  background-color: #ffffff;
+}
+
+body {
+  background-color: #ffffff;
+  min-height: 100%;
+}
+
+#root {
+  background-color: #ffffff;
+  min-height: 100vh;
+}
+
 /* Hide scrollbar on category tabs */
 .scrollbar-hide {
   -ms-overflow-style: none;

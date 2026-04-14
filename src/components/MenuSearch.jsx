@@ -1,6 +1,6 @@
 export default function MenuSearch({ value, onChange }) {
   return (
-    <div className="px-4 py-3">
+    <div className="max-w-[1100px] mx-auto px-6 sm:px-8 py-4">
       <div className="relative">
         <svg
           className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"

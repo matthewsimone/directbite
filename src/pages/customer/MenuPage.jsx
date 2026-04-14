@@ -45,27 +45,38 @@ export default function MenuPage() {
     }
   }, [categories, activeCategory])
 
-  // Intersection observer for category scroll tracking
+  // Scroll-based category tracking — pick the section closest to the top of the viewport
   useEffect(() => {
     if (categories.length === 0) return
 
-    const observer = new IntersectionObserver(
-      entries => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveCategory(entry.target.dataset.categoryId)
-          }
-        }
-      },
-      { rootMargin: '-120px 0px -60% 0px', threshold: 0 }
-    )
+    function handleScroll() {
+      const offset = 140
+      let closest = null
+      let closestDist = Infinity
 
-    for (const cat of categories) {
-      const el = sectionRefs.current[cat.id]
-      if (el) observer.observe(el)
+      for (const cat of categories) {
+        const el = sectionRefs.current[cat.id]
+        if (!el) continue
+        const top = el.getBoundingClientRect().top - offset
+        // Pick the section whose top is closest to (but not far below) the offset line
+        if (top <= 0 && Math.abs(top) < closestDist) {
+          closestDist = Math.abs(top)
+          closest = cat.id
+        }
+      }
+
+      // If no section has scrolled past the offset, use the first category
+      if (!closest && categories.length > 0) {
+        closest = categories[0].id
+      }
+
+      if (closest) setActiveCategory(closest)
     }
 
-    return () => observer.disconnect()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+
+    return () => window.removeEventListener('scroll', handleScroll)
   }, [categories, items])
 
   const handleCategorySelect = useCallback((categoryId) => {
@@ -147,7 +158,7 @@ export default function MenuPage() {
       <MenuSearch value={searchQuery} onChange={setSearchQuery} />
 
       {/* Menu sections */}
-      <div className="px-4">
+      <div className="max-w-[1100px] mx-auto px-6 sm:px-8">
         {categories.map(cat => {
           const catItems = filterItems(getItemsByCategory(cat.id))
           if (searchQuery && catItems.length === 0) return null
@@ -159,8 +170,8 @@ export default function MenuPage() {
               data-category-id={cat.id}
               className="mb-8"
             >
-              <h2 className="text-xl font-bold text-gray-900 mb-3 pt-2">{cat.name}</h2>
-              <div className="divide-y divide-gray-100">
+              <h2 className="text-xl font-bold text-gray-900 mt-8 mb-3">{cat.name}</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {catItems.map(item => (
                   <MenuItemCard
                     key={item.id}

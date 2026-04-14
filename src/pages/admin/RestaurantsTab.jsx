@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import ImageUpload from '../../components/ImageUpload'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -44,6 +45,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
     const { data: updated } = await supabase
       .from('restaurants')
       .update({
+        hero_image_url: data.hero_image_url || null,
         tax_rate: parseFloat(data.tax_rate) || 0,
         delivery_fee_type: data.delivery_fee_type || 'flat',
         delivery_fee: data.delivery_fee_type === 'none' ? 0 : (parseFloat(data.delivery_fee) || 0),
@@ -110,6 +112,16 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
 
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Settings</h4>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Hero Image</label>
+            <ImageUpload
+              currentImageUrl={data.hero_image_url}
+              bucketName="hero-images"
+              storagePath={`${data.slug}/hero.jpg`}
+              onUpload={url => setData(prev => ({ ...prev, hero_image_url: url }))}
+              placeholder="Upload Hero Image"
+            />
+          </div>
           {field('Tax Rate', 'tax_rate', 'number')}
           <div>
               <label className="text-xs text-gray-500">Delivery Fee Type</label>

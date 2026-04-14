@@ -10,51 +10,55 @@ export default function MenuItemCard({ item, lowestPrice, promotion, onClick }) 
   return (
     <button
       onClick={onClick}
-      disabled={false}
-      className={`w-full flex gap-3 p-4 rounded-xl text-left transition-all active:scale-[0.98] ${
-        unavailable ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50 cursor-pointer'
+      className={`w-full text-left rounded-xl border border-gray-200 bg-white overflow-hidden transition-shadow ${
+        unavailable
+          ? 'opacity-50 cursor-not-allowed'
+          : 'hover:shadow-md cursor-pointer'
       }`}
+      style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
     >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-start gap-2">
-          <h3 className="font-semibold text-gray-900 text-base leading-tight">{item.name}</h3>
-          {unavailable && (
-            <span className="shrink-0 text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-              Unavailable
-            </span>
-          )}
-        </div>
-        {item.description && (
-          <p className="mt-1 text-sm text-gray-500 line-clamp-2">{item.description}</p>
-        )}
-        {lowestPrice != null && (
-          <div className="mt-2 flex items-center gap-2">
-            {hasDiscount ? (
-              <>
-                <span className="text-sm text-gray-400 line-through">
-                  {formatCurrency(lowestPrice)}
-                </span>
-                <span className="text-sm font-semibold text-[#16A34A]">
-                  {formatCurrency(discountedPrice)}
-                </span>
-              </>
-            ) : (
-              <span className="text-sm font-semibold text-gray-900">
-                {formatCurrency(lowestPrice)}
+      <div className="flex">
+        <div className="flex-1 min-w-0 p-4">
+          <div className="flex items-start gap-2">
+            <h3 className="font-bold text-[15px] text-gray-900 leading-snug">{item.name}</h3>
+            {unavailable && (
+              <span className="shrink-0 text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                Unavailable
               </span>
             )}
           </div>
+          {item.description && (
+            <p className="mt-1 text-[13px] text-gray-500 line-clamp-2">{item.description}</p>
+          )}
+          {lowestPrice != null && (
+            <div className="mt-2 flex items-center gap-2">
+              {hasDiscount ? (
+                <>
+                  <span className="text-[13px] text-gray-400 line-through">
+                    {formatCurrency(lowestPrice)}
+                  </span>
+                  <span className="text-[15px] font-bold text-[#16A34A]">
+                    {formatCurrency(discountedPrice)}
+                  </span>
+                </>
+              ) : (
+                <span className="text-[15px] font-bold text-gray-900">
+                  {formatCurrency(lowestPrice)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        {item.image_url && (
+          <div className="shrink-0 w-[110px]">
+            <img
+              src={item.image_url}
+              alt={item.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
         )}
       </div>
-      {item.image_url && (
-        <div className="shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-100">
-          <img
-            src={item.image_url}
-            alt={item.name}
-            className="w-full h-full object-cover"
-          />
-        </div>
-      )}
     </button>
   )
 }

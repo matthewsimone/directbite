@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import ImageUpload from '../../components/ImageUpload'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -41,6 +42,16 @@ function Step1({ data, setData }) {
         <label className="text-sm text-gray-500">Address</label>
         <input value={data.address} onChange={e => setData({ ...data, address: e.target.value })}
           className="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+      </div>
+      <div>
+        <label className="text-sm text-gray-500 mb-1 block">Hero Image</label>
+        <ImageUpload
+          currentImageUrl={data.hero_image_url}
+          bucketName="hero-images"
+          storagePath={`${data.slug || 'new'}/hero.jpg`}
+          onUpload={url => setData({ ...data, hero_image_url: url })}
+          placeholder="Upload Hero Image"
+        />
       </div>
     </div>
   )
@@ -202,6 +213,7 @@ export default function OnboardingTab() {
     _slugEdited: false,
     phone: '',
     address: '',
+    hero_image_url: '',
     hours: DEFAULT_HOURS.map(h => ({ ...h })),
     delivery_available: false,
     delivery_fee: '0',

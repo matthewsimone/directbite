@@ -22,19 +22,22 @@ export default function CategoryTabs({ categories, activeId, onSelect }) {
       ref={scrollRef}
       className="sticky top-0 z-30 bg-white border-b border-gray-200 overflow-x-auto scrollbar-hide"
     >
-      <div className="flex gap-1 px-4 py-2 min-w-max">
+      <div className="flex gap-6 px-6 sm:px-8 min-w-max max-w-[1100px] mx-auto">
         {categories.map(cat => (
           <button
             key={cat.id}
             ref={el => (tabRefs.current[cat.id] = el)}
             onClick={() => onSelect(cat.id)}
-            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+            className={`relative py-3 text-sm font-medium whitespace-nowrap transition-colors ${
               activeId === cat.id
-                ? 'bg-[#16A34A] text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                ? 'text-[#16A34A]'
+                : 'text-gray-500 hover:text-gray-800'
             }`}
           >
             {cat.name}
+            {activeId === cat.id && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#16A34A] rounded-full" />
+            )}
           </button>
         ))}
       </div>

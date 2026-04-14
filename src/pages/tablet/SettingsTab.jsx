@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import ImageUpload from '../../components/ImageUpload'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -215,6 +216,24 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               <p className="font-medium">{restaurant?.address || '—'}</p>
             </div>
             <p className="text-xs text-gray-400 italic">Contact DirectBite to update this information</p>
+            <div className="mt-3">
+              <label className="text-xs text-gray-400 mb-1 block">Hero Image</label>
+              <ImageUpload
+                currentImageUrl={restaurant?.hero_image_url}
+                bucketName="hero-images"
+                storagePath={`${restaurant?.slug}/hero.jpg`}
+                onUpload={async (url) => {
+                  const { data } = await supabase
+                    .from('restaurants')
+                    .update({ hero_image_url: url })
+                    .eq('id', restaurant.id)
+                    .select()
+                    .single()
+                  if (data) setRestaurant(data)
+                }}
+                placeholder="Upload Hero Image"
+              />
+            </div>
           </div>
         </Section>
 
