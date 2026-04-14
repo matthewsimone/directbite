@@ -153,32 +153,32 @@ export default function ConfirmationPage() {
               <span>Subtotal</span>
               <span>{formatCurrency(subtotal)}</span>
             </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-[#16A34A] font-medium">
-                <span>Discount ({discountPercentage}%)</span>
-                <span>-{formatCurrency(discountAmount)}</span>
-              </div>
-            )}
+            <div className="flex justify-between text-gray-600">
+              <span>Tax</span>
+              <span>{formatCurrency(taxAmount)}</span>
+            </div>
+            <div className="flex justify-between text-gray-600">
+              <span>Service Fee</span>
+              <span>{formatCurrency(serviceFee)}</span>
+            </div>
             {deliveryFee > 0 && (
               <div className="flex justify-between text-gray-600">
                 <span>Delivery Fee</span>
                 <span>{formatCurrency(deliveryFee)}</span>
               </div>
             )}
-            <div className="flex justify-between text-gray-600">
-              <span>Tax</span>
-              <span>{formatCurrency(taxAmount)}</span>
-            </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-[#16A34A] font-medium">
+                <span>Discount ({discountPercentage}%)</span>
+                <span>-{formatCurrency(discountAmount)}</span>
+              </div>
+            )}
             {tip > 0 && (
               <div className="flex justify-between text-gray-600">
                 <span>Tip</span>
                 <span>{formatCurrency(tip)}</span>
               </div>
             )}
-            <div className="flex justify-between text-gray-600">
-              <span>Service Fee</span>
-              <span>{formatCurrency(serviceFee)}</span>
-            </div>
             <div className="flex justify-between text-lg font-bold text-gray-900 pt-3 border-t border-gray-200">
               <span>Total</span>
               <span>{formatCurrency(total)}</span>

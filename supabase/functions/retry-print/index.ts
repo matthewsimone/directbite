@@ -71,21 +71,19 @@ function formatReceipt(order: any, restaurant: any, items: any[]): string {
 
   lines.push(sep);
   lines.push(formatReceiptLine("Subtotal:", formatMoney(order.subtotal)));
+  lines.push(formatReceiptLine("Tax:", formatMoney(order.tax_amount)));
+  lines.push(formatReceiptLine("Service Fee:", formatMoney(order.service_fee)));
 
-  if (Number(order.discount_amount) > 0) {
-    lines.push(formatReceiptLine(`Discount (${order.discount_percentage}%):`, `-${formatMoney(order.discount_amount)}`));
-  }
   if (order.order_type === "delivery" && Number(order.delivery_fee) > 0) {
     lines.push(formatReceiptLine("Delivery Fee:", formatMoney(order.delivery_fee)));
   }
-
-  lines.push(formatReceiptLine("Tax:", formatMoney(order.tax_amount)));
-
+  if (Number(order.discount_amount) > 0) {
+    lines.push(formatReceiptLine(`Discount (${order.discount_percentage}%):`, `-${formatMoney(order.discount_amount)}`));
+  }
   if (Number(order.tip_amount) > 0) {
     lines.push(formatReceiptLine("Tip:", formatMoney(order.tip_amount)));
   }
 
-  lines.push(formatReceiptLine("Service Fee:", formatMoney(order.service_fee)));
   lines.push(formatReceiptLine("TOTAL:", formatMoney(order.total_amount)));
   lines.push("");
   lines.push("    Powered by DirectBite.co");
