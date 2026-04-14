@@ -276,8 +276,9 @@ export default function CheckoutPage() {
       : deliveryFeeType === 'none' ? 0 : deliveryFeeRaw
     : 0
   const taxRate = Number(restaurant?.tax_rate || 0)
-  const taxAmount = Math.round(discountedSubtotal * taxRate * 100) / 100
   const serviceFee = 1.50
+  const taxableAmount = discountedSubtotal + deliveryFee + serviceFee
+  const taxAmount = Math.round(taxableAmount * taxRate * 100) / 100
   const total = Math.round((discountedSubtotal + deliveryFee + taxAmount + tip + serviceFee) * 100) / 100
 
   const estimatedTime =
