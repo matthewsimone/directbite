@@ -51,12 +51,12 @@ function TipSelector({ subtotal, onTipChange }) {
       <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
         Add a Tip
       </h3>
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-row flex-nowrap gap-1">
         {presets.map(pct => (
           <button
             key={pct}
             onClick={() => selectPreset(pct)}
-            className={`px-4 py-3 rounded-xl text-sm font-semibold transition-colors min-w-[60px] ${
+            className={`flex-1 py-2 px-1 rounded-xl text-xs font-semibold transition-colors ${
               tipType === pct
                 ? 'bg-[#16A34A] text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -67,7 +67,7 @@ function TipSelector({ subtotal, onTipChange }) {
         ))}
         <button
           onClick={selectCustom}
-          className={`px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${
+          className={`flex-1 py-2 px-1 rounded-xl text-xs font-semibold transition-colors ${
             tipType === 'custom'
               ? 'bg-[#16A34A] text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -77,7 +77,7 @@ function TipSelector({ subtotal, onTipChange }) {
         </button>
         <button
           onClick={selectNone}
-          className={`px-4 py-3 rounded-xl text-sm font-semibold transition-colors ${
+          className={`flex-1 py-2 px-1 rounded-xl text-xs font-semibold transition-colors ${
             tipType === 'none'
               ? 'bg-[#16A34A] text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -98,7 +98,7 @@ function TipSelector({ subtotal, onTipChange }) {
             onChange={e => handleCustomChange(e.target.value)}
             placeholder="0.00"
             autoFocus
-            className="w-full pl-8 pr-4 py-3 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+            className="w-full pl-8 pr-4 py-3 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
         </div>
       )}
