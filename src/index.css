@@ -23,6 +23,15 @@ body {
   display: none;
 }
 
+/* Cart button pulse on add */
+@keyframes cart-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+.animate-cart-pulse {
+  animation: cart-pulse 0.3s ease-in-out 2;
+}
+
 /* Clamp text to 2 lines */
 .line-clamp-2 {
   display: -webkit-box;

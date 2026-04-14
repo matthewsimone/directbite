@@ -20,7 +20,7 @@ export default function MenuSearch({ value, onChange }) {
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder="Search menu..."
-          className="w-full pl-10 pr-4 py-3 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 transition-shadow"
+          className="w-full pl-10 pr-4 py-3 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40 transition-shadow"
         />
         {value && (
           <button

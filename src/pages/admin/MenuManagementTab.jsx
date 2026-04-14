@@ -18,7 +18,7 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
     if (item) {
       fetchItemDetails()
     } else {
-      setSizes([{ name: '', price: '', sort_order: 0, _key: crypto.randomUUID() }])
+      setSizes([{ name: '', price: '', sort_order: 0, _key: Math.random().toString(36).slice(2) }])
     }
   }, [item?.id])
 
@@ -32,7 +32,7 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
   }
 
   function addSize() {
-    setSizes(prev => [...prev, { name: '', price: '', sort_order: prev.length, _key: crypto.randomUUID() }])
+    setSizes(prev => [...prev, { name: '', price: '', sort_order: prev.length, _key: Math.random().toString(36).slice(2) }])
   }
 
   function removeSize(key) {
@@ -188,7 +188,7 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
 
   useEffect(() => {
     if (group) fetchToppings()
-    else setToppings([{ name: '', price: '', _key: crypto.randomUUID() }])
+    else setToppings([{ name: '', price: '', _key: Math.random().toString(36).slice(2) }])
   }, [group?.id])
 
   async function fetchToppings() {
@@ -198,7 +198,7 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   }
 
   function addTopping() {
-    setToppings(prev => [...prev, { name: '', price: '', _key: crypto.randomUUID() }])
+    setToppings(prev => [...prev, { name: '', price: '', _key: Math.random().toString(36).slice(2) }])
   }
 
   function removeTopping(key) {

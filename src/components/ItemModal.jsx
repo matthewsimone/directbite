@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { formatCurrency } from '../utils/format'
 
 export default function ItemModal({
@@ -16,10 +16,39 @@ export default function ItemModal({
   const [quantity, setQuantity] = useState(1)
   const [visible, setVisible] = useState(false)
   const [validationErrors, setValidationErrors] = useState([])
+  const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const dragStartY = useRef(0)
+  const handleRef = useRef(null)
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))
   }, [])
+
+  // Swipe-to-dismiss — only from the drag handle
+  function handleHandleTouchStart(e) {
+    dragStartY.current = e.touches[0].clientY
+    setDragging(true)
+  }
+
+  function handleHandleTouchMove(e) {
+    if (!dragging) return
+    const dy = e.touches[0].clientY - dragStartY.current
+    if (dy > 0) {
+      setDragY(dy)
+      e.preventDefault()
+    }
+  }
+
+  function handleHandleTouchEnd() {
+    if (!dragging) return
+    setDragging(false)
+    if (dragY > 100) {
+      handleClose()
+    } else {
+      setDragY(0)
+    }
+  }
 
   useEffect(() => {
     if (sizes.length > 0 && !selectedSizeId) {
@@ -138,7 +167,7 @@ export default function ItemModal({
     }
     setValidationErrors([])
 
-    onAddToCart({
+    const cartItem = {
       menuItemId: item.id,
       itemSizeId: selectedSizeId,
       itemName: item.name,
@@ -153,37 +182,51 @@ export default function ItemModal({
         price: t.price * discountMultiplier,
         placementType: t.placementType || 'pizza',
       })),
-    })
-    handleClose()
+    }
+    onAddToCart(cartItem)
+    setTimeout(() => handleClose(), 50)
   }
 
   function handleClose() {
     setVisible(false)
+    setDragY(0)
     setTimeout(onClose, 300)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={handleClose}>
-      {/* Backdrop */}
+    <div
+      className="fixed inset-x-0 bottom-0 z-50 flex items-end justify-center"
+      style={{ top: 0, WebkitOverflowScrolling: 'touch', transform: 'translateZ(0)' }}
+    >
+      {/* Backdrop — tap to close */}
       <div
+        onClick={handleClose}
         className={`absolute inset-0 bg-black transition-opacity duration-300 ${
           visible ? 'opacity-50' : 'opacity-0'
         }`}
+        style={{ willChange: 'opacity' }}
       />
 
       {/* Sheet */}
       <div
-        onClick={e => e.stopPropagation()}
-        className={`relative w-full max-w-lg bg-white rounded-t-2xl max-h-[90vh] flex flex-col transition-transform duration-300 ease-out ${
-          visible ? 'translate-y-0' : 'translate-y-full'
-        }`}
+        className={`relative w-full max-w-lg bg-white rounded-t-2xl max-h-[90vh] flex flex-col ease-out ${
+          dragging ? '' : 'transition-transform duration-300'
+        } ${visible ? '' : 'translate-y-full'}`}
+        style={{ willChange: 'transform', ...(visible && dragY > 0 ? { transform: `translateY(${dragY}px)` } : {}) }}
       >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
+        {/* Handle — swipe drag area */}
+        <div
+          ref={handleRef}
+          onTouchStart={handleHandleTouchStart}
+          onTouchMove={handleHandleTouchMove}
+          onTouchEnd={handleHandleTouchEnd}
+          className="flex justify-center pt-3 pb-1 cursor-grab"
+          style={{ touchAction: 'none' }}
+        >
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </div>
 
-        <div className="overflow-y-auto flex-1 px-5 pb-4">
+        <div className="overflow-y-auto flex-1 px-5 pb-4" data-scroll-content>
           {/* Item photo */}
           {item.image_url && (
             <div className="w-full h-48 rounded-xl overflow-hidden mb-4 bg-gray-100">
