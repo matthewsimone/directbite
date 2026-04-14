@@ -173,6 +173,9 @@ function ItemEditor({ item, categoryId, restaurantId, toppingGroups, onClose, on
 // ── Topping Group Editor Panel ──
 function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   const [name, setName] = useState(group?.name || '')
+  const [placementType, setPlacementType] = useState(group?.placement_type || 'pizza')
+  const [required, setRequired] = useState(group?.required || false)
+  const [maxSelections, setMaxSelections] = useState(group?.max_selections || '')
   const [toppings, setToppings] = useState([])
   const [saving, setSaving] = useState(false)
 
@@ -205,11 +208,18 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
 
     let groupId = group?.id
 
+    const groupPayload = {
+      name,
+      placement_type: placementType,
+      required: placementType === 'addon' ? required : false,
+      max_selections: placementType === 'addon' && maxSelections ? parseInt(maxSelections) : null,
+    }
+
     if (group) {
-      await supabase.from('topping_groups').update({ name }).eq('id', group.id)
+      await supabase.from('topping_groups').update(groupPayload).eq('id', group.id)
     } else {
       const { data } = await supabase.from('topping_groups').insert({
-        restaurant_id: restaurantId, name, sort_order: 0,
+        restaurant_id: restaurantId, sort_order: 0, ...groupPayload,
       }).select().single()
       if (data) groupId = data.id
     }
@@ -244,9 +254,46 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
           <input value={name} onChange={e => setName(e.target.value)}
             className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
         </div>
+
+        {/* Placement Type */}
+        <div>
+          <label className="text-xs text-gray-500 uppercase font-semibold mb-2 block">Type</label>
+          <div className="flex gap-2">
+            <button onClick={() => setPlacementType('pizza')}
+              className={`flex-1 h-9 rounded-lg text-sm font-semibold transition-colors ${
+                placementType === 'pizza' ? 'bg-[#16A34A] text-white' : 'border border-gray-300 text-gray-700'
+              }`}>Pizza Toppings</button>
+            <button onClick={() => setPlacementType('addon')}
+              className={`flex-1 h-9 rounded-lg text-sm font-semibold transition-colors ${
+                placementType === 'addon' ? 'bg-[#16A34A] text-white' : 'border border-gray-300 text-gray-700'
+              }`}>Add-Ons</button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            {placementType === 'pizza' ? 'Shows Left / Whole / Right placement, half price for L/R' : 'Simple select/deselect, no placement options'}
+          </p>
+        </div>
+
+        {/* Addon-specific options */}
+        {placementType === 'addon' && (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Required</span>
+              <button onClick={() => setRequired(!required)}
+                className={`relative w-12 h-7 rounded-full transition-colors ${required ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
+                <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${required ? 'left-5.5' : 'left-0.5'}`} />
+              </button>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500">Max Selections (optional)</label>
+              <input type="number" min="1" value={maxSelections} onChange={e => setMaxSelections(e.target.value)}
+                placeholder="Unlimited" className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+            </div>
+          </>
+        )}
+
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-gray-500 uppercase font-semibold">Toppings</label>
+            <label className="text-xs text-gray-500 uppercase font-semibold">{placementType === 'addon' ? 'Add-Ons' : 'Toppings'}</label>
             <button onClick={addTopping} className="text-xs text-[#16A34A] font-semibold">+ Add Topping</button>
           </div>
           {toppings.map(t => (

@@ -28,8 +28,13 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
     `;
 
     for (const t of item.order_item_toppings || []) {
-      const placement = t.placement === "whole" ? "" : `${t.placement.toUpperCase()}: `;
-      itemsHtml += `<br><span style="padding-left:16px;color:#6b7280;font-weight:normal;">${placement}${t.topping_name} +${formatMoney(t.price_charged)}</span>`;
+      if (t.placement_type === "addon") {
+        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}`;
+        itemsHtml += `<br><span style="padding-left:16px;color:#6b7280;font-weight:normal;">${t.topping_name} ${priceStr}</span>`;
+      } else {
+        const placement = t.placement === "whole" ? "" : `${t.placement.toUpperCase()}: `;
+        itemsHtml += `<br><span style="padding-left:16px;color:#6b7280;font-weight:normal;">${placement}${t.topping_name} +${formatMoney(t.price_charged)}</span>`;
+      }
     }
 
     if (item.special_instructions) {

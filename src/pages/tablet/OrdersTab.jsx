@@ -256,7 +256,9 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               </p>
               {item.order_item_toppings?.map(t => (
                 <p key={t.id} className="pl-6 text-sm text-gray-600">
-                  {t.placement !== 'whole' ? `${t.placement} — ` : ''}{t.topping_name} +{formatMoney(t.price_charged)}
+                  {t.placement_type === 'addon'
+                    ? `${t.topping_name} ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}`}`
+                    : `${t.placement !== 'whole' ? `${t.placement} — ` : ''}${t.topping_name} +${formatMoney(t.price_charged)}`}
                 </p>
               ))}
               {item.special_instructions && (

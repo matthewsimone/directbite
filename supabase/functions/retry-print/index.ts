@@ -55,8 +55,13 @@ function formatReceipt(order: any, restaurant: any, items: any[]): string {
     lines.push(formatReceiptLine(itemLine, formatMoney(item.base_price * item.quantity)));
 
     for (const t of item.order_item_toppings || []) {
-      const placement = t.placement === "whole" ? "WHOLE" : t.placement.toUpperCase();
-      lines.push(`  ${placement}: ${t.topping_name}     +${formatMoney(t.price_charged)}`);
+      if (t.placement_type === "addon") {
+        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}`;
+        lines.push(formatReceiptLine(`  ${t.topping_name}`, priceStr));
+      } else {
+        const placement = t.placement === "whole" ? "WHOLE" : t.placement.toUpperCase();
+        lines.push(`  ${placement}: ${t.topping_name}     +${formatMoney(t.price_charged)}`);
+      }
     }
 
     if (item.special_instructions) {
@@ -157,8 +162,13 @@ function buildFailureEmailHtml(order: any, restaurant: any, items: any[]): strin
   for (const item of items) {
     itemsHtml += `<p><strong>${item.quantity}x ${item.item_name}${item.size_name ? ` (${item.size_name})` : ""}</strong> — ${formatMoney(item.base_price * item.quantity)}</p>`;
     for (const t of item.order_item_toppings || []) {
-      const placement = t.placement === "whole" ? "" : `${t.placement.toUpperCase()}: `;
-      itemsHtml += `<p style="padding-left:20px;color:#666;">${placement}${t.topping_name} +${formatMoney(t.price_charged)}</p>`;
+      if (t.placement_type === "addon") {
+        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}`;
+        itemsHtml += `<p style="padding-left:20px;color:#666;">${t.topping_name} ${priceStr}</p>`;
+      } else {
+        const placement = t.placement === "whole" ? "" : `${t.placement.toUpperCase()}: `;
+        itemsHtml += `<p style="padding-left:20px;color:#666;">${placement}${t.topping_name} +${formatMoney(t.price_charged)}</p>`;
+      }
     }
     if (item.special_instructions) {
       itemsHtml += `<p style="padding-left:20px;color:#999;font-style:italic;">${item.special_instructions}</p>`;

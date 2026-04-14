@@ -50,8 +50,13 @@ function formatReceipt(order: any, restaurant: any, items: any[]): string {
     lines.push(formatReceiptLine(itemLine, formatMoney(item.base_price * item.quantity)));
 
     for (const t of item.order_item_toppings || []) {
-      const placement = t.placement === "whole" ? "WHOLE" : t.placement.toUpperCase();
-      lines.push(`  ${placement}: ${t.topping_name}     +${formatMoney(t.price_charged)}`);
+      if (t.placement_type === "addon") {
+        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}`;
+        lines.push(formatReceiptLine(`  ${t.topping_name}`, priceStr));
+      } else {
+        const placement = t.placement === "whole" ? "WHOLE" : t.placement.toUpperCase();
+        lines.push(`  ${placement}: ${t.topping_name}     +${formatMoney(t.price_charged)}`);
+      }
     }
 
     if (item.special_instructions) {
@@ -310,6 +315,7 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
         topping_name: t.topping_name,
         placement: t.placement,
         price_charged: t.price_charged,
+        placement_type: t.placement_type || "pizza",
       }));
 
       const { error: tErr } = await supabase

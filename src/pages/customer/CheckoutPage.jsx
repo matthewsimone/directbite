@@ -313,6 +313,7 @@ export default function CheckoutPage() {
         topping_name: t.toppingName,
         placement: t.placement,
         price_charged: t.price,
+        placement_type: t.placementType || 'pizza',
       })),
     })),
   }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, subtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, items])
@@ -587,9 +588,11 @@ export default function CheckoutPage() {
                   {item.toppings?.map((t, i) => (
                     <div key={i} className="flex justify-between text-sm text-gray-500 ml-4 mt-0.5">
                       <span>
-                        {t.placement.toUpperCase()}: {t.toppingName}
+                        {t.placementType === 'addon'
+                          ? t.toppingName
+                          : `${t.placement.toUpperCase()}: ${t.toppingName}`}
                       </span>
-                      <span>+{formatCurrency(t.price)}</span>
+                      <span>{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}`}</span>
                     </div>
                   ))}
                   {item.specialInstructions && (
