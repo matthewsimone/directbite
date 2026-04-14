@@ -49,10 +49,10 @@ export default function CartSheet({ onClose, onCheckout }) {
             <div className="space-y-4">
               {items.map(item => {
                 const toppingsTotal = (item.toppings || []).reduce(
-                  (sum, t) => sum + Number(t.price),
+                  (sum, t) => sum + (parseFloat(t.price) || 0),
                   0
                 )
-                const lineTotal = (Number(item.basePrice) + toppingsTotal) * item.quantity
+                const lineTotal = ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
 
                 return (
                   <div key={item.id} className="border-b border-gray-100 pb-4">
@@ -68,8 +68,10 @@ export default function CartSheet({ onClose, onCheckout }) {
                         {/* Toppings */}
                         {item.toppings?.map((t, i) => (
                           <div key={i} className="text-sm text-gray-500 ml-3 mt-0.5">
-                            {t.placement.toUpperCase()}: {t.toppingName}{' '}
-                            <span className="text-gray-400">+{formatCurrency(t.price)}</span>
+                            {t.placementType === 'addon'
+                              ? t.toppingName
+                              : `${t.placement.toUpperCase()}: ${t.toppingName}`}{' '}
+                            <span className="text-gray-400">{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}`}</span>
                           </div>
                         ))}
 

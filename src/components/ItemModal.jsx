@@ -30,7 +30,7 @@ export default function ItemModal({
   const selectedSize = sizes.find(s => s.id === selectedSizeId)
   const basePrice = selectedSize ? Number(selectedSize.price) : 0
 
-  const toppingsTotal = selectedToppings.reduce((sum, t) => sum + Number(t.price), 0)
+  const toppingsTotal = selectedToppings.reduce((sum, t) => sum + (parseFloat(t.price) || 0), 0)
 
   const hasDiscount = promotion && Number(promotion.discount_percentage) > 0
   const rawItemPrice = basePrice + toppingsTotal
@@ -38,7 +38,7 @@ export default function ItemModal({
   const itemTotal = rawItemPrice * discountMultiplier * quantity
 
   // ── Pizza topping toggle (existing behavior) ──
-  function handlePizzaToppingToggle(topping) {
+  function handlePizzaToppingToggle(topping, group) {
     const existing = selectedToppings.find(t => t.toppingId === topping.id)
     if (existing) {
       setSelectedToppings(prev => prev.filter(t => t.toppingId !== topping.id))
@@ -51,7 +51,8 @@ export default function ItemModal({
           placement: 'whole',
           price: Number(topping.price),
           fullPrice: Number(topping.price),
-          groupId: topping.topping_group_id,
+          groupId: group.id,
+          placementType: 'pizza',
         },
       ])
     }
@@ -70,11 +71,34 @@ export default function ItemModal({
   // ── Addon toggle (new behavior) ──
   function handleAddonToggle(topping, group) {
     const existing = selectedToppings.find(t => t.toppingId === topping.id)
+    const selectionType = group.selection_type || 'unlimited'
+
+    if (selectionType === 'single') {
+      if (existing) {
+        setSelectedToppings(prev => prev.filter(t => t.toppingId !== topping.id))
+      } else {
+        // Replace any existing selection in this group
+        setSelectedToppings(prev => [
+          ...prev.filter(t => t.groupId !== group.id),
+          {
+            toppingId: topping.id,
+            toppingName: topping.name,
+            placement: 'whole',
+            price: Number(topping.price),
+            fullPrice: Number(topping.price),
+            groupId: group.id,
+            placementType: 'addon',
+          },
+        ])
+      }
+      return
+    }
+
     if (existing) {
       setSelectedToppings(prev => prev.filter(t => t.toppingId !== topping.id))
     } else {
-      // Enforce max_selections
-      if (group.max_selections) {
+      // Enforce max_selections for 'limited' type
+      if (selectionType === 'limited' && group.max_selections) {
         const currentCount = selectedToppings.filter(t => t.groupId === group.id).length
         if (currentCount >= group.max_selections) return
       }
@@ -83,10 +107,11 @@ export default function ItemModal({
         {
           toppingId: topping.id,
           toppingName: topping.name,
-          placement: 'whole', // addons always stored as whole
+          placement: 'whole',
           price: Number(topping.price),
           fullPrice: Number(topping.price),
           groupId: group.id,
+          placementType: 'addon',
         },
       ])
     }
@@ -121,16 +146,13 @@ export default function ItemModal({
       basePrice: basePrice * discountMultiplier,
       quantity,
       specialInstructions: specialInstructions.trim() || null,
-      toppings: selectedToppings.map(t => {
-        const group = toppingGroupsForItem.find(g => g.id === t.groupId)
-        return {
-          toppingId: t.toppingId,
-          toppingName: t.toppingName,
-          placement: t.placement,
-          price: t.price * discountMultiplier,
-          placementType: group?.placement_type || 'pizza',
-        }
-      }),
+      toppings: selectedToppings.map(t => ({
+        toppingId: t.toppingId,
+        toppingName: t.toppingName,
+        placement: t.placement,
+        price: t.price * discountMultiplier,
+        placementType: t.placementType || 'pizza',
+      })),
     })
     handleClose()
   }
@@ -229,7 +251,7 @@ export default function ItemModal({
                 group={group}
                 groupToppings={groupToppings}
                 selectedToppings={selectedToppings}
-                onToggle={handlePizzaToppingToggle}
+                onToggle={topping => handlePizzaToppingToggle(topping, group)}
                 onPlacementChange={handlePlacementChange}
               />
             }
@@ -368,27 +390,38 @@ function PizzaToppingGroup({ group, groupToppings, selectedToppings, onToggle, o
   )
 }
 
-// ── Addon Group (new behavior) ──
+// ── Addon Group (supports single / limited / unlimited) ──
 function AddonGroup({ group, groupToppings, selectedToppings, onToggle }) {
   const selectedCount = selectedToppings.filter(t => t.groupId === group.id).length
+  const selectionType = group.selection_type || 'unlimited'
+  const isSingle = selectionType === 'single'
+  const isLimited = selectionType === 'limited'
+
+  // Label text
+  let selectionLabel = null
+  if (isSingle) selectionLabel = 'Choose 1'
+  else if (isLimited && group.max_selections) selectionLabel = `Pick up to ${group.max_selections}`
 
   return (
     <div className="mt-6">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
           {group.name}
         </h3>
         {group.required && (
           <span className="text-xs font-semibold text-red-500 bg-red-50 px-1.5 py-0.5 rounded">Required</span>
         )}
-        {group.max_selections && (
-          <span className="text-xs text-gray-400">Pick up to {group.max_selections}</span>
-        )}
       </div>
+      {selectionLabel && (
+        <p className="text-xs text-gray-400 mb-2">
+          {selectionLabel}
+          {isLimited && selectedCount > 0 && ` — ${selectedCount} of ${group.max_selections} selected`}
+        </p>
+      )}
       <div className="space-y-2">
         {groupToppings.map(topping => {
           const selected = selectedToppings.find(t => t.toppingId === topping.id)
-          const atMax = group.max_selections && selectedCount >= group.max_selections && !selected
+          const atMax = isLimited && group.max_selections && selectedCount >= group.max_selections && !selected
           const priceNum = Number(topping.price)
 
           return (
@@ -404,16 +437,24 @@ function AddonGroup({ group, groupToppings, selectedToppings, onToggle }) {
               }`}
             >
               <div className="flex items-center gap-3">
-                {/* Checkbox indicator */}
-                <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
-                  selected ? 'bg-[#16A34A]' : 'border-2 border-gray-300'
-                }`}>
-                  {selected && (
-                    <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
+                {/* Radio for single, checkbox for multi */}
+                {isSingle ? (
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                    selected ? 'border-[#16A34A]' : 'border-gray-300'
+                  }`}>
+                    {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" />}
+                  </div>
+                ) : (
+                  <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                    selected ? 'bg-[#16A34A]' : 'border-2 border-gray-300'
+                  }`}>
+                    {selected && (
+                      <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                )}
                 <span className="font-medium text-gray-900">{topping.name}</span>
               </div>
               <span className={`text-sm ${priceNum === 0 ? 'text-[#16A34A] font-medium' : 'text-gray-600'}`}>

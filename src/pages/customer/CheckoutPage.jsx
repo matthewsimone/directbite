@@ -571,8 +571,8 @@ export default function CheckoutPage() {
           </h3>
           <div className="space-y-3">
             {items.map(item => {
-              const toppingsTotal = (item.toppings || []).reduce((s, t) => s + Number(t.price), 0)
-              const lineTotal = (Number(item.basePrice) + toppingsTotal) * item.quantity
+              const toppingsTotal = (item.toppings || []).reduce((s, t) => s + (parseFloat(t.price) || 0), 0)
+              const lineTotal = ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
 
               return (
                 <div key={item.id} className="border-b border-gray-100 pb-3">

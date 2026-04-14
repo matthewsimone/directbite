@@ -27,8 +27,8 @@ export function CartProvider({ children }) {
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0)
 
   const subtotal = items.reduce((sum, item) => {
-    const toppingsTotal = (item.toppings || []).reduce((ts, t) => ts + Number(t.price), 0)
-    return sum + (Number(item.basePrice) + toppingsTotal) * item.quantity
+    const toppingsTotal = (item.toppings || []).reduce((ts, t) => ts + (parseFloat(t.price) || 0), 0)
+    return sum + ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
   }, 0)
 
   return (

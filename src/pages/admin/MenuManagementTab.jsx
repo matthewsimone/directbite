@@ -174,6 +174,7 @@ function ItemEditor({ item, categoryId, restaurantId, toppingGroups, onClose, on
 function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   const [name, setName] = useState(group?.name || '')
   const [placementType, setPlacementType] = useState(group?.placement_type || 'pizza')
+  const [selectionType, setSelectionType] = useState(group?.selection_type || 'unlimited')
   const [required, setRequired] = useState(group?.required || false)
   const [maxSelections, setMaxSelections] = useState(group?.max_selections || '')
   const [toppings, setToppings] = useState([])
@@ -208,11 +209,13 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
 
     let groupId = group?.id
 
+    const isAddon = placementType === 'addon'
     const groupPayload = {
       name,
       placement_type: placementType,
-      required: placementType === 'addon' ? required : false,
-      max_selections: placementType === 'addon' && maxSelections ? parseInt(maxSelections) : null,
+      selection_type: isAddon ? selectionType : 'unlimited',
+      required: isAddon && selectionType !== 'unlimited' ? required : false,
+      max_selections: isAddon && selectionType === 'limited' && maxSelections ? parseInt(maxSelections) : null,
     }
 
     if (group) {
@@ -276,18 +279,39 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
         {/* Addon-specific options */}
         {placementType === 'addon' && (
           <>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Required</span>
-              <button onClick={() => setRequired(!required)}
-                className={`relative w-12 h-7 rounded-full transition-colors ${required ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
-                <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${required ? 'left-5.5' : 'left-0.5'}`} />
-              </button>
-            </div>
             <div>
-              <label className="text-xs text-gray-500">Max Selections (optional)</label>
-              <input type="number" min="1" value={maxSelections} onChange={e => setMaxSelections(e.target.value)}
-                placeholder="Unlimited" className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+              <label className="text-xs text-gray-500 uppercase font-semibold mb-2 block">Selection Rule</label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="radio" name="selectionType" checked={selectionType === 'single'}
+                    onChange={() => setSelectionType('single')} className="accent-[#16A34A] w-4 h-4" />
+                  <span className="text-sm">Pick exactly 1</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="radio" name="selectionType" checked={selectionType === 'limited'}
+                    onChange={() => setSelectionType('limited')} className="accent-[#16A34A] w-4 h-4" />
+                  <span className="text-sm">Pick up to</span>
+                  {selectionType === 'limited' && (
+                    <input type="number" min="1" value={maxSelections} onChange={e => setMaxSelections(e.target.value)}
+                      className="w-16 h-8 px-2 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                      placeholder="N" />
+                  )}
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="radio" name="selectionType" checked={selectionType === 'unlimited'}
+                    onChange={() => setSelectionType('unlimited')} className="accent-[#16A34A] w-4 h-4" />
+                  <span className="text-sm">Unlimited</span>
+                </label>
+              </div>
             </div>
+
+            {selectionType !== 'unlimited' && (
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={required} onChange={e => setRequired(e.target.checked)}
+                  className="accent-[#16A34A] w-4 h-4" />
+                <span className="text-sm">Customer must make a selection before adding to cart</span>
+              </label>
+            )}
           </>
         )}
 

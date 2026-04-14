@@ -111,7 +111,7 @@ export default function ConfirmationPage() {
           <div className="space-y-3">
             {items.map(item => {
               const toppingsTotal = (item.toppings || []).reduce(
-                (s, t) => s + Number(t.price),
+                (s, t) => s + (parseFloat(t.price) || 0),
                 0
               )
               const lineTotal = (Number(item.basePrice) + toppingsTotal) * item.quantity
