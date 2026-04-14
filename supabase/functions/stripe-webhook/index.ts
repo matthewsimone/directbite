@@ -3,9 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import Stripe from "https://esm.sh/stripe@17.7.0";
 import { encode as base64Encode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
-  apiVersion: "2024-12-18.acacia",
-});
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
 const printNodeApiKey = Deno.env.get("PRINTNODE_API_KEY") || "";
