@@ -327,7 +327,7 @@ export default function ItemModal({
               onChange={e => setSpecialInstructions(e.target.value)}
               placeholder="e.g. no salt, no onions"
               rows={3}
-              className="w-full px-4 py-3 bg-gray-100 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              className="w-full px-4 py-3 bg-gray-100 rounded-xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
             />
             <p className="mt-1.5 text-xs text-gray-400">
               NOTE: Additional items entered here may cost extra and we will need to charge after the order is completed.

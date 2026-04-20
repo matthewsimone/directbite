@@ -206,21 +206,21 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               value={customerInfo.name}
               onChange={e => customerInfo.setName(e.target.value)}
               placeholder="Full Name"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
             />
             <input
               type="tel"
               value={customerInfo.phone}
               onChange={e => customerInfo.setPhone(e.target.value)}
               placeholder="Phone Number"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
             />
             <input
               type="email"
               value={customerInfo.email}
               onChange={e => customerInfo.setEmail(e.target.value)}
               placeholder="Email Address"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
             />
           </div>
         </div>
@@ -575,14 +575,14 @@ export default function CheckoutPage() {
                 value={deliveryAddress}
                 onChange={e => setDeliveryAddress(e.target.value)}
                 placeholder="Street Address"
-                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
               <input
                 type="text"
                 value={deliveryApt}
                 onChange={e => setDeliveryApt(e.target.value)}
                 placeholder="Apt/Unit (optional)"
-                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
               <div className="flex gap-3">
                 <input
@@ -590,14 +590,14 @@ export default function CheckoutPage() {
                   value={deliveryCity}
                   onChange={e => setDeliveryCity(e.target.value)}
                   placeholder="City"
-                  className="flex-1 px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                  className="flex-1 px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
                 />
                 <input
                   type="text"
                   value={deliveryZip}
                   onChange={e => setDeliveryZip(e.target.value)}
                   placeholder="Zip"
-                  className="w-28 px-4 py-3.5 bg-gray-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                  className="w-28 px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
                 />
               </div>
             </div>
