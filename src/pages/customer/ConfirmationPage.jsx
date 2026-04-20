@@ -12,6 +12,7 @@ export default function ConfirmationPage() {
   // Clear cart on mount — payment was successful
   useEffect(() => {
     clearCart()
+    window.scrollTo(0, 0)
   }, [])
   const { state } = useLocation()
   const [searchParams] = useSearchParams()
