@@ -1,209 +1,392 @@
-import { useState, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import directbiteWordmark from '../assets/directbite-wordmark.png'
+import peopleOrderingFood from '../assets/people-ordering-food.jpg'
+import pizzaHero from '../assets/pizza-hero.jpg'
 
-function scrollTo(id) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+// ── Contact Form Dialog ──
+function ContactFormDialog({ open, onOpenChange, heading }) {
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
+
+  if (!open) return null
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSubmitting(true)
+    try {
+      const formData = new FormData(e.currentTarget)
+      formData.append('_subject', heading)
+      const res = await fetch('https://formspree.io/f/mbdqlgwr', {
+        method: 'POST',
+        body: formData,
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) throw new Error('Submit failed')
+      setSuccess(true)
+      setTimeout(() => { onOpenChange(false); setSuccess(false) }, 2000)
+    } catch {
+      alert('Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
+      <div className="relative bg-white rounded-2xl w-full max-w-[440px] p-6 shadow-xl" style={{ animation: 'fadeInScale 0.2s ease-out' }}>
+        <button onClick={() => onOpenChange(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        <h2 className="text-xl font-semibold text-[#111] mb-1">{heading}</h2>
+        <p className="text-sm text-[#6b7280] mb-5">Fill out the form below and we'll get back to you within 24 hours.</p>
+
+        {success ? (
+          <div className="text-center py-8">
+            <div className="w-12 h-12 bg-[#16A34A] rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="font-semibold text-[#111]">Thanks!</p>
+            <p className="text-sm text-[#6b7280]">We'll be in touch shortly.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Your Name</label>
+              <input name="name" required maxLength={100} placeholder="John Smith"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Restaurant Name</label>
+              <input name="restaurant" required maxLength={100} placeholder="Simone's Pizza"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Zip Code</label>
+              <input name="zip" required maxLength={10} placeholder="10001"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Email</label>
+              <input name="email" type="email" required maxLength={255} placeholder="you@restaurant.com"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Phone Number</label>
+              <input name="phone" type="tel" required maxLength={20} placeholder="(555) 123-4567"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <button type="submit" disabled={submitting}
+              className="w-full h-10 bg-[#16A34A] text-white font-medium rounded-full hover:opacity-90 transition-opacity disabled:opacity-50 mt-2">
+              {submitting ? 'Sending...' : 'Submit'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // ── Nav ──
-function Nav() {
+function Nav({ onContact }) {
+  const [scrolled, setScrolled] = useState(false)
+  useEffect(() => {
+    const h = () => setScrolled(window.scrollY > 10)
+    window.addEventListener('scroll', h)
+    return () => window.removeEventListener('scroll', h)
+  }, [])
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-[#111]">
-      <div className="max-w-[1100px] mx-auto px-6 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <img src="/directbite-icon.svg" alt="" className="h-7 w-7" />
-          <img src="/directbite-wordmark.png" alt="DirectBite" className="h-5" />
-        </div>
-        <button
-          onClick={() => scrollTo('contact')}
-          className="px-5 py-2 bg-[#16A34A] text-white text-sm font-semibold rounded-lg hover:bg-[#15803D] transition-colors"
-        >
-          Get in Touch
-        </button>
+    <nav
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[88%] max-w-[1200px] px-6 py-3 flex items-center justify-between transition-all duration-300"
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.82)',
+        backdropFilter: 'blur(12px)',
+        WebkitBackdropFilter: 'blur(12px)',
+        borderRadius: 12,
+      }}
+    >
+      <div className="flex items-center gap-2.5">
+        <svg width="24" height="24" viewBox="0 0 100 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <mask id="pin-bite-mask">
+              <rect width="100" height="130" fill="white" />
+              <circle cx="-14" cy="38" r="36" fill="black" />
+            </mask>
+          </defs>
+          <path
+            d="M50 0 C22.4 0 0 22.4 0 50 C0 80 50 130 50 130 C50 130 100 80 100 50 C100 22.4 77.6 0 50 0 Z"
+            fill="white"
+            mask="url(#pin-bite-mask)"
+          />
+        </svg>
+        <img src={directbiteWordmark} alt="DirectBite" className="h-3.5" style={{ marginTop: 1 }} />
       </div>
+      <button
+        onClick={() => onContact('Get in Touch')}
+        className="bg-[#16A34A] text-white text-sm font-medium px-5 py-2 rounded-full hover:opacity-90 transition-opacity"
+      >
+        Get in Touch
+      </button>
     </nav>
   )
 }
 
-// ── Hero ──
-function Hero() {
+// ── iPhone Mockup ──
+function IPhoneMockup() {
   return (
-    <section className="pt-16 bg-[#F8F8F8]">
-      <div className="max-w-[1100px] mx-auto px-6 py-16 sm:py-24 flex flex-col sm:flex-row items-center gap-12">
-        <div className="flex-1 sm:w-[60%]">
-          <p className="text-xs font-bold tracking-widest text-[#16A34A] uppercase mb-4">
+    <div
+      className="relative mx-auto"
+      style={{
+        width: 280,
+        height: 560,
+        background: '#000',
+        borderRadius: 40,
+        padding: 12,
+        transform: 'rotate(4deg)',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+      }}
+    >
+      {/* Notch */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2"
+        style={{
+          top: 12,
+          width: 80,
+          height: 24,
+          background: '#000',
+          borderRadius: '0 0 16px 16px',
+          zIndex: 10,
+        }}
+      />
+      {/* Screen */}
+      <div
+        className="w-full h-full overflow-hidden flex flex-col"
+        style={{ background: '#fff', borderRadius: 28 }}
+      >
+        {/* Hero image with restaurant name */}
+        <div className="relative" style={{ height: 184 }}>
+          <img src={pizzaHero} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <div
+            className="absolute inset-0 flex items-end p-4"
+            style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.2) 50%, transparent 100%)' }}
+          >
+            <div>
+              <span className="text-white font-semibold block" style={{ fontSize: 20 }}>
+                Simone's Pizza
+              </span>
+              <span className="flex items-center gap-1.5 mt-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-400" />
+                <span className="text-white/80" style={{ fontSize: 12 }}>Open Now</span>
+              </span>
+            </div>
+          </div>
+        </div>
+        {/* Menu items */}
+        <div className="flex-1 px-4 pt-3 flex flex-col gap-0">
+          {[
+            { name: 'Margherita Pizza', price: '$18.00' },
+            { name: 'Large Pepperoni', price: '$22.00' },
+            { name: 'Garlic Knots', price: '$8.00' },
+          ].map((item) => (
+            <div
+              key={item.name}
+              className="flex items-center justify-between py-3"
+              style={{ borderBottom: '1px solid #f0f0f0' }}
+            >
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 500, color: '#000' }}>{item.name}</p>
+                <p style={{ fontSize: 13, color: '#888', marginTop: 2 }}>{item.price}</p>
+              </div>
+              <div
+                className="flex items-center justify-center"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  background: '#22c55e',
+                  color: '#fff',
+                  fontSize: 16,
+                  fontWeight: 600,
+                  lineHeight: 1,
+                }}
+              >
+                +
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Checkout bar */}
+        <div style={{ padding: '0 10px 10px 10px' }}>
+          <div
+            className="flex items-center justify-between px-4 py-3"
+            style={{ background: '#22c55e', borderRadius: 16 }}
+          >
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 500, color: '#fff', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                CHECKOUT
+              </p>
+              <p style={{ fontSize: 18, fontWeight: 700, color: '#fff', marginTop: 1 }}>$48.00</p>
+            </div>
+            <div
+              className="flex items-center justify-center"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: '50%',
+                background: '#fff',
+                color: '#22c55e',
+                fontSize: 14,
+                fontWeight: 600,
+              }}
+            >
+              3
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Hero ──
+function Hero({ onContact }) {
+  return (
+    <section
+      className="pt-36 md:pt-40 pb-20 md:pb-24 px-6 md:px-12 lg:px-20 animate-fadeInUp"
+      style={{ background: 'radial-gradient(ellipse at center, rgba(34,197,94,0.04) 0%, transparent 70%)' }}
+    >
+      <div className="max-w-[1200px] mx-auto flex flex-col md:flex-row items-center gap-16 md:gap-12">
+        <div className="flex-1 text-center md:text-left">
+          <p className="text-[#16A34A] text-xs font-medium tracking-[0.15em] uppercase mb-6">
             Commission-Free Direct Ordering
           </p>
-          <h1 className="text-4xl sm:text-5xl font-bold text-[#111] leading-tight">
+          <h1 className="font-semibold tracking-tight leading-[1.1] text-[#111] mb-6" style={{ fontSize: 'clamp(42px, 6vw, 72px)' }}>
             Reclaim your margin online.
           </h1>
-          <p className="mt-5 text-lg text-gray-600 leading-relaxed max-w-xl">
-            DirectBite is not a marketplace. We don't list your competitors. We don't take a cut. We give your customers a direct line to you — and get out of the way.
+          <p className="text-[#6b7280] text-lg max-w-[520px] mx-auto md:mx-0 mb-10">
+            DirectBite is not a marketplace. We don't list your competitors. We don't
+            take a cut. We give your customers a direct line to you — and get out of
+            the way.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <button
-              onClick={() => scrollTo('pricing')}
-              className="px-6 py-3 bg-[#111] text-white font-semibold rounded-lg hover:bg-gray-800 transition-colors"
+          <div className="flex items-center justify-center md:justify-start gap-4 flex-wrap">
+            <a
+              href="#how-it-works"
+              className="bg-[#111] text-white px-7 py-3 rounded-full text-sm font-medium hover:opacity-90 transition-opacity"
             >
               See How It Works
-            </button>
+            </a>
             <button
-              onClick={() => scrollTo('contact')}
-              className="px-6 py-3 border-2 border-[#111] text-[#111] font-semibold rounded-lg hover:bg-gray-100 transition-colors"
+              onClick={() => onContact('Request a Demo')}
+              className="border border-[#e5e7eb] px-7 py-3 rounded-full text-sm font-medium text-[#111] hover:bg-gray-50 transition-colors"
             >
               Request a Demo
             </button>
           </div>
         </div>
-        <div className="sm:w-[40%] flex justify-center">
+        <div className="flex-shrink-0">
+          <IPhoneMockup />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Receipt ──
+function Receipt() {
+  return (
+    <section className="pt-24 pb-8 px-6 animate-fadeInUp" id="how-it-works" style={{ backgroundColor: '#f5f5f7' }}>
+      <div
+        className="max-w-[480px] mx-auto p-8 md:p-10 bg-white"
+        style={{ border: '1px solid #e5e7eb', borderRadius: 20 }}
+      >
+        <pre className="font-mono text-sm md:text-base leading-relaxed whitespace-pre">
+{`Order Total:                $100.00
+Monthly Subscription:        `}<span className="text-[#16A34A]">$0.00</span>{`
+Transaction Fee:             `}<span className="text-[#16A34A]">$0.00</span>{`
+─────────────────────────────────────`}
+        </pre>
+        <div
+          className="font-mono text-sm md:text-base mt-0 py-2 pl-3"
+          style={{ borderLeft: '3px solid #16A34A' }}
+        >
+          Restaurant Keeps:           $100.00
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Stats ──
+function Stats() {
+  const cards = [
+    { label: 'MONTHLY SAVINGS', value: '$3,000', green: true, sub: 'vs. third-party platforms' },
+    { label: 'AVG. ORDER KEPT', value: '100%', green: false, sub: 'yours, not theirs' },
+    { label: 'MARKETPLACE COMMISSION', value: 'Up to 30%', green: false, sub: "what you're losing today" },
+  ]
+  return (
+    <section className="py-24 px-6 animate-fadeInUp" id="pricing" style={{ backgroundColor: '#f5f5f7' }}>
+      <div className="max-w-[960px] mx-auto grid md:grid-cols-3 gap-5">
+        {cards.map((c) => (
           <div
-            className="w-64 sm:w-72"
-            style={{ transform: 'rotate(-6deg)', filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.2))' }}
+            key={c.label}
+            className="p-8 text-center bg-white"
+            style={{ border: '1px solid #e5e7eb', borderRadius: 16 }}
           >
-            <img
-              src="/phone-mockup.jpg"
-              alt="DirectBite ordering on phone"
-              className="w-full rounded-3xl border-4 border-gray-800"
-            />
+            <p className="text-xs tracking-[0.1em] text-[#6b7280] uppercase mb-3">{c.label}</p>
+            <p className={`text-3xl md:text-4xl font-semibold mb-2 ${c.green ? 'text-[#16A34A]' : 'text-[#111]'}`}>
+              {c.value}
+            </p>
+            <p className="text-sm text-[#6b7280]">{c.sub}</p>
           </div>
-        </div>
+        ))}
       </div>
     </section>
   )
 }
 
-// ── Pricing Calculator ──
-function PricingCalculator() {
-  const [orders, setOrders] = useState(400)
-  const [aov, setAov] = useState(35)
-
-  const monthlyVolume = orders * aov
-  const thirdPartyCut = monthlyVolume * 0.25
-  const savings = Math.round(thirdPartyCut)
-
+// ── Value Prop ──
+function ValueProp() {
   return (
-    <section id="pricing" className="bg-[#F8F8F8] py-20">
-      <div className="max-w-[1100px] mx-auto px-6">
-        <div className="text-center mb-12">
-          <p className="text-xs font-bold tracking-widest text-[#16A34A] uppercase mb-3">
-            Pricing
-          </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#111]">
-            Keep 100% of your revenue.
-          </h2>
-          <p className="mt-3 text-gray-500 max-w-lg mx-auto">
-            No commissions. No transaction fees. Just a simple $1.50 service fee per order paid by the customer.
-          </p>
-        </div>
-
-        <div className="max-w-md mx-auto bg-white rounded-2xl shadow-lg p-8 mb-12">
-          <div className="space-y-5">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-2 block">
-                Monthly Orders: <span className="font-bold text-[#111]">{orders}</span>
-              </label>
-              <input
-                type="range"
-                min="50"
-                max="2000"
-                step="50"
-                value={orders}
-                onChange={e => setOrders(Number(e.target.value))}
-                className="w-full accent-[#16A34A]"
-              />
-              <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>50</span><span>2,000</span>
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Average Order Value</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={aov}
-                  onChange={e => setAov(Number(e.target.value) || 0)}
-                  className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 border-t border-dashed border-gray-200 pt-6 space-y-3 font-mono text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Order Total</span>
-              <span className="font-semibold">${monthlyVolume.toLocaleString()}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Monthly Subscription</span>
-              <span className="font-semibold text-[#16A34A]">$0.00</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Transaction Fee</span>
-              <span className="font-semibold text-[#16A34A]">$0.00</span>
-            </div>
-            <div className="flex justify-between border-t border-gray-200 pt-3">
-              <span className="font-bold text-[#111]">Restaurant Keeps</span>
-              <span className="font-bold text-[#16A34A] text-lg">${monthlyVolume.toLocaleString()}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
-          <div className="bg-white rounded-xl p-6 text-center shadow-sm">
-            <p className="text-3xl font-bold text-[#16A34A]">${savings.toLocaleString()}</p>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mt-1">Monthly Savings</p>
-            <p className="text-xs text-gray-400 mt-0.5">vs. third-party platforms</p>
-          </div>
-          <div className="bg-white rounded-xl p-6 text-center shadow-sm">
-            <p className="text-3xl font-bold text-[#16A34A]">100%</p>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mt-1">Avg. Order Kept</p>
-            <p className="text-xs text-gray-400 mt-0.5">yours, not theirs</p>
-          </div>
-          <div className="bg-white rounded-xl p-6 text-center shadow-sm">
-            <p className="text-3xl font-bold text-red-500">Up to 30%</p>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mt-1">Marketplace Commission</p>
-            <p className="text-xs text-gray-400 mt-0.5">what you're losing today</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ── Difference ──
-function Difference() {
-  return (
-    <section className="bg-white py-20">
-      <div className="max-w-[700px] mx-auto px-6 text-center">
-        <p className="text-xs font-bold tracking-widest text-[#16A34A] uppercase mb-4">
+    <section className="py-24 px-6 text-center animate-fadeInUp">
+      <div className="max-w-[520px] mx-auto">
+        <p className="text-xs tracking-[0.15em] text-[#6b7280] uppercase mb-4">
           The DirectBite Difference
         </p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-[#111] leading-tight">
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-[#111] mb-6">
           Not a marketplace. A margin tool.
         </h2>
-        <p className="mt-5 text-lg text-gray-600 leading-relaxed">
-          We don't sell ads. We don't list your competitors next to you. We don't own your customers. DirectBite plugs directly into your website and lets customers order — without a middleman touching your money.
+        <p className="text-[#6b7280] text-base leading-relaxed">
+          We don't sell ads. We don't list your competitors next to you. We don't
+          own your customers. DirectBite plugs directly into your website and lets
+          customers order — without a middleman touching your money.
         </p>
       </div>
     </section>
   )
 }
 
-// ── CTA ──
-function Cta() {
+// ── Final CTA ──
+function FinalCTA({ onContact }) {
   return (
-    <section className="bg-[#111] py-24">
-      <div className="max-w-[700px] mx-auto px-6 text-center">
-        <h2 className="text-3xl sm:text-4xl font-bold text-white leading-tight">
+    <section className="relative bg-[#111] py-24 px-6 text-center overflow-hidden animate-fadeInUp" id="get-started">
+      <img
+        src={peopleOrderingFood}
+        alt=""
+        loading="lazy"
+        className="absolute inset-0 w-full h-full object-cover opacity-15"
+        style={{ objectPosition: 'center 40%' }}
+      />
+      <div className="relative z-10">
+        <h2 className="text-3xl md:text-4xl font-semibold text-white tracking-tight mb-4">
           Your customer. Your profit. Your brand.
         </h2>
-        <p className="mt-4 text-lg text-[#16A34A] font-medium">
+        <p className="text-[#16A34A] text-base mb-10">
           Join the fastest-growing direct ordering network.
         </p>
         <button
-          onClick={() => scrollTo('contact')}
-          className="mt-8 px-8 py-4 bg-[#16A34A] text-white text-lg font-bold rounded-xl hover:bg-[#15803D] transition-colors"
+          onClick={() => onContact('Get Started')}
+          className="inline-block bg-[#16A34A] text-white px-8 py-3.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity"
         >
           Get Started
         </button>
@@ -212,106 +395,51 @@ function Cta() {
   )
 }
 
-// ── Contact Form ──
-function ContactForm() {
-  const [submitted, setSubmitted] = useState(false)
-  const formRef = useRef(null)
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    const data = new FormData(formRef.current)
-    await fetch('https://formspree.io/f/mbdqlgwr', {
-      method: 'POST',
-      body: data,
-      headers: { Accept: 'application/json' },
-    })
-    setSubmitted(true)
-  }
-
-  return (
-    <section id="contact" className="bg-white py-20">
-      <div className="max-w-[600px] mx-auto px-6">
-        <h2 className="text-3xl font-bold text-[#111] text-center mb-8">Get in Touch</h2>
-
-        {submitted ? (
-          <div className="bg-green-50 rounded-xl p-8 text-center">
-            <div className="w-14 h-14 bg-[#16A34A] rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <p className="text-lg font-semibold text-[#111]">Thanks! We'll be in touch shortly.</p>
-          </div>
-        ) : (
-          <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Restaurant Name</label>
-              <input
-                type="text" name="restaurant_name" required
-                className="w-full h-11 px-4 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Your Name</label>
-              <input
-                type="text" name="name" required
-                className="w-full h-11 px-4 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Email</label>
-              <input
-                type="email" name="email" required
-                className="w-full h-11 px-4 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Phone</label>
-              <input
-                type="tel" name="phone"
-                className="w-full h-11 px-4 border border-gray-300 rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 mb-1 block">Message</label>
-              <textarea
-                name="message" rows={4}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-lg hover:bg-[#15803D] transition-colors"
-            >
-              Send Message
-            </button>
-          </form>
-        )}
-      </div>
-    </section>
-  )
-}
-
 // ── Footer ──
 function Footer() {
   return (
-    <footer className="bg-[#111] py-8">
-      <p className="text-center text-sm text-gray-500">&copy; 2026 DirectBite</p>
+    <footer className="border-t border-[#e5e7eb] py-6 px-6">
+      <div className="max-w-[1200px] mx-auto text-center text-sm text-[#6b7280]">
+        <span>&copy; 2026 DirectBite</span>
+      </div>
     </footer>
   )
 }
 
 // ── Landing Page ──
 export default function LandingPage() {
+  const [contactOpen, setContactOpen] = useState(false)
+  const [contactHeading, setContactHeading] = useState('')
+
+  function openContact(heading) {
+    setContactHeading(heading)
+    setContactOpen(true)
+  }
+
   return (
     <div className="min-h-screen bg-white" style={{ scrollBehavior: 'smooth' }}>
-      <Nav />
-      <Hero />
-      <PricingCalculator />
-      <Difference />
-      <Cta />
-      <ContactForm />
+      <Nav onContact={openContact} />
+      <Hero onContact={openContact} />
+      <Receipt />
+      <Stats />
+      <ValueProp />
+      <FinalCTA onContact={openContact} />
       <Footer />
+      <ContactFormDialog open={contactOpen} onOpenChange={setContactOpen} heading={contactHeading} />
+
+      <style>{`
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(30px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInScale {
+          from { opacity: 0; transform: scale(0.95); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fadeInUp {
+          animation: fadeInUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+      `}</style>
     </div>
   )
 }
