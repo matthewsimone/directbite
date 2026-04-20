@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
+import ZipCodeManager from '../../components/ZipCodeManager'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -138,6 +139,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
               (data.delivery_fee_type || 'flat') === 'percentage' ? 'Delivery Fee (%)' : 'Delivery Fee ($)',
               'delivery_fee', 'number'
             )}
+          <ZipCodeManager restaurantId={restaurant.id} />
           {field('Est. Pickup Minutes', 'estimated_pickup_minutes', 'number')}
           {field('Est. Delivery Minutes', 'estimated_delivery_minutes', 'number')}
           {field('Stripe Account ID', 'stripe_account_id')}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
+import ZipCodeManager from '../../components/ZipCodeManager'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -352,6 +353,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   placeholder="e.g., 5 mile delivery radius"
                 />
               </div>
+              <ZipCodeManager restaurantId={restaurant?.id} />
             </>
           )}
         </Section>

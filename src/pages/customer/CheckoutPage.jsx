@@ -11,6 +11,7 @@ import toast from 'react-hot-toast'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
+import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
 
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
@@ -114,7 +115,7 @@ function TipSelector({ subtotal, onTipChange }) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -233,7 +234,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           </div>
           <button
             type="submit"
-            disabled={!stripe || loading}
+            disabled={!stripe || loading || externalDisabled}
             className="w-full bg-[#16A34A] text-white font-bold text-lg py-4 rounded-xl disabled:opacity-50 active:scale-[0.98] transition-transform"
           >
             {loading ? (
@@ -268,6 +269,8 @@ export default function CheckoutPage() {
   const [deliveryApt, setDeliveryApt] = useState('')
   const [deliveryCity, setDeliveryCity] = useState('')
   const [deliveryZip, setDeliveryZip] = useState('')
+  const [validZips, setValidZips] = useState(null) // null = not loaded, [] = no restrictions
+  const [zipInvalid, setZipInvalid] = useState(false)
   const [clientSecret, setClientSecret] = useState(null)
   const [paymentIntentId, setPaymentIntentId] = useState(null)
   const [initError, setInitError] = useState(null)
@@ -331,6 +334,32 @@ export default function CheckoutPage() {
       })),
     })),
   }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, subtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, items])
+
+  // Fetch valid delivery zip codes
+  useEffect(() => {
+    if (!restaurant?.id || !supabase) return
+    supabase
+      .from('delivery_zip_codes')
+      .select('zip_code')
+      .eq('restaurant_id', restaurant.id)
+      .then(({ data }) => {
+        setValidZips((data || []).map(d => d.zip_code))
+      })
+  }, [restaurant?.id])
+
+  // Validate zip code when it changes
+  useEffect(() => {
+    if (!validZips || validZips.length === 0 || orderType !== 'delivery') {
+      setZipInvalid(false)
+      return
+    }
+    const zip = deliveryZip.trim()
+    if (zip.length === 5) {
+      setZipInvalid(!validZips.includes(zip))
+    } else {
+      setZipInvalid(false)
+    }
+  }, [deliveryZip, validZips, orderType])
 
   // Redirect to menu if cart is empty
   useEffect(() => {
@@ -570,6 +599,11 @@ export default function CheckoutPage() {
                 />
               </div>
             </div>
+            {zipInvalid && (
+              <p className="mt-2 text-sm text-red-500">
+                Sorry, we don't deliver to this zip code. Please select pickup or enter a different address.
+              </p>
+            )}
             {restaurant.delivery_note && (
               <p className="mt-2 text-sm text-gray-500">{restaurant.delivery_note}</p>
             )}
@@ -690,6 +724,7 @@ export default function CheckoutPage() {
                 orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
                 slug={slug}
                 restaurant={restaurant}
+                disabled={zipInvalid}
               />
             </Elements>
           )}
