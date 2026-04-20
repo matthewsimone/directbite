@@ -250,6 +250,18 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     items,
   } = orderData;
 
+  // Idempotency check — prevent duplicate orders from webhook retries
+  const { data: existingOrder } = await supabase
+    .from("orders")
+    .select("id")
+    .eq("stripe_payment_intent_id", paymentIntentId)
+    .single();
+
+  if (existingOrder) {
+    console.log(`Order already exists for payment intent ${paymentIntentId}, skipping duplicate`);
+    return existingOrder;
+  }
+
   // Insert order
   const { data: order, error: orderErr } = await supabase
     .from("orders")
