@@ -50,6 +50,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
         tax_rate: parseFloat(data.tax_rate) || 0,
         delivery_fee_type: data.delivery_fee_type || 'flat',
         delivery_fee: data.delivery_fee_type === 'none' ? 0 : (parseFloat(data.delivery_fee) || 0),
+        delivery_minimum: parseFloat(data.delivery_minimum) || 0,
         estimated_pickup_minutes: parseInt(data.estimated_pickup_minutes) || 30,
         estimated_delivery_minutes: parseInt(data.estimated_delivery_minutes) || 60,
         stripe_account_id: data.stripe_account_id || null,
@@ -139,6 +140,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
               (data.delivery_fee_type || 'flat') === 'percentage' ? 'Delivery Fee (%)' : 'Delivery Fee ($)',
               'delivery_fee', 'number'
             )}
+          {field('Delivery Minimum ($)', 'delivery_minimum', 'number')}
           <ZipCodeManager restaurantId={restaurant.id} />
           {field('Est. Pickup Minutes', 'estimated_pickup_minutes', 'number')}
           {field('Est. Delivery Minutes', 'estimated_delivery_minutes', 'number')}

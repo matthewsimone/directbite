@@ -271,6 +271,8 @@ export default function CheckoutPage() {
   const [deliveryZip, setDeliveryZip] = useState('')
   const [validZips, setValidZips] = useState(null) // null = not loaded, [] = no restrictions
   const [zipInvalid, setZipInvalid] = useState(false)
+  const deliveryMinimum = Number(restaurant?.delivery_minimum || 0)
+  const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
   const [paymentIntentId, setPaymentIntentId] = useState(null)
   const [initError, setInitError] = useState(null)
@@ -604,6 +606,11 @@ export default function CheckoutPage() {
                 Sorry, we don't deliver to this zip code. Please select pickup or enter a different address.
               </p>
             )}
+            {belowMinimum && (
+              <p className="mt-2 text-sm text-red-500">
+                Minimum order for delivery is {formatCurrency(deliveryMinimum)}. Add more items or select pickup.
+              </p>
+            )}
             {restaurant.delivery_note && (
               <p className="mt-2 text-sm text-gray-500">{restaurant.delivery_note}</p>
             )}
@@ -724,7 +731,7 @@ export default function CheckoutPage() {
                 orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
                 slug={slug}
                 restaurant={restaurant}
-                disabled={zipInvalid}
+                disabled={zipInvalid || belowMinimum}
               />
             </Elements>
           )}

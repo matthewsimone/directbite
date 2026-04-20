@@ -64,6 +64,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [deliveryFeeType, setDeliveryFeeType] = useState(restaurant?.delivery_fee_type || 'flat')
   const [deliveryFee, setDeliveryFee] = useState(restaurant?.delivery_fee || 0)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
+  const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum || 0)
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
 
   useEffect(() => {
@@ -168,6 +169,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         delivery_fee_type: deliveryFeeType,
         delivery_fee: deliveryFeeType === 'none' ? 0 : (parseFloat(deliveryFee) || 0),
         delivery_note: deliveryNote,
+        delivery_minimum: parseFloat(deliveryMinimum) || 0,
       })
       .eq('id', restaurant.id)
       .select()
@@ -343,6 +345,14 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   </div>
                 </FieldRow>
               )}
+              <FieldRow label="Minimum Order">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input type="number" min="0" step="0.01" value={deliveryMinimum}
+                    onChange={e => setDeliveryMinimum(e.target.value)}
+                    className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                </div>
+              </FieldRow>
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Delivery Note</label>
                 <input
