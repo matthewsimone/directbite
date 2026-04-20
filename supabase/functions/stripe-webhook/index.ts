@@ -251,6 +251,7 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
   } = orderData;
 
   // Idempotency check — prevent duplicate orders from webhook retries
+  // Only skip if the order AND its items are fully written
   const { data: existingOrder } = await supabase
     .from("orders")
     .select("id")
@@ -258,8 +259,20 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     .single();
 
   if (existingOrder) {
-    console.log(`Order already exists for payment intent ${paymentIntentId}, skipping duplicate`);
-    return existingOrder;
+    const { count } = await supabase
+      .from("order_items")
+      .select("id", { count: "exact", head: true })
+      .eq("order_id", existingOrder.id);
+
+    if (count && count >= (items || []).length) {
+      console.log(`Order already exists with all ${count} items for payment intent ${paymentIntentId}, skipping`);
+      return existingOrder;
+    }
+
+    // Partial write detected — clean up and re-insert
+    console.log(`Partial order detected (${count} of ${(items || []).length} items), cleaning up and re-inserting`);
+    await supabase.from("order_items").delete().eq("order_id", existingOrder.id);
+    await supabase.from("orders").delete().eq("id", existingOrder.id);
   }
 
   // Insert order
@@ -293,7 +306,7 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     throw orderErr;
   }
 
-  // Insert order items
+  // Insert all order items
   for (const item of items || []) {
     const { data: orderItem, error: oiErr } = await supabase
       .from("order_items")
@@ -311,8 +324,8 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
       .single();
 
     if (oiErr) {
-      console.error("Failed to insert order item:", oiErr);
-      throw oiErr;
+      console.error(`Failed to insert order item "${item.item_name}":`, oiErr);
+      continue; // Skip this item but continue inserting the rest
     }
 
     // Insert toppings for this item
@@ -331,8 +344,8 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
         .insert(toppingRows);
 
       if (tErr) {
-        console.error("Failed to insert toppings:", tErr);
-        throw tErr;
+        console.error(`Failed to insert toppings for "${item.item_name}":`, tErr);
+        // Continue — item is saved, just without toppings
       }
     }
   }

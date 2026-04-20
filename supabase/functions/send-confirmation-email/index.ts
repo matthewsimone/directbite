@@ -20,20 +20,24 @@ function formatMoney(amount: number): string {
 function buildConfirmationHtml(order: any, restaurant: any, items: any[]): string {
   let itemsHtml = "";
   for (const item of items) {
+    const toppingsSum = (item.order_item_toppings || []).reduce((s: number, t: any) => s + Number(t.price_charged || 0), 0);
+    const lineTotal = (Number(item.base_price) + toppingsSum) * (item.quantity || 1);
     itemsHtml += `
       <tr>
         <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
           <strong>${item.quantity}x ${item.item_name}${item.size_name ? ` (${item.size_name})` : ""}</strong>
-          <span style="float:right;font-weight:bold;">${formatMoney(item.base_price * item.quantity)}</span>
+          <span style="float:right;font-weight:bold;">${formatMoney(lineTotal)}</span>
     `;
 
+    const qty = item.quantity || 1;
     for (const t of item.order_item_toppings || []) {
       if (t.placement_type === "addon") {
-        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}`;
+        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}${qty > 1 ? " ea" : ""}`;
         itemsHtml += `<br><span style="padding-left:16px;color:#6b7280;font-weight:normal;">${t.topping_name} ${priceStr}</span>`;
       } else {
-        const placement = t.placement === "whole" ? "" : `${t.placement.toUpperCase()}: `;
-        itemsHtml += `<br><span style="padding-left:16px;color:#6b7280;font-weight:normal;">${placement}${t.topping_name} +${formatMoney(t.price_charged)}</span>`;
+        const placement = t.placement.toUpperCase();
+        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}${qty > 1 ? " ea" : ""}`;
+        itemsHtml += `<br><span style="padding-left:16px;color:#6b7280;font-weight:normal;">${placement}: ${t.topping_name} ${priceStr}</span>`;
       }
     }
 

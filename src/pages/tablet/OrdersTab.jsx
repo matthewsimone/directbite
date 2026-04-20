@@ -252,13 +252,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           {items.map(item => (
             <div key={item.id} className="space-y-1">
               <p className="font-bold text-base">
-                {item.quantity}x {item.item_name}{item.size_name ? ` — ${item.size_name}` : ''}
+                {item.quantity}x {item.item_name}{item.size_name ? ` (${item.size_name})` : ''}
               </p>
               {item.order_item_toppings?.map(t => (
                 <p key={t.id} className="pl-6 text-sm text-gray-600">
                   {t.placement_type === 'addon'
-                    ? `${t.topping_name} ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}`}`
-                    : `${t.placement !== 'whole' ? `${t.placement} — ` : ''}${t.topping_name} +${formatMoney(t.price_charged)}`}
+                    ? `${t.topping_name}   ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}${item.quantity > 1 ? ' ea' : ''}`}`
+                    : `${t.placement.toUpperCase()}: ${t.topping_name}   ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}${item.quantity > 1 ? ' ea' : ''}`}`}
                 </p>
               ))}
               {item.special_instructions && (

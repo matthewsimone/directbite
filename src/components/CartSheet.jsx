@@ -58,12 +58,9 @@ export default function CartSheet({ onClose, onCheckout }) {
                   <div key={item.id} className="border-b border-gray-100 pb-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-gray-900">{item.itemName}</span>
-                          {item.sizeName && (
-                            <span className="text-sm text-gray-500">({item.sizeName})</span>
-                          )}
-                        </div>
+                        <span className="font-semibold text-gray-900">
+                          {item.quantity}x {item.itemName}{item.sizeName ? ` (${item.sizeName})` : ''}
+                        </span>
 
                         {/* Toppings */}
                         {item.toppings?.map((t, i) => (
@@ -71,7 +68,7 @@ export default function CartSheet({ onClose, onCheckout }) {
                             {t.placementType === 'addon'
                               ? t.toppingName
                               : `${t.placement.toUpperCase()}: ${t.toppingName}`}{' '}
-                            <span className="text-gray-400">{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}`}</span>
+                            <span className="text-gray-400">{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}${item.quantity > 1 ? ' ea' : ''}`}</span>
                           </div>
                         ))}
 

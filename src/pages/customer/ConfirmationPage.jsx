@@ -310,7 +310,7 @@ function ConfirmationLayout({
                             ? t.toppingName
                             : `${t.placement.toUpperCase()}: ${t.toppingName}`}
                         </span>
-                        <span>{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}`}</span>
+                        <span>{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}${Number(item.quantity) > 1 ? ' ea' : ''}`}</span>
                       </div>
                     ))}
                     {item.specialInstructions && (
