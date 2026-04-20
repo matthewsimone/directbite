@@ -178,8 +178,8 @@ function OrderDetailPanel({ order, onClose, onRefresh }) {
               {item.order_item_toppings?.map(t => (
                 <p key={t.id} className="text-xs text-gray-500 pl-4">
                   {t.placement_type === 'addon'
-                    ? `${t.topping_name} ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}`}`
-                    : `${t.placement !== 'whole' ? `${t.placement}: ` : ''}${t.topping_name} +${formatMoney(t.price_charged)}`}
+                    ? `${t.topping_name}   ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}`}`
+                    : `${t.placement.toUpperCase()}: ${t.topping_name}   ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}`}`}
                 </p>
               ))}
               {item.special_instructions && <p className="text-xs italic text-gray-400 pl-4">{item.special_instructions}</p>}
