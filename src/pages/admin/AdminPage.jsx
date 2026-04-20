@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAdminAuth } from '../../hooks/useAdminAuth'
+import DirectBiteLogo from '../../components/DirectBiteLogo'
 import AdminLogin from './AdminLogin'
 import OrdersTab from './OrdersTab'
 import RestaurantsTab from './RestaurantsTab'
@@ -36,10 +37,8 @@ export default function AdminPage() {
       {/* Sidebar */}
       <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
         <div className="px-5 py-4 border-b border-gray-200">
-          <h1 className="text-lg font-bold">
-            <span className="text-gray-900">Direct</span><span className="text-[#16A34A]">Bite</span>
-          </h1>
-          <p className="text-xs text-gray-400">Admin Panel</p>
+          <DirectBiteLogo color="dark" height={24} />
+          <p className="text-xs text-gray-400 mt-1">Admin Panel</p>
         </div>
         <nav className="flex-1 py-3">
           {TABS.map(tab => {
@@ -67,7 +66,7 @@ export default function AdminPage() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
-          <h2 className="font-semibold text-gray-900">DirectBite Admin</h2>
+          <DirectBiteLogo color="dark" height={20} />
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500">{session.user.email}</span>
             <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">

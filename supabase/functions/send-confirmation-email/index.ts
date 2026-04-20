@@ -92,7 +92,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
   <div style="max-width:520px;margin:0 auto;padding:24px;">
     <!-- Header -->
     <div style="text-align:center;padding:24px 0;">
-      <span style="font-size:24px;font-weight:bold;color:#111827;">Direct</span><span style="font-size:24px;font-weight:bold;color:#16a34a;">Bite</span>
+      <img src="https://directbite.co/directbite-wordmark.png" alt="DirectBite" style="height:20px;" />
     </div>
 
     <!-- Card -->

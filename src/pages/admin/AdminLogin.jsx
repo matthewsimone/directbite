@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import DirectBiteLogo from '../../components/DirectBiteLogo'
 
 export default function AdminLogin({ onLogin, error: authError }) {
   const [email, setEmail] = useState('')
@@ -16,7 +17,7 @@ export default function AdminLogin({ onLogin, error: authError }) {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">DirectBite Admin</h1>
+          <div className="flex justify-center"><DirectBiteLogo color="dark" height={28} /></div>
           <p className="text-gray-500 mt-1">Sign in to continue</p>
         </div>
 
