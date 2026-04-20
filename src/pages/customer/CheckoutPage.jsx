@@ -17,8 +17,15 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 
 
 // ---------- Tip Selector ----------
 function TipSelector({ subtotal, onTipChange }) {
-  const [tipType, setTipType] = useState(null)
+  const [tipType, setTipType] = useState('10')
   const [customTip, setCustomTip] = useState('')
+
+  // Set default 10% tip on mount
+  useEffect(() => {
+    if (subtotal > 0) {
+      onTipChange(Math.round(subtotal * 0.1 * 100) / 100)
+    }
+  }, [])
 
   function selectPreset(pct) {
     setTipType(pct)
