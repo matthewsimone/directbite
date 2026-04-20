@@ -1,12 +1,8 @@
-import wordmark from '../assets/directbite-wordmark.png'
-
 export default function DirectBiteLogo({ color = 'dark', height = 24 }) {
   const fill = color === 'light' ? '#ffffff' : '#111111'
-  const scale = height / 24
-  const wordmarkHeight = 14 * scale
 
   return (
-    <div className="flex items-center" style={{ gap: 10 * scale }}>
+    <div className="flex items-center gap-2.5">
       <svg width={height} height={height} viewBox="0 0 100 130" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <mask id={`pin-bite-${color}`}>
@@ -20,12 +16,9 @@ export default function DirectBiteLogo({ color = 'dark', height = 24 }) {
           mask={`url(#pin-bite-${color})`}
         />
       </svg>
-      <img
-        src={wordmark}
-        alt="DirectBite"
-        style={{ height: wordmarkHeight, marginTop: 1 * scale }}
-        className={color === 'dark' ? '' : 'brightness-0 invert'}
-      />
+      <span style={{ fontWeight: 800, letterSpacing: '0.08em', fontSize: 14, color: fill, lineHeight: 1 }}>
+        DIRECTBITE
+      </span>
     </div>
   )
 }
