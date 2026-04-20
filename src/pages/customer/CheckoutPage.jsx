@@ -479,6 +479,7 @@ export default function CheckoutPage() {
         total,
         restaurantName: restaurant.name,
         restaurantPhone: restaurant.phone,
+        includeUtensils,
         paymentIntentId: piId,
       },
     })

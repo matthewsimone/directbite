@@ -69,6 +69,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
     total,
     restaurantName,
     restaurantPhone,
+    includeUtensils,
   } = state
 
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
@@ -113,6 +114,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
       total={total}
       restaurantName={restaurantName}
       restaurantPhone={restaurantPhone}
+      includeUtensils={includeUtensils}
       slug={slug}
       navigate={navigate}
     />
@@ -232,6 +234,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
       total={order.total_amount}
       restaurantName={restaurant?.name}
       restaurantPhone={restaurant?.phone}
+      includeUtensils={order.include_utensils}
       slug={slug}
       navigate={navigate}
     />
@@ -243,7 +246,7 @@ function ConfirmationLayout({
   orderNumber, customerName, orderType, estimatedTime,
   items, subtotal, discountAmount, discountPercentage,
   deliveryFee, taxAmount, tip, serviceFee, total,
-  restaurantName, restaurantPhone, slug, navigate,
+  restaurantName, restaurantPhone, includeUtensils, slug, navigate,
 }) {
   return (
     <div className="min-h-screen bg-white">
@@ -327,6 +330,10 @@ function ConfirmationLayout({
                 )
               })}
             </div>
+
+            {includeUtensils && (
+              <p className="text-sm text-[#16A34A] font-medium mt-3">✓ Include napkins & utensils</p>
+            )}
 
             {/* Totals */}
             <div className="mt-4 space-y-2 text-sm">

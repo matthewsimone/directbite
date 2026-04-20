@@ -51,6 +51,10 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
     `;
   }
 
+  if (order.include_utensils) {
+    itemsHtml += `<tr><td style="padding:8px 0;color:#16a34a;font-weight:500;">✓ Include napkins & utensils</td></tr>`;
+  }
+
   const estimatedTime = order.order_type === "delivery"
     ? `${restaurant.estimated_delivery_minutes || 60} minutes`
     : `${restaurant.estimated_pickup_minutes || 30} minutes`;

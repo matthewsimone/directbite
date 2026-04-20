@@ -62,6 +62,11 @@ function formatReceipt(order: any, restaurant: any, items: any[]): string {
     }
   }
 
+  if (order.include_utensils) {
+    lines.push("");
+    lines.push("*** NAPKINS & UTENSILS REQUESTED ***");
+    lines.push("");
+  }
   lines.push(sep);
   lines.push(formatReceiptLine("Subtotal:", formatMoney(order.subtotal)));
   lines.push(formatReceiptLine("Tax:", formatMoney(order.tax_amount)));
