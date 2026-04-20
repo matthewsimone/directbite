@@ -268,6 +268,10 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           ))}
         </div>
 
+        {order.include_utensils && (
+          <p className="text-sm text-[#16A34A] font-medium mt-2">✓ Include napkins & utensils</p>
+        )}
+
         {/* Price breakdown */}
         <div className="space-y-1 border-t border-gray-200 pt-4">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Total</h3>

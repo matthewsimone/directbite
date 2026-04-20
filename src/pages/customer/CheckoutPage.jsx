@@ -261,6 +261,7 @@ export default function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart()
 
   const [orderType, setOrderType] = useState('pickup')
+  const [includeUtensils, setIncludeUtensils] = useState(false)
   const [tip, setTip] = useState(0)
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -325,6 +326,7 @@ export default function CheckoutPage() {
     tip_amount: tip,
     service_fee: serviceFee,
     total_amount: total,
+    include_utensils: includeUtensils,
     items: items.map(item => ({
       menu_item_id: item.menuItemId,
       item_size_id: item.itemSizeId || null,
@@ -624,6 +626,17 @@ export default function CheckoutPage() {
         )}
 
         {/* Tip */}
+        {/* Napkins & Utensils */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-gray-700">Include napkins & utensils</span>
+          <button
+            onClick={() => setIncludeUtensils(!includeUtensils)}
+            className={`relative w-12 h-7 rounded-full transition-colors ${includeUtensils ? 'bg-[#16A34A]' : 'bg-gray-300'}`}
+          >
+            <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${includeUtensils ? 'left-5.5' : 'left-0.5'}`} />
+          </button>
+        </div>
+
         <TipSelector subtotal={discountedSubtotal} onTipChange={setTip} />
 
         {/* Order Summary */}

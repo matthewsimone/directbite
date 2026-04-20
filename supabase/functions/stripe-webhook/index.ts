@@ -247,6 +247,7 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     service_fee,
     total_amount,
     special_instructions,
+    include_utensils,
     items,
   } = orderData;
 
@@ -297,6 +298,7 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
       stripe_payment_intent_id: paymentIntentId,
       stripe_charge_id: chargeId,
       special_instructions: special_instructions || null,
+      include_utensils: include_utensils || false,
     })
     .select()
     .single();
