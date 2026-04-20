@@ -7,7 +7,7 @@ export default function DirectBiteLogo({ color = 'dark', height = 28 }) {
       alt="DirectBite"
       style={{
         height,
-        filter: color === 'dark' ? 'brightness(0)' : 'none',
+        filter: color === 'dark' ? 'brightness(0) saturate(100%) invert(8%) sepia(0%) saturate(0%) hue-rotate(0deg) brightness(94%) contrast(89%)' : 'none',
       }}
     />
   )
