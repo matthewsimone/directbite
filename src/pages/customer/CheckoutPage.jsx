@@ -415,8 +415,7 @@ export default function CheckoutPage() {
   }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, buildOrderData])
 
   function handlePaymentSuccess(piId) {
-    // Order will be written by the webhook, but we navigate immediately for good UX
-    clearCart()
+    // Navigate FIRST, then clear cart — otherwise the empty-cart guard redirects to menu
     navigate(`/${slug}/confirmation`, {
       state: {
         orderNumber: null, // Will show "Processing..." until webhook writes it
@@ -437,6 +436,8 @@ export default function CheckoutPage() {
         paymentIntentId: piId,
       },
     })
+    // Cart is cleared on the confirmation page, not here — clearing here triggers
+    // the empty-cart useEffect which redirects back to menu before navigation completes
   }
 
   if (restLoading) {

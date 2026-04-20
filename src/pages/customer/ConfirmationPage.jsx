@@ -1,15 +1,29 @@
 import { useState, useEffect } from 'react'
-import { useParams, useLocation, useNavigate } from 'react-router-dom'
+import { useParams, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useCart } from '../../hooks/useCart'
 import { formatCurrency, formatPhone } from '../../utils/format'
 
 export default function ConfirmationPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { state } = useLocation()
+  const { clearCart } = useCart()
 
-  // If no state (direct navigation), send back to menu
-  if (!state) {
+  // Clear cart on mount — payment was successful
+  useEffect(() => {
+    clearCart()
+  }, [])
+  const { state } = useLocation()
+  const [searchParams] = useSearchParams()
+
+  // Check for Stripe redirect params
+  const stripePaymentIntentId = searchParams.get('payment_intent')
+  const redirectStatus = searchParams.get('redirect_status')
+  const isStripeRedirect = stripePaymentIntentId && redirectStatus === 'succeeded'
+
+
+  // If no state AND no Stripe redirect, show not found
+  if (!state && !isStripeRedirect) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">No order found</h1>
@@ -23,6 +37,17 @@ export default function ConfirmationPage() {
     )
   }
 
+  // If we have router state, use that (SPA navigation after non-redirect payment)
+  if (state) {
+    return <ConfirmationWithState state={state} slug={slug} navigate={navigate} />
+  }
+
+  // Stripe redirect — fetch order from Supabase using payment_intent ID
+  return <ConfirmationFromStripe paymentIntentId={stripePaymentIntentId} slug={slug} navigate={navigate} />
+}
+
+// ── Confirmation with router state (existing flow) ──
+function ConfirmationWithState({ state, slug, navigate }) {
   const {
     orderNumber: initialOrderNumber,
     customerName,
@@ -43,7 +68,6 @@ export default function ConfirmationPage() {
 
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
 
-  // Poll for order number if it wasn't available immediately (webhook may be delayed)
   useEffect(() => {
     if (orderNumber || !state?.paymentIntentId || !supabase) return
 
@@ -61,12 +85,161 @@ export default function ConfirmationPage() {
         clearInterval(interval)
       }
 
-      if (attempts >= 15) clearInterval(interval) // stop after ~30s
+      if (attempts >= 15) clearInterval(interval)
     }, 2000)
 
     return () => clearInterval(interval)
   }, [orderNumber, state?.paymentIntentId])
 
+  return (
+    <ConfirmationLayout
+      orderNumber={orderNumber}
+      customerName={customerName}
+      orderType={orderType}
+      estimatedTime={estimatedTime}
+      items={items}
+      subtotal={subtotal}
+      discountAmount={discountAmount}
+      discountPercentage={discountPercentage}
+      deliveryFee={deliveryFee}
+      taxAmount={taxAmount}
+      tip={tip}
+      serviceFee={serviceFee}
+      total={total}
+      restaurantName={restaurantName}
+      restaurantPhone={restaurantPhone}
+      slug={slug}
+      navigate={navigate}
+    />
+  )
+}
+
+// ── Confirmation from Stripe redirect (fetch order from DB) ──
+function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
+  const [order, setOrder] = useState(null)
+  const [restaurant, setRestaurant] = useState(null)
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let attempts = 0
+    const interval = setInterval(async () => {
+      attempts++
+
+      const { data: orderData } = await supabase
+        .from('orders')
+        .select('*')
+        .eq('stripe_payment_intent_id', paymentIntentId)
+        .single()
+
+      if (orderData) {
+        setOrder(orderData)
+        clearInterval(interval)
+
+        // Fetch restaurant
+        const { data: restData } = await supabase
+          .from('restaurants')
+          .select('name, phone, estimated_pickup_minutes, estimated_delivery_minutes')
+          .eq('id', orderData.restaurant_id)
+          .single()
+        setRestaurant(restData)
+
+        // Fetch order items with toppings
+        const { data: itemsData } = await supabase
+          .from('order_items')
+          .select('*, order_item_toppings(*)')
+          .eq('order_id', orderData.id)
+          .order('created_at')
+        setItems(itemsData || [])
+
+        setLoading(false)
+      }
+
+      if (attempts >= 20) {
+        clearInterval(interval)
+        setLoading(false)
+      }
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [paymentIntentId])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
+        <div className="w-8 h-8 border-3 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
+        <p className="mt-4 text-gray-500">Confirming your order...</p>
+      </div>
+    )
+  }
+
+  if (!order) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Order processing</h1>
+        <p className="text-gray-500 mb-4">Your payment was successful. Your order is being prepared.</p>
+        <button
+          onClick={() => navigate(`/${slug}`)}
+          className="px-6 py-3 bg-[#16A34A] text-white rounded-xl font-semibold"
+        >
+          Back to Menu
+        </button>
+      </div>
+    )
+  }
+
+  const estimatedTime = order.order_type === 'pickup'
+    ? restaurant?.estimated_pickup_minutes
+    : restaurant?.estimated_delivery_minutes
+
+  // Map DB items to display format
+  const displayItems = items.map(item => ({
+    id: item.id,
+    itemName: item.item_name,
+    sizeName: item.size_name,
+    basePrice: item.base_price,
+    quantity: item.quantity,
+    specialInstructions: item.special_instructions,
+    toppings: (item.order_item_toppings || []).map(t => ({
+      toppingName: t.topping_name,
+      placement: t.placement,
+      price: t.price_charged,
+      placementType: t.placement_type || 'pizza',
+    })),
+  }))
+
+  return (
+    <ConfirmationLayout
+      orderNumber={order.order_number}
+      customerName={order.customer_name}
+      orderType={order.order_type}
+      estimatedTime={estimatedTime}
+      items={displayItems}
+      subtotal={order.subtotal}
+      discountAmount={order.discount_amount}
+      discountPercentage={order.discount_percentage}
+      deliveryFee={order.delivery_fee}
+      taxAmount={order.tax_amount}
+      tip={order.tip_amount}
+      serviceFee={order.service_fee}
+      total={order.total_amount}
+      restaurantName={restaurant?.name}
+      restaurantPhone={restaurant?.phone}
+      slug={slug}
+      navigate={navigate}
+    />
+  )
+}
+
+// ── Shared confirmation layout ──
+function ConfirmationLayout({
+  orderNumber, customerName, orderType, estimatedTime,
+  items, subtotal, discountAmount, discountPercentage,
+  deliveryFee, taxAmount, tip, serviceFee, total,
+  restaurantName, restaurantPhone, slug, navigate,
+}) {
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-lg mx-auto px-5 py-10">
@@ -86,7 +259,7 @@ export default function ConfirmationPage() {
 
         {/* Order meta */}
         <div className="mt-6 bg-gray-50 rounded-2xl p-5 space-y-2 text-center">
-          <p className="text-sm text-gray-500">{restaurantName}</p>
+          {restaurantName && <p className="text-sm text-gray-500">{restaurantName}</p>}
           <p className="text-2xl font-bold text-gray-900">
             {orderNumber ? `#${orderNumber}` : (
               <span className="flex items-center justify-center gap-2 text-base text-gray-500">
@@ -95,96 +268,100 @@ export default function ConfirmationPage() {
               </span>
             )}
           </p>
-          <p className="text-sm text-gray-600">
-            {orderType === 'pickup'
-              ? `Estimated pickup in ~${estimatedTime} mins`
-              : `Estimated delivery in ~${estimatedTime} mins`}
-          </p>
+          {estimatedTime && (
+            <p className="text-sm text-gray-600">
+              {orderType === 'pickup'
+                ? `Estimated pickup in ~${estimatedTime} mins`
+                : `Estimated delivery in ~${estimatedTime} mins`}
+            </p>
+          )}
         </div>
 
         {/* Receipt */}
-        <div className="mt-8">
-          <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
-            Receipt
-          </h2>
+        {items && items.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">
+              Receipt
+            </h2>
 
-          <div className="space-y-3">
-            {items.map(item => {
-              const toppingsTotal = (item.toppings || []).reduce(
-                (s, t) => s + (parseFloat(t.price) || 0),
-                0
-              )
-              const lineTotal = (Number(item.basePrice) + toppingsTotal) * item.quantity
+            <div className="space-y-3">
+              {items.map(item => {
+                const toppingsTotal = (item.toppings || []).reduce(
+                  (s, t) => s + (parseFloat(t.price) || 0),
+                  0
+                )
+                const lineTotal = ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
 
-              return (
-                <div key={item.id} className="border-b border-gray-100 pb-3">
-                  <div className="flex justify-between">
-                    <span className="font-bold text-gray-900">
-                      {item.quantity}x {item.itemName}
-                      {item.sizeName ? ` (${item.sizeName})` : ''}
-                    </span>
-                    <span className="font-bold text-gray-900">
-                      {formatCurrency(lineTotal)}
-                    </span>
-                  </div>
-                  {item.toppings?.map((t, i) => (
-                    <div key={i} className="flex justify-between text-sm text-gray-500 ml-4 mt-0.5">
-                      <span>
-                        {t.placementType === 'addon'
-                          ? t.toppingName
-                          : `${t.placement.toUpperCase()}: ${t.toppingName}`}
+                return (
+                  <div key={item.id} className="border-b border-gray-100 pb-3">
+                    <div className="flex justify-between">
+                      <span className="font-bold text-gray-900">
+                        {item.quantity}x {item.itemName}
+                        {item.sizeName ? ` (${item.sizeName})` : ''}
                       </span>
-                      <span>{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}`}</span>
+                      <span className="font-bold text-gray-900">
+                        {formatCurrency(lineTotal)}
+                      </span>
                     </div>
-                  ))}
-                  {item.specialInstructions && (
-                    <p className="text-sm text-gray-400 italic ml-4 mt-0.5">
-                      {item.specialInstructions}
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                    {item.toppings?.map((t, i) => (
+                      <div key={i} className="flex justify-between text-sm text-gray-500 ml-4 mt-0.5">
+                        <span>
+                          {t.placementType === 'addon'
+                            ? t.toppingName
+                            : `${t.placement.toUpperCase()}: ${t.toppingName}`}
+                        </span>
+                        <span>{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}`}</span>
+                      </div>
+                    ))}
+                    {item.specialInstructions && (
+                      <p className="text-sm text-gray-400 italic ml-4 mt-0.5">
+                        {item.specialInstructions}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
 
-          {/* Totals */}
-          <div className="mt-4 space-y-2 text-sm">
-            <div className="flex justify-between text-gray-600">
-              <span>Subtotal</span>
-              <span>{formatCurrency(subtotal)}</span>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span>Tax</span>
-              <span>{formatCurrency(taxAmount)}</span>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span>Service Fee</span>
-              <span>{formatCurrency(serviceFee)}</span>
-            </div>
-            {deliveryFee > 0 && (
+            {/* Totals */}
+            <div className="mt-4 space-y-2 text-sm">
               <div className="flex justify-between text-gray-600">
-                <span>Delivery Fee</span>
-                <span>{formatCurrency(deliveryFee)}</span>
+                <span>Subtotal</span>
+                <span>{formatCurrency(subtotal)}</span>
               </div>
-            )}
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-[#16A34A] font-medium">
-                <span>Discount ({discountPercentage}%)</span>
-                <span>-{formatCurrency(discountAmount)}</span>
-              </div>
-            )}
-            {tip > 0 && (
               <div className="flex justify-between text-gray-600">
-                <span>Tip</span>
-                <span>{formatCurrency(tip)}</span>
+                <span>Tax</span>
+                <span>{formatCurrency(taxAmount)}</span>
               </div>
-            )}
-            <div className="flex justify-between text-lg font-bold text-gray-900 pt-3 border-t border-gray-200">
-              <span>Total</span>
-              <span>{formatCurrency(total)}</span>
+              <div className="flex justify-between text-gray-600">
+                <span>Service Fee</span>
+                <span>{formatCurrency(serviceFee)}</span>
+              </div>
+              {Number(deliveryFee) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Delivery Fee</span>
+                  <span>{formatCurrency(deliveryFee)}</span>
+                </div>
+              )}
+              {Number(discountAmount) > 0 && (
+                <div className="flex justify-between text-[#16A34A] font-medium">
+                  <span>Discount ({discountPercentage}%)</span>
+                  <span>-{formatCurrency(discountAmount)}</span>
+                </div>
+              )}
+              {Number(tip) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Tip</span>
+                  <span>{formatCurrency(tip)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-lg font-bold text-gray-900 pt-3 border-t border-gray-200">
+                <span>Total</span>
+                <span>{formatCurrency(total)}</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Restaurant phone */}
         {restaurantPhone && (
