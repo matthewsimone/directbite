@@ -277,9 +277,15 @@ export default function CheckoutPage() {
   const [paymentIntentId, setPaymentIntentId] = useState(null)
   const [initError, setInitError] = useState(null)
 
+  // Compute full (undiscounted) subtotal from cart items' fullBasePrice/fullPrice
   const discountPercentage = promotion ? Number(promotion.discount_percentage) : 0
-  const discountAmount = Math.round(subtotal * (discountPercentage / 100) * 100) / 100
-  const discountedSubtotal = subtotal - discountAmount
+  const fullSubtotal = items.reduce((sum, item) => {
+    const base = parseFloat(item.fullBasePrice ?? item.basePrice) || 0
+    const tops = (item.toppings || []).reduce((s, t) => s + (parseFloat(t.fullPrice ?? t.price) || 0), 0)
+    return sum + (base + tops) * (item.quantity || 1)
+  }, 0)
+  const discountAmount = Math.round(fullSubtotal * (discountPercentage / 100) * 100) / 100
+  const discountedSubtotal = fullSubtotal - discountAmount
   const deliveryFeeType = restaurant?.delivery_fee_type || 'flat'
   const deliveryFeeRaw = Number(restaurant?.delivery_fee || 0)
   const deliveryFee = orderType === 'delivery'
@@ -311,7 +317,7 @@ export default function CheckoutPage() {
     customer_phone: customerPhone.trim(),
     customer_email: customerEmail.trim(),
     delivery_address: fullDeliveryAddress,
-    subtotal,
+    subtotal: fullSubtotal,
     discount_amount: discountAmount,
     discount_percentage: discountPercentage,
     delivery_fee: deliveryFee,
@@ -324,14 +330,14 @@ export default function CheckoutPage() {
       item_size_id: item.itemSizeId || null,
       item_name: item.itemName,
       size_name: item.sizeName || null,
-      base_price: item.basePrice,
+      base_price: item.fullBasePrice ?? item.basePrice,
       quantity: item.quantity,
       special_instructions: item.specialInstructions || null,
       toppings: (item.toppings || []).map(t => ({
         topping_id: t.toppingId,
         topping_name: t.toppingName,
         placement: t.placement,
-        price_charged: t.price,
+        price_charged: t.fullPrice ?? t.price,
         placement_type: t.placementType || 'pizza',
       })),
     })),
@@ -461,7 +467,7 @@ export default function CheckoutPage() {
         orderType,
         estimatedTime,
         items,
-        subtotal,
+        subtotal: fullSubtotal,
         discountAmount,
         discountPercentage,
         deliveryFee,
@@ -627,8 +633,10 @@ export default function CheckoutPage() {
           </h3>
           <div className="space-y-3">
             {items.map(item => {
-              const toppingsTotal = (item.toppings || []).reduce((s, t) => s + (parseFloat(t.price) || 0), 0)
-              const lineTotal = ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
+              // Show full (undiscounted) prices in the summary
+              const fullBase = parseFloat(item.fullBasePrice ?? item.basePrice) || 0
+              const toppingsTotal = (item.toppings || []).reduce((s, t) => s + (parseFloat(t.fullPrice ?? t.price) || 0), 0)
+              const lineTotal = (fullBase + toppingsTotal) * (item.quantity || 1)
 
               return (
                 <div key={item.id} className="border-b border-gray-100 pb-3">
@@ -648,7 +656,7 @@ export default function CheckoutPage() {
                           ? t.toppingName
                           : `${t.placement.toUpperCase()}: ${t.toppingName}`}
                       </span>
-                      <span>{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}${item.quantity > 1 ? ' ea' : ''}`}</span>
+                      <span>{Number(t.fullPrice ?? t.price) === 0 ? 'Free' : `+${formatCurrency(t.fullPrice ?? t.price)}${item.quantity > 1 ? ' ea' : ''}`}</span>
                     </div>
                   ))}
                   {item.specialInstructions && (
@@ -665,7 +673,7 @@ export default function CheckoutPage() {
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex justify-between text-gray-600">
               <span>Subtotal</span>
-              <span>{formatCurrency(subtotal)}</span>
+              <span>{formatCurrency(fullSubtotal)}</span>
             </div>
             <div className="flex justify-between text-gray-600">
               <span>Tax</span>

@@ -173,6 +173,7 @@ export default function ItemModal({
       itemName: item.name,
       sizeName: selectedSize?.name || null,
       basePrice: basePrice * discountMultiplier,
+      fullBasePrice: basePrice,
       quantity,
       specialInstructions: specialInstructions.trim() || null,
       toppings: selectedToppings.map(t => ({
@@ -180,6 +181,7 @@ export default function ItemModal({
         toppingName: t.toppingName,
         placement: t.placement,
         price: t.price * discountMultiplier,
+        fullPrice: t.price,
         placementType: t.placementType || 'pizza',
       })),
     }
