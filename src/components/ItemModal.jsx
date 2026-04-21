@@ -327,7 +327,7 @@ export default function ItemModal({
             <textarea
               value={specialInstructions}
               onChange={e => setSpecialInstructions(e.target.value)}
-              placeholder="e.g. no salt, no onions"
+              placeholder="Have an allergy, dietary restriction, or special request?"
               rows={3}
               className="w-full px-4 py-3 bg-gray-100 rounded-xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
             />
