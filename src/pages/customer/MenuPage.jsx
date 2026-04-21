@@ -129,6 +129,13 @@ export default function MenuPage() {
     [searchQuery]
   )
 
+  // Scroll to top after menu data loads
+  useEffect(() => {
+    if (!restLoading && !menuLoading && items.length > 0) {
+      requestAnimationFrame(() => window.scrollTo(0, 0))
+    }
+  }, [restLoading, menuLoading])
+
   if (restLoading || menuLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
