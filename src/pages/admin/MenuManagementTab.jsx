@@ -453,14 +453,11 @@ export default function MenuManagementTab() {
     const reordered = [...categories]
     const [moved] = reordered.splice(dragIdx, 1)
     reordered.splice(targetIdx, 0, moved)
-    setCategories(reordered)
+    setCategories(reordered.map((c, i) => ({ ...c, sort_order: i })))
 
-    // Update sort_order in Supabase
+    // Persist every category's new sort_order to Supabase
     for (let i = 0; i < reordered.length; i++) {
-      if (reordered[i].sort_order !== i) {
-        await supabase.from('menu_categories').update({ sort_order: i }).eq('id', reordered[i].id)
-        reordered[i].sort_order = i
-      }
+      await supabase.from('menu_categories').update({ sort_order: i }).eq('id', reordered[i].id)
     }
     setDragCatId(null)
   }
@@ -476,18 +473,22 @@ export default function MenuManagementTab() {
     const [moved] = reordered.splice(dragIdx, 1)
     reordered.splice(targetIdx, 0, moved)
 
-    // Update local state
-    const reorderedIds = new Map(reordered.map((item, i) => [item.id, i]))
-    setItems(prev => prev.map(item => {
-      const newOrder = reorderedIds.get(item.id)
-      return newOrder !== undefined ? { ...item, sort_order: newOrder } : item
-    }))
+    // Build new sort_order map
+    const newOrderMap = new Map(reordered.map((item, i) => [item.id, i]))
 
-    // Persist to Supabase
-    for (let i = 0; i < reordered.length; i++) {
-      if (reordered[i].sort_order !== i) {
-        await supabase.from('menu_items').update({ sort_order: i }).eq('id', reordered[i].id)
-      }
+    // Optimistic local state update
+    setItems(prev => {
+      const updated = prev.map(item => {
+        const newOrder = newOrderMap.get(item.id)
+        return newOrder !== undefined ? { ...item, sort_order: newOrder } : item
+      })
+      return updated.sort((a, b) => a.sort_order - b.sort_order)
+    })
+
+    // Persist every item's new sort_order to Supabase
+    const updates = reordered.map((item, i) => ({ id: item.id, sort_order: i }))
+    for (const u of updates) {
+      await supabase.from('menu_items').update({ sort_order: u.sort_order }).eq('id', u.id)
     }
     setDragItemId(null)
   }
