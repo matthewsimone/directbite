@@ -69,18 +69,28 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
 
     if (!itemId) { setSaving(false); return }
 
-    // Sync sizes: delete existing, re-insert
-    await supabase.from('item_sizes').delete().eq('item_id', itemId)
+    // Sync sizes: update existing, insert new, delete removed
     const validSizes = sizes.filter(s => s.name.trim() && s.price)
-    if (validSizes.length > 0) {
-      await supabase.from('item_sizes').insert(
-        validSizes.map((s, i) => ({
-          item_id: itemId, name: s.name, price: parseFloat(s.price), sort_order: i,
-        }))
-      )
+    const existingSizeIds = validSizes.filter(s => s.id).map(s => s.id)
+
+    // Delete sizes that were removed (only those not referenced by orders)
+    const { data: currentSizes } = await supabase.from('item_sizes').select('id').eq('item_id', itemId)
+    const sizeIdsToDelete = (currentSizes || []).map(s => s.id).filter(id => !existingSizeIds.includes(id))
+    for (const id of sizeIdsToDelete) {
+      await supabase.from('item_sizes').delete().eq('id', id)
     }
 
-    // Sync topping group assignments
+    // Upsert sizes
+    for (let i = 0; i < validSizes.length; i++) {
+      const s = validSizes[i]
+      if (s.id) {
+        await supabase.from('item_sizes').update({ name: s.name, price: parseFloat(s.price), sort_order: i }).eq('id', s.id)
+      } else {
+        await supabase.from('item_sizes').insert({ item_id: itemId, name: s.name, price: parseFloat(s.price), sort_order: i })
+      }
+    }
+
+    // Sync topping group assignments: safe to delete-reinsert (no FK from orders)
     await supabase.from('item_topping_groups').delete().eq('item_id', itemId)
     if (assignedGroupIds.length > 0) {
       await supabase.from('item_topping_groups').insert(
@@ -235,16 +245,28 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
 
     if (!groupId) { setSaving(false); return }
 
-    // Sync toppings: delete existing, re-insert
-    await supabase.from('toppings').delete().eq('topping_group_id', groupId)
-    const valid = toppings.filter(t => t.name.trim() && t.price)
-    if (valid.length > 0) {
-      await supabase.from('toppings').insert(
-        valid.map((t, i) => ({
+    // Sync toppings: update existing, insert new, delete removed
+    const valid = toppings.filter(t => t.name.trim() && (t.price !== '' && t.price !== undefined))
+    const existingToppingIds = valid.filter(t => t.id).map(t => t.id)
+
+    // Delete toppings that were removed (may fail silently if referenced by orders)
+    const { data: currentToppings } = await supabase.from('toppings').select('id').eq('topping_group_id', groupId)
+    const toppingIdsToDelete = (currentToppings || []).map(t => t.id).filter(id => !existingToppingIds.includes(id))
+    for (const id of toppingIdsToDelete) {
+      await supabase.from('toppings').delete().eq('id', id)
+    }
+
+    // Upsert toppings
+    for (let i = 0; i < valid.length; i++) {
+      const t = valid[i]
+      if (t.id) {
+        await supabase.from('toppings').update({ name: t.name, price: parseFloat(t.price), sort_order: i }).eq('id', t.id)
+      } else {
+        await supabase.from('toppings').insert({
           topping_group_id: groupId, restaurant_id: restaurantId,
           name: t.name, price: parseFloat(t.price), sort_order: i,
-        }))
-      )
+        })
+      }
     }
 
     setSaving(false)
