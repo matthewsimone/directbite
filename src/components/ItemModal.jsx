@@ -242,8 +242,8 @@ export default function ItemModal({
             <p className="mt-1 text-gray-500">{item.description}</p>
           )}
 
-          {/* Size selection */}
-          {sizes.length > 0 && (
+          {/* Size selection — hidden for single-price items */}
+          {sizes.length > 1 && (
             <div className="mt-6">
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
                 Size

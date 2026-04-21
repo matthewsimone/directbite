@@ -70,7 +70,7 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
     if (!itemId) { setSaving(false); return }
 
     // Sync sizes: update existing, insert new, delete removed
-    const validSizes = sizes.filter(s => s.name.trim() && s.price)
+    const validSizes = sizes.filter(s => s.price)
     const existingSizeIds = validSizes.filter(s => s.id).map(s => s.id)
 
     // Delete sizes that were removed (only those not referenced by orders)
@@ -137,16 +137,17 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
           </button>
         </div>
 
-        {/* Sizes */}
+        {/* Sizes / Pricing */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-gray-500 uppercase font-semibold">Sizes</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-gray-500 uppercase font-semibold">Pricing</label>
             <button onClick={addSize} className="text-xs text-[#16A34A] font-semibold">+ Add Size</button>
           </div>
+          <p className="text-xs text-gray-400 mb-2">Leave size name blank for single-price items</p>
           {sizes.map(s => (
             <div key={s._key} className="flex gap-2 mb-2">
               <input value={s.name} onChange={e => updateSize(s._key, 'name', e.target.value)}
-                placeholder="Size name" className="flex-1 h-9 px-3 border border-gray-300 rounded-lg text-sm" />
+                placeholder="Size name (optional)" className="flex-1 h-9 px-3 border border-gray-300 rounded-lg text-sm" />
               <div className="relative w-24">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                 <input type="number" step="0.01" value={s.price} onChange={e => updateSize(s._key, 'price', e.target.value)}
