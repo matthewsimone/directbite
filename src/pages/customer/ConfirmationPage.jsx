@@ -294,11 +294,12 @@ function ConfirmationLayout({
 
             <div className="space-y-3">
               {items.map(item => {
+                const fullBase = parseFloat(item.fullBasePrice ?? item.basePrice) || 0
                 const toppingsTotal = (item.toppings || []).reduce(
-                  (s, t) => s + (parseFloat(t.price) || 0),
+                  (s, t) => s + (parseFloat(t.fullPrice ?? t.price) || 0),
                   0
                 )
-                const lineTotal = ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
+                const lineTotal = (fullBase + toppingsTotal) * (item.quantity || 1)
 
                 return (
                   <div key={item.id} className="border-b border-gray-100 pb-3">
@@ -311,16 +312,19 @@ function ConfirmationLayout({
                         {formatCurrency(lineTotal)}
                       </span>
                     </div>
-                    {item.toppings?.map((t, i) => (
-                      <div key={i} className="flex justify-between text-sm text-gray-500 ml-4 mt-0.5">
-                        <span>
-                          {t.placementType === 'addon'
-                            ? t.toppingName
-                            : `${t.placement.toUpperCase()}: ${t.toppingName}`}
-                        </span>
-                        <span>{Number(t.price) === 0 ? 'Free' : `+${formatCurrency(t.price)}${Number(item.quantity) > 1 ? ' ea' : ''}`}</span>
-                      </div>
-                    ))}
+                    {item.toppings?.map((t, i) => {
+                      const tFullPrice = parseFloat(t.fullPrice ?? t.price) || 0
+                      return (
+                        <div key={i} className="flex justify-between text-sm text-gray-500 ml-4 mt-0.5">
+                          <span>
+                            {t.placementType === 'addon'
+                              ? t.toppingName
+                              : `${t.placement.toUpperCase()}: ${t.toppingName}`}
+                          </span>
+                          <span>{tFullPrice === 0 ? 'Free' : `+${formatCurrency(tFullPrice)}${Number(item.quantity) > 1 ? ' ea' : ''}`}</span>
+                        </div>
+                      )
+                    })}
                     {item.specialInstructions && (
                       <p className="text-sm text-gray-400 italic ml-4 mt-0.5">
                         {item.specialInstructions}
