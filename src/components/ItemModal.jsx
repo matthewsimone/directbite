@@ -242,11 +242,11 @@ export default function ItemModal({
             <p className="mt-1 text-gray-500">{item.description}</p>
           )}
 
-          {/* Size selection — hidden for single-price items */}
-          {sizes.length > 1 && (
+          {/* Size selection */}
+          {sizes.length > 0 && (
             <div className="mt-6">
               <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-                Size
+                {sizes.length > 1 ? 'Size' : 'Price'}
               </h3>
               <div className="space-y-2">
                 {sizes.map(size => (
@@ -259,16 +259,18 @@ export default function ItemModal({
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div
-                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                          selectedSizeId === size.id ? 'border-[#16A34A]' : 'border-gray-300'
-                        }`}
-                      >
-                        {selectedSizeId === size.id && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" />
-                        )}
-                      </div>
-                      <span className="font-medium text-gray-900">{size.name}</span>
+                      {sizes.length > 1 && (
+                        <div
+                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                            selectedSizeId === size.id ? 'border-[#16A34A]' : 'border-gray-300'
+                          }`}
+                        >
+                          {selectedSizeId === size.id && (
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" />
+                          )}
+                        </div>
+                      )}
+                      {size.name && <span className="font-medium text-gray-900">{size.name}</span>}
                     </div>
                     <span className="font-semibold text-gray-900">{formatCurrency(size.price)}</span>
                     <input
