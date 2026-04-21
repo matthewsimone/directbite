@@ -70,7 +70,7 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
     if (!itemId) { setSaving(false); return }
 
     // Sync sizes: update existing, insert new, delete removed
-    const validSizes = sizes.filter(s => s.price)
+    const validSizes = sizes.filter(s => s.price !== '' && s.price !== undefined && s.price !== null)
     const existingSizeIds = validSizes.filter(s => s.id).map(s => s.id)
 
     // Delete sizes that were removed (only those not referenced by orders)
@@ -84,9 +84,9 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
     for (let i = 0; i < validSizes.length; i++) {
       const s = validSizes[i]
       if (s.id) {
-        await supabase.from('item_sizes').update({ name: s.name, price: parseFloat(s.price), sort_order: i }).eq('id', s.id)
+        await supabase.from('item_sizes').update({ name: s.name.trim() || '', price: parseFloat(s.price), sort_order: i }).eq('id', s.id)
       } else {
-        await supabase.from('item_sizes').insert({ item_id: itemId, name: s.name, price: parseFloat(s.price), sort_order: i })
+        await supabase.from('item_sizes').insert({ item_id: itemId, name: s.name.trim() || '', price: parseFloat(s.price), sort_order: i })
       }
     }
 
