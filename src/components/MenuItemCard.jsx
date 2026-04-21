@@ -21,6 +21,11 @@ export default function MenuItemCard({ item, lowestPrice, promotion, onClick }) 
         <div className="flex-1 min-w-0 p-4">
           <div className="flex items-start gap-2">
             <h3 className="font-bold text-[15px] text-gray-900 leading-snug">{item.name}</h3>
+            {item.is_best_seller && !unavailable && (
+              <span className="shrink-0 text-[10px] font-semibold text-white bg-[#16A34A] px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                Best Seller
+              </span>
+            )}
             {unavailable && (
               <span className="shrink-0 text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
                 Unavailable

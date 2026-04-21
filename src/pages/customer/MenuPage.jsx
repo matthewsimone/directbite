@@ -150,6 +150,24 @@ export default function MenuPage() {
     <div className="min-h-screen bg-white pb-24">
       <PromotionBanner promotion={promotion} />
       <HeroSection restaurant={restaurant} isOpen={isOpen} nextOpenTime={nextOpenTime} />
+      {/* Popular Items section */}
+      {!searchQuery && items.some(i => i.is_popular && i.is_available) && (
+        <div className="max-w-[1100px] mx-auto px-6 sm:px-8 pt-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-3">Popular Items</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+            {items.filter(i => i.is_popular && i.is_available).map(item => (
+              <MenuItemCard
+                key={`popular-${item.id}`}
+                item={item}
+                lowestPrice={getLowestPrice(item.id)}
+                promotion={promotion}
+                onClick={() => handleItemClick(item)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <CategoryTabs
         categories={categories}
         activeId={activeCategory}

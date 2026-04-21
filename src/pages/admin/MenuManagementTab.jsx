@@ -10,6 +10,8 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
   const [description, setDescription] = useState(item?.description || '')
   const [imageUrl, setImageUrl] = useState(item?.image_url || '')
   const [isAvailable, setIsAvailable] = useState(item?.is_available ?? true)
+  const [isBestSeller, setIsBestSeller] = useState(item?.is_best_seller ?? false)
+  const [isPopular, setIsPopular] = useState(item?.is_popular ?? false)
   const [sizes, setSizes] = useState([])
   const [assignedGroupIds, setAssignedGroupIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -57,12 +59,12 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
 
     if (item) {
       await supabase.from('menu_items').update({
-        name, description, image_url: imageUrl || null, is_available: isAvailable,
+        name, description, image_url: imageUrl || null, is_available: isAvailable, is_best_seller: isBestSeller, is_popular: isPopular,
       }).eq('id', item.id)
     } else {
       const { data } = await supabase.from('menu_items').insert({
         restaurant_id: restaurantId, category_id: categoryId,
-        name, description, image_url: imageUrl || null, is_available: isAvailable, sort_order: 0,
+        name, description, image_url: imageUrl || null, is_available: isAvailable, is_best_seller: isBestSeller, is_popular: isPopular, sort_order: 0,
       }).select().single()
       if (data) itemId = data.id
     }
@@ -134,6 +136,20 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
           <button onClick={() => setIsAvailable(!isAvailable)}
             className={`relative w-12 h-7 rounded-full transition-colors ${isAvailable ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
             <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${isAvailable ? 'left-5.5' : 'left-0.5'}`} />
+          </button>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Best Seller</span>
+          <button onClick={() => setIsBestSeller(!isBestSeller)}
+            className={`relative w-12 h-7 rounded-full transition-colors ${isBestSeller ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
+            <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${isBestSeller ? 'left-5.5' : 'left-0.5'}`} />
+          </button>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium">Popular Item</span>
+          <button onClick={() => setIsPopular(!isPopular)}
+            className={`relative w-12 h-7 rounded-full transition-colors ${isPopular ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
+            <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${isPopular ? 'left-5.5' : 'left-0.5'}`} />
           </button>
         </div>
 
