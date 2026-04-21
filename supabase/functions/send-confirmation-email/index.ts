@@ -91,9 +91,11 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
 <body style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <div style="max-width:520px;margin:0 auto;padding:24px;">
     <!-- Header -->
-    <div style="background-color:#111111 !important;padding:24px;text-align:center;border-radius:8px 8px 0 0;" data-ogsc>
-      <img src="https://directbite.co/directbite-logo-lockup.png" alt="DirectBite" style="height:28px;" data-ogsc />
-    </div>
+    <table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td bgcolor="#111111" align="center" style="background-color:#111111 !important;padding:24px;border-radius:8px 8px 0 0;">
+        <!--[if !mso]><!--><img src="https://directbite.co/directbite-logo-lockup.png" alt="DirectBite" style="height:28px;display:block;" /><!--<![endif]-->
+      </td>
+    </tr></table>
 
     <!-- Card -->
     <div style="background:white;border-radius:12px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
