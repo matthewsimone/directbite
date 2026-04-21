@@ -386,6 +386,18 @@ export default function MenuManagementTab() {
   const [editingItem, setEditingItem] = useState(null) // { item, categoryId }
   const [editingGroup, setEditingGroup] = useState(undefined) // undefined=closed, null=new, object=editing
 
+  // Category collapse state
+  const [expandedCats, setExpandedCats] = useState(new Set())
+
+  function toggleCatExpanded(catId) {
+    setExpandedCats(prev => {
+      const next = new Set(prev)
+      if (next.has(catId)) next.delete(catId)
+      else next.add(catId)
+      return next
+    })
+  }
+
   // Inline add/edit
   const [addingCategory, setAddingCategory] = useState(false)
   const [newCatName, setNewCatName] = useState('')
@@ -570,7 +582,15 @@ export default function MenuManagementTab() {
                           <circle cx="5" cy="8" r="1.5"/><circle cx="11" cy="8" r="1.5"/>
                           <circle cx="5" cy="13" r="1.5"/><circle cx="11" cy="13" r="1.5"/>
                         </svg>
-                        <h3 className="font-semibold text-sm">{cat.name}</h3>
+                        <button onClick={() => toggleCatExpanded(cat.id)} className="flex items-center gap-2">
+                          <svg className={`w-3 h-3 text-gray-400 transition-transform ${expandedCats.has(cat.id) ? 'rotate-90' : ''}`} viewBox="0 0 10 10" fill="currentColor">
+                            <path d="M3 1l4 4-4 4z" />
+                          </svg>
+                          <h3 className="font-semibold text-sm">{cat.name}</h3>
+                          {!expandedCats.has(cat.id) && (
+                            <span className="text-xs text-gray-400 font-normal">({items.filter(i => i.category_id === cat.id).length})</span>
+                          )}
+                        </button>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name) }}
@@ -581,7 +601,7 @@ export default function MenuManagementTab() {
                     </>
                   )}
                 </div>
-                <div>
+                {expandedCats.has(cat.id) && <div>
                   {items.filter(i => i.category_id === cat.id).map(item => (
                     <div key={item.id}
                       draggable
@@ -617,11 +637,11 @@ export default function MenuManagementTab() {
                     </div>
                   ))}
                   <button
-                    onClick={() => setEditingItem({ item: null, categoryId: cat.id })}
+                    onClick={() => { setEditingItem({ item: null, categoryId: cat.id }); setExpandedCats(prev => new Set(prev).add(cat.id)) }}
                     className="w-full py-2.5 text-sm text-[#16A34A] font-semibold hover:bg-green-50 transition-colors">
                     + Add Item
                   </button>
-                </div>
+                </div>}
               </div>
             ))}
 
@@ -680,7 +700,12 @@ export default function MenuManagementTab() {
             restaurantSlug={restaurants.find(r => r.id === selectedRestaurant)?.slug || selectedRestaurant}
             toppingGroups={toppingGroups}
             onClose={() => setEditingItem(null)}
-            onSaved={() => { setEditingItem(null); fetchMenu() }}
+            onSaved={() => {
+              const catId = editingItem.categoryId
+              fetchMenu()
+              // Open fresh new item form in the same category
+              setEditingItem({ item: null, categoryId: catId })
+            }}
           />
         </div>
       )}
