@@ -391,6 +391,9 @@ export default function MenuManagementTab() {
   const [editingCatId, setEditingCatId] = useState(null)
   const [editCatName, setEditCatName] = useState('')
 
+  // Category drag reordering
+  const [dragCatId, setDragCatId] = useState(null)
+
   useEffect(() => {
     supabase.from('restaurants').select('id, name, slug').order('name').then(({ data }) => {
       setRestaurants(data || [])
@@ -435,6 +438,28 @@ export default function MenuManagementTab() {
     if (!confirm('Delete this category and all its items?')) return
     await supabase.from('menu_categories').delete().eq('id', catId)
     fetchMenu()
+  }
+
+  async function handleCatDrop(targetCatId) {
+    if (!dragCatId || dragCatId === targetCatId) return
+    const dragIdx = categories.findIndex(c => c.id === dragCatId)
+    const targetIdx = categories.findIndex(c => c.id === targetCatId)
+    if (dragIdx === -1 || targetIdx === -1) return
+
+    // Reorder locally
+    const reordered = [...categories]
+    const [moved] = reordered.splice(dragIdx, 1)
+    reordered.splice(targetIdx, 0, moved)
+    setCategories(reordered)
+
+    // Update sort_order in Supabase
+    for (let i = 0; i < reordered.length; i++) {
+      if (reordered[i].sort_order !== i) {
+        await supabase.from('menu_categories').update({ sort_order: i }).eq('id', reordered[i].id)
+        reordered[i].sort_order = i
+      }
+    }
+    setDragCatId(null)
   }
 
   async function toggleItemAvailability(item) {
@@ -482,7 +507,12 @@ export default function MenuManagementTab() {
           <div className="space-y-6">
             {/* Categories + Items */}
             {categories.map(cat => (
-              <div key={cat.id} className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div
+                key={cat.id}
+                className={`bg-white rounded-lg border border-gray-200 overflow-hidden transition-opacity ${dragCatId === cat.id ? 'opacity-40' : ''}`}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => handleCatDrop(cat.id)}
+              >
                 <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
                   {editingCatId === cat.id ? (
                     <div className="flex gap-2 flex-1">
@@ -494,7 +524,16 @@ export default function MenuManagementTab() {
                     </div>
                   ) : (
                     <>
-                      <h3 className="font-semibold text-sm">{cat.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <span
+                          draggable
+                          onDragStart={() => setDragCatId(cat.id)}
+                          onDragEnd={() => setDragCatId(null)}
+                          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 select-none"
+                          style={{ fontSize: 14, lineHeight: 1 }}
+                        >⋮⋮</span>
+                        <h3 className="font-semibold text-sm">{cat.name}</h3>
+                      </div>
                       <div className="flex gap-2">
                         <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name) }}
                           className="text-xs text-gray-500 hover:text-gray-700">Edit</button>
