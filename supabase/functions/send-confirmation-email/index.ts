@@ -87,12 +87,12 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
   return `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>@media (prefers-color-scheme: dark) { .email-logo { filter: none !important; } }</style></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><style>@media (prefers-color-scheme: dark) { .email-logo { filter: none !important; } } [data-ogsc] { background-color: #111111 !important; }</style></head>
 <body style="margin:0;padding:0;background-color:#f9fafb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <div style="max-width:520px;margin:0 auto;padding:24px;">
     <!-- Header -->
-    <div style="background-color:#111111;padding:24px;text-align:center;border-radius:8px 8px 0 0;">
-      <img src="https://directbite.co/directbite-logo-lockup.png" alt="DirectBite" style="height:28px;" />
+    <div style="background-color:#111111 !important;padding:24px;text-align:center;border-radius:8px 8px 0 0;" data-ogsc>
+      <img src="https://directbite.co/directbite-logo-lockup.png" alt="DirectBite" style="height:28px;" data-ogsc />
     </div>
 
     <!-- Card -->
