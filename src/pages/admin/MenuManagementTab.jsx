@@ -391,10 +391,11 @@ export default function MenuManagementTab() {
   const [editingCatId, setEditingCatId] = useState(null)
   const [editCatName, setEditCatName] = useState('')
 
-  // Category drag reordering
+  // Drag reordering state
   const [dragCatId, setDragCatId] = useState(null)
-  // Item drag reordering
+  const [dragOverCatId, setDragOverCatId] = useState(null)
   const [dragItemId, setDragItemId] = useState(null)
+  const [dragOverItemId, setDragOverItemId] = useState(null)
 
   useEffect(() => {
     supabase.from('restaurants').select('id, name, slug').order('name').then(({ data }) => {
@@ -538,11 +539,19 @@ export default function MenuManagementTab() {
             {categories.map(cat => (
               <div
                 key={cat.id}
-                className={`bg-white rounded-lg border border-gray-200 overflow-hidden transition-opacity ${dragCatId === cat.id ? 'opacity-40' : ''}`}
-                onDragOver={e => e.preventDefault()}
-                onDrop={() => handleCatDrop(cat.id)}
+                className={`bg-white rounded-lg border overflow-hidden transition-all ${
+                  dragCatId === cat.id ? 'opacity-30 scale-[0.98]' : ''
+                } ${dragOverCatId === cat.id && dragCatId && dragCatId !== cat.id ? 'border-[#16A34A] border-2' : 'border-gray-200'}`}
+                onDragOver={e => { if (dragCatId) { e.preventDefault(); setDragOverCatId(cat.id) } }}
+                onDragLeave={() => setDragOverCatId(null)}
+                onDrop={() => { setDragOverCatId(null); handleCatDrop(cat.id) }}
               >
-                <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <div
+                  draggable={editingCatId !== cat.id}
+                  onDragStart={e => { setDragCatId(cat.id); e.dataTransfer.effectAllowed = 'move' }}
+                  onDragEnd={() => { setDragCatId(null); setDragOverCatId(null) }}
+                  className={`flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-200 ${editingCatId !== cat.id ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                >
                   {editingCatId === cat.id ? (
                     <div className="flex gap-2 flex-1">
                       <input value={editCatName} onChange={e => setEditCatName(e.target.value)}
@@ -553,14 +562,12 @@ export default function MenuManagementTab() {
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-center gap-2">
-                        <span
-                          draggable
-                          onDragStart={() => setDragCatId(cat.id)}
-                          onDragEnd={() => setDragCatId(null)}
-                          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 select-none"
-                          style={{ fontSize: 14, lineHeight: 1 }}
-                        >⋮⋮</span>
+                      <div className="flex items-center gap-2.5">
+                        <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                          <circle cx="5" cy="3" r="1.5"/><circle cx="11" cy="3" r="1.5"/>
+                          <circle cx="5" cy="8" r="1.5"/><circle cx="11" cy="8" r="1.5"/>
+                          <circle cx="5" cy="13" r="1.5"/><circle cx="11" cy="13" r="1.5"/>
+                        </svg>
                         <h3 className="font-semibold text-sm">{cat.name}</h3>
                       </div>
                       <div className="flex gap-2">
@@ -575,16 +582,22 @@ export default function MenuManagementTab() {
                 <div>
                   {items.filter(i => i.category_id === cat.id).map(item => (
                     <div key={item.id}
-                      onDragOver={e => { if (dragItemId) e.preventDefault() }}
-                      onDrop={() => handleItemDrop(item.id, cat.id)}
-                      className={`flex items-center justify-between px-4 py-3 border-b border-gray-100 last:border-0 transition-opacity ${!item.is_available ? 'opacity-40' : ''} ${dragItemId === item.id ? 'opacity-30' : ''}`}>
-                      <span
-                        draggable
-                        onDragStart={() => setDragItemId(item.id)}
-                        onDragEnd={() => setDragItemId(null)}
-                        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 select-none mr-2 shrink-0"
-                        style={{ fontSize: 14, lineHeight: 1 }}
-                      >⋮⋮</span>
+                      draggable
+                      onDragStart={e => { setDragItemId(item.id); e.dataTransfer.effectAllowed = 'move' }}
+                      onDragEnd={() => { setDragItemId(null); setDragOverItemId(null) }}
+                      onDragOver={e => { if (dragItemId && dragItemId !== item.id) { e.preventDefault(); setDragOverItemId(item.id) } }}
+                      onDragLeave={() => setDragOverItemId(null)}
+                      onDrop={() => { setDragOverItemId(null); handleItemDrop(item.id, cat.id) }}
+                      className={`flex items-center justify-between px-4 py-3 border-b border-gray-100 last:border-0 cursor-grab active:cursor-grabbing transition-all ${
+                        !item.is_available ? 'opacity-40' : ''
+                      } ${dragItemId === item.id ? 'opacity-30 scale-[0.98]' : ''} ${
+                        dragOverItemId === item.id && dragItemId && dragItemId !== item.id ? 'border-t-2 border-t-[#16A34A]' : ''
+                      }`}>
+                      <svg className="w-4 h-4 text-gray-400 shrink-0 mr-2.5" viewBox="0 0 16 16" fill="currentColor">
+                        <circle cx="5" cy="3" r="1.5"/><circle cx="11" cy="3" r="1.5"/>
+                        <circle cx="5" cy="8" r="1.5"/><circle cx="11" cy="8" r="1.5"/>
+                        <circle cx="5" cy="13" r="1.5"/><circle cx="11" cy="13" r="1.5"/>
+                      </svg>
                       <div className="flex-1 min-w-0 mr-4">
                         <p className="font-medium text-sm">{item.name}</p>
                         {getMinPrice(item) && <p className="text-xs text-gray-500">{getMinPrice(item)}{(item.item_sizes?.length || 0) > 1 ? '+' : ''}</p>}
