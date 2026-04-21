@@ -92,7 +92,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
   <div style="max-width:520px;margin:0 auto;padding:24px;">
     <!-- Header -->
     <div style="text-align:center;padding:24px;">
-      <svg width="160" height="32" viewBox="0 0 160 32" xmlns="http://www.w3.org/2000/svg"><defs><mask id="bite"><rect width="24" height="32" fill="white"/><circle cx="-3" cy="9" r="9" fill="black"/></mask></defs><path d="M12 0 C5.4 0 0 5.4 0 12 C0 19.2 12 32 12 32 C12 32 24 19.2 24 12 C24 5.4 18.6 0 12 0 Z" fill="#111111" mask="url(#bite)"/><text x="32" y="23" font-family="-apple-system,BlinkMacSystemFont,Arial,sans-serif" font-weight="800" font-size="18" letter-spacing="2" fill="#111111">DIRECTBITE</text></svg>
+      <img src="https://directbite.co/directbite-logo-lockup.svg" alt="DirectBite" style="height:28px;" />
     </div>
 
     <!-- Card -->
