@@ -718,9 +718,15 @@ export default function MenuManagementTab() {
             onClose={() => setEditingItem(null)}
             onSaved={() => {
               const catId = editingItem.categoryId
+              const wasNew = !editingItem.item
               fetchMenu()
-              // Open fresh new item form in the same category
-              setEditingItem({ item: null, categoryId: catId })
+              if (wasNew) {
+                // Keep adding items in the same category
+                setEditingItem({ item: null, categoryId: catId })
+              } else {
+                // Editing existing — close the panel
+                setEditingItem(null)
+              }
             }}
           />
         </div>
