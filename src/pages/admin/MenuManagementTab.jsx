@@ -393,6 +393,8 @@ export default function MenuManagementTab() {
 
   // Category drag reordering
   const [dragCatId, setDragCatId] = useState(null)
+  // Item drag reordering
+  const [dragItemId, setDragItemId] = useState(null)
 
   useEffect(() => {
     supabase.from('restaurants').select('id, name, slug').order('name').then(({ data }) => {
@@ -460,6 +462,33 @@ export default function MenuManagementTab() {
       }
     }
     setDragCatId(null)
+  }
+
+  async function handleItemDrop(targetItemId, categoryId) {
+    if (!dragItemId || dragItemId === targetItemId) return
+    const catItems = items.filter(i => i.category_id === categoryId)
+    const dragIdx = catItems.findIndex(i => i.id === dragItemId)
+    const targetIdx = catItems.findIndex(i => i.id === targetItemId)
+    if (dragIdx === -1 || targetIdx === -1) return
+
+    const reordered = [...catItems]
+    const [moved] = reordered.splice(dragIdx, 1)
+    reordered.splice(targetIdx, 0, moved)
+
+    // Update local state
+    const reorderedIds = new Map(reordered.map((item, i) => [item.id, i]))
+    setItems(prev => prev.map(item => {
+      const newOrder = reorderedIds.get(item.id)
+      return newOrder !== undefined ? { ...item, sort_order: newOrder } : item
+    }))
+
+    // Persist to Supabase
+    for (let i = 0; i < reordered.length; i++) {
+      if (reordered[i].sort_order !== i) {
+        await supabase.from('menu_items').update({ sort_order: i }).eq('id', reordered[i].id)
+      }
+    }
+    setDragItemId(null)
   }
 
   async function toggleItemAvailability(item) {
@@ -546,7 +575,16 @@ export default function MenuManagementTab() {
                 <div>
                   {items.filter(i => i.category_id === cat.id).map(item => (
                     <div key={item.id}
-                      className={`flex items-center justify-between px-4 py-3 border-b border-gray-100 last:border-0 ${!item.is_available ? 'opacity-40' : ''}`}>
+                      onDragOver={e => { if (dragItemId) e.preventDefault() }}
+                      onDrop={() => handleItemDrop(item.id, cat.id)}
+                      className={`flex items-center justify-between px-4 py-3 border-b border-gray-100 last:border-0 transition-opacity ${!item.is_available ? 'opacity-40' : ''} ${dragItemId === item.id ? 'opacity-30' : ''}`}>
+                      <span
+                        draggable
+                        onDragStart={() => setDragItemId(item.id)}
+                        onDragEnd={() => setDragItemId(null)}
+                        className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 select-none mr-2 shrink-0"
+                        style={{ fontSize: 14, lineHeight: 1 }}
+                      >⋮⋮</span>
                       <div className="flex-1 min-w-0 mr-4">
                         <p className="font-medium text-sm">{item.name}</p>
                         {getMinPrice(item) && <p className="text-xs text-gray-500">{getMinPrice(item)}{(item.item_sizes?.length || 0) > 1 ? '+' : ''}</p>}
