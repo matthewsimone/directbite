@@ -233,7 +233,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-6">
         {/* Customer info */}
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Customer</h3>
@@ -339,7 +339,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       </div>
 
       {/* Bottom actions */}
-      <div className="p-4 border-t border-gray-200 space-y-3">
+      <div className="shrink-0 p-4 border-t border-gray-200 bg-white space-y-3">
         {/* Reprint confirmation */}
         {showReprint && (
           <div className="bg-gray-50 p-4 rounded-xl space-y-3">
