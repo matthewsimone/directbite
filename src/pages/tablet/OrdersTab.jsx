@@ -339,7 +339,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       </div>
 
       {/* Bottom actions */}
-      <div className="shrink-0 p-4 border-t border-gray-200 bg-white z-10 space-y-3">
+      <div className="shrink-0 px-4 pt-4 border-t border-gray-200 bg-white z-10 space-y-3" style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
         {/* Reprint confirmation */}
         {showReprint && (
           <div className="bg-gray-50 p-4 rounded-xl space-y-3">
