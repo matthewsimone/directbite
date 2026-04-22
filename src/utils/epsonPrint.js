@@ -11,9 +11,11 @@ function formatDate(dateStr) {
     ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
-function padLine(left, right, width = 32) {
-  const gap = width - left.length - right.length
-  return left + (gap > 0 ? '.'.repeat(gap) : ' ') + right
+const W = 48 // TM-M30 80mm paper = 48 chars
+
+function padLine(left, right) {
+  const gap = W - left.length - right.length
+  return left + (gap > 0 ? ' '.repeat(gap) : ' ') + right
 }
 
 /**
@@ -61,7 +63,7 @@ export async function printOrder(printerIp, order, restaurantName) {
         }
 
         try {
-          const sep = '--------------------------------'
+          const sep = '-'.repeat(W)
           const items = order.items || []
 
           // Header
@@ -97,8 +99,13 @@ export async function printOrder(printerIp, order, restaurantName) {
             )
             const lineTotal = (Number(item.base_price || item.basePrice || 0) + topsTotal) * (item.quantity || 1)
             const itemName = `${item.quantity}x ${item.item_name || item.itemName}${item.size_name || item.sizeName ? ` (${item.size_name || item.sizeName})` : ''}`
-            printer.addText(padLine(itemName, formatMoney(lineTotal)) + '\n')
 
+            // Item line — bold, left-aligned name, right-aligned price
+            printer.addTextStyle(false, false, true, printer.COLOR_1)
+            printer.addText(padLine(itemName, formatMoney(lineTotal)) + '\n')
+            printer.addTextStyle(false, false, false, printer.COLOR_1)
+
+            // Topping lines — not bold, indented 3 spaces
             const toppings = item.order_item_toppings || item.toppings || []
             for (const t of toppings) {
               const tName = t.topping_name || t.toppingName
@@ -106,7 +113,7 @@ export async function printOrder(printerIp, order, restaurantName) {
               const tPlacement = (t.placement_type || t.placementType) === 'addon' ? '' : `${(t.placement || '').toUpperCase()}: `
               const qty = item.quantity || 1
               const priceStr = tPrice === 0 ? 'Free' : `+${formatMoney(tPrice)}${qty > 1 ? ' ea' : ''}`
-              printer.addText(`  ${tPlacement}${tName}  ${priceStr}\n`)
+              printer.addText(`   ${tPlacement}${tName} ${priceStr}\n`)
             }
           }
 
@@ -122,7 +129,6 @@ export async function printOrder(printerIp, order, restaurantName) {
 
           // Totals
           printer.addText(sep + '\n')
-          printer.addTextAlign(printer.ALIGN_RIGHT)
           printer.addText(padLine('Subtotal', formatMoney(order.subtotal)) + '\n')
           printer.addText(padLine('Tax', formatMoney(order.tax_amount)) + '\n')
           printer.addText(padLine('Service Fee', formatMoney(order.service_fee)) + '\n')
@@ -130,7 +136,7 @@ export async function printOrder(printerIp, order, restaurantName) {
             printer.addText(padLine('Delivery', formatMoney(order.delivery_fee)) + '\n')
           }
           if (Number(order.discount_amount) > 0) {
-            printer.addText(padLine('Discount', `-${formatMoney(order.discount_amount)} (${order.discount_percentage}% off)`) + '\n')
+            printer.addText(padLine(`Discount (${order.discount_percentage}% off)`, `-${formatMoney(order.discount_amount)}`) + '\n')
           }
           if (Number(order.tip_amount) > 0) {
             printer.addText(padLine('Tip', formatMoney(order.tip_amount)) + '\n')
