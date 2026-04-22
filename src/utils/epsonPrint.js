@@ -33,24 +33,28 @@ export async function printOrder(printerIp, order, restaurantName) {
   }
 
   return new Promise((resolve) => {
+    try {
     const ePosDev = new window.epson.ePOSDevice()
 
     // Connection timeout
     const timeout = setTimeout(() => {
+      console.error('[EpsonPrint] Connection timed out to', printerIp)
       resolve({ success: false, message: 'Printer connection timed out' })
     }, 10000)
 
-    ePosDev.connect(printerIp, 8008, (connectResult) => {
+    ePosDev.connect(printerIp, 8043, (connectResult) => {
       if (connectResult !== 'OK' && connectResult !== 'SSL_CONNECT_OK') {
         clearTimeout(timeout)
+        console.error('[EpsonPrint] Connection failed:', connectResult)
         resolve({ success: false, message: `Connection failed: ${connectResult}` })
         return
       }
 
-      ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, { crypto: false, buffer: false }, (printer, retcode) => {
+      ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, { crypto: true, buffer: false }, (printer, retcode) => {
         clearTimeout(timeout)
 
         if (retcode !== 'OK' || !printer) {
+          console.error('[EpsonPrint] Device creation failed:', retcode)
           try { ePosDev.disconnect() } catch {}
           resolve({ success: false, message: `Printer device error: ${retcode}` })
           return
@@ -160,16 +164,22 @@ export async function printOrder(printerIp, order, restaurantName) {
           }
 
           printer.onerror = (err) => {
+            console.error('[EpsonPrint] Printer error:', err)
             try { ePosDev.disconnect() } catch {}
             resolve({ success: false, message: `Print error: ${err}` })
           }
 
           printer.send()
         } catch (err) {
+          console.error('[EpsonPrint] Send error:', err)
           try { ePosDev.disconnect() } catch {}
           resolve({ success: false, message: `Print error: ${err.message}` })
         }
       })
     })
+    } catch (err) {
+      console.error('[EpsonPrint] Fatal error:', err)
+      resolve({ success: false, message: `Print error: ${err.message}` })
+    }
   })
 }
