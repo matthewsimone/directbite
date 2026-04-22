@@ -205,7 +205,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   const isDelivery = order.order_type === 'delivery'
 
   return (
-    <div className="flex flex-col bg-white overflow-hidden" style={{ height: '100dvh' }}>
+    <div className="fixed inset-0 flex flex-col bg-white overflow-hidden z-20">
       {/* Header */}
       <div className="shrink-0 flex items-center gap-3 p-4 border-b border-gray-200">
         <button
