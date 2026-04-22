@@ -411,6 +411,13 @@ export default function LandingPage() {
   const [contactOpen, setContactOpen] = useState(false)
   const [contactHeading, setContactHeading] = useState('')
 
+  // Suppress PWA install prompt on landing page
+  useEffect(() => {
+    const suppress = (e) => e.preventDefault()
+    window.addEventListener('beforeinstallprompt', suppress)
+    return () => window.removeEventListener('beforeinstallprompt', suppress)
+  }, [])
+
   function openContact(heading) {
     setContactHeading(heading)
     setContactOpen(true)

@@ -22,6 +22,32 @@ export default function TabletPage() {
   const [activeTab, setActiveTab] = useState('orders')
   const [hours, setHours] = useState([])
 
+  // Set tablet-specific PWA manifest with correct start_url
+  useEffect(() => {
+    const manifest = {
+      name: 'DirectBite Tablet',
+      short_name: 'DirectBite',
+      display: 'standalone',
+      start_url: `/${slug}/tablet`,
+      theme_color: '#111111',
+      background_color: '#ffffff',
+      icons: [
+        { src: '/favicon.png', sizes: '192x192', type: 'image/png' },
+        { src: '/favicon.png', sizes: '512x512', type: 'image/png' },
+      ],
+    }
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.querySelector('link[rel="manifest"]')
+    const originalHref = link?.getAttribute('href')
+    if (link) link.setAttribute('href', url)
+
+    return () => {
+      URL.revokeObjectURL(url)
+      if (link && originalHref) link.setAttribute('href', originalHref)
+    }
+  }, [slug])
+
   // Fetch hours for open-hours polling check
   useEffect(() => {
     if (!restaurant) return
