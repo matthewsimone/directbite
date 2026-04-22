@@ -42,7 +42,7 @@ export async function printOrder(printerIp, order, restaurantName) {
       resolve({ success: false, message: 'Printer connection timed out' })
     }, 10000)
 
-    ePosDev.connect(printerIp, 8043, (connectResult) => {
+    ePosDev.connect(printerIp, 8008, (connectResult) => {
       if (connectResult !== 'OK' && connectResult !== 'SSL_CONNECT_OK') {
         clearTimeout(timeout)
         console.error('[EpsonPrint] Connection failed:', connectResult)
@@ -50,7 +50,7 @@ export async function printOrder(printerIp, order, restaurantName) {
         return
       }
 
-      ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, { crypto: true, buffer: false }, (printer, retcode) => {
+      ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, { crypto: false, buffer: false }, (printer, retcode) => {
         clearTimeout(timeout)
 
         if (retcode !== 'OK' || !printer) {
