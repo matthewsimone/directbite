@@ -56,6 +56,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [savedDelivery, setSavedDelivery] = useState(false)
   const [savingTax, setSavingTax] = useState(false)
   const [savedTax, setSavedTax] = useState(false)
+  const [savingPrinter, setSavingPrinter] = useState(false)
+  const [savedPrinter, setSavedPrinter] = useState(false)
 
   // Local state for editable fields
   const [pickupMinutes, setPickupMinutes] = useState(restaurant?.estimated_pickup_minutes || 30)
@@ -66,6 +68,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
   const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum || 0)
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
+  const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
 
   useEffect(() => {
     fetchHours()
@@ -383,6 +386,25 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
             </div>
+          </FieldRow>
+        </Section>
+
+        {/* Printer */}
+        <Section title="Printer" onSave={async () => {
+          setSavingPrinter(true); setSavedPrinter(false)
+          const { data } = await supabase.from('restaurants').update({ printer_ip: printerIp.trim() || null }).eq('id', restaurant.id).select().single()
+          if (data) setRestaurant(data)
+          setSavingPrinter(false); setSavedPrinter(true)
+          setTimeout(() => setSavedPrinter(false), 2000)
+        }} saving={savingPrinter} saved={savedPrinter}>
+          <FieldRow label="Printer IP Address">
+            <input
+              type="text"
+              value={printerIp}
+              onChange={e => setPrinterIp(e.target.value)}
+              placeholder="192.168.1.100"
+              className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+            />
           </FieldRow>
         </Section>
       </div>

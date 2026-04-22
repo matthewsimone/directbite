@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
+import { printOrder } from '../../utils/epsonPrint'
 
 // ── Web Audio chime generator ──
 function createChime(audioCtx) {
@@ -158,23 +159,36 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   }
 
   async function handleReprint() {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/retry-print`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({ order_id: order.id }),
-        }
-      )
-      await res.json()
-    } catch (err) {
-      console.error('Reprint failed:', err)
+    if (!restaurant.printer_ip) {
+      setShowReprint(false)
+      return
     }
+
+    // Fetch full order with items and toppings for printing
+    const { data: fullOrder } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('id', order.id)
+      .single()
+
+    const { data: orderItems } = await supabase
+      .from('order_items')
+      .select('*, order_item_toppings(*)')
+      .eq('order_id', order.id)
+      .order('created_at')
+
+    const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, restaurant.name)
+
+    // Log the print attempt
+    await supabase.from('print_logs').insert({
+      order_id: order.id,
+      order_number: order.order_number,
+      restaurant_id: restaurant.id,
+      attempt_number: printLogs.length + 1,
+      status: result.success ? 'success' : 'failed',
+      error_message: result.success ? null : result.message,
+    })
+
     fetchOrderDetails()
     setShowReprint(false)
   }
@@ -540,6 +554,29 @@ export default function OrdersTab({ restaurant, setRestaurant, hours }) {
 
       if (freshNew.length > 0 && knownOrderIds.current.size > 0) {
         startChime()
+
+        // Auto-print new orders
+        if (restaurant.printer_ip) {
+          for (const newOrder of freshNew) {
+            const { data: orderItems } = await supabase
+              .from('order_items')
+              .select('*, order_item_toppings(*)')
+              .eq('order_id', newOrder.id)
+              .order('created_at')
+
+            printOrder(restaurant.printer_ip, { ...newOrder, items: orderItems || [] }, restaurant.name)
+              .then(result => {
+                supabase.from('print_logs').insert({
+                  order_id: newOrder.id,
+                  order_number: newOrder.order_number,
+                  restaurant_id: restaurant.id,
+                  attempt_number: 1,
+                  status: result.success ? 'success' : 'failed',
+                  error_message: result.success ? null : result.message,
+                })
+              })
+          }
+        }
       }
 
       knownOrderIds.current = newOrderIds

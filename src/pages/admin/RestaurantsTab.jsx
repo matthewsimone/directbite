@@ -54,7 +54,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
         estimated_pickup_minutes: parseInt(data.estimated_pickup_minutes) || 30,
         estimated_delivery_minutes: parseInt(data.estimated_delivery_minutes) || 60,
         stripe_account_id: data.stripe_account_id || null,
-        printnode_printer_id: data.printnode_printer_id || null,
+        printer_ip: data.printer_ip || null,
         tablet_email: data.tablet_email || null,
       })
       .eq('id', restaurant.id).select().single()
@@ -145,7 +145,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
           {field('Est. Pickup Minutes', 'estimated_pickup_minutes', 'number')}
           {field('Est. Delivery Minutes', 'estimated_delivery_minutes', 'number')}
           {field('Stripe Account ID', 'stripe_account_id')}
-          {field('PrintNode Printer ID', 'printnode_printer_id')}
+          {field('Printer IP Address', 'printer_ip')}
           {field('Tablet Email', 'tablet_email', 'email')}
         </div>
       </div>
