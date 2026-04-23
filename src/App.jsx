@@ -7,6 +7,7 @@ import CheckoutPage from './pages/customer/CheckoutPage'
 import ConfirmationPage from './pages/customer/ConfirmationPage'
 import TabletPage from './pages/tablet/TabletPage'
 import AdminPage from './pages/admin/AdminPage'
+import ApplePayTest from './pages/ApplePayTest'
 
 export default function App() {
   return (
@@ -15,6 +16,7 @@ export default function App() {
       <CartProvider>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/applepay-test" element={<ApplePayTest />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/login" element={<AdminPage />} />
           <Route path="/:slug" element={<MenuPage />} />
