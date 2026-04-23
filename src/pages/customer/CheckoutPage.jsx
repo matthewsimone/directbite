@@ -4,6 +4,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import {
   Elements,
   PaymentElement,
+  ExpressCheckoutElement,
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js'
@@ -119,26 +120,37 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
-  const [paymentType, setPaymentType] = useState(null) // 'card', 'apple_pay', 'google_pay', etc.
+  const [expressReady, setExpressReady] = useState(false)
 
-  function handlePaymentElementChange(event) {
-    if (event.value?.type) {
-      setPaymentType(event.value.type)
+  // Express Checkout (Apple Pay / Google Pay / Link)
+  function handleExpressReady({ availablePaymentMethods }) {
+    if (availablePaymentMethods) setExpressReady(true)
+  }
+
+  async function handleExpressConfirm({ expressPaymentType }) {
+    if (!stripe || !elements) return
+
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/${slug}/confirmation`,
+      },
+      redirect: 'if_required',
+    })
+
+    if (error) {
+      toast.error(error.message || 'Payment failed')
     }
   }
 
-  const isWalletPayment = paymentType === 'apple_pay' || paymentType === 'google_pay' || paymentType === 'link'
-
+  // Card payment submit
   async function handleSubmit(e) {
     e.preventDefault()
     if (!stripe || !elements) return
 
-    // Validate contact fields for card payments
-    if (!isWalletPayment) {
-      if (!customerInfo.name.trim() || !customerInfo.phone.trim() || !customerInfo.email.trim()) {
-        toast.error('Please fill in all contact fields')
-        return
-      }
+    if (!customerInfo.name.trim() || !customerInfo.phone.trim() || !customerInfo.email.trim()) {
+      toast.error('Please fill in all contact fields')
+      return
     }
 
     if (orderData.order_type === 'delivery') {
@@ -171,7 +183,6 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       return
     }
 
-    // Payment succeeded without redirect
     if (paymentIntent && paymentIntent.status === 'succeeded') {
       onSuccess(paymentIntent.id)
     }
@@ -179,52 +190,69 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
   return (
     <form onSubmit={handleSubmit}>
+      {/* Express Checkout — Apple Pay / Google Pay / Link */}
+      <ExpressCheckoutElement
+        onReady={handleExpressReady}
+        onConfirm={handleExpressConfirm}
+        options={{
+          buttonType: { applePay: 'plain', googlePay: 'plain' },
+        }}
+      />
+
+      {/* Divider */}
+      {expressReady && (
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs text-gray-400 uppercase tracking-wide">or pay with card</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
+      )}
+
+      {/* Card Payment Element */}
       <PaymentElement
-        onChange={handlePaymentElementChange}
         options={{
           layout: 'tabs',
-          wallets: { applePay: 'auto', googlePay: 'auto' },
+          wallets: { applePay: 'never', googlePay: 'never' },
+          paymentMethodOrder: ['card'],
           fields: {
             billingDetails: {
-              name: isWalletPayment ? 'auto' : 'never',
-              email: isWalletPayment ? 'auto' : 'never',
-              phone: isWalletPayment ? 'auto' : 'never',
+              name: 'never',
+              email: 'never',
+              phone: 'never',
             },
           },
         }}
       />
 
-      {/* Contact fields shown only for card payments */}
-      {!isWalletPayment && (
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-            Contact Information
-          </h3>
-          <div className="space-y-3">
-            <input
-              type="text"
-              value={customerInfo.name}
-              onChange={e => customerInfo.setName(e.target.value)}
-              placeholder="Full Name"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-            <input
-              type="tel"
-              value={customerInfo.phone}
-              onChange={e => customerInfo.setPhone(e.target.value)}
-              placeholder="Phone Number"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-            <input
-              type="email"
-              value={customerInfo.email}
-              onChange={e => customerInfo.setEmail(e.target.value)}
-              placeholder="Email Address"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-          </div>
+      {/* Contact fields for card payments */}
+      <div className="mt-6">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+          Contact Information
+        </h3>
+        <div className="space-y-3">
+          <input
+            type="text"
+            value={customerInfo.name}
+            onChange={e => customerInfo.setName(e.target.value)}
+            placeholder="Full Name"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+          <input
+            type="tel"
+            value={customerInfo.phone}
+            onChange={e => customerInfo.setPhone(e.target.value)}
+            placeholder="Phone Number"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+          <input
+            type="email"
+            value={customerInfo.email}
+            onChange={e => customerInfo.setEmail(e.target.value)}
+            placeholder="Email Address"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
         </div>
-      )}
+      </div>
 
       {/* Floating payment bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-5 py-4">
