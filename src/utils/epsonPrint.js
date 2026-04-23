@@ -146,6 +146,16 @@ export async function printOrder(printerIp, order, rest) {
               }
             }
 
+            // Utensils notice (in items section)
+            if (order.include_utensils) {
+              printer.addText('\n')
+              printer.addTextAlign(C)
+              bold(true)
+              printer.addText('*** NAPKINS & UTENSILS REQUESTED ***\n')
+              bold(false)
+              printer.addTextAlign(L)
+            }
+
             // ── 6. TOTALS ──
             printer.addText(sep + '\n')
             printer.addText(pad('Subtotal', fmt(order.subtotal)) + '\n')
