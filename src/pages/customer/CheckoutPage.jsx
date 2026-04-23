@@ -129,6 +129,9 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   useEffect(() => {
     if (!stripe || !total) return
 
+    const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
+    console.log('[PaymentRequest] Stripe loaded, key prefix:', pk.slice(0, 8) + '...')
+
     const pr = stripe.paymentRequest({
       country: 'US',
       currency: 'usd',
@@ -138,7 +141,10 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       requestPayerPhone: true,
     })
 
+    console.log('[PaymentRequest] Created:', pr)
+
     pr.canMakePayment().then(result => {
+      console.log('[PaymentRequest] canMakePayment result:', JSON.stringify(result))
       if (result) {
         setPaymentRequest(pr)
         if (result.applePay) {
@@ -149,6 +155,8 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           setPayMethod('wallet')
         }
       }
+    }).catch(err => {
+      console.error('[PaymentRequest] canMakePayment error:', err)
     })
 
     // Handle wallet payment confirmation
