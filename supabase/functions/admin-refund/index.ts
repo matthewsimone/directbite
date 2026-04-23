@@ -98,16 +98,33 @@ serve(async (req: Request) => {
       );
     }
 
-    // Process refund
+    // Look up connected account for direct charge refund
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("stripe_account_id")
+      .eq("id", order.restaurant_id)
+      .single();
+
+    if (!restaurant?.stripe_account_id) {
+      return new Response(
+        JSON.stringify({ error: "Restaurant has no connected Stripe account" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Process refund on connected account (direct charges)
     const refundParams: any = {
       payment_intent: order.stripe_payment_intent_id,
     };
 
     if (type === "partial" && amount) {
-      refundParams.amount = Math.round(parseFloat(amount) * 100); // convert to cents
+      refundParams.amount = Math.round(parseFloat(amount) * 100);
     }
 
-    const refund = await stripe.refunds.create(refundParams);
+    const refund = await stripe.refunds.create(
+      refundParams,
+      { stripeAccount: restaurant.stripe_account_id }
+    );
 
     // Update order status if full refund
     if (type === "full") {

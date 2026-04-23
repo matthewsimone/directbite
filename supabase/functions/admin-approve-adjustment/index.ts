@@ -97,7 +97,7 @@ serve(async (req: Request) => {
     // Approve — process via Stripe
     const { data: order } = await supabase
       .from("orders")
-      .select("stripe_payment_intent_id, order_number")
+      .select("stripe_payment_intent_id, order_number, restaurant_id")
       .eq("id", adjustment.order_id)
       .single();
 
@@ -108,13 +108,30 @@ serve(async (req: Request) => {
       );
     }
 
+    // Look up connected account for direct charge refund
+    const { data: restaurant } = await supabase
+      .from("restaurants")
+      .select("stripe_account_id")
+      .eq("id", order.restaurant_id)
+      .single();
+
+    if (!restaurant?.stripe_account_id) {
+      return new Response(
+        JSON.stringify({ error: "Restaurant has no connected Stripe account" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     let stripeRefundId = null;
 
     if (adjustment.type === "refund") {
-      const refund = await stripe.refunds.create({
-        payment_intent: order.stripe_payment_intent_id,
-        amount: Math.round(adjustment.amount * 100),
-      });
+      const refund = await stripe.refunds.create(
+        {
+          payment_intent: order.stripe_payment_intent_id,
+          amount: Math.round(adjustment.amount * 100),
+        },
+        { stripeAccount: restaurant.stripe_account_id }
+      );
       stripeRefundId = refund.id;
     }
     // Note: "charge" type adjustments would require creating a new payment intent

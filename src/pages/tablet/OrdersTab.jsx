@@ -135,10 +135,16 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         )
         const result = await res.json()
         if (!result.success) {
-          console.error('Refund failed:', result.error)
+          alert(`Refund failed: ${result.error || 'Unknown error'}`)
+          setUpdating(false)
+          setShowCancelConfirm(false)
+          return
         }
       } catch (err) {
-        console.error('Refund request failed:', err)
+        alert('Refund request failed. Please try again.')
+        setUpdating(false)
+        setShowCancelConfirm(false)
+        return
       }
     } else {
       const { error } = await supabase
