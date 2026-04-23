@@ -4,7 +4,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import {
   Elements,
   PaymentElement,
-  ExpressCheckoutElement,
+  PaymentRequestButtonElement,
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js'
@@ -116,37 +116,81 @@ function TipSelector({ subtotal, onTipChange }) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
-  const [expressReady, setExpressReady] = useState(false)
 
-  // Express Checkout (Apple Pay / Google Pay / Link)
-  function handleExpressReady({ availablePaymentMethods }) {
-    if (availablePaymentMethods) setExpressReady(true)
-  }
+  // Wallet detection via PaymentRequest API
+  const [paymentRequest, setPaymentRequest] = useState(null)
+  const [walletType, setWalletType] = useState(null) // 'applePay' | 'googlePay' | null
+  const [payMethod, setPayMethod] = useState('card') // 'wallet' | 'card'
 
-  async function handleExpressConfirm({ expressPaymentType }) {
-    if (!stripe || !elements) return
+  useEffect(() => {
+    if (!stripe || !total) return
 
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        return_url: `${window.location.origin}/${slug}/confirmation`,
-      },
-      redirect: 'if_required',
+    const pr = stripe.paymentRequest({
+      country: 'US',
+      currency: 'usd',
+      total: { label: 'DirectBite Order', amount: Math.round(total * 100) },
+      requestPayerName: true,
+      requestPayerEmail: true,
+      requestPayerPhone: true,
     })
 
-    if (error) {
-      toast.error(error.message || 'Payment failed')
+    pr.canMakePayment().then(result => {
+      if (result) {
+        setPaymentRequest(pr)
+        if (result.applePay) {
+          setWalletType('applePay')
+          setPayMethod('wallet')
+        } else if (result.googlePay) {
+          setWalletType('googlePay')
+          setPayMethod('wallet')
+        }
+      }
+    })
+
+    // Handle wallet payment confirmation
+    pr.on('paymentmethod', async (ev) => {
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
+        clientSecret,
+        { payment_method: ev.paymentMethod.id },
+        { handleActions: false }
+      )
+
+      if (confirmError) {
+        ev.complete('fail')
+        toast.error(confirmError.message || 'Payment failed')
+      } else {
+        ev.complete('success')
+        if (paymentIntent.status === 'requires_action') {
+          const { error } = await stripe.confirmCardPayment(clientSecret)
+          if (error) {
+            toast.error(error.message || 'Payment failed')
+          } else {
+            onSuccess(paymentIntent.id)
+          }
+        } else {
+          onSuccess(paymentIntent.id)
+        }
+      }
+    })
+  }, [stripe, total, clientSecret])
+
+  // Update payment request amount when total changes
+  useEffect(() => {
+    if (paymentRequest && total) {
+      paymentRequest.update({
+        total: { label: 'DirectBite Order', amount: Math.round(total * 100) },
+      })
     }
-  }
+  }, [paymentRequest, total])
 
   // Card payment submit
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!stripe || !elements) return
+    if (!stripe || !elements || payMethod === 'wallet') return
 
     if (!customerInfo.name.trim() || !customerInfo.phone.trim() || !customerInfo.email.trim()) {
       toast.error('Please fill in all contact fields')
@@ -188,71 +232,104 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     }
   }
 
+  const walletLabel = walletType === 'applePay' ? 'Apple Pay' : 'Google Pay'
+
   return (
     <form onSubmit={handleSubmit}>
-      {/* Express Checkout — Apple Pay / Google Pay / Link */}
-      <ExpressCheckoutElement
-        onReady={handleExpressReady}
-        onConfirm={handleExpressConfirm}
-        options={{
-          buttonType: { applePay: 'plain', googlePay: 'plain' },
-        }}
-      />
+      {/* Payment method selection */}
+      {paymentRequest && (
+        <div className="space-y-3 mb-5">
+          {/* Wallet option */}
+          <label
+            className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${
+              payMethod === 'wallet' ? 'border-[#16A34A] bg-green-50/50' : 'border-gray-200'
+            }`}
+          >
+            <input
+              type="radio"
+              name="payMethod"
+              checked={payMethod === 'wallet'}
+              onChange={() => setPayMethod('wallet')}
+              className="accent-[#16A34A] w-4 h-4"
+            />
+            <div className="flex items-center gap-2">
+              {walletType === 'applePay' ? (
+                <svg className="h-5" viewBox="0 0 50 20" fill="currentColor"><path d="M9.6 4.1c-.6.7-1.5 1.3-2.4 1.2-.1-1 .4-2 .9-2.6C8.7 2 9.7 1.4 10.5 1.4c.1 1-.3 2-.9 2.7zm.9 1.4c-1.3-.1-2.5.8-3.1.8-.7 0-1.7-.7-2.8-.7-1.4 0-2.8.8-3.5 2.1-1.5 2.6-.4 6.5 1.1 8.6.7 1 1.6 2.2 2.7 2.1 1.1 0 1.5-.7 2.8-.7 1.3 0 1.6.7 2.8.7 1.2 0 2-1 2.7-2.1.9-1.2 1.2-2.4 1.2-2.5-.1 0-2.4-.9-2.4-3.6 0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7l-.2.4z"/><path d="M21.6 2.3c3.2 0 5.4 2.2 5.4 5.4 0 3.2-2.3 5.4-5.5 5.4h-3.5v5.6h-2.5V2.3h6.1zm-3.6 8.7h2.9c2.2 0 3.5-1.2 3.5-3.3 0-2.1-1.3-3.3-3.5-3.3h-2.9v6.6zm10.2 3c0-2.1 1.6-3.4 4.5-3.5l3.3-.2v-.9c0-1.3-.9-2.1-2.4-2.1-1.4 0-2.3.7-2.5 1.7h-2.3c.1-2.2 2-3.8 4.9-3.8 2.9 0 4.7 1.5 4.7 3.9v8.2h-2.3v-2h-.1c-.7 1.3-2.1 2.2-3.7 2.2-2.3 0-4.1-1.4-4.1-3.5zm7.8-1.1v-.9l-3 .2c-1.5.1-2.3.7-2.3 1.7 0 1 .9 1.7 2.2 1.7 1.7 0 3.1-1.2 3.1-2.7zm4.4 7.6v-1.9c.2 0 .6.1.8.1 1.1 0 1.8-.5 2.1-1.7l.2-.7-4.5-12.5h2.6l3.1 10.2h.1l3.1-10.2H50l-4.7 13.1c-1.1 3-2.3 4-4.8 4-.2 0-.7 0-.9-.1v-.3z"/></svg>
+              ) : (
+                <svg className="h-5" viewBox="0 0 50 20" fill="currentColor"><path d="M23.7 10.3V15h-1.6V4.4h4.3c1 0 1.9.3 2.6.9.7.6 1.1 1.4 1.1 2.4s-.4 1.8-1.1 2.4c-.7.6-1.6.9-2.6.9h-2.7v-.7zm0-4.5v3.2h2.7c.6 0 1.1-.2 1.5-.6.4-.4.6-.9.6-1.5 0-.5-.2-1-.6-1.4-.4-.4-.9-.6-1.5-.6l-2.7-.1v1zM33.5 7.5c1.2 0 2.1.3 2.8 1 .7.7 1 1.6 1 2.7V15h-1.5v-1h-.1c-.6 1-1.5 1.4-2.6 1.4-.9 0-1.7-.3-2.3-.8-.6-.5-.9-1.2-.9-2 0-.8.3-1.5.9-2 .6-.5 1.5-.7 2.5-.7.9 0 1.6.2 2.1.5v-.4c0-.6-.2-1-.7-1.4-.4-.4-1-.6-1.5-.6-.9 0-1.6.4-2.1 1.1l-1.4-.9c.8-1.1 1.9-1.6 3.4-1.6l.4-.1zm-2 5.7c0 .4.2.8.5 1.1.4.3.8.4 1.2.4.7 0 1.3-.3 1.8-.8.5-.5.8-1.1.8-1.8-.4-.4-1.1-.6-1.9-.6-.6 0-1.1.2-1.5.4-.6.3-.9.7-.9 1.3zm10.5-5.3l-4.4 10.1h-1.6l1.6-3.5-2.8-6.6h1.7l1.9 4.7 1.8-4.7h1.8z"/><path d="M12.4 10.3c0-.5 0-.9-.1-1.4H6.3v2.6h3.4c-.1.9-.6 1.6-1.2 2.1v1.7h2c1.2-1.1 1.9-2.7 1.9-5zM6.3 15.6c1.6 0 3-.5 4-1.4l-2-1.5c-.5.4-1.2.6-2 .6-1.5 0-2.8-1-3.3-2.5H1.1V13c1 2 3 3.3 5.2 3.3v-.7zM3 11.2c-.1-.4-.2-.8-.2-1.2s.1-.8.2-1.2V7.1H1.1C.7 7.9.5 8.8.5 9.8s.2 1.9.6 2.8L3 11.2zM6.3 5.7c.9 0 1.6.3 2.2.9l1.7-1.6c-1-.9-2.3-1.5-3.9-1.5-2.2 0-4.2 1.3-5.2 3.2l1.9 1.5c.5-1.5 1.8-2.5 3.3-2.5z" fill="#4285F4"/></svg>
+              )}
+              <span className="font-medium text-gray-900">{walletLabel}</span>
+            </div>
+          </label>
 
-      {/* Divider */}
-      {expressReady && (
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-gray-200" />
-          <span className="text-xs text-gray-400 uppercase tracking-wide">or pay with card</span>
-          <div className="flex-1 h-px bg-gray-200" />
+          {/* Card option */}
+          <label
+            className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${
+              payMethod === 'card' ? 'border-[#16A34A] bg-green-50/50' : 'border-gray-200'
+            }`}
+          >
+            <input
+              type="radio"
+              name="payMethod"
+              checked={payMethod === 'card'}
+              onChange={() => setPayMethod('card')}
+              className="accent-[#16A34A] w-4 h-4"
+            />
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+              </svg>
+              <span className="font-medium text-gray-900">Credit Card</span>
+            </div>
+          </label>
         </div>
       )}
 
-      {/* Card Payment Element */}
-      <PaymentElement
-        options={{
-          layout: 'tabs',
-          wallets: { applePay: 'never', googlePay: 'never' },
-          paymentMethodOrder: ['card'],
-          fields: {
-            billingDetails: {
-              name: 'never',
-              email: 'never',
-              phone: 'never',
-            },
-          },
-        }}
-      />
+      {/* Card form — shown when card is selected */}
+      {payMethod === 'card' && (
+        <>
+          <PaymentElement
+            options={{
+              layout: 'tabs',
+              wallets: { applePay: 'never', googlePay: 'never' },
+              paymentMethodOrder: ['card'],
+              fields: {
+                billingDetails: { name: 'never', email: 'never', phone: 'never' },
+              },
+            }}
+          />
 
-      {/* Contact fields for card payments */}
-      <div className="mt-6">
-        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
-          Contact Information
-        </h3>
-        <div className="space-y-3">
-          <input
-            type="text"
-            value={customerInfo.name}
-            onChange={e => customerInfo.setName(e.target.value)}
-            placeholder="Full Name"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
-          <input
-            type="tel"
-            value={customerInfo.phone}
-            onChange={e => customerInfo.setPhone(e.target.value)}
-            placeholder="Phone Number"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
-          <input
-            type="email"
-            value={customerInfo.email}
-            onChange={e => customerInfo.setEmail(e.target.value)}
-            placeholder="Email Address"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
-        </div>
-      </div>
+          {/* Contact fields */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+              Contact Information
+            </h3>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={customerInfo.name}
+                onChange={e => customerInfo.setName(e.target.value)}
+                placeholder="Full Name"
+                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              />
+              <input
+                type="tel"
+                value={customerInfo.phone}
+                onChange={e => customerInfo.setPhone(e.target.value)}
+                placeholder="Phone Number"
+                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              />
+              <input
+                type="email"
+                value={customerInfo.email}
+                onChange={e => customerInfo.setEmail(e.target.value)}
+                placeholder="Email Address"
+                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Floating payment bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-5 py-4">
@@ -260,20 +337,36 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           <div className="text-center mb-3">
             <span className="text-2xl font-bold text-gray-900">{formatCurrency(total)}</span>
           </div>
-          <button
-            type="submit"
-            disabled={!stripe || loading || externalDisabled}
-            className="w-full bg-[#16A34A] text-white font-bold text-lg py-4 rounded-xl disabled:opacity-50 active:scale-[0.98] transition-transform"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Processing...
-              </span>
-            ) : (
-              `Pay ${formatCurrency(total)}`
-            )}
-          </button>
+
+          {payMethod === 'wallet' && paymentRequest ? (
+            <PaymentRequestButtonElement
+              options={{
+                paymentRequest,
+                style: {
+                  paymentRequestButton: {
+                    type: 'default',
+                    theme: 'dark',
+                    height: '56px',
+                  },
+                },
+              }}
+            />
+          ) : (
+            <button
+              type="submit"
+              disabled={!stripe || loading || externalDisabled}
+              className="w-full bg-[#16A34A] text-white font-bold text-lg py-4 rounded-xl disabled:opacity-50 active:scale-[0.98] transition-transform"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Processing...
+                </span>
+              ) : (
+                `Pay ${formatCurrency(total)}`
+              )}
+            </button>
+          )}
         </div>
       </div>
     </form>
@@ -782,6 +875,7 @@ export default function CheckoutPage() {
                 slug={slug}
                 restaurant={restaurant}
                 disabled={zipInvalid || belowMinimum}
+                clientSecret={clientSecret}
               />
             </Elements>
           )}
