@@ -580,8 +580,8 @@ export default function OrdersTab({ restaurant, setRestaurant, hours }) {
               .order('created_at')
 
             printOrder(restaurant.printer_ip, { ...newOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
-              .then(result => {
-                supabase.from('print_logs').insert({
+              .then(async (result) => {
+                const { error: logErr } = await supabase.from('print_logs').insert({
                   order_id: newOrder.id,
                   order_number: newOrder.order_number,
                   restaurant_id: restaurant.id,
@@ -589,10 +589,13 @@ export default function OrdersTab({ restaurant, setRestaurant, hours }) {
                   status: result.success ? 'success' : 'failed',
                   error_message: result.success ? null : result.message,
                 })
-                supabase.from('orders').update({
+                if (logErr) console.error('[AutoPrint] Failed to insert print log:', logErr)
+
+                const { error: statusErr } = await supabase.from('orders').update({
                   print_status: result.success ? 'printed' : 'failed',
                   print_attempts: 1,
                 }).eq('id', newOrder.id)
+                if (statusErr) console.error('[AutoPrint] Failed to update print_status:', statusErr)
               })
           }
         }
