@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadStripe } from '@stripe/stripe-js'
 import {
@@ -15,7 +15,7 @@ import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
+const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
 // ---------- Tip Selector ----------
 function TipSelector({ subtotal, onTipChange }) {
@@ -417,6 +417,7 @@ export default function CheckoutPage() {
   const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
   const [paymentIntentId, setPaymentIntentId] = useState(null)
+  const [stripeAccount, setStripeAccount] = useState(null)
   const [initError, setInitError] = useState(null)
 
   // Compute full (undiscounted) subtotal from cart items' fullBasePrice/fullPrice
@@ -555,6 +556,7 @@ export default function CheckoutPage() {
         const data = await res.json()
         setClientSecret(data.clientSecret)
         setPaymentIntentId(data.paymentIntentId)
+        setStripeAccount(data.stripeAccount)
       } catch (err) {
         console.error('Payment init error:', err)
         setInitError(err.message)
@@ -637,6 +639,12 @@ export default function CheckoutPage() {
   }
 
   if (!restaurant || items.length === 0) return null
+
+  // Stripe instance scoped to connected account for direct charges
+  const stripePromise = useMemo(() => {
+    if (!stripeAccount) return loadStripe(STRIPE_PK)
+    return loadStripe(STRIPE_PK, { stripeAccount })
+  }, [stripeAccount])
 
   const stripeOptions = clientSecret
     ? {

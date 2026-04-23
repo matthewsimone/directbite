@@ -6,6 +6,7 @@ import { encode as base64Encode } from "https://deno.land/std@0.177.0/encoding/b
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
+const connectWebhookSecret = Deno.env.get("STRIPE_CONNECT_WEBHOOK_SECRET") || "";
 const printNodeApiKey = Deno.env.get("PRINTNODE_API_KEY") || "";
 
 const supabase = createClient(
@@ -369,13 +370,29 @@ serve(async (req: Request) => {
       return new Response("Missing stripe-signature header", { status: 400 });
     }
 
-    // Verify webhook signature
+    // Verify webhook signature — try Connect webhook first, fall back to platform
     let event: Stripe.Event;
-    try {
-      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-    } catch (err: any) {
-      console.error("Webhook signature verification failed:", err.message);
-      return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+    let verified = false;
+
+    if (connectWebhookSecret) {
+      try {
+        event = await stripe.webhooks.constructEventAsync(body, signature, connectWebhookSecret);
+        verified = true;
+        console.log("Verified via Connect webhook secret");
+      } catch {
+        // Fall through to platform secret
+      }
+    }
+
+    if (!verified) {
+      try {
+        event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+        verified = true;
+        console.log("Verified via platform webhook secret");
+      } catch (err: any) {
+        console.error("Webhook signature verification failed with both secrets:", err.message);
+        return new Response(`Webhook Error: ${err.message}`, { status: 400 });
+      }
     }
 
     switch (event.type) {

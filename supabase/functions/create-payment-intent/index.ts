@@ -56,7 +56,10 @@ serve(async (req: Request) => {
 
     if (payment_intent_id) {
       // Update: look up existing pending order from the payment intent metadata
-      const existing = await stripe.paymentIntents.retrieve(payment_intent_id);
+      const existing = await stripe.paymentIntents.retrieve(
+        payment_intent_id,
+        { stripeAccount: restaurant.stripe_account_id }
+      );
       pending_order_id = existing.metadata?.pending_order_id || "";
 
       if (pending_order_id && order_data) {
@@ -66,19 +69,24 @@ serve(async (req: Request) => {
           .eq("id", pending_order_id);
       }
 
-      const updated = await stripe.paymentIntents.update(payment_intent_id, {
-        amount,
-        metadata: {
-          restaurant_id,
-          restaurant_name: restaurant.name,
-          pending_order_id,
+      const updated = await stripe.paymentIntents.update(
+        payment_intent_id,
+        {
+          amount,
+          metadata: {
+            restaurant_id,
+            restaurant_name: restaurant.name,
+            pending_order_id,
+          },
         },
-      });
+        { stripeAccount: restaurant.stripe_account_id }
+      );
 
       return new Response(
         JSON.stringify({
           clientSecret: updated.client_secret,
           paymentIntentId: updated.id,
+          stripeAccount: restaurant.stripe_account_id,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -97,26 +105,27 @@ serve(async (req: Request) => {
 
     pending_order_id = pendingOrder.id;
 
-    // Create new Payment Intent with Connect destination charge
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount, // already in cents from frontend
-      currency: "usd",
-      automatic_payment_methods: { enabled: true },
-      application_fee_amount: 150, // $1.50 DirectBite fee
-      transfer_data: {
-        destination: restaurant.stripe_account_id,
+    // Create PaymentIntent directly on the connected account (direct charges)
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount, // already in cents from frontend
+        currency: "usd",
+        automatic_payment_methods: { enabled: true },
+        application_fee_amount: 150, // $1.50 DirectBite fee
+        metadata: {
+          restaurant_id,
+          restaurant_name: restaurant.name,
+          pending_order_id,
+        },
       },
-      metadata: {
-        restaurant_id,
-        restaurant_name: restaurant.name,
-        pending_order_id,
-      },
-    });
+      { stripeAccount: restaurant.stripe_account_id }
+    );
 
     return new Response(
       JSON.stringify({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
+        stripeAccount: restaurant.stripe_account_id,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
