@@ -61,7 +61,12 @@ function OrderCard({ order, onTap }) {
         </span>
       </div>
       <div className="flex justify-between items-center text-gray-600 text-sm">
-        <span className="font-medium text-gray-900">#{order.order_number}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-medium text-gray-900">#{order.order_number}</span>
+          {order.print_status === 'printed' && <span className="text-green-500 text-xs">✓</span>}
+          {order.print_status === 'failed' && <span className="text-red-500 text-xs">⚠</span>}
+          {order.print_status === 'pending' && <span className="text-gray-400 text-xs">⏳</span>}
+        </div>
         <span>{formatTime(order.created_at)}</span>
       </div>
     </button>
@@ -185,7 +190,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
     const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
 
-    // Log the print attempt
+    // Log the print attempt and update order print_status
     await supabase.from('print_logs').insert({
       order_id: order.id,
       order_number: order.order_number,
@@ -194,6 +199,10 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       status: result.success ? 'success' : 'failed',
       error_message: result.success ? null : result.message,
     })
+    await supabase.from('orders').update({
+      print_status: result.success ? 'printed' : 'failed',
+      print_attempts: printLogs.length + 1,
+    }).eq('id', order.id)
 
     fetchOrderDetails()
     setShowReprint(false)
@@ -580,6 +589,10 @@ export default function OrdersTab({ restaurant, setRestaurant, hours }) {
                   status: result.success ? 'success' : 'failed',
                   error_message: result.success ? null : result.message,
                 })
+                supabase.from('orders').update({
+                  print_status: result.success ? 'printed' : 'failed',
+                  print_attempts: 1,
+                }).eq('id', newOrder.id)
               })
           }
         }
