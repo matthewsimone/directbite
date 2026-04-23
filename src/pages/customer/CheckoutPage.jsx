@@ -120,6 +120,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
+  const submittedRef = useRef(false)
 
   // Wallet detection via PaymentRequest API
   const [paymentRequest, setPaymentRequest] = useState(null)
@@ -166,9 +167,13 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
     // Handle wallet payment confirmation
     pr.on('paymentmethod', async (ev) => {
+      if (submittedRef.current) { ev.complete('fail'); return }
+      submittedRef.current = true
+
       const secret = clientSecretRef.current
       if (!secret) {
         ev.complete('fail')
+        submittedRef.current = false
         toast.error('Payment not ready. Please try again.')
         return
       }
@@ -181,6 +186,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
       if (confirmError) {
         ev.complete('fail')
+        submittedRef.current = false
         toast.error(confirmError.message || 'Payment failed')
       } else {
         ev.complete('success')
@@ -211,6 +217,8 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   async function handleSubmit(e) {
     e.preventDefault()
     if (!stripe || !elements || payMethod === 'wallet') return
+    if (submittedRef.current) return
+    submittedRef.current = true
 
     if (!customerInfo.name.trim() || !customerInfo.phone.trim() || !customerInfo.email.trim()) {
       toast.error('Please fill in all contact fields')
@@ -244,6 +252,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     if (error) {
       toast.error(error.message || 'Payment failed')
       setLoading(false)
+      submittedRef.current = false
       return
     }
 
@@ -419,6 +428,7 @@ export default function CheckoutPage() {
   const [paymentIntentId, setPaymentIntentId] = useState(null)
   const [stripeAccount, setStripeAccount] = useState(null)
   const [initError, setInitError] = useState(null)
+  const idempotencyKey = useRef(Math.random().toString(36).slice(2) + Date.now().toString(36))
 
   // Compute full (undiscounted) subtotal from cart items' fullBasePrice/fullPrice
   const discountPercentage = promotion ? Number(promotion.discount_percentage) : 0
@@ -544,6 +554,7 @@ export default function CheckoutPage() {
               restaurant_id: restaurant.id,
               amount: Math.round(total * 100),
               order_data: buildOrderData(),
+              idempotency_key: idempotencyKey.current,
             }),
           }
         )

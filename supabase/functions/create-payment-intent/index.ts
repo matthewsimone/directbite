@@ -21,7 +21,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { restaurant_id, amount, order_data, payment_intent_id } = await req.json();
+    const { restaurant_id, amount, order_data, payment_intent_id, idempotency_key } = await req.json();
 
     if (!restaurant_id || !amount) {
       return new Response(
@@ -118,7 +118,10 @@ serve(async (req: Request) => {
           pending_order_id,
         },
       },
-      { stripeAccount: restaurant.stripe_account_id }
+      {
+        stripeAccount: restaurant.stripe_account_id,
+        ...(idempotency_key ? { idempotencyKey: idempotency_key } : {}),
+      }
     );
 
     return new Response(
