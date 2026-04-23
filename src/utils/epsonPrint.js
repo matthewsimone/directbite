@@ -59,6 +59,7 @@ export async function printOrder(printerIp, order, rest) {
           try {
             const sep = '-'.repeat(W)
             const dotSep = '- '.repeat(W / 2)
+            const DW = W / 2 // double-width chars per line
             const items = order.items || []
             const C = printer.ALIGN_CENTER
             const L = printer.ALIGN_LEFT
@@ -75,17 +76,17 @@ export async function printOrder(printerIp, order, rest) {
             if (rest.phone) printer.addText(rest.phone + '\n')
             printer.addText('\n')
 
-            // ── 2. PAID BLOCK ──
+            // ── 2. PICKUP/DELIVERY + PAID ──
+            const typeLabel = order.order_type === 'delivery' ? 'DELIVERY' : 'PICKUP'
             bold(true)
-            printer.addText('[ PAID ]\n')
+            printer.addTextSize(2, 1)
+            const typeGap = DW - typeLabel.length - 4 // 4 = "PAID".length
+            printer.addText(typeLabel + (typeGap > 0 ? ' '.repeat(typeGap) : ' ') + 'PAID\n')
+            printer.addTextSize(1, 1)
             bold(false)
             printer.addText('\n')
 
             // ── 3. ORDER INFO ──
-            const typeLabel = order.order_type === 'delivery' ? 'DELIVERY' : 'PICKUP'
-            bold(true)
-            printer.addText(`${typeLabel}\n`)
-            bold(false)
             printer.addText(`Order · #DirectBite ${order.order_number}\n`)
             printer.addText(fmtDate(order.created_at) + '\n')
             printer.addText('\n')
@@ -145,16 +146,6 @@ export async function printOrder(printerIp, order, rest) {
               }
             }
 
-            // ── UTENSILS ──
-            if (order.include_utensils) {
-              printer.addText('\n')
-              printer.addTextAlign(C)
-              bold(true)
-              printer.addText('*** NAPKINS & UTENSILS REQUESTED ***\n')
-              bold(false)
-              printer.addTextAlign(L)
-            }
-
             // ── 6. TOTALS ──
             printer.addText(sep + '\n')
             printer.addText(pad('Subtotal', fmt(order.subtotal)) + '\n')
@@ -171,12 +162,13 @@ export async function printOrder(printerIp, order, rest) {
             }
             printer.addText(sep + '\n')
 
-            // TOTAL — bold, larger
+            // TOTAL — bold, double width, on one line
             bold(true)
             printer.addTextSize(2, 1)
             printer.addTextAlign(L)
-            const totalLine = pad('TOTAL', fmt(order.total_amount))
-            printer.addText(totalLine + '\n')
+            const totalAmt = fmt(order.total_amount)
+            const totalGap = DW - 5 - totalAmt.length // 5 = "TOTAL".length
+            printer.addText('TOTAL' + (totalGap > 0 ? ' '.repeat(totalGap) : ' ') + totalAmt + '\n')
             printer.addTextSize(1, 1)
             bold(false)
             printer.addText(sep + '\n')
@@ -188,9 +180,12 @@ export async function printOrder(printerIp, order, rest) {
             bold(true)
             printer.addText('powered by DirectBite\n')
             bold(false)
+            printer.addText('\n')
 
             if (order.include_utensils) {
+              bold(true)
               printer.addText('*** NAPKINS & UTENSILS REQUESTED ***\n')
+              bold(false)
             }
 
             printer.addFeedLine(4)
