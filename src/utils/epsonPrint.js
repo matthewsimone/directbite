@@ -82,8 +82,11 @@ export async function printOrder(printerIp, order, rest) {
             printer.addText('\n')
 
             // ── 3. ORDER INFO ──
-            const typeLabel = order.order_type === 'delivery' ? 'Delivery Order' : 'Pickup Order'
-            printer.addText(`${typeLabel} · #DirectBite ${order.order_number}\n`)
+            const typeLabel = order.order_type === 'delivery' ? 'DELIVERY' : 'PICKUP'
+            bold(true)
+            printer.addText(`${typeLabel}\n`)
+            bold(false)
+            printer.addText(`Order · #DirectBite ${order.order_number}\n`)
             printer.addText(fmtDate(order.created_at) + '\n')
             printer.addText('\n')
             printer.addText(order.customer_name + '\n')
