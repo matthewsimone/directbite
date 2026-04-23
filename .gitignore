@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Supabase CLI temp
+supabase/.temp/
+
 # Environment variables
 .env
 .env.local
