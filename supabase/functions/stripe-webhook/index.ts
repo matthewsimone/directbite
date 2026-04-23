@@ -1,214 +1,20 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import Stripe from "https://esm.sh/stripe@17.7.0";
-import { encode as base64Encode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
-
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
 const connectWebhookSecret = Deno.env.get("STRIPE_CONNECT_WEBHOOK_SECRET") || "";
-const printNodeApiKey = Deno.env.get("PRINTNODE_API_KEY") || "";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
-// ---------- Receipt formatting ----------
-function formatReceiptLine(left: string, right: string, width = 32): string {
-  const gap = width - left.length - right.length;
-  return left + (gap > 0 ? " ".repeat(gap) : " ") + right;
-}
+// ---------- Printing is handled client-side via Epson ePOS SDK on the tablet ----------
 
-function formatMoney(amount: number): string {
-  return `$${Number(amount).toFixed(2)}`;
-}
 
-function formatReceipt(order: any, restaurant: any, items: any[]): string {
-  const lines: string[] = [];
-  const sep = "=".repeat(32);
-  const date = new Date(order.created_at);
-  const dateStr = date.toLocaleDateString("en-US");
-  const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-
-  lines.push(sep);
-  lines.push("        DIRECTBITE ORDER");
-  lines.push(`        Order #${order.order_number}`);
-  lines.push(`  ${restaurant.name}`);
-  lines.push(`  ${dateStr} ${timeStr}`);
-  lines.push(`  ORDER TYPE: ${order.order_type.toUpperCase()}`);
-  lines.push(`  Customer: ${order.customer_name}`);
-  lines.push(`  Phone: ${order.customer_phone}`);
-  if (order.order_type === "delivery" && order.delivery_address) {
-    lines.push(`  ${order.delivery_address}`);
-  }
-  lines.push(sep);
-
-  for (const item of items) {
-    const itemLine = `${item.quantity}x ${item.item_name}${item.size_name ? " " + item.size_name : ""}`;
-    lines.push(formatReceiptLine(itemLine, formatMoney(item.base_price * item.quantity)));
-
-    for (const t of item.order_item_toppings || []) {
-      if (t.placement_type === "addon") {
-        const priceStr = Number(t.price_charged) === 0 ? "Free" : `+${formatMoney(t.price_charged)}`;
-        lines.push(formatReceiptLine(`  ${t.topping_name}`, priceStr));
-      } else {
-        const placement = t.placement === "whole" ? "WHOLE" : t.placement.toUpperCase();
-        lines.push(`  ${placement}: ${t.topping_name}     +${formatMoney(t.price_charged)}`);
-      }
-    }
-
-    if (item.special_instructions) {
-      lines.push(`  Special: ${item.special_instructions}`);
-    }
-  }
-
-  if (order.include_utensils) {
-    lines.push("");
-    lines.push("*** NAPKINS & UTENSILS REQUESTED ***");
-    lines.push("");
-  }
-  lines.push(sep);
-  lines.push(formatReceiptLine("Subtotal:", formatMoney(order.subtotal)));
-  lines.push(formatReceiptLine("Tax:", formatMoney(order.tax_amount)));
-  lines.push(formatReceiptLine("Service Fee:", formatMoney(order.service_fee)));
-
-  if (order.order_type === "delivery" && Number(order.delivery_fee) > 0) {
-    lines.push(formatReceiptLine("Delivery Fee:", formatMoney(order.delivery_fee)));
-  }
-  if (Number(order.discount_amount) > 0) {
-    lines.push(formatReceiptLine(`Discount (${order.discount_percentage}%):`, `-${formatMoney(order.discount_amount)}`));
-  }
-  if (Number(order.tip_amount) > 0) {
-    lines.push(formatReceiptLine("Tip:", formatMoney(order.tip_amount)));
-  }
-
-  lines.push(formatReceiptLine("TOTAL:", formatMoney(order.total_amount)));
-  lines.push("");
-  lines.push("    Powered by DirectBite.co");
-  lines.push("");
-
-  return lines.join("\n");
-}
-
-// ---------- PrintNode integration ----------
-async function triggerPrint(orderId: string, restaurantId: string) {
-  // Fetch restaurant printer ID
-  const { data: restaurant, error: restErr } = await supabase
-    .from("restaurants")
-    .select("printnode_printer_id, name, phone, address")
-    .eq("id", restaurantId)
-    .single();
-
-  if (restErr || !restaurant?.printnode_printer_id) {
-    console.error("No printer configured for restaurant:", restaurantId);
-    await supabase
-      .from("orders")
-      .update({ print_status: "failed", print_attempts: 1 })
-      .eq("id", orderId);
-
-    await supabase.from("print_logs").insert({
-      order_id: orderId,
-      restaurant_id: restaurantId,
-      attempt_number: 1,
-      status: "failed",
-      error_message: "No printer configured",
-    });
-    return;
-  }
-
-  // Fetch order with items and toppings
-  const { data: order } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", orderId)
-    .single();
-
-  if (!order) {
-    console.error("Order not found:", orderId);
-    return;
-  }
-
-  const { data: items } = await supabase
-    .from("order_items")
-    .select("*, order_item_toppings(*)")
-    .eq("order_id", orderId)
-    .order("created_at");
-
-  // Format receipt
-  const receiptText = formatReceipt(order, restaurant, items || []);
-  const receiptBase64 = base64Encode(new TextEncoder().encode(receiptText));
-
-  // Send to PrintNode
-  const attemptNumber = (order.print_attempts || 0) + 1;
-
-  try {
-    const response = await fetch("https://api.printnode.com/printjobs", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Basic " + base64Encode(new TextEncoder().encode(printNodeApiKey + ":")),
-      },
-      body: JSON.stringify({
-        printerId: parseInt(restaurant.printnode_printer_id),
-        title: `DirectBite Order #${order.order_number}`,
-        contentType: "raw_base64",
-        content: receiptBase64,
-        source: "DirectBite",
-      }),
-    });
-
-    if (response.ok) {
-      console.log(`Print job sent for order #${order.order_number}`);
-
-      await supabase
-        .from("orders")
-        .update({ print_status: "printed", print_attempts: attemptNumber })
-        .eq("id", orderId);
-
-      await supabase.from("print_logs").insert({
-        order_id: orderId,
-        order_number: order.order_number,
-        restaurant_id: restaurantId,
-        attempt_number: attemptNumber,
-        status: "success",
-      });
-    } else {
-      const errorText = await response.text();
-      console.error(`PrintNode error: ${response.status} — ${errorText}`);
-
-      await supabase
-        .from("orders")
-        .update({ print_status: "failed", print_attempts: attemptNumber, last_print_attempt: new Date().toISOString() })
-        .eq("id", orderId);
-
-      await supabase.from("print_logs").insert({
-        order_id: orderId,
-        order_number: order.order_number,
-        restaurant_id: restaurantId,
-        attempt_number: attemptNumber,
-        status: "failed",
-        error_message: `PrintNode ${response.status}: ${errorText.slice(0, 200)}`,
-      });
-    }
-  } catch (err: any) {
-    console.error("PrintNode request failed:", err.message);
-
-    await supabase
-      .from("orders")
-      .update({ print_status: "failed", print_attempts: attemptNumber, last_print_attempt: new Date().toISOString() })
-      .eq("id", orderId);
-
-    await supabase.from("print_logs").insert({
-      order_id: orderId,
-      order_number: order.order_number,
-      restaurant_id: restaurantId,
-      attempt_number: attemptNumber,
-      status: "failed",
-      error_message: err.message,
-    });
-  }
-}
+// Printing is handled client-side via Epson ePOS SDK on the tablet
 
 // ---------- Send confirmation email ----------
 async function sendConfirmationEmail(orderId: string) {
@@ -434,8 +240,7 @@ serve(async (req: Request) => {
         // Clean up pending order
         await supabase.from("pending_orders").delete().eq("id", pendingOrderId);
 
-        // Trigger print job
-        await triggerPrint(order.id, orderData.restaurant_id);
+        // Printing handled by tablet via Epson ePOS SDK (auto-prints on new order detection)
 
         // Send confirmation email
         await sendConfirmationEmail(order.id);
