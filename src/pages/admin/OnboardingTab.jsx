@@ -155,19 +155,31 @@ function Step4({ data, setData }) {
 }
 
 function Step5({ data, setData }) {
+  const isValidAccount = data.stripe_account_id && /^acct_[A-Za-z0-9]+$/.test(data.stripe_account_id)
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-bold">Stripe & PrintNode</h3>
+      <h3 className="text-lg font-bold">Stripe Connect</h3>
       <div>
         <label className="text-sm text-gray-500">Stripe Connect Account ID</label>
         <input value={data.stripe_account_id} onChange={e => setData({ ...data, stripe_account_id: e.target.value })}
-          className="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+          className={`w-full h-10 px-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A] ${
+            data.stripe_account_id && !isValidAccount ? 'border-red-300' : 'border-gray-300'
+          }`}
           placeholder="acct_..." />
+        {!data.stripe_account_id && (
+          <p className="mt-1 text-xs text-amber-600 font-medium">
+            ⚠️ Restaurant cannot accept payments without a Stripe account
+          </p>
+        )}
+        {data.stripe_account_id && !isValidAccount && (
+          <p className="mt-1 text-xs text-red-500">Invalid format — must start with "acct_"</p>
+        )}
       </div>
       <div>
-        <label className="text-sm text-gray-500">PrintNode Printer ID</label>
-        <input value={data.printnode_printer_id} onChange={e => setData({ ...data, printnode_printer_id: e.target.value })}
-          className="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+        <label className="text-sm text-gray-500">Printer IP Address</label>
+        <input value={data.printer_ip || ''} onChange={e => setData({ ...data, printer_ip: e.target.value })}
+          className="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+          placeholder="192.168.1.100 (optional)" />
       </div>
     </div>
   )
@@ -194,7 +206,7 @@ function Step6({ data }) {
         <hr className="my-2" />
         <p><strong>Tablet email:</strong> {data.tablet_email}</p>
         <p><strong>Stripe ID:</strong> {data.stripe_account_id || '—'}</p>
-        <p><strong>Printer ID:</strong> {data.printnode_printer_id || '—'}</p>
+        <p><strong>Printer IP:</strong> {data.printer_ip || '—'}</p>
       </div>
     </div>
   )
@@ -224,7 +236,7 @@ export default function OnboardingTab() {
     tablet_email: '',
     tablet_password: '',
     stripe_account_id: '',
-    printnode_printer_id: '',
+    printer_ip: '',
   })
 
   const steps = [
@@ -264,7 +276,7 @@ export default function OnboardingTab() {
           tablet_email: data.tablet_email,
           tablet_password: data.tablet_password,
           stripe_account_id: data.stripe_account_id,
-          printnode_printer_id: data.printnode_printer_id,
+          printer_ip: data.printer_ip || null,
         }),
       }
     )
@@ -295,7 +307,7 @@ export default function OnboardingTab() {
             <p className="text-lg font-bold text-[#16A34A]">directbite.co/{success.slug}</p>
           </div>
           <button
-            onClick={() => { setSuccess(null); setStep(1); setData({ ...data, name: '', slug: '', _slugEdited: false, phone: '', address: '', tablet_email: '', tablet_password: '', stripe_account_id: '', printnode_printer_id: '' }) }}
+            onClick={() => { setSuccess(null); setStep(1); setData({ ...data, name: '', slug: '', _slugEdited: false, phone: '', address: '', tablet_email: '', tablet_password: '', stripe_account_id: '', printer_ip: '' }) }}
             className="px-6 h-10 bg-[#16A34A] text-white font-semibold rounded-lg text-sm"
           >
             Add Another Restaurant
@@ -360,7 +372,7 @@ export default function OnboardingTab() {
           ) : (
             <button
               onClick={handleCreate}
-              disabled={creating || !data.name || !data.slug || !data.tablet_email || !data.tablet_password}
+              disabled={creating || !data.name || !data.slug || !data.tablet_email || !data.tablet_password || !data.stripe_account_id || !/^acct_[A-Za-z0-9]+$/.test(data.stripe_account_id)}
               className="px-6 h-10 bg-[#16A34A] text-white rounded-lg text-sm font-semibold disabled:opacity-50"
             >
               {creating ? 'Creating...' : 'Create Restaurant'}

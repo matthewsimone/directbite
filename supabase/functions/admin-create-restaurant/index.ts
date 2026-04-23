@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
+import Stripe from "https://esm.sh/stripe@17.7.0";
+
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -71,6 +74,14 @@ serve(async (req: Request) => {
     if (!name || !slug || !tablet_email || !tablet_password) {
       return new Response(
         JSON.stringify({ error: "name, slug, tablet_email, and tablet_password are required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate stripe_account_id format if provided
+    if (stripe_account_id && !/^acct_[A-Za-z0-9]+$/.test(stripe_account_id)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid Stripe account ID format. Must start with acct_" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -148,6 +159,24 @@ serve(async (req: Request) => {
       const { error: hoursErr } = await supabase.from("hours").insert(hoursRows);
       if (hoursErr) {
         console.error("Failed to create hours:", hoursErr.message);
+      }
+    }
+
+    // Auto-register Apple Pay domain on connected account
+    if (stripe_account_id) {
+      try {
+        await stripe.applePayDomains.create(
+          { domain_name: "directbite.co" },
+          { stripeAccount: stripe_account_id }
+        );
+        await supabase
+          .from("restaurants")
+          .update({ apple_pay_registered: true })
+          .eq("id", restaurant.id);
+        console.log(`Apple Pay domain registered for ${stripe_account_id}`);
+      } catch (apErr: any) {
+        console.error(`Apple Pay domain registration failed for ${stripe_account_id}:`, apErr.message);
+        // Don't block restaurant creation — can be retried
       }
     }
 
