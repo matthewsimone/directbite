@@ -630,6 +630,13 @@ export default function CheckoutPage() {
     // the empty-cart useEffect which redirects back to menu before navigation completes
   }
 
+  // Stripe instance scoped to connected account for direct charges
+  // Must be before any early returns to maintain hook order
+  const stripePromise = useMemo(() => {
+    if (!stripeAccount) return loadStripe(STRIPE_PK)
+    return loadStripe(STRIPE_PK, { stripeAccount })
+  }, [stripeAccount])
+
   if (restLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -639,12 +646,6 @@ export default function CheckoutPage() {
   }
 
   if (!restaurant || items.length === 0) return null
-
-  // Stripe instance scoped to connected account for direct charges
-  const stripePromise = useMemo(() => {
-    if (!stripeAccount) return loadStripe(STRIPE_PK)
-    return loadStripe(STRIPE_PK, { stripeAccount })
-  }, [stripeAccount])
 
   const stripeOptions = clientSecret
     ? {
