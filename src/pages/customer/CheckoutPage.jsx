@@ -126,11 +126,18 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   const [walletType, setWalletType] = useState(null) // 'applePay' | 'googlePay' | null
   const [payMethod, setPayMethod] = useState('card') // 'wallet' | 'card'
 
+  // Refs for values needed in paymentmethod event handler (avoids stale closures)
+  const clientSecretRef = useRef(clientSecret)
+  const onSuccessRef = useRef(onSuccess)
+  useEffect(() => { clientSecretRef.current = clientSecret }, [clientSecret])
+  useEffect(() => { onSuccessRef.current = onSuccess }, [onSuccess])
+
+  // Create PaymentRequest ONCE when stripe is ready
   useEffect(() => {
-    if (!stripe || !total) return
+    if (!stripe || !total || total <= 0) return
 
     const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
-    console.log('[PaymentRequest] Stripe loaded, key prefix:', pk.slice(0, 8) + '...')
+    console.log('[PaymentRequest] Creating once. Key prefix:', pk.slice(0, 8) + '..., total:', total)
 
     const pr = stripe.paymentRequest({
       country: 'US',
@@ -140,8 +147,6 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       requestPayerEmail: true,
       requestPayerPhone: true,
     })
-
-    console.log('[PaymentRequest] Created:', pr)
 
     pr.canMakePayment().then(result => {
       console.log('[PaymentRequest] canMakePayment result:', JSON.stringify(result))
@@ -161,8 +166,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
     // Handle wallet payment confirmation
     pr.on('paymentmethod', async (ev) => {
+      const secret = clientSecretRef.current
+      if (!secret) {
+        ev.complete('fail')
+        toast.error('Payment not ready. Please try again.')
+        return
+      }
+
       const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
-        clientSecret,
+        secret,
         { payment_method: ev.paymentMethod.id },
         { handleActions: false }
       )
@@ -173,22 +185,22 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       } else {
         ev.complete('success')
         if (paymentIntent.status === 'requires_action') {
-          const { error } = await stripe.confirmCardPayment(clientSecret)
+          const { error } = await stripe.confirmCardPayment(secret)
           if (error) {
             toast.error(error.message || 'Payment failed')
           } else {
-            onSuccess(paymentIntent.id)
+            onSuccessRef.current(paymentIntent.id)
           }
         } else {
-          onSuccess(paymentIntent.id)
+          onSuccessRef.current(paymentIntent.id)
         }
       }
     })
-  }, [stripe, total, clientSecret])
+  }, [stripe]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update payment request amount when total changes
+  // Update payment request amount when total changes (does NOT re-create)
   useEffect(() => {
-    if (paymentRequest && total) {
+    if (paymentRequest && total > 0) {
       paymentRequest.update({
         total: { label: 'DirectBite Order', amount: Math.round(total * 100) },
       })
