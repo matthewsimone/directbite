@@ -177,7 +177,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       .eq('order_id', order.id)
       .order('created_at')
 
-    const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, restaurant.name)
+    const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
 
     // Log the print attempt
     await supabase.from('print_logs').insert({
@@ -564,7 +564,7 @@ export default function OrdersTab({ restaurant, setRestaurant, hours }) {
               .eq('order_id', newOrder.id)
               .order('created_at')
 
-            printOrder(restaurant.printer_ip, { ...newOrder, items: orderItems || [] }, restaurant.name)
+            printOrder(restaurant.printer_ip, { ...newOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
               .then(result => {
                 supabase.from('print_logs').insert({
                   order_id: newOrder.id,
