@@ -56,7 +56,20 @@ export default function TabletPage() {
   }
 
   if (!session || !restaurant) {
-    return <TabletLogin slug={slug} onLogin={login} error={error} />
+    return (
+      <TabletLogin
+        slug={slug}
+        onLogin={async (email, password, acceptTerms) => {
+          const success = await login(email, password)
+          if (success && acceptTerms) {
+            await supabase.from('restaurants').update({ terms_accepted_at: new Date().toISOString() }).eq('slug', slug)
+          }
+          return success
+        }}
+        error={error}
+        termsAccepted={restaurant?.terms_accepted_at}
+      />
+    )
   }
 
   return (

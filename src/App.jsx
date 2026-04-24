@@ -8,6 +8,8 @@ import ConfirmationPage from './pages/customer/ConfirmationPage'
 import TabletPage from './pages/tablet/TabletPage'
 import AdminPage from './pages/admin/AdminPage'
 import ApplePayTest from './pages/ApplePayTest'
+import PrivacyPolicy from './pages/PrivacyPolicy'
+import TermsOfService from './pages/TermsOfService'
 
 export default function App() {
   return (
@@ -17,6 +19,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/applepay-test" element={<ApplePayTest />} />
+          <Route path="/privacy" element={<PrivacyPolicy />} />
+          <Route path="/terms" element={<TermsOfService />} />
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/login" element={<AdminPage />} />
           <Route path="/:slug" element={<MenuPage />} />
