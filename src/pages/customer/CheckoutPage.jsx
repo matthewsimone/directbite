@@ -358,24 +358,10 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
         </label>
       </div>
 
-      {/* Card form — contact fields + card + native Link signup */}
+      {/* Card form — contact fields above card, Link signup inline below */}
       {payMethod === 'card' && (
         <div className="space-y-4">
-          {/* Contact fields */}
-          <input
-            type="text"
-            value={customerInfo.name}
-            onChange={e => customerInfo.setName(e.target.value)}
-            placeholder="Full Name"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
-          <input
-            type="tel"
-            value={customerInfo.phone}
-            onChange={e => customerInfo.setPhone(e.target.value)}
-            placeholder="Phone Number"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
+          {/* 1. Email */}
           <input
             type="email"
             value={customerInfo.email}
@@ -383,10 +369,32 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             placeholder="Email Address"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
+          {/* 2. Full Name */}
+          <input
+            type="text"
+            value={customerInfo.name}
+            onChange={e => customerInfo.setName(e.target.value)}
+            placeholder="Full Name"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+          {/* 3. Phone */}
+          <input
+            type="tel"
+            value={customerInfo.phone}
+            onChange={e => customerInfo.setPhone(e.target.value)}
+            placeholder="Phone Number"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
 
-          {/* Card details with native Link signup — Stripe renders Link opt-in inline */}
+          {/* 4. Card details — accordion open by default, card only, Link inline at bottom */}
           <PaymentElement
             options={{
+              layout: {
+                type: 'accordion',
+                defaultCollapsed: false,
+                radios: false,
+                spacedAccordionItems: false,
+              },
               wallets: { applePay: 'never', googlePay: 'never' },
               paymentMethodOrder: ['card'],
               defaultValues: {
