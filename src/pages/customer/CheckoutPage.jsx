@@ -15,6 +15,8 @@ import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
+import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
+import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
@@ -329,16 +331,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           >
             <div className="flex items-center gap-3">
               <input type="radio" name="payMethod" checked={payMethod === 'wallet'} onChange={() => setPayMethod('wallet')} className="accent-[#16A34A] w-4 h-4" />
-              <div className="flex items-center gap-2">
-                {walletType === 'applePay' ? (
-                  <svg className="h-5" viewBox="0 0 50 20" fill="currentColor"><path d="M9.6 4.1c-.6.7-1.5 1.3-2.4 1.2-.1-1 .4-2 .9-2.6C8.7 2 9.7 1.4 10.5 1.4c.1 1-.3 2-.9 2.7zm.9 1.4c-1.3-.1-2.5.8-3.1.8-.7 0-1.7-.7-2.8-.7-1.4 0-2.8.8-3.5 2.1-1.5 2.6-.4 6.5 1.1 8.6.7 1 1.6 2.2 2.7 2.1 1.1 0 1.5-.7 2.8-.7 1.3 0 1.6.7 2.8.7 1.2 0 2-1 2.7-2.1.9-1.2 1.2-2.4 1.2-2.5-.1 0-2.4-.9-2.4-3.6 0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7l-.2.4z"/><path d="M21.6 2.3c3.2 0 5.4 2.2 5.4 5.4 0 3.2-2.3 5.4-5.5 5.4h-3.5v5.6h-2.5V2.3h6.1zm-3.6 8.7h2.9c2.2 0 3.5-1.2 3.5-3.3 0-2.1-1.3-3.3-3.5-3.3h-2.9v6.6zm10.2 3c0-2.1 1.6-3.4 4.5-3.5l3.3-.2v-.9c0-1.3-.9-2.1-2.4-2.1-1.4 0-2.3.7-2.5 1.7h-2.3c.1-2.2 2-3.8 4.9-3.8 2.9 0 4.7 1.5 4.7 3.9v8.2h-2.3v-2h-.1c-.7 1.3-2.1 2.2-3.7 2.2-2.3 0-4.1-1.4-4.1-3.5zm7.8-1.1v-.9l-3 .2c-1.5.1-2.3.7-2.3 1.7 0 1 .9 1.7 2.2 1.7 1.7 0 3.1-1.2 3.1-2.7zm4.4 7.6v-1.9c.2 0 .6.1.8.1 1.1 0 1.8-.5 2.1-1.7l.2-.7-4.5-12.5h2.6l3.1 10.2h.1l3.1-10.2H50l-4.7 13.1c-1.1 3-2.3 4-4.8 4-.2 0-.7 0-.9-.1v-.3z"/></svg>
-                ) : (
-                  <svg className="h-5" viewBox="0 0 50 20" fill="currentColor"><path d="M23.7 10.3V15h-1.6V4.4h4.3c1 0 1.9.3 2.6.9.7.6 1.1 1.4 1.1 2.4s-.4 1.8-1.1 2.4c-.7.6-1.6.9-2.6.9h-2.7v-.7zm0-4.5v3.2h2.7c.6 0 1.1-.2 1.5-.6.4-.4.6-.9.6-1.5 0-.5-.2-1-.6-1.4-.4-.4-.9-.6-1.5-.6l-2.7-.1v1zM33.5 7.5c1.2 0 2.1.3 2.8 1 .7.7 1 1.6 1 2.7V15h-1.5v-1h-.1c-.6 1-1.5 1.4-2.6 1.4-.9 0-1.7-.3-2.3-.8-.6-.5-.9-1.2-.9-2 0-.8.3-1.5.9-2 .6-.5 1.5-.7 2.5-.7.9 0 1.6.2 2.1.5v-.4c0-.6-.2-1-.7-1.4-.4-.4-1-.6-1.5-.6-.9 0-1.6.4-2.1 1.1l-1.4-.9c.8-1.1 1.9-1.6 3.4-1.6l.4-.1zm-2 5.7c0 .4.2.8.5 1.1.4.3.8.4 1.2.4.7 0 1.3-.3 1.8-.8.5-.5.8-1.1.8-1.8-.4-.4-1.1-.6-1.9-.6-.6 0-1.1.2-1.5.4-.6.3-.9.7-.9 1.3zm10.5-5.3l-4.4 10.1h-1.6l1.6-3.5-2.8-6.6h1.7l1.9 4.7 1.8-4.7h1.8z"/><path d="M12.4 10.3c0-.5 0-.9-.1-1.4H6.3v2.6h3.4c-.1.9-.6 1.6-1.2 2.1v1.7h2c1.2-1.1 1.9-2.7 1.9-5zM6.3 15.6c1.6 0 3-.5 4-1.4l-2-1.5c-.5.4-1.2.6-2 .6-1.5 0-2.8-1-3.3-2.5H1.1V13c1 2 3 3.3 5.2 3.3v-.7zM3 11.2c-.1-.4-.2-.8-.2-1.2s.1-.8.2-1.2V7.1H1.1C.7 7.9.5 8.8.5 9.8s.2 1.9.6 2.8L3 11.2zM6.3 5.7c.9 0 1.6.3 2.2.9l1.7-1.6c-1-.9-2.3-1.5-3.9-1.5-2.2 0-4.2 1.3-5.2 3.2l1.9 1.5c.5-1.5 1.8-2.5 3.3-2.5z" fill="#4285F4"/></svg>
-                )}
+              <div className="flex items-center gap-2.5">
+                <img src={walletType === 'applePay' ? applePayLogo : googlePayLogo} alt={walletLabel} style={{ height: 20 }} />
                 <span className="font-medium text-gray-900">{walletLabel}</span>
               </div>
             </div>
-            <span className="text-xs font-semibold text-[#16A34A] bg-green-50 px-2 py-0.5 rounded-full">⚡ Express</span>
+            <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#16A34A] bg-green-50 px-2 py-0.5 rounded-full">
+              <svg viewBox="0 0 24 24" fill="#16a34a" width="12" height="12"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+              Express
+            </span>
           </label>
         )}
 
@@ -360,21 +361,34 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
       {/* Card form with Link-first email flow */}
       {payMethod === 'card' && (
-        <>
-          {/* Link Authentication Element — email field with Link detection */}
-          <div className="mb-4">
-            <LinkAuthenticationElement
-              onChange={(e) => {
-                if (e.value?.email) customerInfo.setEmail(e.value.email)
-              }}
-              options={{ defaultValues: { email: customerInfo.email } }}
-            />
-          </div>
+        <div className="space-y-4">
+          {/* 1. Email via Link Authentication Element */}
+          <LinkAuthenticationElement
+            onChange={(e) => {
+              if (e.value?.email) customerInfo.setEmail(e.value.email)
+            }}
+            options={{ defaultValues: { email: customerInfo.email } }}
+          />
 
-          {/* Card details — restricted to card only */}
+          {/* 2. Name and Phone */}
+          <input
+            type="text"
+            value={customerInfo.name}
+            onChange={e => customerInfo.setName(e.target.value)}
+            placeholder="Full Name"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+          <input
+            type="tel"
+            value={customerInfo.phone}
+            onChange={e => customerInfo.setPhone(e.target.value)}
+            placeholder="Phone Number"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+
+          {/* 3. Card details — card only, no other payment methods */}
           <PaymentElement
             options={{
-              layout: { type: 'tabs', defaultCollapsed: false },
               wallets: { applePay: 'never', googlePay: 'never' },
               paymentMethodOrder: ['card'],
               fields: {
@@ -382,25 +396,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               },
             }}
           />
-
-          {/* Name and Phone only — email captured above via Link Authentication */}
-          <div className="mt-5 space-y-3">
-            <input
-              type="text"
-              value={customerInfo.name}
-              onChange={e => customerInfo.setName(e.target.value)}
-              placeholder="Full Name"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-            <input
-              type="tel"
-              value={customerInfo.phone}
-              onChange={e => customerInfo.setPhone(e.target.value)}
-              placeholder="Phone Number"
-              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            />
-          </div>
-        </>
+        </div>
       )}
 
       {/* Floating payment bar */}
