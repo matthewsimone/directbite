@@ -686,6 +686,7 @@ export default function CheckoutPage() {
         restaurantName: restaurant.name,
         restaurantPhone: restaurant.phone,
         includeUtensils,
+        specialInstructions: specialInstructions.trim() || null,
         paymentIntentId: piId,
       },
     })

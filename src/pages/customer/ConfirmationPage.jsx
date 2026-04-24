@@ -70,6 +70,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
     restaurantName,
     restaurantPhone,
     includeUtensils,
+    specialInstructions,
   } = state
 
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
@@ -115,6 +116,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
       restaurantName={restaurantName}
       restaurantPhone={restaurantPhone}
       includeUtensils={includeUtensils}
+      specialInstructions={specialInstructions}
       slug={slug}
       navigate={navigate}
     />
@@ -235,6 +237,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
       restaurantName={restaurant?.name}
       restaurantPhone={restaurant?.phone}
       includeUtensils={order.include_utensils}
+      specialInstructions={order.special_instructions}
       slug={slug}
       navigate={navigate}
     />
@@ -246,7 +249,7 @@ function ConfirmationLayout({
   orderNumber, customerName, orderType, estimatedTime,
   items, subtotal, discountAmount, discountPercentage,
   deliveryFee, taxAmount, tip, serviceFee, total,
-  restaurantName, restaurantPhone, includeUtensils, slug, navigate,
+  restaurantName, restaurantPhone, includeUtensils, specialInstructions, slug, navigate,
 }) {
   return (
     <div className="min-h-screen bg-white">
@@ -284,6 +287,14 @@ function ConfirmationLayout({
             </p>
           )}
         </div>
+
+        {/* Special Instructions */}
+        {specialInstructions && (
+          <div className="mt-6 bg-amber-50 border border-amber-300 rounded-xl p-4">
+            <p className="text-sm font-semibold text-amber-800 mb-1">Instructions</p>
+            <p className="text-base text-amber-900">{specialInstructions}</p>
+          </div>
+        )}
 
         {/* Receipt */}
         {items && items.length > 0 && (
