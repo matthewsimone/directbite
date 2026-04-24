@@ -5,6 +5,7 @@ import { useRestaurant } from '../../hooks/useRestaurant'
 import { useMenu } from '../../hooks/useMenu'
 import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
+import { useWalletDetection } from '../../hooks/useWalletDetection'
 import HeroSection from '../../components/HeroSection'
 import PromotionBanner from '../../components/PromotionBanner'
 import CategoryTabs from '../../components/CategoryTabs'
@@ -18,6 +19,8 @@ export default function MenuPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, isOpen, nextOpenTime, loading: restLoading, error } = useRestaurant(slug)
+  // Pre-detect Apple Pay / Google Pay availability (caches in sessionStorage)
+  useWalletDetection(restaurant?.stripe_account_id)
   const {
     categories,
     items,

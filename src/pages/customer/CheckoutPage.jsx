@@ -122,10 +122,23 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   const [loading, setLoading] = useState(false)
   const submittedRef = useRef(false)
 
-  // Wallet detection via PaymentRequest API
+  // Wallet detection via PaymentRequest API — pre-seed from sessionStorage cache
   const [paymentRequest, setPaymentRequest] = useState(null)
-  const [walletType, setWalletType] = useState(null) // 'applePay' | 'googlePay' | null
-  const [payMethod, setPayMethod] = useState('card') // 'wallet' | 'card'
+  const [walletType, setWalletType] = useState(() => {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem('walletAvailability') || 'null')
+      if (cached?.result?.applePay) return 'applePay'
+      if (cached?.result?.googlePay) return 'googlePay'
+    } catch {}
+    return null
+  })
+  const [payMethod, setPayMethod] = useState(() => {
+    try {
+      const cached = JSON.parse(sessionStorage.getItem('walletAvailability') || 'null')
+      if (cached?.result?.applePay || cached?.result?.googlePay) return 'wallet'
+    } catch {}
+    return 'card'
+  })
 
   // Refs for values needed in paymentmethod event handler (avoids stale closures)
   const clientSecretRef = useRef(clientSecret)
