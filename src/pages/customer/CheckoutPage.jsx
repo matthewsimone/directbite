@@ -124,19 +124,18 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
   // Wallet detection via PaymentRequest API — pre-seed from sessionStorage cache
   const [paymentRequest, setPaymentRequest] = useState(null)
+  const cachedWallet = useRef(() => {
+    try { return JSON.parse(sessionStorage.getItem('walletAvailability') || 'null')?.result } catch { return null }
+  })
+  const hasCachedWallet = cachedWallet.current?.applePay || cachedWallet.current?.googlePay
+  const [walletChecked, setWalletChecked] = useState(hasCachedWallet) // skip loading if cache exists
   const [walletType, setWalletType] = useState(() => {
-    try {
-      const cached = JSON.parse(sessionStorage.getItem('walletAvailability') || 'null')
-      if (cached?.result?.applePay) return 'applePay'
-      if (cached?.result?.googlePay) return 'googlePay'
-    } catch {}
+    if (cachedWallet.current?.applePay) return 'applePay'
+    if (cachedWallet.current?.googlePay) return 'googlePay'
     return null
   })
   const [payMethod, setPayMethod] = useState(() => {
-    try {
-      const cached = JSON.parse(sessionStorage.getItem('walletAvailability') || 'null')
-      if (cached?.result?.applePay || cached?.result?.googlePay) return 'wallet'
-    } catch {}
+    if (cachedWallet.current?.applePay || cachedWallet.current?.googlePay) return 'wallet'
     return 'card'
   })
 
@@ -178,8 +177,10 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           setPayMethod('wallet')
         }
       }
+      setWalletChecked(true)
     }).catch(err => {
       console.error('[PaymentRequest] canMakePayment error:', err)
+      setWalletChecked(true)
     })
 
     // Handle wallet payment confirmation
@@ -297,6 +298,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   }
 
   const walletLabel = walletType === 'applePay' ? 'Apple Pay' : 'Google Pay'
+
+  if (!walletChecked) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <div className="w-6 h-6 border-2 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
+        <span className="ml-3 text-sm text-gray-500">Loading payment options...</span>
+      </div>
+    )
+  }
 
   return (
     <form onSubmit={handleSubmit}>
