@@ -157,25 +157,27 @@ export default function PromotionsTab({ restaurant }) {
           </div>
         </div>
 
-        {/* Date range inputs — stacked on mobile, side by side on wider screens */}
+        {/* Date range inputs — side by side */}
         {durationType === 'date_range' && (
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
+          <div className="flex gap-3">
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="w-full h-12 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                className="w-full h-11 px-1.5 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                style={{ minWidth: 0 }}
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
+            <div className="flex-1 min-w-0">
+              <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="w-full h-12 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                className="w-full h-11 px-1.5 border border-gray-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                style={{ minWidth: 0 }}
               />
             </div>
           </div>
