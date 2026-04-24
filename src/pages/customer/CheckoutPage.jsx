@@ -768,7 +768,7 @@ export default function CheckoutPage() {
           </h3>
           <div className="flex gap-3">
             <button
-              onClick={() => setOrderType('pickup')}
+              onClick={() => { setOrderType('pickup'); setSpecialInstructions('') }}
               className={`flex-1 py-4 rounded-xl font-semibold text-base transition-colors ${
                 orderType === 'pickup'
                   ? 'bg-[#16A34A] text-white'
@@ -848,6 +848,22 @@ export default function CheckoutPage() {
             {restaurant.delivery_note && (
               <p className="mt-2 text-sm text-gray-500">{restaurant.delivery_note}</p>
             )}
+            <textarea
+              value={specialInstructions}
+              onChange={e => {
+                setSpecialInstructions(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px'
+              }}
+              placeholder="Delivery Instructions (optional)"
+              rows={1}
+              maxLength={200}
+              className="mt-3 w-full px-4 py-3 bg-gray-100 rounded-xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              style={{ overflow: 'auto' }}
+            />
+            {specialInstructions.length > 0 && (
+              <p className="text-xs text-gray-400 text-right mt-1">{specialInstructions.length}/200</p>
+            )}
           </div>
         )}
 
@@ -861,26 +877,6 @@ export default function CheckoutPage() {
           >
             <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${includeUtensils ? 'left-5.5' : 'left-0.5'}`} />
           </button>
-        </div>
-
-        {/* Special Instructions */}
-        <div>
-          <textarea
-            value={specialInstructions}
-            onChange={e => {
-              setSpecialInstructions(e.target.value)
-              e.target.style.height = 'auto'
-              e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px'
-            }}
-            placeholder={orderType === 'delivery' ? 'Delivery Instructions (optional)' : 'Pickup Instructions (optional)'}
-            rows={1}
-            maxLength={200}
-            className="w-full px-4 py-3 bg-gray-100 rounded-xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-            style={{ overflow: 'auto' }}
-          />
-          {specialInstructions.length > 0 && (
-            <p className="text-xs text-gray-400 text-right mt-1">{specialInstructions.length}/200</p>
-          )}
         </div>
 
         <TipSelector subtotal={discountedSubtotal} onTipChange={setTip} />
