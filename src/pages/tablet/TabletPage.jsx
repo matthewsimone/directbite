@@ -22,6 +22,15 @@ export default function TabletPage() {
   const { session, restaurant, setRestaurant, loading, error, login, logout } = useTabletAuth(slug)
   const [activeTab, setActiveTab] = useState('orders')
   const [hours, setHours] = useState([])
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+
+  useEffect(() => {
+    const goOnline = () => setIsOnline(true)
+    const goOffline = () => setIsOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline) }
+  }, [])
 
   // Dynamic PWA manifest via Vercel serverless function — scoped to this restaurant's slug
   useEffect(() => {
@@ -90,6 +99,13 @@ export default function TabletPage() {
           Sign Out
         </button>
       </header>
+
+      {/* Offline banner */}
+      {!isOnline && (
+        <div className="bg-red-600 text-white text-sm font-semibold text-center py-2 shrink-0">
+          No internet connection — check network status
+        </div>
+      )}
 
       {/* Tabs */}
       <nav className="bg-white border-b border-gray-200 flex shrink-0">
