@@ -4,7 +4,6 @@ import { loadStripe } from '@stripe/stripe-js'
 import {
   Elements,
   PaymentElement,
-  LinkAuthenticationElement,
   PaymentRequestButtonElement,
   useStripe,
   useElements,
@@ -359,18 +358,10 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
         </label>
       </div>
 
-      {/* Card form with Link-first email flow */}
+      {/* Card form — contact fields + card + native Link signup */}
       {payMethod === 'card' && (
         <div className="space-y-4">
-          {/* 1. Email via Link Authentication Element */}
-          <LinkAuthenticationElement
-            onChange={(e) => {
-              if (e.value?.email) customerInfo.setEmail(e.value.email)
-            }}
-            options={{ defaultValues: { email: customerInfo.email } }}
-          />
-
-          {/* 2. Name and Phone */}
+          {/* Contact fields */}
           <input
             type="text"
             value={customerInfo.name}
@@ -385,14 +376,26 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             placeholder="Phone Number"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
+          <input
+            type="email"
+            value={customerInfo.email}
+            onChange={e => customerInfo.setEmail(e.target.value)}
+            placeholder="Email Address"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
 
-          {/* 3. Card details — card only, no other payment methods */}
+          {/* Card details with native Link signup — Stripe renders Link opt-in inline */}
           <PaymentElement
             options={{
               wallets: { applePay: 'never', googlePay: 'never' },
               paymentMethodOrder: ['card'],
+              defaultValues: {
+                billingDetails: {
+                  email: customerInfo.email || undefined,
+                },
+              },
               fields: {
-                billingDetails: { name: 'never', email: 'auto', phone: 'never' },
+                billingDetails: { name: 'never', email: 'never', phone: 'never' },
               },
             }}
           />
