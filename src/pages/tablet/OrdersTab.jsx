@@ -106,7 +106,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     if (newStatus === 'cancelled') {
       // Trigger Stripe refund via edge function
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+        if (refreshError || !session) {
+          alert('Session expired. Please log in again.')
+          setUpdating(false)
+          setShowCancelConfirm(false)
+          return
+        }
         const res = await fetch(
           `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-refund`,
           {
