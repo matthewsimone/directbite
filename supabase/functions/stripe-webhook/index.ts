@@ -41,6 +41,36 @@ async function sendConfirmationEmail(orderId: string) {
   }
 }
 
+// ---------- Send SMS order alert ----------
+async function sendOrderSms(orderId: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-order-sms`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+
+    if (!response.ok) {
+      console.error("SMS alert failed:", await response.text());
+    } else {
+      const result = await response.json();
+      if (result.skipped) {
+        console.log("SMS alerts not enabled, skipped");
+      } else if (result.success) {
+        console.log(`SMS alert sent for order ${orderId}`);
+      }
+    }
+  } catch (err: any) {
+    console.error("SMS alert error:", err.message);
+  }
+}
+
 // ---------- Write order to database ----------
 async function writeOrder(orderData: any, paymentIntentId: string, chargeId: string | null) {
   const {
@@ -244,6 +274,9 @@ serve(async (req: Request) => {
 
         // Send confirmation email
         await sendConfirmationEmail(order.id);
+
+        // Send SMS alert to restaurant (if enabled)
+        await sendOrderSms(order.id);
 
         break;
       }

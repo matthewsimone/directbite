@@ -58,6 +58,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [savedTax, setSavedTax] = useState(false)
   const [savingPrinter, setSavingPrinter] = useState(false)
   const [savedPrinter, setSavedPrinter] = useState(false)
+  const [savingSms, setSavingSms] = useState(false)
+  const [savedSms, setSavedSms] = useState(false)
 
   // Local state for editable fields
   const [pickupMinutes, setPickupMinutes] = useState(restaurant?.estimated_pickup_minutes || 30)
@@ -69,6 +71,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum || 0)
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
   const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
+  const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
+  const [smsPhone, setSmsPhone] = useState(restaurant?.sms_phone || '')
 
   useEffect(() => {
     fetchHours()
@@ -406,6 +410,39 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
             />
           </FieldRow>
+        </Section>
+
+        {/* SMS Alerts */}
+        <Section title="SMS Order Alerts" onSave={async () => {
+          setSavingSms(true); setSavedSms(false)
+          // Normalize phone to E.164
+          const digits = smsPhone.replace(/\D/g, '')
+          const normalized = digits.length === 10 ? `+1${digits}` : digits.length === 11 && digits[0] === '1' ? `+${digits}` : smsPhone
+          const { data } = await supabase.from('restaurants').update({
+            sms_enabled: smsEnabled,
+            sms_phone: smsEnabled ? normalized : null,
+          }).eq('id', restaurant.id).select().single()
+          if (data) setRestaurant(data)
+          setSavingSms(false); setSavedSms(true)
+          setTimeout(() => setSavedSms(false), 2000)
+        }} saving={savingSms} saved={savedSms}>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Enable SMS Alerts</span>
+            <Toggle value={smsEnabled} onChange={setSmsEnabled} />
+          </div>
+          {smsEnabled && (
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-1 block">Phone Number</label>
+              <input
+                type="tel"
+                value={smsPhone}
+                onChange={e => setSmsPhone(e.target.value)}
+                placeholder="(201) 555-1234"
+                className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              />
+              <p className="text-xs text-gray-400 mt-1">US number. You'll receive a text for every new order.</p>
+            </div>
+          )}
         </Section>
       </div>
     </div>
