@@ -68,7 +68,7 @@ serve(async (req: Request) => {
       tablet_email,
       tablet_password,
       stripe_account_id,
-      printnode_printer_id,
+      printer_ip,
     } = await req.json();
 
     if (!name || !slug || !tablet_email || !tablet_password) {
@@ -130,7 +130,7 @@ serve(async (req: Request) => {
         tax_rate: tax_rate || 0,
         tablet_email,
         stripe_account_id: stripe_account_id || null,
-        printnode_printer_id: printnode_printer_id || null,
+        printer_ip: printer_ip || null,
       })
       .select()
       .single();
