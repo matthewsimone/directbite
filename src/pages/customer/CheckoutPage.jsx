@@ -392,7 +392,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               wallets: { applePay: 'never', googlePay: 'never' },
               paymentMethodOrder: ['card'],
               fields: {
-                billingDetails: { name: 'never', email: 'never', phone: 'never' },
+                billingDetails: { name: 'never', email: 'auto', phone: 'never' },
               },
             }}
           />
