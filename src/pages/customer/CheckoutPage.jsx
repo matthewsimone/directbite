@@ -389,12 +389,6 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           {/* 4. Card details — accordion open by default, card only, Link inline at bottom */}
           <PaymentElement
             options={{
-              layout: {
-                type: 'accordion',
-                defaultCollapsed: false,
-                radios: 'never',
-                spacedAccordionItems: false,
-              },
               wallets: { applePay: 'never', googlePay: 'never' },
               paymentMethodOrder: ['card'],
               defaultValues: {
