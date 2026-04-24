@@ -118,17 +118,14 @@ function TipSelector({ subtotal, onTipChange }) {
 }
 
 function friendlyPaymentError(error) {
-  console.error('[Payment] Stripe error:', error.code, error.message, error.decline_code)
-  switch (error.code) {
-    case 'card_declined':
-      return 'Your card was declined. Please try a different card or contact your bank.'
-    case 'expired_card':
-      return 'Your card has expired. Please use a different card.'
-    case 'processing_error':
-      return 'There was a problem processing your card. Please try again.'
-    default:
-      return 'We couldn\'t process your card. Please check your card number, expiration date, security code, and ZIP code, then try again.'
+  console.error('[Payment] Stripe error:', { type: error.type, code: error.code, decline_code: error.decline_code, message: error.message })
+  if (error.type === 'card_error' || error.type === 'validation_error') {
+    if (error.code === 'card_declined') return 'Your card was declined. Please try a different card or contact your bank.'
+    if (error.code === 'expired_card') return 'Your card has expired. Please use a different card.'
+    if (error.code === 'processing_error') return 'There was a problem processing your card. Please try again.'
+    return 'We couldn\'t process your card. Please check your card number, expiration date, security code, and ZIP code, then try again.'
   }
+  return 'Something went wrong. Please try again.'
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
