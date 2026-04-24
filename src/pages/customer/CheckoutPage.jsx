@@ -392,7 +392,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               layout: {
                 type: 'accordion',
                 defaultCollapsed: false,
-                radios: false,
+                radios: 'never',
                 spacedAccordionItems: false,
               },
               wallets: { applePay: 'never', googlePay: 'never' },
