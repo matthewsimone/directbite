@@ -22,33 +22,13 @@ export default function TabletPage() {
   const [activeTab, setActiveTab] = useState('orders')
   const [hours, setHours] = useState([])
 
-  // Dynamic PWA manifest scoped to this restaurant's slug
+  // Dynamic PWA manifest via Vercel serverless function — scoped to this restaurant's slug
   useEffect(() => {
-    const manifest = {
-      name: `DirectBite - ${restaurant?.name || slug}`,
-      short_name: restaurant?.name || 'DirectBite',
-      display: 'standalone',
-      start_url: `/${slug}/tablet`,
-      scope: `/${slug}/tablet`,
-      theme_color: '#111111',
-      background_color: '#ffffff',
-      icons: [
-        { src: '/favicon.png', sizes: '192x192', type: 'image/png' },
-        { src: '/favicon.png', sizes: '512x512', type: 'image/png' },
-      ],
-    }
-    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' })
-    const blobUrl = URL.createObjectURL(blob)
-
     const link = document.querySelector('link[rel="manifest"]')
     const originalHref = link?.getAttribute('href')
-    if (link) link.setAttribute('href', blobUrl)
-
-    return () => {
-      URL.revokeObjectURL(blobUrl)
-      if (link && originalHref) link.setAttribute('href', originalHref)
-    }
-  }, [slug, restaurant?.name])
+    if (link) link.setAttribute('href', `/api/tablet-manifest?slug=${slug}`)
+    return () => { if (link && originalHref) link.setAttribute('href', originalHref) }
+  }, [slug])
 
   // Fetch hours for open-hours polling check
   useEffect(() => {
