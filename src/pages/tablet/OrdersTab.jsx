@@ -1,26 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { printOrder } from '../../utils/epsonPrint'
-
-// ── Web Audio chime generator ──
-function createChime(audioCtx) {
-  const now = audioCtx.currentTime
-  const frequencies = [880, 1108.73, 1318.51] // A5, C#6, E6 (A major chord)
-
-  frequencies.forEach((freq, i) => {
-    const osc = audioCtx.createOscillator()
-    const gain = audioCtx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(freq, now)
-    gain.gain.setValueAtTime(0, now + i * 0.08)
-    gain.gain.linearRampToValueAtTime(0.3, now + i * 0.08 + 0.05)
-    gain.gain.linearRampToValueAtTime(0, now + i * 0.08 + 0.6)
-    osc.connect(gain)
-    gain.connect(audioCtx.destination)
-    osc.start(now + i * 0.08)
-    osc.stop(now + i * 0.08 + 0.7)
-  })
-}
 
 // ── Format helpers ──
 function formatTime(dateStr) {
@@ -534,115 +514,16 @@ function Row({ label, value, className = '' }) {
 }
 
 // ── Main OrdersTab ──
-export default function OrdersTab({ restaurant, setRestaurant, hours }) {
+// Polling, chime, and auto-print are handled by useOrderPolling in TabletPage
+export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, stopChime, fetchOrders }) {
   const [subTab, setSubTab] = useState('new')
-  const [orders, setOrders] = useState([])
   const [selectedOrder, setSelectedOrder] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const audioCtxRef = useRef(null)
-  const chimeIntervalRef = useRef(null)
-  const knownOrderIds = useRef(new Set())
-  const hasNewAlert = useRef(false)
 
   const subTabs = [
     { key: 'new', label: 'New' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'complete', label: 'Complete' },
   ]
-
-  const fetchOrders = useCallback(async () => {
-    if (!restaurant) return
-
-    const { data } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('restaurant_id', restaurant.id)
-      .in('status', ['new', 'in_progress', 'complete', 'cancelled'])
-      .order('created_at', { ascending: false })
-
-    if (data) {
-      // Detect new orders
-      const newOrderIds = new Set(data.map(o => o.id))
-      const freshNew = data.filter(
-        o => o.status === 'new' && !knownOrderIds.current.has(o.id)
-      )
-
-      if (freshNew.length > 0 && knownOrderIds.current.size > 0) {
-        startChime()
-
-        // Auto-print new orders
-        if (restaurant.printer_ip) {
-          for (const newOrder of freshNew) {
-            const { data: orderItems } = await supabase
-              .from('order_items')
-              .select('*, order_item_toppings(*)')
-              .eq('order_id', newOrder.id)
-              .order('created_at')
-
-            printOrder(restaurant.printer_ip, { ...newOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
-              .then(async (result) => {
-                const { error: logErr } = await supabase.from('print_logs').insert({
-                  order_id: newOrder.id,
-                  order_number: newOrder.order_number,
-                  restaurant_id: restaurant.id,
-                  attempt_number: 1,
-                  status: result.success ? 'success' : 'failed',
-                  error_message: result.success ? null : result.message,
-                })
-                if (logErr) console.error('[AutoPrint] Failed to insert print log:', logErr)
-
-                const { error: statusErr } = await supabase.from('orders').update({
-                  print_status: result.success ? 'printed' : 'failed',
-                  print_attempts: 1,
-                }).eq('id', newOrder.id)
-                if (statusErr) console.error('[AutoPrint] Failed to update print_status:', statusErr)
-              })
-          }
-        }
-      }
-
-      knownOrderIds.current = newOrderIds
-      setOrders(data)
-      setLoading(false)
-    }
-  }, [restaurant])
-
-  function isRestaurantOpen() {
-    if (!hours || hours.length === 0) return true // default to polling if no hours set
-    const now = new Date()
-    const dayOfWeek = now.getDay()
-    const currentTime = now.toLocaleTimeString('en-US', {
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-    const todayHours = hours.find(h => h.day_of_week === dayOfWeek)
-    if (!todayHours?.is_open || !todayHours.open_time || !todayHours.close_time) return false
-    return currentTime >= todayHours.open_time && currentTime <= todayHours.close_time
-  }
-
-  function startChime() {
-    if (hasNewAlert.current) return
-    hasNewAlert.current = true
-
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
-    }
-
-    createChime(audioCtxRef.current)
-    chimeIntervalRef.current = setInterval(() => {
-      if (audioCtxRef.current) createChime(audioCtxRef.current)
-    }, 3000)
-  }
-
-  function stopChime() {
-    hasNewAlert.current = false
-    if (chimeIntervalRef.current) {
-      clearInterval(chimeIntervalRef.current)
-      chimeIntervalRef.current = null
-    }
-  }
 
   function handleOrderTap(order) {
     if (order.status === 'new') {
@@ -655,22 +536,6 @@ export default function OrdersTab({ restaurant, setRestaurant, hours }) {
     setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o))
     setSelectedOrder(updatedOrder)
   }
-
-  // Initial fetch + polling
-  useEffect(() => {
-    fetchOrders()
-
-    const interval = setInterval(() => {
-      if (isRestaurantOpen()) {
-        fetchOrders()
-      }
-    }, 10000)
-
-    return () => {
-      clearInterval(interval)
-      stopChime()
-    }
-  }, [fetchOrders])
 
   const filteredOrders = orders.filter(o => {
     if (subTab === 'complete') return o.status === 'complete' || o.status === 'cancelled'

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTabletAuth } from '../../hooks/useTabletAuth'
+import { useOrderPolling } from '../../hooks/useOrderPolling'
 import { supabase } from '../../lib/supabase'
 import TabletLogin from './TabletLogin'
 import OrdersTab from './OrdersTab'
@@ -46,6 +47,9 @@ export default function TabletPage() {
 
     fetchHours()
   }, [restaurant?.id])
+
+  // Order polling, chime, auto-print — runs regardless of active tab
+  const { orders, setOrders, loading: ordersLoading, stopChime, fetchOrders } = useOrderPolling(restaurant, hours)
 
   if (loading) {
     return (
@@ -111,7 +115,7 @@ export default function TabletPage() {
 
       {/* Tab content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'orders' && <OrdersTab restaurant={restaurant} setRestaurant={setRestaurant} hours={hours} />}
+        {activeTab === 'orders' && <OrdersTab restaurant={restaurant} setRestaurant={setRestaurant} orders={orders} setOrders={setOrders} ordersLoading={ordersLoading} stopChime={stopChime} fetchOrders={fetchOrders} />}
         {activeTab === 'menu' && <MenuTab restaurant={restaurant} />}
         {activeTab === 'promotions' && <PromotionsTab restaurant={restaurant} />}
         {activeTab === 'settings' && <SettingsTab restaurant={restaurant} setRestaurant={setRestaurant} />}
