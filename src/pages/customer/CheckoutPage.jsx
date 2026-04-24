@@ -462,6 +462,7 @@ export default function CheckoutPage() {
 
   const [orderType, setOrderType] = useState('pickup')
   const [includeUtensils, setIncludeUtensils] = useState(false)
+  const [specialInstructions, setSpecialInstructions] = useState('')
   const [tip, setTip] = useState(0)
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -529,6 +530,7 @@ export default function CheckoutPage() {
     service_fee: serviceFee,
     total_amount: total,
     include_utensils: includeUtensils,
+    special_instructions: specialInstructions.trim() || null,
     items: items.map(item => ({
       menu_item_id: item.menuItemId,
       item_size_id: item.itemSizeId || null,
@@ -545,7 +547,7 @@ export default function CheckoutPage() {
         placement_type: t.placementType || 'pizza',
       })),
     })),
-  }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, subtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, items])
+  }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, subtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items])
 
   // Fetch valid delivery zip codes
   useEffect(() => {
@@ -662,7 +664,7 @@ export default function CheckoutPage() {
     }, 800)
 
     return () => clearTimeout(updateTimer.current)
-  }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, buildOrderData])
+  }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, includeUtensils, specialInstructions, buildOrderData])
 
   function handlePaymentSuccess(piId) {
     // Navigate FIRST, then clear cart — otherwise the empty-cart guard redirects to menu
@@ -847,6 +849,26 @@ export default function CheckoutPage() {
           >
             <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${includeUtensils ? 'left-5.5' : 'left-0.5'}`} />
           </button>
+        </div>
+
+        {/* Special Instructions */}
+        <div>
+          <textarea
+            value={specialInstructions}
+            onChange={e => {
+              setSpecialInstructions(e.target.value)
+              e.target.style.height = 'auto'
+              e.target.style.height = Math.min(e.target.scrollHeight, 96) + 'px'
+            }}
+            placeholder={orderType === 'delivery' ? 'Delivery Instructions (optional)' : 'Pickup Instructions (optional)'}
+            rows={1}
+            maxLength={200}
+            className="w-full px-4 py-3 bg-gray-100 rounded-xl text-base resize-none focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+            style={{ overflow: 'auto' }}
+          />
+          {specialInstructions.length > 0 && (
+            <p className="text-xs text-gray-400 text-right mt-1">{specialInstructions.length}/200</p>
+          )}
         </div>
 
         <TipSelector subtotal={discountedSubtotal} onTipChange={setTip} />

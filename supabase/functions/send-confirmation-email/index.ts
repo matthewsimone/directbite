@@ -129,6 +129,12 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
       </div>
       ` : ""}
 
+      ${order.special_instructions ? `
+      <div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px 16px;margin-bottom:24px;">
+        <p style="margin:0;color:#92400e;font-size:14px;"><strong>Instructions:</strong> ${order.special_instructions}</p>
+      </div>
+      ` : ""}
+
       <!-- Items -->
       <h3 style="margin:0 0 12px 0;font-size:16px;color:#111827;">Your Order</h3>
       <table style="width:100%;border-collapse:collapse;">

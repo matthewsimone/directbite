@@ -15,6 +15,12 @@ const corsHeaders = {
 };
 
 serve(async (req: Request) => {
+  console.log('=== admin-approve-adjustment invoked ===');
+  console.log('Method:', req.method);
+  console.log('Has Authorization header:', !!req.headers.get('Authorization'));
+  console.log('Auth prefix:', req.headers.get('Authorization')?.substring(0, 20) + '...');
+  console.log('Content-Type:', req.headers.get('Content-Type'));
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -23,6 +29,7 @@ serve(async (req: Request) => {
     // Verify admin
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
+      console.log('REJECTED: No Authorization header');
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -30,21 +37,30 @@ serve(async (req: Request) => {
     }
 
     const token = authHeader.replace("Bearer ", "");
+    console.log('Token length:', token?.length);
+    console.log('Token first 20:', token?.substring(0, 20));
+
     const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+    console.log('getUser result:', { hasUser: !!user, hasError: !!authErr, errorMessage: authErr?.message });
+
     if (authErr || !user) {
+      console.log('REJECTED: getUser failed');
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { data: adminUser } = await supabase
+    const { data: adminUser, error: adminError } = await supabase
       .from("admin_users")
       .select("email")
       .eq("email", user.email)
       .single();
 
+    console.log('admin lookup:', { email: user?.email, found: !!adminUser, error: adminError?.message });
+
     if (!adminUser) {
+      console.log('REJECTED: Not in admin_users');
       return new Response(JSON.stringify({ error: "Access denied" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

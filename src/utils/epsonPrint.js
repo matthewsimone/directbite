@@ -97,6 +97,18 @@ export async function printOrder(printerIp, order, rest) {
             }
             printer.addText('\n')
 
+            // ── SPECIAL INSTRUCTIONS ──
+            if (order.special_instructions) {
+              printer.addTextAlign(L)
+              printer.addText(sep + '\n')
+              bold(true)
+              printer.addText('INSTRUCTIONS:\n')
+              bold(false)
+              printer.addText(order.special_instructions + '\n')
+              printer.addText(sep + '\n')
+              printer.addText('\n')
+            }
+
             // ── 4. COLUMN HEADERS ──
             printer.addTextAlign(L)
             printer.addText(pad('Qty  Item(s)', 'Price') + '\n')

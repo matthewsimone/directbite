@@ -255,6 +255,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           )}
         </div>
 
+        {/* Special Instructions */}
+        {order.special_instructions && (
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
+            <h3 className="text-sm font-semibold text-amber-800 uppercase tracking-wide mb-1">Instructions</h3>
+            <p className="text-base text-amber-900 font-medium">{order.special_instructions}</p>
+          </div>
+        )}
+
         {/* Order items */}
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Items</h3>
