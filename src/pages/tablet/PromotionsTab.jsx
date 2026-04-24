@@ -159,23 +159,23 @@ export default function PromotionsTab({ restaurant }) {
 
         {/* Date range inputs */}
         {durationType === 'date_range' && (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          <div className="grid grid-cols-2 gap-3" style={{ maxWidth: '100%' }}>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="w-full h-12 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                className="w-full h-12 px-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-sm font-medium text-gray-700 mb-1">To</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
-                className="w-full h-12 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                className="w-full h-12 px-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
               />
             </div>
           </div>

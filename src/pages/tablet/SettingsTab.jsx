@@ -36,7 +36,8 @@ function Toggle({ value, onChange }) {
   return (
     <button
       onClick={() => onChange(!value)}
-      className={`relative w-14 h-8 rounded-full transition-colors ${value ? 'bg-[#16A34A]' : 'bg-gray-300'}`}
+      className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${value ? 'bg-[#16A34A]' : 'bg-gray-300'}`}
+      style={{ minWidth: 56 }}
     >
       <span className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${value ? 'left-7' : 'left-1'}`} />
     </button>
@@ -255,7 +256,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             <div className="space-y-3">
               {hours.map(h => (
                 <div key={h.day_of_week} className="flex items-center gap-3">
-                  <span className="w-20 text-sm font-medium">{DAY_NAMES[h.day_of_week]}</span>
+                  <span className="w-24 text-sm font-medium shrink-0">{DAY_NAMES[h.day_of_week]}</span>
                   <Toggle
                     value={h.is_open}
                     onChange={val => updateHour(h.day_of_week, 'is_open', val)}
