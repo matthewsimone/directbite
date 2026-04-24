@@ -117,6 +117,20 @@ function TipSelector({ subtotal, onTipChange }) {
   )
 }
 
+function friendlyPaymentError(error) {
+  console.error('[Payment] Stripe error:', error.code, error.message, error.decline_code)
+  switch (error.code) {
+    case 'card_declined':
+      return 'Your card was declined. Please try a different card or contact your bank.'
+    case 'expired_card':
+      return 'Your card has expired. Please use a different card.'
+    case 'processing_error':
+      return 'There was a problem processing your card. Please try again.'
+    default:
+      return 'We couldn\'t process your card. Please check your card number, expiration date, security code, and ZIP code, then try again.'
+  }
+}
+
 // ---------- Payment Form (inside Stripe Elements) ----------
 function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer }) {
   const stripe = useStripe()
@@ -225,13 +239,13 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       if (confirmError) {
         ev.complete('fail')
         submittedRef.current = false
-        toast.error(confirmError.message || 'Payment failed')
+        toast.error(friendlyPaymentError(confirmError))
       } else {
         ev.complete('success')
         if (paymentIntent.status === 'requires_action') {
           const { error } = await stripe.confirmCardPayment(secret)
           if (error) {
-            toast.error(error.message || 'Payment failed')
+            toast.error(friendlyPaymentError(error))
           } else {
             onSuccessRef.current(paymentIntent.id)
           }
@@ -294,7 +308,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     })
 
     if (error) {
-      toast.error(error.message || 'Payment failed')
+      toast.error(friendlyPaymentError(error))
       setLoading(false)
       submittedRef.current = false
       return
