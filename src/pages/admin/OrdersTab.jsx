@@ -11,21 +11,38 @@ function AdjustmentsPanel({ adjustments, restaurants, onAction }) {
 
   async function handleAction(adj, action) {
     setProcessing(adj.id)
-    const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-approve-adjustment`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ adjustment_id: adj.id, action }),
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        alert('Session expired. Please log in again.')
+        return
       }
-    )
-    const result = await res.json()
-    if (result.success) onAction(adj.id, action === 'approve' ? 'approved' : 'denied')
-    setProcessing(null)
+
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-approve-adjustment`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ adjustment_id: adj.id, action }),
+        }
+      )
+      const result = await res.json()
+      console.log('[Adjustment]', action, adj.id, result)
+
+      if (result.success) {
+        onAction(adj.id, action === 'approve' ? 'approved' : 'denied')
+      } else {
+        alert(`${action === 'approve' ? 'Approval' : 'Denial'} failed: ${result.error || 'Unknown error'}`)
+      }
+    } catch (err) {
+      console.error('[Adjustment] Error:', err)
+      alert(`Request failed: ${err.message}`)
+    } finally {
+      setProcessing(null)
+    }
   }
 
   if (adjustments.length === 0) return null
