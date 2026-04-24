@@ -386,16 +386,11 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
 
-          {/* 4. Card details — accordion open by default, card only, Link inline at bottom */}
+          {/* 4. Card details — card only */}
           <PaymentElement
             options={{
               wallets: { applePay: 'never', googlePay: 'never' },
               paymentMethodOrder: ['card'],
-              defaultValues: {
-                billingDetails: {
-                  email: customerInfo.email || undefined,
-                },
-              },
               fields: {
                 billingDetails: { name: 'never', email: 'never', phone: 'never' },
               },

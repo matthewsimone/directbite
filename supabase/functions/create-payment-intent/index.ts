@@ -110,7 +110,7 @@ serve(async (req: Request) => {
       {
         amount, // already in cents from frontend
         currency: "usd",
-        payment_method_types: ["card", "link"],
+        payment_method_types: ["card"],
         application_fee_amount: 150, // $1.50 DirectBite fee
         metadata: {
           restaurant_id,

@@ -172,7 +172,6 @@ serve(async (req: Request) => {
             capabilities: {
               card_payments: { requested: true },
               transfers: { requested: true },
-              link_payments: { requested: true },
             },
           }
         );
