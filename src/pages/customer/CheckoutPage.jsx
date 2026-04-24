@@ -446,6 +446,16 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               )}
             </button>
           )}
+          <p className="text-xs text-gray-500 text-center mt-4">
+            By placing your order, you agree to the{' '}
+            <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">
+              Terms of Service
+            </a>{' '}
+            and{' '}
+            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline">
+              Privacy Policy
+            </a>
+          </p>
         </div>
       </div>
     </form>

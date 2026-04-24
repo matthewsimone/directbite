@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import DirectBiteLogo from '../../components/DirectBiteLogo'
 
 export default function TabletLogin({ slug, onLogin, error: authError, termsAccepted }) {
   const [email, setEmail] = useState('')
@@ -20,7 +21,7 @@ export default function TabletLogin({ slug, onLogin, error: authError, termsAcce
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">DirectBite</h1>
+          <div className="flex justify-center mb-2"><DirectBiteLogo color="dark" height={32} /></div>
           <p className="text-gray-500 mt-1">Tablet Login</p>
         </div>
 

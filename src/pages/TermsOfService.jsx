@@ -1,8 +1,10 @@
+import DirectBiteLogo from '../components/DirectBiteLogo'
+
 export default function TermsOfService() {
   return (
     <div className="min-h-screen bg-white">
       <header className="border-b border-gray-200 px-6 py-4">
-        <a href="/" className="text-lg font-bold text-gray-900">DirectBite</a>
+        <DirectBiteLogo color="dark" height={32} />
       </header>
       <div className="max-w-[720px] mx-auto px-6 py-12">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms of Service</h1>
