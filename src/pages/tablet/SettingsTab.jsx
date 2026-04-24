@@ -255,26 +255,26 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
           ) : (
             <div className="space-y-3">
               {hours.map(h => (
-                <div key={h.day_of_week} className="flex items-center gap-3">
-                  <span className="w-24 text-sm font-medium shrink-0">{DAY_NAMES[h.day_of_week]}</span>
+                <div key={h.day_of_week} className="flex items-center gap-2">
+                  <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[h.day_of_week].slice(0, 3)}</span>
                   <Toggle
                     value={h.is_open}
                     onChange={val => updateHour(h.day_of_week, 'is_open', val)}
                   />
                   {h.is_open ? (
-                    <div className="flex items-center gap-1 flex-1">
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
                       <input
                         type="time"
                         value={h.open_time || '09:00'}
                         onChange={e => updateHour(h.day_of_week, 'open_time', e.target.value)}
-                        className="h-10 px-2 border border-gray-300 rounded-lg text-sm flex-1"
+                        className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
                       />
-                      <span className="text-gray-400 text-xs">to</span>
+                      <span className="text-gray-400 text-xs shrink-0">to</span>
                       <input
                         type="time"
                         value={h.close_time || '21:00'}
                         onChange={e => updateHour(h.day_of_week, 'close_time', e.target.value)}
-                        className="h-10 px-2 border border-gray-300 rounded-lg text-sm flex-1"
+                        className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
                       />
                     </div>
                   ) : (

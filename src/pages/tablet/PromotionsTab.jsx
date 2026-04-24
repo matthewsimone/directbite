@@ -159,7 +159,7 @@ export default function PromotionsTab({ restaurant }) {
 
         {/* Date range inputs */}
         {durationType === 'date_range' && (
-          <div className="grid grid-cols-2 gap-3" style={{ maxWidth: '100%' }}>
+          <div className="grid grid-cols-2 gap-3 overflow-hidden">
             <div className="min-w-0">
               <label className="block text-sm font-medium text-gray-700 mb-1">From</label>
               <input
