@@ -116,7 +116,7 @@ function TipSelector({ subtotal, onTipChange }) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -130,8 +130,12 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   // Refs for values needed in paymentmethod event handler (avoids stale closures)
   const clientSecretRef = useRef(clientSecret)
   const onSuccessRef = useRef(onSuccess)
+  const onWalletCustomerRef = useRef(onWalletCustomer)
+  const paymentIntentIdRef = useRef(paymentIntentId)
   useEffect(() => { clientSecretRef.current = clientSecret }, [clientSecret])
   useEffect(() => { onSuccessRef.current = onSuccess }, [onSuccess])
+  useEffect(() => { onWalletCustomerRef.current = onWalletCustomer }, [onWalletCustomer])
+  useEffect(() => { paymentIntentIdRef.current = paymentIntentId }, [paymentIntentId])
 
   // Create PaymentRequest ONCE when stripe is ready
   useEffect(() => {
@@ -176,6 +180,24 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
         submittedRef.current = false
         toast.error('Payment not ready. Please try again.')
         return
+      }
+
+      // Extract customer data from wallet (Apple Pay / Google Pay)
+      const walletName = ev.payerName || ''
+      const walletEmail = ev.payerEmail || ''
+      const walletPhone = (ev.payerPhone || '').replace(/\D/g, '') // strip non-digits
+
+      // Update pending_orders with wallet customer data before confirming payment
+      if (onWalletCustomerRef.current) {
+        try {
+          await onWalletCustomerRef.current(walletName, walletEmail, walletPhone)
+        } catch (err) {
+          console.error('[Wallet] Failed to update customer data:', err)
+          ev.complete('fail')
+          submittedRef.current = false
+          toast.error('Failed to save customer info. Please try again.')
+          return
+        }
       }
 
       const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
@@ -916,6 +938,26 @@ export default function CheckoutPage() {
                 restaurant={restaurant}
                 disabled={zipInvalid || belowMinimum}
                 clientSecret={clientSecret}
+                paymentIntentId={paymentIntentId}
+                onWalletCustomer={async (name, email, phone) => {
+                  // Update customer state for confirmation page
+                  setCustomerName(name)
+                  setCustomerEmail(email)
+                  setCustomerPhone(phone)
+                  // Immediately update pending_orders via edge function
+                  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+                  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+                  await fetch(`${supabaseUrl}/functions/v1/create-payment-intent`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${supabaseAnonKey}` },
+                    body: JSON.stringify({
+                      restaurant_id: restaurant.id,
+                      amount: Math.round(total * 100),
+                      order_data: { ...buildOrderData(), customer_name: name, customer_email: email, customer_phone: phone },
+                      payment_intent_id: paymentIntentId,
+                    }),
+                  })
+                }}
               />
             </Elements>
           )}
