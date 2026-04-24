@@ -410,6 +410,17 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
         </div>
       )}
 
+      <p className="text-xs text-gray-500 text-center mt-4">
+        By placing your order, you agree to the{' '}
+        <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">
+          Terms of Service
+        </a>{' '}
+        and{' '}
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline">
+          Privacy Policy
+        </a>
+      </p>
+
       {/* Floating payment bar */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-5 py-4">
         <div className="max-w-lg mx-auto">
@@ -446,16 +457,6 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               )}
             </button>
           )}
-          <p className="text-xs text-gray-500 text-center mt-4">
-            By placing your order, you agree to the{' '}
-            <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">
-              Terms of Service
-            </a>{' '}
-            and{' '}
-            <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline">
-              Privacy Policy
-            </a>
-          </p>
         </div>
       </div>
     </form>
