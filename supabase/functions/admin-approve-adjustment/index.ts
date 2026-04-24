@@ -113,7 +113,7 @@ serve(async (req: Request) => {
     // Approve — process via Stripe
     const { data: order } = await supabase
       .from("orders")
-      .select("stripe_payment_intent_id, order_number, restaurant_id")
+      .select("stripe_payment_intent_id, order_number, restaurant_id, total_amount")
       .eq("id", adjustment.order_id)
       .single();
 
@@ -152,14 +152,19 @@ serve(async (req: Request) => {
         stripeRefundId = refund.id;
 
         // Track refund on the order
+        const totalCents = Math.round(Number(order.total_amount) * 100);
+        const isFullRefund = refund.amount >= totalCents;
+        const updateData: any = {
+          refund_status: isFullRefund ? "completed" : "partial",
+          refund_amount: refund.amount,
+          refunded_at: new Date().toISOString(),
+          refund_reason: adjustment.note || null,
+        };
+        if (isFullRefund) updateData.status = "cancelled";
+
         await supabase
           .from("orders")
-          .update({
-            refund_status: "partial",
-            refund_amount: refund.amount,
-            refunded_at: new Date().toISOString(),
-            refund_reason: adjustment.note || null,
-          })
+          .update(updateData)
           .eq("id", adjustment.order_id);
       } catch (stripeErr: any) {
         // Record failed refund

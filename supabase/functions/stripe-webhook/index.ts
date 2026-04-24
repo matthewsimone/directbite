@@ -297,14 +297,17 @@ serve(async (req: Request) => {
           const refundedCents = charge.amount_refunded;
           const isPartial = refundedCents < totalPaidCents;
 
+          const updateData: any = {
+            refund_status: isPartial ? "partial" : "completed",
+            refund_amount: refundedCents,
+            refunded_at: new Date().toISOString(),
+            refund_reason: "Refunded via Stripe dashboard",
+          };
+          if (!isPartial) updateData.status = "cancelled";
+
           await supabase
             .from("orders")
-            .update({
-              refund_status: isPartial ? "partial" : "completed",
-              refund_amount: refundedCents,
-              refunded_at: new Date().toISOString(),
-              refund_reason: "Refunded via Stripe dashboard",
-            })
+            .update(updateData)
             .eq("id", refundedOrder.id);
 
           console.log(`Order #${refundedOrder.order_number} refund tracked: ${refundedCents} cents (${isPartial ? "partial" : "full"})`);
