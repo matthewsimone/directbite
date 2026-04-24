@@ -16,40 +16,53 @@ function formatMoney(amount) {
 }
 
 // ── Order Card ──
-function OrderCard({ order, onTap }) {
+function OrderCard({ order, onTap, onRetryPrint }) {
   const isDelivery = order.order_type === 'delivery'
   const borderColor = isDelivery ? 'border-l-blue-500' : 'border-l-[#16A34A]'
   const isNew = order.status === 'new'
+  const showRetry = (order.print_status === 'failed' || order.print_status === 'pending') && onRetryPrint
 
   return (
-    <button
-      onClick={() => onTap(order)}
-      className={`w-full text-left bg-white rounded-xl border border-gray-200 border-l-4 ${borderColor} p-4 shadow-sm hover:shadow-md transition-shadow ${isNew ? 'animate-pulse-subtle' : ''}`}
-    >
-      <div className="flex items-center gap-2 mb-1">
-        {isDelivery ? (
-          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10l2-1 2 1 2-1 2 1zm6-6h-2l-2 6h-2m4-6V6a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
-          </svg>
-        ) : (
-          <svg className="w-5 h-5 text-[#16A34A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-          </svg>
-        )}
-        <span className="font-bold text-sm tracking-wide uppercase">
-          {isDelivery ? 'DELIVERY' : 'PICKUP'}
-        </span>
-      </div>
-      <div className="flex justify-between items-center text-gray-600 text-sm">
-        <div className="flex items-center gap-1.5">
-          <span className="font-medium text-gray-900">#{order.order_number}</span>
-          {order.print_status === 'printed' && <span className="text-green-500 text-xs">✓</span>}
-          {order.print_status === 'failed' && <span className="text-red-500 text-xs">⚠</span>}
-          {order.print_status === 'pending' && <span className="text-gray-400 text-xs">⏳</span>}
+    <div className={`w-full text-left bg-white rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isNew ? 'animate-pulse-subtle' : ''}`}>
+      <button
+        onClick={() => onTap(order)}
+        className="w-full text-left p-4"
+      >
+        <div className="flex items-center gap-2 mb-1">
+          {isDelivery ? (
+            <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10l2-1 2 1 2-1 2 1zm6-6h-2l-2 6h-2m4-6V6a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1h-2z" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5 text-[#16A34A]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+          )}
+          <span className="font-bold text-sm tracking-wide uppercase">
+            {isDelivery ? 'DELIVERY' : 'PICKUP'}
+          </span>
         </div>
-        <span>{formatTime(order.created_at)}</span>
-      </div>
-    </button>
+        <div className="flex justify-between items-center text-gray-600 text-sm">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium text-gray-900">#{order.order_number}</span>
+            {order.print_status === 'printed' && <span className="text-green-500 text-xs">✓</span>}
+            {order.print_status === 'failed' && <span className="text-red-500 text-xs">⚠</span>}
+            {order.print_status === 'pending' && <span className="text-gray-400 text-xs">⏳</span>}
+          </div>
+          <span>{formatTime(order.created_at)}</span>
+        </div>
+      </button>
+      {showRetry && (
+        <div className="px-4 pb-3">
+          <button
+            onClick={(e) => { e.stopPropagation(); onRetryPrint(order) }}
+            className="w-full h-9 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold"
+          >
+            Retry Print
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -558,6 +571,33 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     setSelectedOrder(order)
   }
 
+  async function handleRetryPrint(order) {
+    if (!restaurant?.printer_ip) return
+    const { data: orderItems } = await supabase
+      .from('order_items')
+      .select('*, order_item_toppings(*)')
+      .eq('order_id', order.id)
+      .order('created_at')
+
+    const result = await printOrder(restaurant.printer_ip, { ...order, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
+
+    const attempts = (order.print_attempts || 0) + 1
+    await supabase.from('print_logs').insert({
+      order_id: order.id,
+      order_number: order.order_number,
+      restaurant_id: restaurant.id,
+      attempt_number: attempts,
+      status: result.success ? 'success' : 'failed',
+      error_message: result.success ? null : result.message,
+    })
+    await supabase.from('orders').update({
+      print_status: result.success ? 'printed' : 'failed',
+      print_attempts: attempts,
+    }).eq('id', order.id)
+
+    fetchOrders()
+  }
+
   function handleStatusChange(updatedOrder) {
     setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o))
     setSelectedOrder(updatedOrder)
@@ -635,7 +675,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
           <p className="text-center text-gray-400 mt-8">No {subTab === 'in_progress' ? 'in progress' : subTab} orders</p>
         ) : (
           filteredOrders.map(order => (
-            <OrderCard key={order.id} order={order} onTap={handleOrderTap} />
+            <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} />
           ))
         )}
       </div>

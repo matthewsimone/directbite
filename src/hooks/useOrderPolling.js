@@ -92,6 +92,8 @@ export function useOrderPolling(restaurant, hours) {
     if (statusErr) console.error('[AutoPrint] Failed to update print_status:', statusErr)
   }
 
+  const retryingIds = useRef(new Set())
+
   const fetchOrders = useCallback(async () => {
     if (!restaurant) return
 
@@ -115,6 +117,23 @@ export function useOrderPolling(restaurant, hours) {
         }
       }
 
+      // Retry failed/pending prints on every poll cycle
+      if (restaurant.printer_ip) {
+        const now = Date.now()
+        const retryable = data.filter(o =>
+          (o.print_status === 'failed' || o.print_status === 'pending') &&
+          o.status === 'new' &&
+          (o.print_attempts || 0) < 3 &&
+          now - new Date(o.created_at).getTime() > 30000 &&
+          now - new Date(o.created_at).getTime() < 30 * 60 * 1000 &&
+          !retryingIds.current.has(o.id)
+        )
+        for (const order of retryable) {
+          retryingIds.current.add(order.id)
+          autoPrint(order).finally(() => retryingIds.current.delete(order.id))
+        }
+      }
+
       knownOrderIds.current = newOrderIds
       setOrders(data)
       setLoading(false)
@@ -129,19 +148,6 @@ export function useOrderPolling(restaurant, hours) {
     }, 10000)
     return () => { clearInterval(interval); stopChime() }
   }, [fetchOrders])
-
-  // Recover pending prints on mount
-  useEffect(() => {
-    if (!restaurant?.printer_ip || orders.length === 0) return
-    const pending = orders.filter(o =>
-      o.print_status === 'pending' &&
-      o.status === 'new' &&
-      new Date() - new Date(o.created_at) > 30000
-    )
-    for (const order of pending) {
-      autoPrint(order)
-    }
-  }, [orders.length, restaurant?.printer_ip])
 
   return {
     orders,
