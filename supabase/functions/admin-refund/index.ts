@@ -121,18 +121,46 @@ serve(async (req: Request) => {
       refundParams.amount = Math.round(parseFloat(amount) * 100);
     }
 
-    const refund = await stripe.refunds.create(
-      refundParams,
-      { stripeAccount: restaurant.stripe_account_id }
-    );
-
-    // Update order status if full refund
-    if (type === "full") {
+    let refund;
+    try {
+      refund = await stripe.refunds.create(
+        refundParams,
+        { stripeAccount: restaurant.stripe_account_id }
+      );
+    } catch (stripeErr: any) {
+      // Record failed refund attempt
       await supabase
         .from("orders")
-        .update({ status: "cancelled" })
+        .update({
+          refund_status: "failed",
+          refund_reason: stripeErr.message,
+        })
         .eq("id", order_id);
+
+      return new Response(
+        JSON.stringify({ error: stripeErr.message }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    // Update order with refund tracking
+    const refundAmountCents = refund.amount;
+    const isPartial = type === "partial";
+
+    const updateData: any = {
+      refund_status: isPartial ? "partial" : "completed",
+      refund_amount: refundAmountCents,
+      refunded_at: new Date().toISOString(),
+    };
+
+    if (type === "full") {
+      updateData.status = "cancelled";
+    }
+
+    await supabase
+      .from("orders")
+      .update(updateData)
+      .eq("id", order_id);
 
     console.log(`Refund processed: ${refund.id} for order #${order.order_number} (${type})`);
 

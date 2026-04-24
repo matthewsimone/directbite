@@ -310,6 +310,18 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           </div>
         </div>
 
+        {/* Refund info */}
+        {order.refund_status && (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 space-y-1">
+            <h3 className="text-sm font-semibold text-purple-800 uppercase tracking-wide">Refund</h3>
+            <p className="text-base font-medium text-purple-900">
+              {order.refund_status === 'completed' ? 'Full Refund' : order.refund_status === 'partial' ? 'Partial Refund' : order.refund_status === 'failed' ? 'Refund Failed' : order.refund_status}
+              {order.refund_amount ? ` — ${formatMoney(order.refund_amount / 100)}` : ''}
+            </p>
+            {order.refund_reason && <p className="text-sm text-purple-700">{order.refund_reason}</p>}
+          </div>
+        )}
+
         {/* Print log */}
         {printLogs.length > 0 && (
           <div className="space-y-1">

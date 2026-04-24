@@ -141,18 +141,42 @@ serve(async (req: Request) => {
     let stripeRefundId = null;
 
     if (adjustment.type === "refund") {
-      const refund = await stripe.refunds.create(
-        {
-          payment_intent: order.stripe_payment_intent_id,
-          amount: Math.round(adjustment.amount * 100),
-        },
-        { stripeAccount: restaurant.stripe_account_id }
-      );
-      stripeRefundId = refund.id;
+      try {
+        const refund = await stripe.refunds.create(
+          {
+            payment_intent: order.stripe_payment_intent_id,
+            amount: Math.round(adjustment.amount * 100),
+          },
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+        stripeRefundId = refund.id;
+
+        // Track refund on the order
+        await supabase
+          .from("orders")
+          .update({
+            refund_status: "partial",
+            refund_amount: refund.amount,
+            refunded_at: new Date().toISOString(),
+            refund_reason: adjustment.note || null,
+          })
+          .eq("id", adjustment.order_id);
+      } catch (stripeErr: any) {
+        // Record failed refund
+        await supabase
+          .from("orders")
+          .update({
+            refund_status: "failed",
+            refund_reason: stripeErr.message,
+          })
+          .eq("id", adjustment.order_id);
+
+        return new Response(
+          JSON.stringify({ error: stripeErr.message }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
-    // Note: "charge" type adjustments would require creating a new payment intent
-    // or invoice — left as a placeholder for now since charging after the fact
-    // requires customer consent / saved payment method
 
     await supabase
       .from("adjustment_requests")

@@ -226,6 +226,16 @@ function OrderDetailPanel({ order, onClose, onRefresh }) {
           </div>
         )}
 
+        {order.refund_status && (
+          <div className="border rounded-lg p-3 bg-gray-50 space-y-1">
+            <p className="text-sm font-semibold text-gray-700">Refund Info</p>
+            <p className="text-sm">Status: <span className="font-medium">{order.refund_status}</span></p>
+            {order.refund_amount && <p className="text-sm">Amount: <span className="font-medium">{formatMoney(order.refund_amount / 100)}</span></p>}
+            {order.refunded_at && <p className="text-sm text-gray-500">Refunded: {formatDate(order.refunded_at)} {formatTime(order.refunded_at)}</p>}
+            {order.refund_reason && <p className="text-sm text-gray-500">Reason: {order.refund_reason}</p>}
+          </div>
+        )}
+
         {message && <p className="text-sm text-center text-[#16A34A] bg-green-50 rounded p-2">{message}</p>}
       </div>
 
@@ -333,6 +343,15 @@ export default function OrdersTab() {
     )
   }
 
+  function refundBadge(order) {
+    if (!order.refund_status) return null
+    const amt = order.refund_amount ? formatMoney(order.refund_amount / 100) : ''
+    if (order.refund_status === 'completed') return <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Refunded {amt}</span>
+    if (order.refund_status === 'partial') return <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">Partial Refund {amt}</span>
+    if (order.refund_status === 'failed') return <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Refund Failed</span>
+    return null
+  }
+
   return (
     <div className="h-full flex">
       {/* Main content */}
@@ -404,7 +423,7 @@ export default function OrdersTab() {
                     <td className="px-4 py-3">{order.restaurants?.name}</td>
                     <td className="px-4 py-3">{order.customer_name}</td>
                     <td className="px-4 py-3 capitalize">{order.order_type}</td>
-                    <td className="px-4 py-3">{statusBadge(order.status)}</td>
+                    <td className="px-4 py-3">{statusBadge(order.status)} {refundBadge(order)}</td>
                     <td className="px-4 py-3 font-medium">{formatMoney(order.total_amount)}</td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(order.created_at)} {formatTime(order.created_at)}</td>
                     <td className="px-4 py-3">{printStatusBadge(order)}</td>

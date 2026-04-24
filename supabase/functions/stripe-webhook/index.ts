@@ -281,6 +281,39 @@ serve(async (req: Request) => {
         break;
       }
 
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        console.log(`Charge refunded: ${charge.id}`);
+
+        // Find order by charge ID or payment intent
+        const { data: refundedOrder } = await supabase
+          .from("orders")
+          .select("id, order_number, total_amount")
+          .or(`stripe_charge_id.eq.${charge.id},stripe_payment_intent_id.eq.${charge.payment_intent}`)
+          .single();
+
+        if (refundedOrder) {
+          const totalPaidCents = Math.round(Number(refundedOrder.total_amount) * 100);
+          const refundedCents = charge.amount_refunded;
+          const isPartial = refundedCents < totalPaidCents;
+
+          await supabase
+            .from("orders")
+            .update({
+              refund_status: isPartial ? "partial" : "completed",
+              refund_amount: refundedCents,
+              refunded_at: new Date().toISOString(),
+              refund_reason: "Refunded via Stripe dashboard",
+            })
+            .eq("id", refundedOrder.id);
+
+          console.log(`Order #${refundedOrder.order_number} refund tracked: ${refundedCents} cents (${isPartial ? "partial" : "full"})`);
+        } else {
+          console.warn(`No order found for refunded charge ${charge.id}`);
+        }
+        break;
+      }
+
       case "payment_intent.payment_failed": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const failureMessage = paymentIntent.last_payment_error?.message || "Unknown error";
