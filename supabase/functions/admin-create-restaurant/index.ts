@@ -162,21 +162,44 @@ serve(async (req: Request) => {
       }
     }
 
-    // Auto-register Apple Pay domain on connected account
+    // Configure connected account: capabilities + Apple Pay domains
     if (stripe_account_id) {
+      // Request all necessary capabilities
       try {
-        await stripe.applePayDomains.create(
-          { domain_name: "directbite.co" },
-          { stripeAccount: stripe_account_id }
+        await stripe.accounts.update(
+          stripe_account_id,
+          {
+            capabilities: {
+              card_payments: { requested: true },
+              transfers: { requested: true },
+              link_payments: { requested: true },
+            },
+          }
         );
+        console.log(`Capabilities requested for ${stripe_account_id}`);
+      } catch (capErr: any) {
+        console.error(`Capabilities request failed for ${stripe_account_id}:`, capErr.message);
+      }
+
+      // Register Apple Pay domains (both root and www)
+      let applePayOk = false;
+      for (const domain of ["directbite.co", "www.directbite.co"]) {
+        try {
+          await stripe.applePayDomains.create(
+            { domain_name: domain },
+            { stripeAccount: stripe_account_id }
+          );
+          console.log(`Apple Pay domain ${domain} registered for ${stripe_account_id}`);
+          applePayOk = true;
+        } catch (apErr: any) {
+          console.error(`Apple Pay domain ${domain} registration failed:`, apErr.message);
+        }
+      }
+      if (applePayOk) {
         await supabase
           .from("restaurants")
           .update({ apple_pay_registered: true })
           .eq("id", restaurant.id);
-        console.log(`Apple Pay domain registered for ${stripe_account_id}`);
-      } catch (apErr: any) {
-        console.error(`Apple Pay domain registration failed for ${stripe_account_id}:`, apErr.message);
-        // Don't block restaurant creation — can be retried
       }
     }
 
