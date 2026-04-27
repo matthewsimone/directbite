@@ -40,27 +40,19 @@ export default function TabletPage() {
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
 
-    const pingUrl = `${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`
+    const pingUrl = 'https://www.google.com/generate_204'
     const ping = async () => {
-      console.log('[PING] Attempting...')
+      console.log('[PING] Attempting...', pingUrl)
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 5000)
       const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
       try {
-        const res = await fetch(pingUrl, { method: 'GET', signal: controller.signal, cache: 'no-store' })
+        await fetch(pingUrl, { mode: 'no-cors', signal: controller.signal, cache: 'no-store' })
         clearTimeout(timeout)
-        if (res.ok) {
-          console.log('[PING] Success')
-          failCount.current = 0
-          setPingStats(p => ({ success: p.success + 1, total: p.total + 1, lastTime: now, fails: 0 }))
-          if (!isOnline) console.log('[ONLINE] Banner hidden — ping succeeded')
-          setIsOnline(true)
-        } else {
-          failCount.current++
-          console.log(`[PING] Failed: HTTP ${res.status} — consecutive fails: ${failCount.current}`)
-          setPingStats(p => ({ ...p, total: p.total + 1, lastTime: now, fails: failCount.current }))
-          if (failCount.current >= 3) { console.log(`[OFFLINE] Banner shown — ${failCount.current} consecutive failures`); setIsOnline(false) }
-        }
+        console.log('[PING] Success')
+        failCount.current = 0
+        setPingStats(p => ({ success: p.success + 1, total: p.total + 1, lastTime: now, fails: 0 }))
+        setIsOnline(true)
       } catch (err) {
         clearTimeout(timeout)
         failCount.current++
