@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useTabletAuth } from '../../hooks/useTabletAuth'
 import { useOrderPolling } from '../../hooks/useOrderPolling'
@@ -22,14 +22,30 @@ export default function TabletPage() {
   const { session, restaurant, setRestaurant, loading, error, login, logout } = useTabletAuth(slug)
   const [activeTab, setActiveTab] = useState('orders')
   const [hours, setHours] = useState([])
-  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [isOnline, setIsOnline] = useState(true)
+  const failCount = useRef(0)
 
   useEffect(() => {
-    const goOnline = () => setIsOnline(true)
+    const goOnline = () => { failCount.current = 0; setIsOnline(true) }
     const goOffline = () => setIsOnline(false)
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
-    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline) }
+
+    const pingUrl = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`
+    const ping = async () => {
+      try {
+        const res = await fetch(pingUrl, { method: 'HEAD', headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY }, cache: 'no-store' })
+        if (res.ok) { failCount.current = 0; setIsOnline(true) }
+        else { failCount.current++; if (failCount.current >= 2) setIsOnline(false) }
+      } catch {
+        failCount.current++
+        if (failCount.current >= 2) setIsOnline(false)
+      }
+    }
+    ping()
+    const interval = setInterval(ping, 30000)
+
+    return () => { clearInterval(interval); window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline) }
   }, [])
 
   // Dynamic PWA manifest via Vercel serverless function — scoped to this restaurant's slug
