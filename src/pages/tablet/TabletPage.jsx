@@ -26,20 +26,33 @@ export default function TabletPage() {
   const failCount = useRef(0)
 
   useEffect(() => {
-    const goOnline = () => { failCount.current = 0; setIsOnline(true) }
-    const goOffline = () => setIsOnline(false)
+    const goOnline = () => {
+      console.log('[Connectivity] Window online event — clearing banner')
+      failCount.current = 0
+      setIsOnline(true)
+    }
+    const goOffline = () => {
+      console.log('[Connectivity] Window offline event — showing banner')
+      setIsOnline(false)
+    }
     window.addEventListener('online', goOnline)
     window.addEventListener('offline', goOffline)
 
-    const pingUrl = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/`
+    const pingUrl = `${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`
     const ping = async () => {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 5000)
       try {
-        const res = await fetch(pingUrl, { method: 'HEAD', headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY }, cache: 'no-store' })
+        const res = await fetch(pingUrl, { method: 'GET', signal: controller.signal, cache: 'no-store' })
+        clearTimeout(timeout)
+        console.log('[Connectivity] Ping', res.ok ? 'OK' : `failed (${res.status})`, '— fails:', res.ok ? 0 : failCount.current + 1)
         if (res.ok) { failCount.current = 0; setIsOnline(true) }
-        else { failCount.current++; if (failCount.current >= 2) setIsOnline(false) }
-      } catch {
+        else { failCount.current++; if (failCount.current >= 3) { console.log('[Connectivity] 3 consecutive failures — showing banner'); setIsOnline(false) } }
+      } catch (err) {
+        clearTimeout(timeout)
         failCount.current++
-        if (failCount.current >= 2) setIsOnline(false)
+        console.log('[Connectivity] Ping error:', err.name === 'AbortError' ? 'timeout' : err.message, '— fails:', failCount.current)
+        if (failCount.current >= 3) { console.log('[Connectivity] 3 consecutive failures — showing banner'); setIsOnline(false) }
       }
     }
     ping()
