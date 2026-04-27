@@ -23,16 +23,18 @@ export default function TabletPage() {
   const [activeTab, setActiveTab] = useState('orders')
   const [hours, setHours] = useState([])
   const [isOnline, setIsOnline] = useState(true)
+  const [showDebug, setShowDebug] = useState(false)
   const failCount = useRef(0)
+  const [pingStats, setPingStats] = useState({ success: 0, total: 0, lastTime: null, fails: 0 })
 
   useEffect(() => {
     const goOnline = () => {
-      console.log('[Connectivity] Window online event — clearing banner')
+      console.log('[ONLINE] Banner hidden — window online event')
       failCount.current = 0
       setIsOnline(true)
     }
     const goOffline = () => {
-      console.log('[Connectivity] Window offline event — showing banner')
+      console.log('[OFFLINE] Banner shown — window offline event')
       setIsOnline(false)
     }
     window.addEventListener('online', goOnline)
@@ -40,19 +42,32 @@ export default function TabletPage() {
 
     const pingUrl = `${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`
     const ping = async () => {
+      console.log('[PING] Attempting...')
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 5000)
+      const now = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
       try {
         const res = await fetch(pingUrl, { method: 'GET', signal: controller.signal, cache: 'no-store' })
         clearTimeout(timeout)
-        console.log('[Connectivity] Ping', res.ok ? 'OK' : `failed (${res.status})`, '— fails:', res.ok ? 0 : failCount.current + 1)
-        if (res.ok) { failCount.current = 0; setIsOnline(true) }
-        else { failCount.current++; if (failCount.current >= 3) { console.log('[Connectivity] 3 consecutive failures — showing banner'); setIsOnline(false) } }
+        if (res.ok) {
+          console.log('[PING] Success')
+          failCount.current = 0
+          setPingStats(p => ({ success: p.success + 1, total: p.total + 1, lastTime: now, fails: 0 }))
+          if (!isOnline) console.log('[ONLINE] Banner hidden — ping succeeded')
+          setIsOnline(true)
+        } else {
+          failCount.current++
+          console.log(`[PING] Failed: HTTP ${res.status} — consecutive fails: ${failCount.current}`)
+          setPingStats(p => ({ ...p, total: p.total + 1, lastTime: now, fails: failCount.current }))
+          if (failCount.current >= 3) { console.log(`[OFFLINE] Banner shown — ${failCount.current} consecutive failures`); setIsOnline(false) }
+        }
       } catch (err) {
         clearTimeout(timeout)
         failCount.current++
-        console.log('[Connectivity] Ping error:', err.name === 'AbortError' ? 'timeout' : err.message, '— fails:', failCount.current)
-        if (failCount.current >= 3) { console.log('[Connectivity] 3 consecutive failures — showing banner'); setIsOnline(false) }
+        const reason = err.name === 'AbortError' ? 'timeout (5s)' : err.message
+        console.log(`[PING] Failed: ${reason} — consecutive fails: ${failCount.current}`)
+        setPingStats(p => ({ ...p, total: p.total + 1, lastTime: now, fails: failCount.current }))
+        if (failCount.current >= 3) { console.log(`[OFFLINE] Banner shown — ${failCount.current} consecutive failures`); setIsOnline(false) }
       }
     }
     ping()
@@ -119,7 +134,7 @@ export default function TabletPage() {
       {/* Top nav */}
       <header className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-900">{restaurant.name}</h1>
+          <h1 className="text-lg font-bold text-gray-900 cursor-pointer select-none" onClick={() => setShowDebug(d => !d)}>{restaurant.name}</h1>
         </div>
         <button
           onClick={logout}
@@ -165,6 +180,13 @@ export default function TabletPage() {
         {activeTab === 'promotions' && <PromotionsTab restaurant={restaurant} />}
         {activeTab === 'settings' && <SettingsTab restaurant={restaurant} setRestaurant={setRestaurant} />}
       </main>
+
+      {/* Debug overlay */}
+      {showDebug && (
+        <div className="fixed bottom-2 right-2 z-50 bg-gray-900/80 text-gray-300 text-xs font-mono px-3 py-1.5 rounded-lg">
+          Online: {isOnline ? 'true' : 'false'} · Pings: {pingStats.success}/{pingStats.total} · Last: {pingStats.lastTime || '—'} · Fails: {pingStats.fails}
+        </div>
+      )}
 
       {/* PWA install prompt — tablet only */}
       <PwaInstallPrompt />
