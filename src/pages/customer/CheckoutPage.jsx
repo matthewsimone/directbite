@@ -15,7 +15,7 @@ import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
 import { haversineDistanceMiles, calculateDeliveryFeeCents } from '../../utils/haversine'
-import { Loader } from '@googlemaps/js-api-loader'
+// @googlemaps/js-api-loader is dynamically imported when needed
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
 import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 
@@ -567,8 +567,10 @@ export default function CheckoutPage() {
     if (orderType !== 'delivery' || !restaurant?.delivery_available || mapsLoaded) return
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
     if (!apiKey) return
-    const loader = new Loader({ apiKey, libraries: ['places'] })
-    loader.load().then(() => setMapsLoaded(true)).catch(err => console.error('[Maps] Load failed:', err))
+    import('@googlemaps/js-api-loader').then(({ Loader }) => {
+      const loader = new Loader({ apiKey, libraries: ['places'] })
+      return loader.load()
+    }).then(() => setMapsLoaded(true)).catch(err => console.error('[Maps] Load failed:', err))
   }, [orderType, restaurant?.delivery_available])
 
   // Attach Places Autocomplete when Maps loaded and input exists

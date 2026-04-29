@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { Loader } from '@googlemaps/js-api-loader'
 
 let mapsLoadPromise = null
 
@@ -8,8 +7,10 @@ function loadMaps() {
   if (mapsLoadPromise) return mapsLoadPromise
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
   if (!apiKey) return Promise.reject(new Error('No Google Maps API key'))
-  const loader = new Loader({ apiKey, libraries: ['places'] })
-  mapsLoadPromise = loader.load()
+  mapsLoadPromise = import('@googlemaps/js-api-loader').then(({ Loader }) => {
+    const loader = new Loader({ apiKey, libraries: ['places'] })
+    return loader.load()
+  })
   return mapsLoadPromise
 }
 
