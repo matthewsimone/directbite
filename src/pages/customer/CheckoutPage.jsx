@@ -202,18 +202,20 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
     // Handle wallet payment confirmation
     pr.on('paymentmethod', async (ev) => {
-      console.log('[WALLET] paymentmethod fired, submittedRef:', submittedRef.current)
+      console.log('[PAYMENTMETHOD] event fired — this means user authenticated in wallet sheet')
       if (submittedRef.current) { ev.complete('fail'); return }
 
       // Validate delivery address before proceeding
       const validateFn = onValidateDeliveryRef.current
-      console.log('[WALLET] validateFn exists:', !!validateFn)
+      console.log('[PAYMENTMETHOD] validateFn exists:', !!validateFn)
       if (validateFn) {
         const isValid = validateFn()
-        console.log('[WALLET] validation result:', isValid)
+        console.log('[PAYMENTMETHOD] validation result:', isValid)
         if (!isValid) {
-          console.log('[WALLET] BLOCKED — delivery validation failed')
+          console.log('[PAYMENTMETHOD] BLOCKED — delivery validation failed')
           ev.complete('fail')
+          submittedRef.current = false
+          toast.error('Please enter a delivery address before paying')
           return
         }
       }
@@ -270,6 +272,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
         }
       }
     })
+    console.log('[PaymentRequest] paymentmethod listener registered on pr')
   }, [stripe]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update payment request amount when total changes (does NOT re-create)
@@ -447,12 +450,8 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
           {payMethod === 'wallet' && paymentRequest ? (
             <div
-              onClickCapture={e => {
-                if (onValidateDelivery && !onValidateDelivery()) {
-                  e.stopPropagation()
-                  e.preventDefault()
-                  console.log('[WALLET] click blocked by validation')
-                }
+              onClickCapture={() => {
+                console.log('[WRAPPER] click captured on wallet button wrapper (may not fire for iframe)')
               }}
             >
               <PaymentRequestButtonElement
