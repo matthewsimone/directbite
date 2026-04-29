@@ -961,7 +961,7 @@ export default function CheckoutPage() {
             </div>
             {orderType === 'delivery' && (
               <div className="flex justify-between text-gray-600">
-                <span>Delivery Fee{deliveryFeeType === 'percentage' ? ` (${deliveryFeeRaw}%)` : ''}</span>
+                <span>Delivery Fee{deliveryDistance ? ` (${deliveryDistance} mi)` : ''}</span>
                 <span>{deliveryFee === 0 ? 'Free' : formatCurrency(deliveryFee)}</span>
               </div>
             )}

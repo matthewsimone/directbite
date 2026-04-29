@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import AddressAutocomplete from '../../components/AddressAutocomplete'
 
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
 const DEFAULT_HOURS = DAY_NAMES.map((_, i) => ({
   day_of_week: i,
   is_open: i >= 1 && i <= 5, // Mon-Fri open by default
