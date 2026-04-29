@@ -531,8 +531,9 @@ export default function CheckoutPage() {
   }, 0)
   const discountAmount = Math.round(fullSubtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = fullSubtotal - discountAmount
-  const deliveryFee = orderType === 'delivery' && deliveryFeeCents != null
-    ? deliveryFeeCents / 100
+  const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
+  const deliveryFee = orderType === 'delivery'
+    ? (deliveryFeeCents != null ? deliveryFeeCents : defaultFeeCents) / 100
     : 0
   const taxRate = Number(restaurant?.tax_rate || 0)
   const serviceFee = 1.50
