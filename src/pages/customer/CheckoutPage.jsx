@@ -131,7 +131,7 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -159,10 +159,12 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   const onSuccessRef = useRef(onSuccess)
   const onWalletCustomerRef = useRef(onWalletCustomer)
   const paymentIntentIdRef = useRef(paymentIntentId)
+  const onValidateDeliveryRef = useRef(onValidateDelivery)
   useEffect(() => { clientSecretRef.current = clientSecret }, [clientSecret])
   useEffect(() => { onSuccessRef.current = onSuccess }, [onSuccess])
   useEffect(() => { onWalletCustomerRef.current = onWalletCustomer }, [onWalletCustomer])
   useEffect(() => { paymentIntentIdRef.current = paymentIntentId }, [paymentIntentId])
+  useEffect(() => { onValidateDeliveryRef.current = onValidateDelivery }, [onValidateDelivery])
 
   // Create PaymentRequest ONCE when stripe is ready
   useEffect(() => {
@@ -201,6 +203,13 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     // Handle wallet payment confirmation
     pr.on('paymentmethod', async (ev) => {
       if (submittedRef.current) { ev.complete('fail'); return }
+
+      // Validate delivery address before proceeding
+      if (onValidateDeliveryRef.current && !onValidateDeliveryRef.current()) {
+        ev.complete('fail')
+        return
+      }
+
       submittedRef.current = true
 
       const secret = clientSecretRef.current
@@ -282,11 +291,9 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       return
     }
 
-    if (orderData.order_type === 'delivery') {
-      if (!orderData.delivery_address) {
-        toast.error('Please fill in delivery address')
-        return
-      }
+    if (onValidateDelivery && !onValidateDelivery()) {
+      submittedRef.current = false
+      return
     }
 
     setLoading(true)
@@ -843,6 +850,16 @@ export default function CheckoutPage() {
                 ref={inputRef}
                 type="text"
                 placeholder="Search for your address..."
+                onChange={() => {
+                  if (deliveryLat) {
+                    setDeliveryLat(null)
+                    setDeliveryLon(null)
+                    setDeliveryDistance(null)
+                    setDeliveryFeeCents(null)
+                    setDeliveryAddress('')
+                    setAddressError(null)
+                  }
+                }}
                 className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
               <input
@@ -1015,7 +1032,15 @@ export default function CheckoutPage() {
                 orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
                 slug={slug}
                 restaurant={restaurant}
-                disabled={!!addressError || belowMinimum || (orderType === 'delivery' && !deliveryLat)}
+                disabled={belowMinimum}
+                onValidateDelivery={() => {
+                  if (orderType === 'delivery' && !deliveryLat) {
+                    setAddressError('Please enter a delivery address')
+                    return false
+                  }
+                  if (addressError) return false
+                  return true
+                }}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}
                 onWalletCustomer={async (name, email, phone) => {
