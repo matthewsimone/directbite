@@ -1,8 +1,50 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
+import { Loader } from '@googlemaps/js-api-loader'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function AddressAutocomplete({ value, onSelect, onChange }) {
+  const inputRef = useRef(null)
+  const acRef = useRef(null)
+  const [loaded, setLoaded] = useState(!!window.google?.maps?.places)
+
+  useEffect(() => {
+    if (loaded) return
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    if (!apiKey) return
+    const loader = new Loader({ apiKey, libraries: ['places'] })
+    loader.load().then(() => setLoaded(true)).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!loaded || !inputRef.current || acRef.current) return
+    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+      componentRestrictions: { country: 'us' },
+      types: ['address'],
+      fields: ['formatted_address', 'geometry'],
+    })
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace()
+      if (place?.geometry?.location) {
+        onSelect(place.formatted_address, place.geometry.location.lat(), place.geometry.location.lng())
+      }
+    })
+    acRef.current = ac
+  }, [loaded])
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      defaultValue={value}
+      onChange={e => onChange(e.target.value)}
+      placeholder="Search for address..."
+      className="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+    />
+  )
+}
 
 const DEFAULT_HOURS = DAY_NAMES.map((_, i) => ({
   day_of_week: i,
@@ -40,8 +82,11 @@ function Step1({ data, setData }) {
       </div>
       <div>
         <label className="text-sm text-gray-500">Address</label>
-        <input value={data.address} onChange={e => setData({ ...data, address: e.target.value })}
-          className="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+        <AddressAutocomplete
+          value={data.address}
+          onSelect={(address, lat, lon) => setData({ ...data, address, latitude: lat, longitude: lon })}
+          onChange={val => setData({ ...data, address: val })}
+        />
       </div>
       <div>
         <label className="text-sm text-gray-500 mb-1 block">Hero Image</label>
@@ -225,6 +270,8 @@ export default function OnboardingTab() {
     _slugEdited: false,
     phone: '',
     address: '',
+    latitude: null,
+    longitude: null,
     hero_image_url: '',
     hours: DEFAULT_HOURS.map(h => ({ ...h })),
     delivery_available: false,
@@ -266,6 +313,8 @@ export default function OnboardingTab() {
           slug: data.slug,
           phone: data.phone,
           address: data.address,
+          latitude: data.latitude,
+          longitude: data.longitude,
           hours: data.hours,
           delivery_available: data.delivery_available,
           delivery_fee: parseFloat(data.delivery_fee) || 0,
@@ -307,7 +356,7 @@ export default function OnboardingTab() {
             <p className="text-lg font-bold text-[#16A34A]">directbite.co/{success.slug}</p>
           </div>
           <button
-            onClick={() => { setSuccess(null); setStep(1); setData({ ...data, name: '', slug: '', _slugEdited: false, phone: '', address: '', tablet_email: '', tablet_password: '', stripe_account_id: '', printer_ip: '' }) }}
+            onClick={() => { setSuccess(null); setStep(1); setData({ ...data, name: '', slug: '', _slugEdited: false, phone: '', address: '', latitude: null, longitude: null, tablet_email: '', tablet_password: '', stripe_account_id: '', printer_ip: '' }) }}
             className="px-6 h-10 bg-[#16A34A] text-white font-semibold rounded-lg text-sm"
           >
             Add Another Restaurant

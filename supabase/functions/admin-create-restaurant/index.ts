@@ -70,6 +70,8 @@ serve(async (req: Request) => {
       tablet_password,
       stripe_account_id,
       printer_ip,
+      latitude,
+      longitude,
     } = await req.json();
 
     // ── Geocode address ──
@@ -115,17 +117,22 @@ serve(async (req: Request) => {
       if (stripe_account_id !== undefined) updateData.stripe_account_id = stripe_account_id || null;
       if (printer_ip !== undefined) updateData.printer_ip = printer_ip || null;
 
-      // Geocode if address changed or lat/lon is missing
-      const needsGeocode = address && (
-        address !== existingRest?.address ||
-        !existingRest?.latitude ||
-        !existingRest?.longitude
-      );
-      if (needsGeocode) {
-        const coords = await geocodeAddress(address);
-        if (coords) {
-          updateData.latitude = coords.lat;
-          updateData.longitude = coords.lon;
+      // Use provided coords or geocode if address changed/lat/lon missing
+      if (latitude && longitude) {
+        updateData.latitude = latitude;
+        updateData.longitude = longitude;
+      } else {
+        const needsGeocode = address && (
+          address !== existingRest?.address ||
+          !existingRest?.latitude ||
+          !existingRest?.longitude
+        );
+        if (needsGeocode) {
+          const coords = await geocodeAddress(address);
+          if (coords) {
+            updateData.latitude = coords.lat;
+            updateData.longitude = coords.lon;
+          }
         }
       }
 
@@ -194,8 +201,13 @@ serve(async (req: Request) => {
       );
     }
 
-    // Geocode address for new restaurant
-    const coords = address ? await geocodeAddress(address) : null;
+    // Use provided coords or geocode address for new restaurant
+    let restLat = latitude || null;
+    let restLon = longitude || null;
+    if (!restLat && !restLon && address) {
+      const coords = await geocodeAddress(address);
+      if (coords) { restLat = coords.lat; restLon = coords.lon; }
+    }
 
     // Create restaurant
     const { data: restaurant, error: restErr } = await supabase
@@ -214,8 +226,8 @@ serve(async (req: Request) => {
         tablet_email,
         stripe_account_id: stripe_account_id || null,
         printer_ip: printer_ip || null,
-        latitude: coords?.lat || null,
-        longitude: coords?.lon || null,
+        latitude: restLat,
+        longitude: restLon,
       })
       .select()
       .single();
