@@ -327,11 +327,11 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
           </div>
           {deliveryAvailable && (
             <>
-              <FieldRow label="Delivery Radius">
+              <FieldRow label={tier2Enabled ? 'Maximum Delivery Radius' : 'Delivery Radius'}>
                 <div className="relative">
                   <input type="number" min="0" step="0.5" value={maxRadius}
                     onChange={e => setMaxRadius(e.target.value)}
-                    placeholder="e.g., 5"
+                    placeholder={tier2Enabled ? 'e.g., 5' : 'e.g., 5'}
                     className="w-full h-11 px-3 pr-14 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">miles</span>
                 </div>
@@ -389,7 +389,10 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   placeholder="e.g., Free delivery on orders over $30"
                 />
               </div>
-              <p className="text-xs text-gray-400">Radius is measured as straight-line distance from restaurant.</p>
+              {tier2Enabled && tier1MaxMiles && maxRadius && parseFloat(tier1MaxMiles) >= parseFloat(maxRadius) && (
+                <p className="text-xs text-red-500">Standard zone must be less than maximum radius ({maxRadius} mi).</p>
+              )}
+              <p className="text-xs text-gray-400">Radius is measured as straight-line distance from restaurant.{tier2Enabled ? ` Orders within ${tier1MaxMiles || '?'} mi pay the standard fee. Orders from ${tier1MaxMiles || '?'}–${maxRadius || '?'} mi pay the extended fee.` : ''}</p>
             </>
           )}
         </Section>
