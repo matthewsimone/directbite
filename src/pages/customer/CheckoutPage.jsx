@@ -202,12 +202,20 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
     // Handle wallet payment confirmation
     pr.on('paymentmethod', async (ev) => {
+      console.log('[WALLET] paymentmethod fired, submittedRef:', submittedRef.current)
       if (submittedRef.current) { ev.complete('fail'); return }
 
       // Validate delivery address before proceeding
-      if (onValidateDeliveryRef.current && !onValidateDeliveryRef.current()) {
-        ev.complete('fail')
-        return
+      const validateFn = onValidateDeliveryRef.current
+      console.log('[WALLET] validateFn exists:', !!validateFn)
+      if (validateFn) {
+        const isValid = validateFn()
+        console.log('[WALLET] validation result:', isValid)
+        if (!isValid) {
+          console.log('[WALLET] BLOCKED — delivery validation failed')
+          ev.complete('fail')
+          return
+        }
       }
 
       submittedRef.current = true
@@ -438,18 +446,28 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           </div>
 
           {payMethod === 'wallet' && paymentRequest ? (
-            <PaymentRequestButtonElement
-              options={{
-                paymentRequest,
-                style: {
-                  paymentRequestButton: {
-                    type: 'default',
-                    theme: 'dark',
-                    height: '56px',
-                  },
-                },
+            <div
+              onClickCapture={e => {
+                if (onValidateDelivery && !onValidateDelivery()) {
+                  e.stopPropagation()
+                  e.preventDefault()
+                  console.log('[WALLET] click blocked by validation')
+                }
               }}
-            />
+            >
+              <PaymentRequestButtonElement
+                options={{
+                  paymentRequest,
+                  style: {
+                    paymentRequestButton: {
+                      type: 'default',
+                      theme: 'dark',
+                      height: '56px',
+                    },
+                  },
+                }}
+              />
+            </div>
           ) : (
             <button
               type="submit"
@@ -1034,11 +1052,17 @@ export default function CheckoutPage() {
                 restaurant={restaurant}
                 disabled={belowMinimum}
                 onValidateDelivery={() => {
+                  console.log('[VALIDATE] called — orderType:', orderType, 'deliveryLat:', deliveryLat, 'addressError:', addressError)
                   if (orderType === 'delivery' && !deliveryLat) {
+                    console.log('[VALIDATE] FAIL — no delivery address')
                     setAddressError('Please enter a delivery address')
                     return false
                   }
-                  if (addressError) return false
+                  if (addressError) {
+                    console.log('[VALIDATE] FAIL — existing addressError:', addressError)
+                    return false
+                  }
+                  console.log('[VALIDATE] PASS')
                   return true
                 }}
                 clientSecret={clientSecret}
