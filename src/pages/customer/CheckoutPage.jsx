@@ -567,9 +567,9 @@ export default function CheckoutPage() {
     if (orderType !== 'delivery' || !restaurant?.delivery_available || mapsLoaded) return
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
     if (!apiKey) return
-    import('@googlemaps/js-api-loader').then(({ Loader }) => {
-      const loader = new Loader({ apiKey, libraries: ['places'] })
-      return loader.load()
+    import('@googlemaps/js-api-loader').then(({ importLibrary, setOptions }) => {
+      setOptions({ key: apiKey })
+      return importLibrary('places')
     }).then(() => setMapsLoaded(true)).catch(err => console.error('[Maps] Load failed:', err))
   }, [orderType, restaurant?.delivery_available])
 
