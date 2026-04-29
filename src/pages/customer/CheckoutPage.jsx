@@ -621,6 +621,19 @@ export default function CheckoutPage() {
     autocompleteRef.current = ac
   }, [mapsLoaded, orderType])
 
+  // Log restaurant delivery config when it loads
+  useEffect(() => {
+    if (!restaurant) return
+    console.log('[FEE] restaurant delivery config:', {
+      tier1_fee_cents: restaurant.delivery_tier1_fee_cents,
+      tier1_max_miles: restaurant.delivery_tier1_max_miles,
+      tier2_fee_cents: restaurant.delivery_tier2_fee_cents,
+      max_radius: restaurant.delivery_max_radius_miles,
+      lat: restaurant.latitude,
+      lon: restaurant.longitude,
+    })
+  }, [restaurant?.id])
+
   // Calculate distance and fee when delivery coordinates change
   useEffect(() => {
     if (orderType !== 'delivery' || !deliveryLat || !deliveryLon) {
@@ -639,6 +652,12 @@ export default function CheckoutPage() {
     )
     setDeliveryDistance(Math.round(dist * 10) / 10)
     const feeCents = calculateDeliveryFeeCents(dist, restaurant)
+    console.log('[FEE] distance:', dist.toFixed(2), 'mi, calculated fee cents:', feeCents, 'from config:', {
+      tier1_fee: restaurant.delivery_tier1_fee_cents,
+      tier1_max: restaurant.delivery_tier1_max_miles,
+      tier2_fee: restaurant.delivery_tier2_fee_cents,
+      max_radius: restaurant.delivery_max_radius_miles,
+    })
     if (feeCents === null) {
       setAddressError(`Sorry, delivery is not available to your address. Distance: ${dist.toFixed(1)} miles, maximum: ${restaurant.delivery_max_radius_miles} miles.`)
       setDeliveryFeeCents(null)
