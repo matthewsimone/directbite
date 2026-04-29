@@ -54,6 +54,7 @@ serve(async (req: Request) => {
     }
 
     const {
+      restaurant_id,
       name,
       slug,
       phone,
@@ -71,6 +72,85 @@ serve(async (req: Request) => {
       printer_ip,
     } = await req.json();
 
+    // ── Geocode address ──
+    async function geocodeAddress(addr: string): Promise<{ lat: number; lon: number } | null> {
+      const gmapsKey = Deno.env.get("GOOGLE_MAPS_API_KEY");
+      if (!gmapsKey || !addr) return null;
+      try {
+        const geoRes = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(addr)}&key=${gmapsKey}`
+        );
+        const geoData = await geoRes.json();
+        if (geoData.status === "OK" && geoData.results?.length > 0) {
+          const loc = geoData.results[0].geometry.location;
+          console.log(`Geocoded "${addr}" → ${loc.lat}, ${loc.lng}`);
+          return { lat: loc.lat, lon: loc.lng };
+        }
+        console.warn("Geocoding returned no results for:", addr, geoData.status);
+      } catch (geoErr: any) {
+        console.error("Geocoding failed:", geoErr.message);
+      }
+      return null;
+    }
+
+    // ── UPDATE existing restaurant ──
+    if (restaurant_id) {
+      // Fetch existing to check if address changed or lat/lon missing
+      const { data: existingRest } = await supabase
+        .from("restaurants")
+        .select("address, latitude, longitude")
+        .eq("id", restaurant_id)
+        .single();
+
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (phone !== undefined) updateData.phone = phone || null;
+      if (address !== undefined) updateData.address = address || null;
+      if (delivery_available !== undefined) updateData.delivery_available = delivery_available;
+      if (delivery_fee !== undefined) updateData.delivery_fee = delivery_fee || 0;
+      if (delivery_note !== undefined) updateData.delivery_note = delivery_note || null;
+      if (estimated_pickup_minutes !== undefined) updateData.estimated_pickup_minutes = estimated_pickup_minutes;
+      if (estimated_delivery_minutes !== undefined) updateData.estimated_delivery_minutes = estimated_delivery_minutes;
+      if (tax_rate !== undefined) updateData.tax_rate = tax_rate || 0;
+      if (stripe_account_id !== undefined) updateData.stripe_account_id = stripe_account_id || null;
+      if (printer_ip !== undefined) updateData.printer_ip = printer_ip || null;
+
+      // Geocode if address changed or lat/lon is missing
+      const needsGeocode = address && (
+        address !== existingRest?.address ||
+        !existingRest?.latitude ||
+        !existingRest?.longitude
+      );
+      if (needsGeocode) {
+        const coords = await geocodeAddress(address);
+        if (coords) {
+          updateData.latitude = coords.lat;
+          updateData.longitude = coords.lon;
+        }
+      }
+
+      const { data: updated, error: updateErr } = await supabase
+        .from("restaurants")
+        .update(updateData)
+        .eq("id", restaurant_id)
+        .select()
+        .single();
+
+      if (updateErr) {
+        return new Response(
+          JSON.stringify({ error: `Failed to update restaurant: ${updateErr.message}` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log(`Restaurant updated: ${updated.name} (${updated.slug})`);
+      return new Response(
+        JSON.stringify({ success: true, restaurant: updated }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── CREATE new restaurant ──
     if (!name || !slug || !tablet_email || !tablet_password) {
       return new Response(
         JSON.stringify({ error: "name, slug, tablet_email, and tablet_password are required" }),
@@ -114,6 +194,9 @@ serve(async (req: Request) => {
       );
     }
 
+    // Geocode address for new restaurant
+    const coords = address ? await geocodeAddress(address) : null;
+
     // Create restaurant
     const { data: restaurant, error: restErr } = await supabase
       .from("restaurants")
@@ -131,6 +214,8 @@ serve(async (req: Request) => {
         tablet_email,
         stripe_account_id: stripe_account_id || null,
         printer_ip: printer_ip || null,
+        latitude: coords?.lat || null,
+        longitude: coords?.lon || null,
       })
       .select()
       .single();

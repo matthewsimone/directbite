@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
-import ZipCodeManager from '../../components/ZipCodeManager'
+// ZipCodeManager removed — replaced by radius-based delivery
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -66,10 +66,13 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [pickupMinutes, setPickupMinutes] = useState(restaurant?.estimated_pickup_minutes || 30)
   const [deliveryMinutes, setDeliveryMinutes] = useState(restaurant?.estimated_delivery_minutes || 60)
   const [deliveryAvailable, setDeliveryAvailable] = useState(restaurant?.delivery_available || false)
-  const [deliveryFeeType, setDeliveryFeeType] = useState(restaurant?.delivery_fee_type || 'flat')
-  const [deliveryFee, setDeliveryFee] = useState(restaurant?.delivery_fee || 0)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
   const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum || 0)
+  const [maxRadius, setMaxRadius] = useState(restaurant?.delivery_max_radius_miles || '')
+  const [tier1Fee, setTier1Fee] = useState(restaurant?.delivery_tier1_fee_cents != null ? (restaurant.delivery_tier1_fee_cents / 100).toFixed(2) : '')
+  const [tier2Enabled, setTier2Enabled] = useState(!!restaurant?.delivery_tier2_fee_cents)
+  const [tier1MaxMiles, setTier1MaxMiles] = useState(restaurant?.delivery_tier1_max_miles || '')
+  const [tier2Fee, setTier2Fee] = useState(restaurant?.delivery_tier2_fee_cents != null ? (restaurant.delivery_tier2_fee_cents / 100).toFixed(2) : '')
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
   const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
   const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
@@ -174,8 +177,10 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       .from('restaurants')
       .update({
         delivery_available: deliveryAvailable,
-        delivery_fee_type: deliveryFeeType,
-        delivery_fee: deliveryFeeType === 'none' ? 0 : (parseFloat(deliveryFee) || 0),
+        delivery_max_radius_miles: parseFloat(maxRadius) || null,
+        delivery_tier1_fee_cents: tier1Fee ? Math.round(parseFloat(tier1Fee) * 100) : null,
+        delivery_tier1_max_miles: tier2Enabled ? (parseFloat(tier1MaxMiles) || null) : null,
+        delivery_tier2_fee_cents: tier2Enabled && tier2Fee ? Math.round(parseFloat(tier2Fee) * 100) : null,
         delivery_note: deliveryNote,
         delivery_minimum: parseFloat(deliveryMinimum) || 0,
       })
@@ -322,36 +327,49 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
           </div>
           {deliveryAvailable && (
             <>
-              <div>
-                <label className="text-sm font-medium text-gray-700 mb-2 block">Fee Type</label>
-                <div className="flex gap-2">
-                  {[['flat', 'Flat $'], ['percentage', 'Percentage %'], ['none', 'No Charge']].map(([val, label]) => (
-                    <button key={val} onClick={() => setDeliveryFeeType(val)}
-                      className={`flex-1 h-11 rounded-xl text-sm font-semibold transition-colors ${
-                        deliveryFeeType === val ? 'bg-[#16A34A] text-white' : 'border border-gray-300 text-gray-700'
-                      }`}>{label}</button>
-                  ))}
+              <FieldRow label="Delivery Radius">
+                <div className="relative">
+                  <input type="number" min="0" step="0.5" value={maxRadius}
+                    onChange={e => setMaxRadius(e.target.value)}
+                    placeholder="e.g., 5"
+                    className="w-full h-11 px-3 pr-14 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">miles</span>
                 </div>
+              </FieldRow>
+              <FieldRow label="Standard Delivery Fee">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input type="number" min="0" step="0.01" value={tier1Fee}
+                    onChange={e => setTier1Fee(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                </div>
+              </FieldRow>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-700">Extended delivery zone</span>
+                <Toggle value={tier2Enabled} onChange={setTier2Enabled} />
               </div>
-              {deliveryFeeType === 'flat' && (
-                <FieldRow label="Delivery Fee">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                    <input type="number" min="0" step="0.01" value={deliveryFee}
-                      onChange={e => setDeliveryFee(e.target.value)}
-                      className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
-                  </div>
-                </FieldRow>
-              )}
-              {deliveryFeeType === 'percentage' && (
-                <FieldRow label="Delivery Fee">
-                  <div className="relative">
-                    <input type="number" min="0" step="0.1" value={deliveryFee}
-                      onChange={e => setDeliveryFee(e.target.value)}
-                      className="w-full h-11 px-3 pr-8 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
-                  </div>
-                </FieldRow>
+              {tier2Enabled && (
+                <>
+                  <FieldRow label="Standard zone up to">
+                    <div className="relative">
+                      <input type="number" min="0" step="0.5" value={tier1MaxMiles}
+                        onChange={e => setTier1MaxMiles(e.target.value)}
+                        placeholder="e.g., 3"
+                        className="w-full h-11 px-3 pr-14 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">miles</span>
+                    </div>
+                  </FieldRow>
+                  <FieldRow label="Extended zone fee">
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                      <input type="number" min="0" step="0.01" value={tier2Fee}
+                        onChange={e => setTier2Fee(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                    </div>
+                  </FieldRow>
+                </>
               )}
               <FieldRow label="Minimum Order">
                 <div className="relative">
@@ -368,10 +386,10 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   value={deliveryNote}
                   onChange={e => setDeliveryNote(e.target.value)}
                   className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                  placeholder="e.g., 5 mile delivery radius"
+                  placeholder="e.g., Free delivery on orders over $30"
                 />
               </div>
-              <ZipCodeManager restaurantId={restaurant?.id} />
+              <p className="text-xs text-gray-400">Radius is measured as straight-line distance from restaurant.</p>
             </>
           )}
         </Section>

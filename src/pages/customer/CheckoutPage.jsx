@@ -14,6 +14,8 @@ import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
+import { haversineDistanceMiles, calculateDeliveryFeeCents } from '../../utils/haversine'
+import { Loader } from '@googlemaps/js-api-loader'
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
 import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 
@@ -480,10 +482,14 @@ export default function CheckoutPage() {
   const [customerEmail, setCustomerEmail] = useState('')
   const [deliveryAddress, setDeliveryAddress] = useState('')
   const [deliveryApt, setDeliveryApt] = useState('')
-  const [deliveryCity, setDeliveryCity] = useState('')
-  const [deliveryZip, setDeliveryZip] = useState('')
-  const [validZips, setValidZips] = useState(null) // null = not loaded, [] = no restrictions
-  const [zipInvalid, setZipInvalid] = useState(false)
+  const [deliveryLat, setDeliveryLat] = useState(null)
+  const [deliveryLon, setDeliveryLon] = useState(null)
+  const [deliveryDistance, setDeliveryDistance] = useState(null)
+  const [deliveryFeeCents, setDeliveryFeeCents] = useState(null)
+  const [addressError, setAddressError] = useState(null)
+  const [mapsLoaded, setMapsLoaded] = useState(false)
+  const autocompleteRef = useRef(null)
+  const inputRef = useRef(null)
   const deliveryMinimum = Number(restaurant?.delivery_minimum || 0)
   const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
@@ -501,12 +507,8 @@ export default function CheckoutPage() {
   }, 0)
   const discountAmount = Math.round(fullSubtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = fullSubtotal - discountAmount
-  const deliveryFeeType = restaurant?.delivery_fee_type || 'flat'
-  const deliveryFeeRaw = Number(restaurant?.delivery_fee || 0)
-  const deliveryFee = orderType === 'delivery'
-    ? deliveryFeeType === 'percentage'
-      ? Math.round(discountedSubtotal * (deliveryFeeRaw / 100) * 100) / 100
-      : deliveryFeeType === 'none' ? 0 : deliveryFeeRaw
+  const deliveryFee = orderType === 'delivery' && deliveryFeeCents != null
+    ? deliveryFeeCents / 100
     : 0
   const taxRate = Number(restaurant?.tax_rate || 0)
   const serviceFee = 1.50
@@ -521,7 +523,7 @@ export default function CheckoutPage() {
 
   // Build full delivery address string
   const fullDeliveryAddress = orderType === 'delivery' && deliveryAddress.trim()
-    ? `${deliveryAddress.trim()}${deliveryApt.trim() ? `, ${deliveryApt.trim()}` : ''}, ${deliveryCity.trim()}, ${deliveryZip.trim()}`
+    ? `${deliveryAddress.trim()}${deliveryApt.trim() ? `, Apt ${deliveryApt.trim()}` : ''}`
     : null
 
   // Build order_data to pass to edge function (and ultimately to webhook)
@@ -558,33 +560,64 @@ export default function CheckoutPage() {
         placement_type: t.placementType || 'pizza',
       })),
     })),
-  }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, subtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items])
+  }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items])
 
-  // Fetch valid delivery zip codes
+  // Load Google Maps JS API when delivery selected
   useEffect(() => {
-    if (!restaurant?.id || !supabase) return
-    supabase
-      .from('delivery_zip_codes')
-      .select('zip_code')
-      .eq('restaurant_id', restaurant.id)
-      .then(({ data }) => {
-        setValidZips((data || []).map(d => d.zip_code))
-      })
-  }, [restaurant?.id])
+    if (orderType !== 'delivery' || !restaurant?.delivery_available || mapsLoaded) return
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    if (!apiKey) return
+    const loader = new Loader({ apiKey, libraries: ['places'] })
+    loader.load().then(() => setMapsLoaded(true)).catch(err => console.error('[Maps] Load failed:', err))
+  }, [orderType, restaurant?.delivery_available])
 
-  // Validate zip code when it changes
+  // Attach Places Autocomplete when Maps loaded and input exists
   useEffect(() => {
-    if (!validZips || validZips.length === 0 || orderType !== 'delivery') {
-      setZipInvalid(false)
+    if (!mapsLoaded || !inputRef.current || autocompleteRef.current) return
+    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+      componentRestrictions: { country: 'us' },
+      types: ['address'],
+      fields: ['formatted_address', 'geometry'],
+    })
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace()
+      if (place?.geometry?.location) {
+        setDeliveryAddress(place.formatted_address || '')
+        setDeliveryLat(place.geometry.location.lat())
+        setDeliveryLon(place.geometry.location.lng())
+      } else {
+        setAddressError('Could not verify this address. Please try a different one.')
+      }
+    })
+    autocompleteRef.current = ac
+  }, [mapsLoaded])
+
+  // Calculate distance and fee when delivery coordinates change
+  useEffect(() => {
+    if (orderType !== 'delivery' || !deliveryLat || !deliveryLon) {
+      setDeliveryDistance(null)
+      setDeliveryFeeCents(null)
+      setAddressError(null)
       return
     }
-    const zip = deliveryZip.trim()
-    if (zip.length === 5) {
-      setZipInvalid(!validZips.includes(zip))
-    } else {
-      setZipInvalid(false)
+    if (!restaurant?.latitude || !restaurant?.longitude) {
+      setAddressError('This restaurant hasn\'t configured delivery yet. Please choose pickup.')
+      return
     }
-  }, [deliveryZip, validZips, orderType])
+    const dist = haversineDistanceMiles(
+      Number(restaurant.latitude), Number(restaurant.longitude),
+      deliveryLat, deliveryLon
+    )
+    setDeliveryDistance(Math.round(dist * 10) / 10)
+    const feeCents = calculateDeliveryFeeCents(dist, restaurant)
+    if (feeCents === null) {
+      setAddressError(`Sorry, delivery is not available to your address. Distance: ${dist.toFixed(1)} miles, maximum: ${restaurant.delivery_max_radius_miles} miles.`)
+      setDeliveryFeeCents(null)
+    } else {
+      setAddressError(null)
+      setDeliveryFeeCents(feeCents)
+    }
+  }, [orderType, deliveryLat, deliveryLon, restaurant])
 
   // Redirect to menu if cart is empty
   useEffect(() => {
@@ -768,7 +801,7 @@ export default function CheckoutPage() {
           </h3>
           <div className="flex gap-3">
             <button
-              onClick={() => { setOrderType('pickup'); setSpecialInstructions('') }}
+              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setDeliveryLat(null); setDeliveryLon(null); setDeliveryFeeCents(null); setAddressError(null) }}
               className={`flex-1 py-4 rounded-xl font-semibold text-base transition-colors ${
                 orderType === 'pickup'
                   ? 'bg-[#16A34A] text-white'
@@ -805,10 +838,9 @@ export default function CheckoutPage() {
             </h3>
             <div className="space-y-3">
               <input
+                ref={inputRef}
                 type="text"
-                value={deliveryAddress}
-                onChange={e => setDeliveryAddress(e.target.value)}
-                placeholder="Street Address"
+                placeholder="Search for your address..."
                 className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
               <input
@@ -818,27 +850,14 @@ export default function CheckoutPage() {
                 placeholder="Apt/Unit (optional)"
                 className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
-              <div className="flex gap-3">
-                <input
-                  type="text"
-                  value={deliveryCity}
-                  onChange={e => setDeliveryCity(e.target.value)}
-                  placeholder="City"
-                  className="flex-1 px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-                />
-                <input
-                  type="text"
-                  value={deliveryZip}
-                  onChange={e => setDeliveryZip(e.target.value)}
-                  placeholder="Zip"
-                  className="w-28 px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-                />
-              </div>
             </div>
-            {zipInvalid && (
-              <p className="mt-2 text-sm text-red-500">
-                Sorry, we don't deliver to this zip code. Please select pickup or enter a different address.
+            {deliveryDistance != null && !addressError && (
+              <p className="mt-2 text-sm text-gray-600">
+                Distance: {deliveryDistance} mi — Delivery fee: {formatCurrency(deliveryFee)}
               </p>
+            )}
+            {addressError && (
+              <p className="mt-2 text-sm text-red-500">{addressError}</p>
             )}
             {belowMinimum && (
               <p className="mt-2 text-sm text-red-500">
@@ -994,7 +1013,7 @@ export default function CheckoutPage() {
                 orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
                 slug={slug}
                 restaurant={restaurant}
-                disabled={zipInvalid || belowMinimum}
+                disabled={!!addressError || belowMinimum || (orderType === 'delivery' && !deliveryLat)}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}
                 onWalletCustomer={async (name, email, phone) => {
