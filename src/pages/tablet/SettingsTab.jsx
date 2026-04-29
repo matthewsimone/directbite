@@ -68,11 +68,15 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [deliveryAvailable, setDeliveryAvailable] = useState(restaurant?.delivery_available || false)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
   const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum || 0)
-  const [maxRadius, setMaxRadius] = useState(restaurant?.delivery_max_radius_miles || '')
-  const [tier1Fee, setTier1Fee] = useState(restaurant?.delivery_tier1_fee_cents != null ? (restaurant.delivery_tier1_fee_cents / 100).toFixed(2) : '')
   const [tier2Enabled, setTier2Enabled] = useState(!!restaurant?.delivery_tier2_fee_cents)
-  const [tier1MaxMiles, setTier1MaxMiles] = useState(restaurant?.delivery_tier1_max_miles || '')
-  const [tier2Fee, setTier2Fee] = useState(restaurant?.delivery_tier2_fee_cents != null ? (restaurant.delivery_tier2_fee_cents / 100).toFixed(2) : '')
+  // Single tier: singleMaxDist is the outer boundary, singleFee is the fee
+  // Two tier: stdZoneDist is tier1 boundary, stdZoneFee is tier1 fee, extZoneDist is outer boundary, extZoneFee is tier2 fee
+  const [singleMaxDist, setSingleMaxDist] = useState(restaurant?.delivery_max_radius_miles || '')
+  const [singleFee, setSingleFee] = useState(restaurant?.delivery_tier1_fee_cents != null ? (restaurant.delivery_tier1_fee_cents / 100).toFixed(2) : '')
+  const [stdZoneDist, setStdZoneDist] = useState(restaurant?.delivery_tier1_max_miles || '')
+  const [stdZoneFee, setStdZoneFee] = useState(restaurant?.delivery_tier1_fee_cents != null ? (restaurant.delivery_tier1_fee_cents / 100).toFixed(2) : '')
+  const [extZoneDist, setExtZoneDist] = useState(restaurant?.delivery_max_radius_miles || '')
+  const [extZoneFee, setExtZoneFee] = useState(restaurant?.delivery_tier2_fee_cents != null ? (restaurant.delivery_tier2_fee_cents / 100).toFixed(2) : '')
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
   const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
   const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
@@ -173,17 +177,25 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     setSavingDelivery(true)
     setSavedDelivery(false)
 
+    const updateData = {
+      delivery_available: deliveryAvailable,
+      delivery_note: deliveryNote,
+      delivery_minimum: parseFloat(deliveryMinimum) || 0,
+    }
+    if (tier2Enabled) {
+      updateData.delivery_max_radius_miles = parseFloat(extZoneDist) || null
+      updateData.delivery_tier1_max_miles = parseFloat(stdZoneDist) || null
+      updateData.delivery_tier1_fee_cents = stdZoneFee ? Math.round(parseFloat(stdZoneFee) * 100) : null
+      updateData.delivery_tier2_fee_cents = extZoneFee ? Math.round(parseFloat(extZoneFee) * 100) : null
+    } else {
+      updateData.delivery_max_radius_miles = parseFloat(singleMaxDist) || null
+      updateData.delivery_tier1_fee_cents = singleFee ? Math.round(parseFloat(singleFee) * 100) : null
+      updateData.delivery_tier1_max_miles = null
+      updateData.delivery_tier2_fee_cents = null
+    }
     const { data } = await supabase
       .from('restaurants')
-      .update({
-        delivery_available: deliveryAvailable,
-        delivery_max_radius_miles: parseFloat(maxRadius) || null,
-        delivery_tier1_fee_cents: tier1Fee ? Math.round(parseFloat(tier1Fee) * 100) : null,
-        delivery_tier1_max_miles: tier2Enabled ? (parseFloat(tier1MaxMiles) || null) : null,
-        delivery_tier2_fee_cents: tier2Enabled && tier2Fee ? Math.round(parseFloat(tier2Fee) * 100) : null,
-        delivery_note: deliveryNote,
-        delivery_minimum: parseFloat(deliveryMinimum) || 0,
-      })
+      .update(updateData)
       .eq('id', restaurant.id)
       .select()
       .single()
@@ -322,55 +334,97 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         {/* Delivery */}
         <Section title="Delivery" onSave={saveDelivery} saving={savingDelivery} saved={savedDelivery}>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">Delivery Available</span>
+            <span className="text-sm font-medium text-gray-700">Enable Delivery</span>
             <Toggle value={deliveryAvailable} onChange={setDeliveryAvailable} />
           </div>
           {deliveryAvailable && (
             <>
-              <FieldRow label={tier2Enabled ? 'Maximum Delivery Radius' : 'Delivery Radius'}>
-                <div className="relative">
-                  <input type="number" min="0" step="0.5" value={maxRadius}
-                    onChange={e => setMaxRadius(e.target.value)}
-                    placeholder={tier2Enabled ? 'e.g., 5' : 'e.g., 5'}
-                    className="w-full h-11 px-3 pr-14 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">miles</span>
-                </div>
-              </FieldRow>
-              <FieldRow label="Standard Delivery Fee">
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                  <input type="number" min="0" step="0.01" value={tier1Fee}
-                    onChange={e => setTier1Fee(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
-                </div>
-              </FieldRow>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">Extended delivery zone</span>
+                <span className="text-sm font-medium text-gray-700">Add Extended Zone</span>
                 <Toggle value={tier2Enabled} onChange={setTier2Enabled} />
               </div>
-              {tier2Enabled && (
+
+              {!tier2Enabled ? (
                 <>
-                  <FieldRow label="Standard zone up to">
+                  <FieldRow label="Maximum Delivery Distance">
                     <div className="relative">
-                      <input type="number" min="0" step="0.5" value={tier1MaxMiles}
-                        onChange={e => setTier1MaxMiles(e.target.value)}
-                        placeholder="e.g., 3"
+                      <input type="number" min="0.5" step="0.5" value={singleMaxDist}
+                        onChange={e => setSingleMaxDist(e.target.value)}
+                        placeholder="e.g., 5"
                         className="w-full h-11 px-3 pr-14 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">miles</span>
                     </div>
                   </FieldRow>
-                  <FieldRow label="Extended zone fee">
+                  <FieldRow label="Delivery Fee">
                     <div className="relative">
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                      <input type="number" min="0" step="0.01" value={tier2Fee}
-                        onChange={e => setTier2Fee(e.target.value)}
+                      <input type="number" min="0" step="0.01" value={singleFee}
+                        onChange={e => setSingleFee(e.target.value)}
                         placeholder="0.00"
                         className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
                     </div>
                   </FieldRow>
+                  {singleMaxDist && (
+                    <p className="text-xs text-gray-400">Customers beyond {singleMaxDist} miles cannot place delivery orders.</p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Standard Zone</p>
+                    <FieldRow label={`Distance: 0 to`}>
+                      <div className="relative">
+                        <input type="number" min="0.5" step="0.5" value={stdZoneDist}
+                          onChange={e => setStdZoneDist(e.target.value)}
+                          placeholder="e.g., 3"
+                          className="w-full h-11 px-3 pr-14 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">miles</span>
+                      </div>
+                    </FieldRow>
+                    <FieldRow label="Fee">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                        <input type="number" min="0" step="0.01" value={stdZoneFee}
+                          onChange={e => setStdZoneFee(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                      </div>
+                    </FieldRow>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Extended Zone</p>
+                    <FieldRow label={`Distance: ${stdZoneDist || '?'} to`}>
+                      <div className="relative">
+                        <input type="number" min="0.5" step="0.5" value={extZoneDist}
+                          onChange={e => setExtZoneDist(e.target.value)}
+                          placeholder="e.g., 5"
+                          className="w-full h-11 px-3 pr-14 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">miles</span>
+                      </div>
+                    </FieldRow>
+                    <FieldRow label="Fee">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                        <input type="number" min="0" step="0.01" value={extZoneFee}
+                          onChange={e => setExtZoneFee(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                      </div>
+                    </FieldRow>
+                  </div>
+                  {stdZoneDist && extZoneDist && parseFloat(extZoneDist) <= parseFloat(stdZoneDist) && (
+                    <p className="text-xs text-red-500">Extended zone distance must be greater than standard zone ({stdZoneDist} mi).</p>
+                  )}
+                  {stdZoneDist && extZoneDist && stdZoneFee && extZoneFee && parseFloat(extZoneDist) > parseFloat(stdZoneDist) && (
+                    <p className="text-xs text-gray-400">
+                      Within {stdZoneDist} mi: ${parseFloat(stdZoneFee).toFixed(2)} fee.
+                      {' '}{stdZoneDist}–{extZoneDist} mi: ${parseFloat(extZoneFee).toFixed(2)} fee.
+                      {' '}Beyond {extZoneDist} mi: no delivery.
+                    </p>
+                  )}
                 </>
               )}
+
               <FieldRow label="Minimum Order">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
@@ -389,10 +443,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   placeholder="e.g., Free delivery on orders over $30"
                 />
               </div>
-              {tier2Enabled && tier1MaxMiles && maxRadius && parseFloat(tier1MaxMiles) >= parseFloat(maxRadius) && (
-                <p className="text-xs text-red-500">Standard zone must be less than maximum radius ({maxRadius} mi).</p>
-              )}
-              <p className="text-xs text-gray-400">Radius is measured as straight-line distance from restaurant.{tier2Enabled ? ` Orders within ${tier1MaxMiles || '?'} mi pay the standard fee. Orders from ${tier1MaxMiles || '?'}–${maxRadius || '?'} mi pay the extended fee.` : ''}</p>
+              <p className="text-xs text-gray-400">Distance is measured as straight-line from restaurant.</p>
             </>
           )}
         </Section>

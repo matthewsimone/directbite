@@ -599,7 +599,9 @@ export default function CheckoutPage() {
 
   // Attach Places Autocomplete when Maps loaded and input exists
   useEffect(() => {
-    if (!mapsLoaded || !inputRef.current || autocompleteRef.current) return
+    if (!mapsLoaded || !inputRef.current || orderType !== 'delivery') return
+    // Reset autocomplete if input element changed (pickup→delivery remount)
+    autocompleteRef.current = null
     const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: 'us' },
       types: ['address'],
@@ -611,12 +613,13 @@ export default function CheckoutPage() {
         setDeliveryAddress(place.formatted_address || '')
         setDeliveryLat(place.geometry.location.lat())
         setDeliveryLon(place.geometry.location.lng())
+        setAddressError(null)
       } else {
         setAddressError('Could not verify this address. Please try a different one.')
       }
     })
     autocompleteRef.current = ac
-  }, [mapsLoaded])
+  }, [mapsLoaded, orderType])
 
   // Calculate distance and fee when delivery coordinates change
   useEffect(() => {
