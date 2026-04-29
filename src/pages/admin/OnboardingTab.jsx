@@ -1,50 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
-import { Loader } from '@googlemaps/js-api-loader'
-
-const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
-function AddressAutocomplete({ value, onSelect, onChange }) {
-  const inputRef = useRef(null)
-  const acRef = useRef(null)
-  const [loaded, setLoaded] = useState(!!window.google?.maps?.places)
-
-  useEffect(() => {
-    if (loaded) return
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-    if (!apiKey) return
-    const loader = new Loader({ apiKey, libraries: ['places'] })
-    loader.load().then(() => setLoaded(true)).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    if (!loaded || !inputRef.current || acRef.current) return
-    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: 'us' },
-      types: ['address'],
-      fields: ['formatted_address', 'geometry'],
-    })
-    ac.addListener('place_changed', () => {
-      const place = ac.getPlace()
-      if (place?.geometry?.location) {
-        onSelect(place.formatted_address, place.geometry.location.lat(), place.geometry.location.lng())
-      }
-    })
-    acRef.current = ac
-  }, [loaded])
-
-  return (
-    <input
-      ref={inputRef}
-      type="text"
-      defaultValue={value}
-      onChange={e => onChange(e.target.value)}
-      placeholder="Search for address..."
-      className="w-full h-10 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-    />
-  )
-}
+import AddressAutocomplete from '../../components/AddressAutocomplete'
 
 const DEFAULT_HOURS = DAY_NAMES.map((_, i) => ({
   day_of_week: i,
@@ -83,7 +40,7 @@ function Step1({ data, setData }) {
       <div>
         <label className="text-sm text-gray-500">Address</label>
         <AddressAutocomplete
-          value={data.address}
+          defaultValue={data.address}
           onSelect={(address, lat, lon) => setData({ ...data, address, latitude: lat, longitude: lon })}
           onChange={val => setData({ ...data, address: val })}
         />

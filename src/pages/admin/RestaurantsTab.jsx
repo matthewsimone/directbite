@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
-import ZipCodeManager from '../../components/ZipCodeManager'
+import AddressAutocomplete from '../../components/AddressAutocomplete'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -43,23 +43,29 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
 
   async function handleSave() {
     setSaving(true); setSaved(false)
-    const { data: updated } = await supabase
-      .from('restaurants')
-      .update({
-        hero_image_url: data.hero_image_url || null,
-        tax_rate: parseFloat(data.tax_rate) || 0,
-        delivery_fee_type: data.delivery_fee_type || 'flat',
-        delivery_fee: data.delivery_fee_type === 'none' ? 0 : (parseFloat(data.delivery_fee) || 0),
-        delivery_minimum: parseFloat(data.delivery_minimum) || 0,
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-create-restaurant`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        restaurant_id: restaurant.id,
+        name: data.name,
+        phone: data.phone || null,
+        address: data.address || null,
+        latitude: data.latitude || null,
+        longitude: data.longitude || null,
         estimated_pickup_minutes: parseInt(data.estimated_pickup_minutes) || 30,
         estimated_delivery_minutes: parseInt(data.estimated_delivery_minutes) || 60,
+        tax_rate: parseFloat(data.tax_rate) || 0,
         stripe_account_id: data.stripe_account_id || null,
         printer_ip: data.printer_ip || null,
-        tablet_email: data.tablet_email || null,
-      })
-      .eq('id', restaurant.id).select().single()
-
-    if (updated) { setData(updated); onUpdate(updated) }
+      }),
+    })
+    const result = await res.json()
+    if (result.success && result.restaurant) {
+      setData(result.restaurant)
+      onUpdate(result.restaurant)
+    }
     setSaving(false); setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -114,6 +120,8 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
 
         <div className="space-y-3">
           <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Settings</h4>
+          {field('Name', 'name')}
+          {field('Phone', 'phone', 'tel')}
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Hero Image</label>
             <ImageUpload
@@ -124,24 +132,18 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
               placeholder="Upload Hero Image"
             />
           </div>
-          {field('Tax Rate', 'tax_rate', 'number')}
           <div>
-              <label className="text-xs text-gray-500">Delivery Fee Type</label>
-              <div className="flex gap-1 mt-1">
-                {[['flat', 'Flat $'], ['percentage', '%'], ['none', 'Free']].map(([val, label]) => (
-                  <button key={val} onClick={() => setData(prev => ({ ...prev, delivery_fee_type: val }))}
-                    className={`flex-1 h-8 rounded-lg text-xs font-semibold transition-colors ${
-                      (data.delivery_fee_type || 'flat') === val ? 'bg-[#16A34A] text-white' : 'border border-gray-300 text-gray-700'
-                    }`}>{label}</button>
-                ))}
-              </div>
-            </div>
-            {(data.delivery_fee_type || 'flat') !== 'none' && field(
-              (data.delivery_fee_type || 'flat') === 'percentage' ? 'Delivery Fee (%)' : 'Delivery Fee ($)',
-              'delivery_fee', 'number'
+            <label className="text-xs text-gray-500">Address</label>
+            <AddressAutocomplete
+              defaultValue={data.address}
+              onSelect={(address, lat, lon) => setData(prev => ({ ...prev, address, latitude: lat, longitude: lon }))}
+              onChange={val => setData(prev => ({ ...prev, address: val }))}
+            />
+            {data.latitude && data.longitude && (
+              <p className="text-xs text-gray-400 mt-1">Coordinates: {Number(data.latitude).toFixed(5)}, {Number(data.longitude).toFixed(5)}</p>
             )}
-          {field('Delivery Minimum ($)', 'delivery_minimum', 'number')}
-          <ZipCodeManager restaurantId={restaurant.id} />
+          </div>
+          {field('Tax Rate', 'tax_rate', 'number')}
           {field('Est. Pickup Minutes', 'estimated_pickup_minutes', 'number')}
           {field('Est. Delivery Minutes', 'estimated_delivery_minutes', 'number')}
           {field('Stripe Account ID', 'stripe_account_id')}
