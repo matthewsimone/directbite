@@ -3,13 +3,23 @@ import { useState, useEffect, useRef } from 'react'
 let mapsLoadPromise = null
 
 function loadMaps() {
+  console.log('[AA] loadMaps called, already loaded:', !!window.google?.maps?.places, 'pending:', !!mapsLoadPromise)
   if (window.google?.maps?.places) return Promise.resolve()
   if (mapsLoadPromise) return mapsLoadPromise
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+  console.log('[AA] API key present:', !!apiKey)
   if (!apiKey) return Promise.reject(new Error('No Google Maps API key'))
   mapsLoadPromise = import('@googlemaps/js-api-loader').then(({ Loader }) => {
+    console.log('[AA] dynamic import succeeded, creating Loader')
     const loader = new Loader({ apiKey, libraries: ['places'] })
     return loader.load()
+  }).then((result) => {
+    console.log('[AA] Google Maps loaded successfully, places available:', !!window.google?.maps?.places)
+    return result
+  }).catch(err => {
+    console.error('[AA] loadMaps failed:', err)
+    mapsLoadPromise = null
+    throw err
   })
   return mapsLoadPromise
 }
@@ -20,12 +30,18 @@ export default function AddressAutocomplete({ defaultValue, onSelect, onChange, 
   const [loaded, setLoaded] = useState(!!window.google?.maps?.places)
 
   useEffect(() => {
+    console.log('[AA] mount effect, loaded:', loaded, 'key present:', !!import.meta.env.VITE_GOOGLE_MAPS_API_KEY)
     if (loaded) return
-    loadMaps().then(() => setLoaded(true)).catch(() => {})
+    loadMaps().then(() => {
+      console.log('[AA] setLoaded(true)')
+      setLoaded(true)
+    }).catch(err => console.error('[AA] loadMaps rejected:', err))
   }, [loaded])
 
   useEffect(() => {
+    console.log('[AA] autocomplete effect, loaded:', loaded, 'inputRef:', !!inputRef.current, 'acRef:', !!acRef.current)
     if (!loaded || !inputRef.current || acRef.current) return
+    console.log('[AA] attaching autocomplete to input')
     const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
       componentRestrictions: { country: 'us' },
       types: ['address'],
