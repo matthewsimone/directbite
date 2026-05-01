@@ -20,7 +20,7 @@ function ItemCard({ item, slug }) {
         <img
           src={item.image_url}
           alt={item.name}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="img-crisp w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
         <span

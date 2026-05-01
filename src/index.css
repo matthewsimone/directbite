@@ -44,3 +44,9 @@ input, textarea, select {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Sharpen scaled bitmaps (e.g. featured menu thumbs uploaded at 160px). */
+.img-crisp {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}

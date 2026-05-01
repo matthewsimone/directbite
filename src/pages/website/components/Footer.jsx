@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import { Link } from 'react-router-dom'
 import DirectBiteLogo from '../../../components/DirectBiteLogo'
 import { formatTime } from '../utils/hours'
@@ -44,21 +45,19 @@ function FacebookIcon() {
 function HoursList({ hours }) {
   const today = new Date().getDay()
   return (
-    <div>
+    <div className="grid grid-cols-[auto_auto] gap-x-3 gap-y-0.5 text-sm leading-tight">
       {DAY_ROWS.map(({ idx, label }) => {
         const h = (hours || []).find(hr => hr.day_of_week === idx)
         const closed = !h?.is_open || !h.open_time || !h.close_time
         const isToday = idx === today
+        const tone = isToday ? 'font-bold text-green-700' : 'text-gray-600'
         return (
-          <div
-            key={idx}
-            className={`flex justify-between text-sm leading-tight py-0.5 ${isToday ? 'font-bold text-green-700' : 'text-gray-600'}`}
-          >
-            <span className="w-12">{label}</span>
-            <span>
+          <Fragment key={idx}>
+            <span className={tone}>{label}</span>
+            <span className={tone}>
               {closed ? 'Closed' : `${formatTime(h.open_time)}-${formatTime(h.close_time)}`}
             </span>
-          </div>
+          </Fragment>
         )
       })}
     </div>
