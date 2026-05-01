@@ -93,6 +93,27 @@ export default function TabletPage() {
     fetchHours()
   }, [restaurant?.id])
 
+  // Re-fetch the restaurant when the tab becomes visible again so admin-driven
+  // changes (e.g., website_enabled toggle) propagate to the tablet without a
+  // manual logout/refresh. Cheaper than polling, since restaurant settings
+  // rarely change.
+  useEffect(() => {
+    if (!restaurant?.id) return
+
+    async function refreshRestaurant() {
+      if (document.visibilityState !== 'visible') return
+      const { data } = await supabase
+        .from('restaurants')
+        .select('*')
+        .eq('id', restaurant.id)
+        .single()
+      if (data) setRestaurant(data)
+    }
+
+    document.addEventListener('visibilitychange', refreshRestaurant)
+    return () => document.removeEventListener('visibilitychange', refreshRestaurant)
+  }, [restaurant?.id, setRestaurant])
+
   // Order polling, chime, auto-print — runs regardless of active tab
   const { orders, setOrders, loading: ordersLoading, stopChime, fetchOrders } = useOrderPolling(restaurant, hours)
 

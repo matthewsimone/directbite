@@ -65,24 +65,26 @@ function GalleryGrid({ urls, onChange, disabled, slug }) {
     const { error } = await supabase.storage.from('hero-images').upload(path, file, { upsert: true })
     if (error) {
       setUploading(false)
+      console.error('[GALLERY] upload failed:', error)
       toast.error(`Upload failed: ${error.message}`)
       return
     }
     const { data } = supabase.storage.from('hero-images').getPublicUrl(path)
-    onChange([...urls, data.publicUrl])
+    console.log('[GALLERY] uploaded:', data.publicUrl)
+    await onChange([...urls, data.publicUrl])
     setUploading(false)
   }
 
-  function removeAt(i) {
-    onChange(urls.filter((_, idx) => idx !== i))
+  async function removeAt(i) {
+    await onChange(urls.filter((_, idx) => idx !== i))
   }
 
-  function move(i, dir) {
+  async function move(i, dir) {
     const j = i + dir
     if (j < 0 || j >= urls.length) return
     const next = [...urls]
     ;[next[i], next[j]] = [next[j], next[i]]
-    onChange(next)
+    await onChange(next)
   }
 
   return (
@@ -178,6 +180,26 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
   // For tablet: gate is locked. For admin: gate controls disabling fields below.
   const fieldsDisabled = !websiteEnabled
 
+  // Auto-persist gallery on every change (upload/delete/reorder).
+  // Avoids losing photos if the user clicks the panel-level Save button
+  // before clicking "Save Website Settings", or navigates away.
+  async function persistGallery(nextUrls) {
+    setGalleryUrls(nextUrls)
+    console.log('[GALLERY] persisting urls:', nextUrls)
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({ gallery_urls: nextUrls })
+      .eq('id', restaurant.id)
+      .select()
+      .single()
+    console.log('[GALLERY] persist response:', { data, error })
+    if (error) {
+      toast.error(`Gallery save failed: ${error.message}`)
+      return
+    }
+    if (onSave && data) onSave(data)
+  }
+
   function addReview() {
     if (reviews.length >= MAX_REVIEWS) return
     setReviews([...reviews, { customer_name: '', stars: 5, text: '' }])
@@ -223,12 +245,15 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     if (isAdmin) {
       payload.website_enabled = websiteEnabled
     }
+    console.log('[GALLERY] saving urls:', galleryUrls)
+    console.log('[WEBSITE-SETTINGS] payload:', payload)
     const { data, error } = await supabase
       .from('restaurants')
       .update(payload)
       .eq('id', restaurant.id)
       .select()
       .single()
+    console.log('[GALLERY] save response:', { data, error })
     setSaving(false)
     if (error) {
       toast.error(`Save failed: ${error.message}`)
@@ -329,7 +354,7 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
             <SectionHeader>Show Gallery section on website</SectionHeader>
             <Toggle value={galleryVisible} onChange={setGalleryVisible} />
           </div>
-          <GalleryGrid urls={galleryUrls} onChange={setGalleryUrls} disabled={!galleryVisible} slug={restaurant?.slug} />
+          <GalleryGrid urls={galleryUrls} onChange={persistGallery} disabled={!galleryVisible} slug={restaurant?.slug} />
           <HelpText>Up to 8 photos. Even numbers (2, 4, 6, 8) display best. Recommended: food, kitchen, or interior.</HelpText>
         </div>
 
