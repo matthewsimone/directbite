@@ -5,7 +5,7 @@ export default function Hero({ restaurant }) {
 
   return (
     <section
-      className="relative w-full h-[60vh] md:h-[70vh] bg-gray-100 bg-cover bg-center"
+      className="relative w-full h-[65vh] md:h-[70vh] bg-gray-100 bg-cover bg-center"
       style={hero_image_url ? { backgroundImage: `url(${hero_image_url})` } : undefined}
     >
       {/* Dark gradient overlay — keeps white text legible regardless of image */}

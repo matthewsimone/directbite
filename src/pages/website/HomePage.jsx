@@ -73,6 +73,7 @@ export default function HomePage() {
   const { restaurant, hours, loading, error } = useRestaurant(slug)
   const { promotion } = usePromotion(restaurant?.id)
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   // Recompute open/closed every 60s so the banner stays current.
   useEffect(() => {
@@ -120,7 +121,7 @@ export default function HomePage() {
       style={{ '--brand-color': brandColor }}
     >
       <PromoBar promotion={promotion} />
-      <TopBar restaurant={restaurant} status={status} hours={hours} />
+      <TopBar restaurant={restaurant} status={status} hours={hours} onDrawerOpenChange={setDrawerOpen} />
       <Hero restaurant={restaurant} />
       {restaurant.about_section_visible && restaurant.about_text && (
         <About restaurant={restaurant} />
@@ -136,7 +137,7 @@ export default function HomePage() {
       )}
       <Location restaurant={restaurant} />
       <Footer restaurant={restaurant} hours={hours} />
-      <StickyMobileCTA restaurant={restaurant} />
+      {!drawerOpen && <StickyMobileCTA restaurant={restaurant} />}
 
       <script
         type="application/ld+json"

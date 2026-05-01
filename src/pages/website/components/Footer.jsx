@@ -44,7 +44,7 @@ function FacebookIcon() {
 function HoursList({ hours }) {
   const today = new Date().getDay()
   return (
-    <div className="space-y-1">
+    <div>
       {DAY_ROWS.map(({ idx, label }) => {
         const h = (hours || []).find(hr => hr.day_of_week === idx)
         const closed = !h?.is_open || !h.open_time || !h.close_time
@@ -52,7 +52,7 @@ function HoursList({ hours }) {
         return (
           <div
             key={idx}
-            className={`flex justify-between text-sm ${isToday ? 'font-bold text-green-700' : 'text-gray-600'}`}
+            className={`flex justify-between text-sm leading-tight py-0.5 ${isToday ? 'font-bold text-green-700' : 'text-gray-600'}`}
           >
             <span className="w-12">{label}</span>
             <span>
@@ -98,7 +98,7 @@ export default function Footer({ restaurant, hours }) {
           </div>
 
           {/* Social + CTA */}
-          <div>
+          <div className="flex flex-col md:items-end">
             {(restaurant.instagram_url || restaurant.facebook_url) && (
               <div className="flex items-center gap-4 mb-5 text-gray-700">
                 {restaurant.instagram_url && (
@@ -127,7 +127,7 @@ export default function Footer({ restaurant, hours }) {
 
         <div className="border-t border-gray-200 mt-12 pt-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 text-sm text-gray-500">
           <p>© {year} {restaurant.name}. All rights reserved.</p>
-          <div className="flex flex-col md:items-end gap-1">
+          <div className="flex flex-col items-start md:items-end gap-1">
             <span className="text-xs">Powered by:</span>
             <DirectBiteLogo color="dark" height={20} />
           </div>

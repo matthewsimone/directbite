@@ -14,15 +14,22 @@ function ItemCard({ item, slug }) {
   return (
     <Link
       to={`/${slug}?item=${item.id}`}
-      className="block w-[280px] md:w-auto shrink-0 snap-start group"
+      className="block w-[220px] shrink-0 snap-start group"
     >
-      <div className="aspect-square w-full overflow-hidden rounded-2xl bg-gray-100">
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gray-100">
         <img
           src={item.image_url}
           alt={item.name}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
+        <span
+          aria-hidden="true"
+          className="absolute bottom-3 right-3 w-9 h-9 rounded-full bg-white shadow flex items-center justify-center text-xl font-bold leading-none"
+          style={{ color: 'var(--brand-color)' }}
+        >
+          +
+        </span>
       </div>
       <div className="px-1 mt-3">
         <p className="font-semibold text-gray-900 truncate">{item.name}</p>
@@ -66,14 +73,14 @@ export default function FeaturedMenu({ restaurant }) {
         </p>
 
         {/* Mobile: horizontal scroll */}
-        <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 -mx-6 px-6">
+        <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-6 pb-2 -mx-6 px-6">
           {items.map(item => (
             <ItemCard key={item.id} item={item} slug={restaurant.slug} />
           ))}
         </div>
 
-        {/* Desktop: grid */}
-        <div className="hidden md:grid md:grid-cols-3 lg:grid-cols-4 gap-6">
+        {/* Desktop: flex-wrap so cards stay 220px without stretching */}
+        <div className="hidden md:flex md:flex-wrap gap-6">
           {items.map(item => (
             <ItemCard key={item.id} item={item} slug={restaurant.slug} />
           ))}

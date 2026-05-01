@@ -65,7 +65,11 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
           <p className="font-medium text-gray-900">{status.statusText}</p>
           {restaurant.address && <p>{restaurant.address}</p>}
           {restaurant.phone && (
-            <a href={`tel:${restaurant.phone}`} className="text-[#16A34A] font-semibold">
+            <a
+              href={`tel:${restaurant.phone}`}
+              className="font-semibold"
+              style={{ color: 'var(--brand-color)' }}
+            >
               {restaurant.phone}
             </a>
           )}
@@ -75,9 +79,14 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
   )
 }
 
-export default function TopBar({ restaurant, status, hours }) {
-  const [drawerOpen, setDrawerOpen] = useState(false)
+export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }) {
+  const [drawerOpen, setDrawerOpenState] = useState(false)
   const [hoursModalOpen, setHoursModalOpen] = useState(false)
+
+  function setDrawerOpen(next) {
+    setDrawerOpenState(next)
+    if (onDrawerOpenChange) onDrawerOpenChange(next)
+  }
 
   function openHoursModal() {
     setHoursModalOpen(true)
@@ -102,14 +111,14 @@ export default function TopBar({ restaurant, status, hours }) {
             <span className="text-gray-500 truncate max-w-md">{restaurant.address}</span>
           )}
           <div className="flex items-center gap-5">
-            <Link to={`/${restaurant.slug}`} className="font-semibold text-gray-900 hover:text-[#16A34A]">
+            <Link to={`/${restaurant.slug}`} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
               Menu
             </Link>
-            <button onClick={openHoursModal} className="font-semibold text-gray-900 hover:text-[#16A34A]">
+            <button onClick={openHoursModal} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
               Hours
             </button>
             {restaurant.about_section_visible !== false && (
-              <a href="#about" className="font-semibold text-gray-900 hover:text-[#16A34A]">
+              <a href="#about" className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
                 About
               </a>
             )}
