@@ -1,3 +1,18 @@
+/*
+ * TODO (priority: medium) - Improve image quality for menu items
+ * Issue: Menu item images currently uploaded at small resolutions (~160×160 observed in production)
+ * - There is NO client-side downscaling in this code; uploads are direct passthrough to Supabase Storage
+ * - The small images come from the tablet camera/photo picker or are pre-shrunk by the user before upload
+ * - Featured menu items on the website render at 440 device px on retina, so 160px sources upscale 2.75×
+ * Possible fixes:
+ * - Add client-side resize/quality enforcement before upload (target: at least 800×800)
+ * - Show recommended dimensions in upload UI ("Use photos at least 800px on each side")
+ * - Reject uploads below a minimum resolution
+ * - Use Supabase Storage transformations to serve consistent resolution
+ * Affects: src/pages/website/components/FeaturedMenu.jsx (and customer ordering page item images)
+ * Related commit: 3e3787c (added img-crisp CSS as a band-aid)
+ */
+
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
