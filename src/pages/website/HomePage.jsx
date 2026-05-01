@@ -95,6 +95,36 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
     return () => clearInterval(interval)
   }, [hours])
 
+  // Swap the browser tab icon + title to the restaurant's branding while
+  // this page is mounted. Restored on unmount so other DirectBite pages
+  // (admin, tablet, ordering) keep the default.
+  useEffect(() => {
+    if (!restaurant) return
+    const link = document.querySelector("link[rel='icon']")
+    const originalHref = link?.getAttribute('href')
+    const originalType = link?.getAttribute('type')
+    const originalTitle = document.title
+
+    document.title = restaurant.tagline
+      ? `${restaurant.name} — ${restaurant.tagline}`
+      : restaurant.name
+
+    if (link && restaurant.logo_url) {
+      link.setAttribute('href', restaurant.logo_url)
+      // Logo could be jpeg/png/webp — drop the SVG type so the browser
+      // sniffs the actual MIME from the response.
+      link.removeAttribute('type')
+    }
+
+    return () => {
+      document.title = originalTitle
+      if (link && restaurant.logo_url) {
+        if (originalHref) link.setAttribute('href', originalHref)
+        if (originalType) link.setAttribute('type', originalType)
+      }
+    }
+  }, [restaurant])
+
   // Website add-on not enabled — bounce to ordering page. Cross-origin
   // when on a custom domain (Navigate would stay on the wrong host).
   useEffect(() => {
