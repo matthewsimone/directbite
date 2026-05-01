@@ -200,6 +200,28 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     if (onSave && data) onSave(data)
   }
 
+  // Auto-persist the admin-only website_enabled gate. Same rationale as
+  // gallery: this is a high-stakes flag that must reach the DB the moment
+  // the toggle flips, regardless of any batched Save button.
+  async function persistWebsiteEnabled(next) {
+    setWebsiteEnabled(next)
+    console.log('[WEBSITE-ENABLED] persisting:', next)
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({ website_enabled: next })
+      .eq('id', restaurant.id)
+      .select()
+      .single()
+    console.log('[WEBSITE-ENABLED] persist response:', { data, error })
+    if (error) {
+      toast.error(`Failed to ${next ? 'enable' : 'disable'} website: ${error.message}`)
+      setWebsiteEnabled(!next)
+      return
+    }
+    toast.success(next ? 'Website enabled' : 'Website disabled')
+    if (onSave && data) onSave(data)
+  }
+
   function addReview() {
     if (reviews.length >= MAX_REVIEWS) return
     setReviews([...reviews, { customer_name: '', stars: 5, text: '' }])
@@ -245,15 +267,14 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     if (isAdmin) {
       payload.website_enabled = websiteEnabled
     }
-    console.log('[GALLERY] saving urls:', galleryUrls)
-    console.log('[WEBSITE-SETTINGS] payload:', payload)
+    console.log('[SAVE] payload:', payload)
     const { data, error } = await supabase
       .from('restaurants')
       .update(payload)
       .eq('id', restaurant.id)
       .select()
       .single()
-    console.log('[GALLERY] save response:', { data, error })
+    console.log('[SAVE] response:', { data, error })
     setSaving(false)
     if (error) {
       toast.error(`Save failed: ${error.message}`)
@@ -287,7 +308,7 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
             <p className="text-sm font-semibold text-gray-800">Website Enabled</p>
             <p className="text-xs text-gray-500">Paid add-on. Locked from restaurant tablet.</p>
           </div>
-          <Toggle value={websiteEnabled} onChange={setWebsiteEnabled} />
+          <Toggle value={websiteEnabled} onChange={persistWebsiteEnabled} />
         </div>
       )}
 
