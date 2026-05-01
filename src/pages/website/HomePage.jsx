@@ -100,40 +100,71 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
   // (admin, tablet, ordering) keep the default.
   //
   // Logos aren't always square — drawing them straight into the favicon
-  // link would let the browser stretch them. Instead we letterbox onto a
-  // 64×64 transparent canvas before installing the data URL.
+  // link would let the browser stretch them. We letterbox onto a 192×192
+  // transparent canvas (high-DPI rendering on retina + mobile) and
+  // update every icon link tag — including apple-touch-icon variants
+  // mobile browsers prefer — creating any that don't already exist.
   useEffect(() => {
     if (!restaurant) return
-    const link = document.querySelector("link[rel='icon']")
-    const originalHref = link?.getAttribute('href')
-    const originalType = link?.getAttribute('type')
-    const originalTitle = document.title
 
+    const ICON_SELECTORS = [
+      "link[rel='icon']",
+      "link[rel='shortcut icon']",
+      "link[rel='apple-touch-icon']",
+      "link[rel='apple-touch-icon-precomposed']",
+    ]
+
+    // Snapshot each tag's state so cleanup can fully reverse our changes.
+    const iconStates = ICON_SELECTORS.map(selector => {
+      const el = document.querySelector(selector)
+      return {
+        selector,
+        element: el,
+        preExisting: !!el,
+        originalHref: el?.getAttribute('href') || null,
+        originalType: el?.getAttribute('type') || null,
+      }
+    })
+
+    const originalTitle = document.title
     document.title = restaurant.tagline
       ? `${restaurant.name} — ${restaurant.tagline}`
       : restaurant.name
 
     let cancelled = false
 
-    if (link && restaurant.logo_url) {
+    if (restaurant.logo_url) {
       const img = new Image()
       img.crossOrigin = 'anonymous'
       img.onload = () => {
         if (cancelled) return
+        const SIZE = 192
         const canvas = document.createElement('canvas')
-        canvas.width = 64
-        canvas.height = 64
+        canvas.width = SIZE
+        canvas.height = SIZE
         const ctx = canvas.getContext('2d')
         // No background fill — keeps the canvas transparent so the
         // restaurant logo letterboxes cleanly into the browser tab.
-        const ratio = Math.min(64 / img.width, 64 / img.height)
+        const ratio = Math.min(SIZE / img.width, SIZE / img.height)
         const w = img.width * ratio
         const h = img.height * ratio
-        const x = (64 - w) / 2
-        const y = (64 - h) / 2
+        const x = (SIZE - w) / 2
+        const y = (SIZE - h) / 2
         ctx.drawImage(img, x, y, w, h)
-        link.setAttribute('href', canvas.toDataURL('image/png'))
-        link.removeAttribute('type')
+        const dataUrl = canvas.toDataURL('image/png')
+
+        iconStates.forEach(state => {
+          if (!state.element) {
+            // Mobile browsers may need an icon tag we don't ship by
+            // default — create it so the swap takes effect everywhere.
+            state.element = document.createElement('link')
+            const match = state.selector.match(/rel='([^']+)'/)
+            if (match) state.element.rel = match[1]
+            document.head.appendChild(state.element)
+          }
+          state.element.setAttribute('href', dataUrl)
+          state.element.removeAttribute('type')
+        })
       }
       img.src = restaurant.logo_url
     }
@@ -141,10 +172,15 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
     return () => {
       cancelled = true
       document.title = originalTitle
-      if (link) {
-        if (originalHref) link.setAttribute('href', originalHref)
-        if (originalType) link.setAttribute('type', originalType)
-      }
+      iconStates.forEach(state => {
+        if (!state.element) return
+        if (state.preExisting) {
+          if (state.originalHref) state.element.setAttribute('href', state.originalHref)
+          if (state.originalType) state.element.setAttribute('type', state.originalType)
+        } else if (state.element.parentNode) {
+          state.element.parentNode.removeChild(state.element)
+        }
+      })
     }
   }, [restaurant])
 
