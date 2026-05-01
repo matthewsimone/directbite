@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import AddressAutocomplete from '../../components/AddressAutocomplete'
+import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -150,6 +151,12 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
           {field('Printer IP Address', 'printer_ip')}
           {field('Tablet Email', 'tablet_email', 'email')}
         </div>
+
+        <WebsiteSettingsPanel
+          restaurant={data}
+          onSave={updated => { setData(updated); onUpdate(updated) }}
+          isAdmin={true}
+        />
       </div>
 
       <div className="p-4 border-t">

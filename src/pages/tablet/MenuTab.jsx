@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
+
+const FEATURED_LIMIT = 8
 
 export default function MenuTab({ restaurant }) {
   const [categories, setCategories] = useState([])
@@ -43,6 +46,26 @@ export default function MenuTab({ restaurant }) {
     }
   }
 
+  async function toggleFeatured(item) {
+    const turningOn = !item.featured_on_website
+    if (turningOn && featuredCount >= FEATURED_LIMIT) {
+      toast.error('Feature limit reached. Unfeature another item first.')
+      return
+    }
+    const nextOrder = turningOn ? featuredCount : null
+    const { error } = await supabase
+      .from('menu_items')
+      .update({ featured_on_website: turningOn, featured_order: nextOrder })
+      .eq('id', item.id)
+
+    if (error) {
+      toast.error(`Update failed: ${error.message}`)
+      return
+    }
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, featured_on_website: turningOn, featured_order: nextOrder } : i))
+    toast.success(turningOn ? 'Featured on website' : 'Removed from featured')
+  }
+
   function getMinPrice(item) {
     const sizes = item.item_sizes || []
     if (sizes.length === 0) return null
@@ -50,12 +73,17 @@ export default function MenuTab({ restaurant }) {
     return `$${min.toFixed(2)}`
   }
 
+  const featuredCount = items.filter(i => i.featured_on_website).length
+
   if (loading) {
     return <p className="text-center text-gray-400 mt-8">Loading menu...</p>
   }
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-6">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-gray-500">Featured on website: <span className="font-semibold text-gray-700">{featuredCount} / {FEATURED_LIMIT}</span></p>
+      </div>
       {categories.length === 0 ? (
         <p className="text-center text-gray-400 mt-8">No menu categories</p>
       ) : (
@@ -70,28 +98,45 @@ export default function MenuTab({ restaurant }) {
                 {catItems.map(item => (
                   <div
                     key={item.id}
-                    className={`flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200 transition-opacity ${
+                    className={`p-4 bg-white rounded-xl border border-gray-200 transition-opacity ${
                       !item.is_available ? 'opacity-40' : ''
                     }`}
                   >
-                    <div className="flex-1 min-w-0 mr-4">
-                      <p className="font-medium text-base truncate">{item.name}</p>
-                      {getMinPrice(item) && (
-                        <p className="text-sm text-gray-500">{getMinPrice(item)}{item.item_sizes?.length > 1 ? '+' : ''}</p>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => toggleAvailability(item)}
-                      className={`relative w-14 h-8 rounded-full transition-colors ${
-                        item.is_available ? 'bg-[#16A34A]' : 'bg-gray-300'
-                      }`}
-                    >
-                      <span
-                        className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
-                          item.is_available ? 'left-7' : 'left-1'
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0 mr-4">
+                        <p className="font-medium text-base truncate">{item.name}</p>
+                        {getMinPrice(item) && (
+                          <p className="text-sm text-gray-500">{getMinPrice(item)}{item.item_sizes?.length > 1 ? '+' : ''}</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => toggleAvailability(item)}
+                        className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${
+                          item.is_available ? 'bg-[#16A34A]' : 'bg-gray-300'
                         }`}
-                      />
-                    </button>
+                      >
+                        <span
+                          className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                            item.is_available ? 'left-7' : 'left-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                      <span className="text-xs text-gray-500">Feature on Website</span>
+                      <button
+                        onClick={() => toggleFeatured(item)}
+                        className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${
+                          item.featured_on_website ? 'bg-[#16A34A]' : 'bg-gray-300'
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                            item.featured_on_website ? 'left-5.5' : 'left-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {catItems.length === 0 && (

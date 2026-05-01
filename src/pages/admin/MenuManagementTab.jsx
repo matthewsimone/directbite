@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
 // ── Item Editor Panel ──
-function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGroups, onClose, onSaved }) {
+const FEATURED_LIMIT = 8
+
+function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGroups, featuredCount, onClose, onSaved }) {
   const [name, setName] = useState(item?.name || '')
   const [description, setDescription] = useState(item?.description || '')
   const [imageUrl, setImageUrl] = useState(item?.image_url || '')
   const [isAvailable, setIsAvailable] = useState(item?.is_available ?? true)
   const [isBestSeller, setIsBestSeller] = useState(item?.is_best_seller ?? false)
   const [isPopular, setIsPopular] = useState(item?.is_popular ?? false)
+  const [featuredOnWebsite, setFeaturedOnWebsite] = useState(item?.featured_on_website ?? false)
   const [sizes, setSizes] = useState([])
   const [assignedGroupIds, setAssignedGroupIds] = useState([])
   const [saving, setSaving] = useState(false)
@@ -53,18 +57,36 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
 
   async function handleSave() {
     if (!name.trim()) return
+    // Enforce 8-item featured limit when turning on
+    const wasFeatured = item?.featured_on_website ?? false
+    if (featuredOnWebsite && !wasFeatured && featuredCount >= FEATURED_LIMIT) {
+      toast.error('Feature limit reached. Unfeature another item first.')
+      return
+    }
     setSaving(true)
 
     let itemId = item?.id
 
+    // Compute featured_order: keep existing if already featured; assign next slot if newly featured; null if disabled
+    let nextFeaturedOrder = item?.featured_order ?? null
+    if (featuredOnWebsite && !wasFeatured) {
+      nextFeaturedOrder = featuredCount // 0-indexed, fits before the limit
+    } else if (!featuredOnWebsite) {
+      nextFeaturedOrder = null
+    }
+
+    const baseFields = {
+      name, description, image_url: imageUrl || null,
+      is_available: isAvailable, is_best_seller: isBestSeller, is_popular: isPopular,
+      featured_on_website: featuredOnWebsite, featured_order: nextFeaturedOrder,
+    }
+
     if (item) {
-      await supabase.from('menu_items').update({
-        name, description, image_url: imageUrl || null, is_available: isAvailable, is_best_seller: isBestSeller, is_popular: isPopular,
-      }).eq('id', item.id)
+      await supabase.from('menu_items').update(baseFields).eq('id', item.id)
     } else {
       const { data } = await supabase.from('menu_items').insert({
-        restaurant_id: restaurantId, category_id: categoryId,
-        name, description, image_url: imageUrl || null, is_available: isAvailable, is_best_seller: isBestSeller, is_popular: isPopular, sort_order: 0,
+        restaurant_id: restaurantId, category_id: categoryId, sort_order: 0,
+        ...baseFields,
       }).select().single()
       if (data) itemId = data.id
     }
@@ -151,6 +173,16 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
             className={`relative w-12 h-7 rounded-full transition-colors ${isPopular ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
             <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${isPopular ? 'left-5.5' : 'left-0.5'}`} />
           </button>
+        </div>
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Feature on Website</span>
+            <button onClick={() => setFeaturedOnWebsite(!featuredOnWebsite)}
+              className={`relative w-12 h-7 rounded-full transition-colors ${featuredOnWebsite ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
+              <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${featuredOnWebsite ? 'left-5.5' : 'left-0.5'}`} />
+            </button>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">Featured on website: {featuredCount} / {FEATURED_LIMIT}</p>
         </div>
 
         {/* Sizes / Pricing */}
@@ -545,6 +577,7 @@ export default function MenuManagementTab() {
     return formatMoney(Math.min(...sizes.map(s => Number(s.price))))
   }
 
+  const featuredCount = items.filter(i => i.featured_on_website).length
   const showPanel = editingItem || editingGroup !== undefined
 
   return (
@@ -557,6 +590,9 @@ export default function MenuManagementTab() {
             <option value="">Select a restaurant...</option>
             {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
+          {selectedRestaurant && (
+            <span className="text-xs text-gray-500 ml-auto">Featured on website: {featuredCount} / {FEATURED_LIMIT}</span>
+          )}
         </div>
 
         {!selectedRestaurant ? (
@@ -715,6 +751,7 @@ export default function MenuManagementTab() {
             restaurantId={selectedRestaurant}
             restaurantSlug={restaurants.find(r => r.id === selectedRestaurant)?.slug || selectedRestaurant}
             toppingGroups={toppingGroups}
+            featuredCount={featuredCount}
             onClose={() => setEditingItem(null)}
             onSaved={() => {
               const catId = editingItem.categoryId

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
+import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
 // ZipCodeManager removed — replaced by radius-based delivery
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -517,6 +518,13 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </div>
           )}
         </Section>
+
+        {/* Website Settings (paid add-on) */}
+        <WebsiteSettingsPanel
+          restaurant={restaurant}
+          onSave={updated => setRestaurant(updated)}
+          isAdmin={false}
+        />
       </div>
     </div>
   )
