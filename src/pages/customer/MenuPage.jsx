@@ -139,6 +139,19 @@ export default function MenuPage() {
     }
   }, [restLoading, menuLoading])
 
+  // Deep-link: /:slug?item=ID auto-opens that item's modal so the website's
+  // Featured Menu can land users straight in the order flow. Bypasses the
+  // closed/unavailable guard — the modal opens for browse, the existing
+  // Add-to-Cart logic still blocks purchase when needed.
+  useEffect(() => {
+    if (menuLoading || items.length === 0) return
+    const params = new URLSearchParams(window.location.search)
+    const itemId = params.get('item')
+    if (!itemId) return
+    const match = items.find(i => i.id === itemId)
+    if (match) setSelectedItem(match)
+  }, [menuLoading, items])
+
   if (restLoading || menuLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -234,7 +247,12 @@ export default function MenuPage() {
           getToppingsForGroup={getToppingsForGroup}
           promotion={promotion}
           onAddToCart={handleAddToCart}
-          onClose={() => setSelectedItem(null)}
+          onClose={() => {
+            setSelectedItem(null)
+            if (new URLSearchParams(window.location.search).has('item')) {
+              window.history.replaceState({}, '', `/${slug}`)
+            }
+          }}
         />
       )}
 

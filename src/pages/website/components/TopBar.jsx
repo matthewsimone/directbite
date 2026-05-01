@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import HoursModal from './HoursModal'
 
 function StatusPill({ isOpen }) {
   return (
@@ -13,8 +14,7 @@ function StatusPill({ isOpen }) {
   )
 }
 
-// Mobile drawer — placeholder for Phase 2A. Phase 2B fills in full content.
-function MobileDrawer({ open, onClose, restaurant, status }) {
+function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 md:hidden">
@@ -45,10 +45,7 @@ function MobileDrawer({ open, onClose, restaurant, status }) {
             Order
           </Link>
           <button
-            onClick={() => {
-              console.log('hours modal — phase 2B')
-              onClose()
-            }}
+            onClick={() => { onClose(); onOpenHours() }}
             className="w-full text-left px-5 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
           >
             Hours
@@ -78,11 +75,12 @@ function MobileDrawer({ open, onClose, restaurant, status }) {
   )
 }
 
-export default function TopBar({ restaurant, status }) {
+export default function TopBar({ restaurant, status, hours }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [hoursModalOpen, setHoursModalOpen] = useState(false)
 
   function openHoursModal() {
-    console.log('hours modal — phase 2B')
+    setHoursModalOpen(true)
   }
 
   return (
@@ -135,6 +133,13 @@ export default function TopBar({ restaurant, status }) {
         onClose={() => setDrawerOpen(false)}
         restaurant={restaurant}
         status={status}
+        onOpenHours={openHoursModal}
+      />
+
+      <HoursModal
+        open={hoursModalOpen}
+        onClose={() => setHoursModalOpen(false)}
+        hours={hours}
       />
     </header>
   )

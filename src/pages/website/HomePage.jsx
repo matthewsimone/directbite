@@ -5,6 +5,10 @@ import { usePromotion } from '../../hooks/usePromotion'
 import PromoBar from './components/PromoBar'
 import TopBar from './components/TopBar'
 import Hero from './components/Hero'
+import About from './components/About'
+import FeaturedMenu from './components/FeaturedMenu'
+import Gallery from './components/Gallery'
+import Reviews from './components/Reviews'
 import { getStatus } from './utils/hours'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
@@ -51,13 +55,27 @@ export default function HomePage() {
 
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
 
+  const galleryUrls = restaurant.gallery_urls || []
+  const reviews = restaurant.reviews || []
+
   return (
     <div className="min-h-screen bg-white" style={{ '--brand-color': brandColor }}>
       <PromoBar promotion={promotion} />
-      <TopBar restaurant={restaurant} status={status} />
+      <TopBar restaurant={restaurant} status={status} hours={hours} />
       <Hero restaurant={restaurant} />
-      {/* Phase 2B: About, Featured Menu, Gallery, Reviews, Map */}
-      {/* Phase 2C: Footer, sticky mobile CTA */}
+      {restaurant.about_section_visible && restaurant.about_text && (
+        <About restaurant={restaurant} />
+      )}
+      {restaurant.featured_menu_section_visible && (
+        <FeaturedMenu restaurant={restaurant} />
+      )}
+      {restaurant.gallery_section_visible && galleryUrls.length > 0 && (
+        <Gallery urls={galleryUrls} />
+      )}
+      {restaurant.reviews_section_visible && reviews.length > 0 && (
+        <Reviews reviews={reviews} />
+      )}
+      {/* Phase 2C: Footer, sticky mobile CTA, embedded map */}
     </div>
   )
 }
