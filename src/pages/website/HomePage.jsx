@@ -9,7 +9,62 @@ import About from './components/About'
 import FeaturedMenu from './components/FeaturedMenu'
 import Gallery from './components/Gallery'
 import Reviews from './components/Reviews'
+import Location from './components/Location'
+import Footer from './components/Footer'
+import StickyMobileCTA from './components/StickyMobileCTA'
 import { getStatus } from './utils/hours'
+import { parseAddress } from './utils/address'
+
+const SCHEMA_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+function buildSchemaJsonLd(restaurant, hours) {
+  const { street, city, state, zip } = parseAddress(restaurant.address)
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'Restaurant',
+    name: restaurant.name,
+    description: restaurant.tagline || restaurant.about_text || '',
+    image: restaurant.hero_image_url || undefined,
+    telephone: restaurant.phone || undefined,
+    url: `https://directbite.co/${restaurant.slug}/home`,
+    menu: `https://directbite.co/${restaurant.slug}`,
+    priceRange: '$$',
+    servesCuisine: 'Pizza',
+  }
+
+  if (city && state) {
+    data.address = {
+      '@type': 'PostalAddress',
+      streetAddress: street || undefined,
+      addressLocality: city,
+      addressRegion: state,
+      postalCode: zip || undefined,
+    }
+  }
+
+  if (restaurant.latitude != null && restaurant.longitude != null) {
+    data.geo = {
+      '@type': 'GeoCoordinates',
+      latitude: restaurant.latitude,
+      longitude: restaurant.longitude,
+    }
+  }
+
+  const openHours = (hours || [])
+    .filter(h => h.is_open && h.open_time && h.close_time)
+    .map(h => ({
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: SCHEMA_DAY_NAMES[h.day_of_week],
+      opens: h.open_time.slice(0, 5),
+      closes: h.close_time.slice(0, 5),
+    }))
+  if (openHours.length > 0) data.openingHoursSpecification = openHours
+
+  const sameAs = [restaurant.instagram_url, restaurant.facebook_url].filter(Boolean)
+  if (sameAs.length > 0) data.sameAs = sameAs
+
+  return data
+}
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
@@ -57,9 +112,13 @@ export default function HomePage() {
 
   const galleryUrls = restaurant.gallery_urls || []
   const reviews = restaurant.reviews || []
+  const schemaData = buildSchemaJsonLd(restaurant, hours)
 
   return (
-    <div className="min-h-screen bg-white" style={{ '--brand-color': brandColor }}>
+    <div
+      className="min-h-screen bg-white pb-32 md:pb-0"
+      style={{ '--brand-color': brandColor }}
+    >
       <PromoBar promotion={promotion} />
       <TopBar restaurant={restaurant} status={status} hours={hours} />
       <Hero restaurant={restaurant} />
@@ -75,7 +134,14 @@ export default function HomePage() {
       {restaurant.reviews_section_visible && reviews.length > 0 && (
         <Reviews reviews={reviews} />
       )}
-      {/* Phase 2C: Footer, sticky mobile CTA, embedded map */}
+      <Location restaurant={restaurant} />
+      <Footer restaurant={restaurant} hours={hours} />
+      <StickyMobileCTA restaurant={restaurant} />
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaData) }}
+      />
     </div>
   )
 }
