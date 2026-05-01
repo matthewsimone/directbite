@@ -98,6 +98,10 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
   // Swap the browser tab icon + title to the restaurant's branding while
   // this page is mounted. Restored on unmount so other DirectBite pages
   // (admin, tablet, ordering) keep the default.
+  //
+  // Logos aren't always square — drawing them straight into the favicon
+  // link would let the browser stretch them. Instead we letterbox onto a
+  // 64×64 transparent canvas before installing the data URL.
   useEffect(() => {
     if (!restaurant) return
     const link = document.querySelector("link[rel='icon']")
@@ -109,16 +113,35 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
       ? `${restaurant.name} — ${restaurant.tagline}`
       : restaurant.name
 
+    let cancelled = false
+
     if (link && restaurant.logo_url) {
-      link.setAttribute('href', restaurant.logo_url)
-      // Logo could be jpeg/png/webp — drop the SVG type so the browser
-      // sniffs the actual MIME from the response.
-      link.removeAttribute('type')
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.onload = () => {
+        if (cancelled) return
+        const canvas = document.createElement('canvas')
+        canvas.width = 64
+        canvas.height = 64
+        const ctx = canvas.getContext('2d')
+        // No background fill — keeps the canvas transparent so the
+        // restaurant logo letterboxes cleanly into the browser tab.
+        const ratio = Math.min(64 / img.width, 64 / img.height)
+        const w = img.width * ratio
+        const h = img.height * ratio
+        const x = (64 - w) / 2
+        const y = (64 - h) / 2
+        ctx.drawImage(img, x, y, w, h)
+        link.setAttribute('href', canvas.toDataURL('image/png'))
+        link.removeAttribute('type')
+      }
+      img.src = restaurant.logo_url
     }
 
     return () => {
+      cancelled = true
       document.title = originalTitle
-      if (link && restaurant.logo_url) {
+      if (link) {
         if (originalHref) link.setAttribute('href', originalHref)
         if (originalType) link.setAttribute('type', originalType)
       }
