@@ -10,6 +10,7 @@ import AdminPage from './pages/admin/AdminPage'
 import ApplePayTest from './pages/ApplePayTest'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
+import HomePage from './pages/website/HomePage'
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/admin" element={<AdminPage />} />
           <Route path="/admin/login" element={<AdminPage />} />
           <Route path="/:slug" element={<MenuPage />} />
+          <Route path="/:slug/home" element={<HomePage />} />
           <Route path="/:slug/checkout" element={<CheckoutPage />} />
           <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
           <Route path="/:slug/tablet" element={<TabletPage />} />
