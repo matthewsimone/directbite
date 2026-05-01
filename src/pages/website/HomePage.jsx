@@ -14,11 +14,15 @@ import Footer from './components/Footer'
 import StickyMobileCTA from './components/StickyMobileCTA'
 import { getStatus } from './utils/hours'
 import { parseAddress } from './utils/address'
+import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
 
 const SCHEMA_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 function buildSchemaJsonLd(restaurant, hours) {
   const { street, city, state, zip } = parseAddress(restaurant.address)
+  const canonicalUrl = restaurant.custom_domain
+    ? `https://${restaurant.custom_domain}`
+    : `https://${MAIN_DOMAIN}/${restaurant.slug}/home`
   const data = {
     '@context': 'https://schema.org',
     '@type': 'Restaurant',
@@ -26,8 +30,8 @@ function buildSchemaJsonLd(restaurant, hours) {
     description: restaurant.tagline || restaurant.about_text || '',
     image: restaurant.hero_image_url || undefined,
     telephone: restaurant.phone || undefined,
-    url: `https://directbite.co/${restaurant.slug}/home`,
-    menu: `https://directbite.co/${restaurant.slug}`,
+    url: canonicalUrl,
+    menu: `https://${MAIN_DOMAIN}/${restaurant.slug}`,
     priceRange: '$$',
     servesCuisine: 'Pizza',
   }
@@ -68,9 +72,15 @@ function buildSchemaJsonLd(restaurant, hours) {
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
-export default function HomePage() {
-  const { slug } = useParams()
-  const { restaurant, hours, loading, error } = useRestaurant(slug)
+export default function HomePage({ restaurant: propRestaurant, hours: propHours }) {
+  // Custom domain context: parent (CustomDomainShell) provides restaurant + hours.
+  // Main domain context: read slug from URL and fetch via useRestaurant.
+  const { slug: paramSlug } = useParams()
+  const hook = useRestaurant(propRestaurant ? null : paramSlug)
+  const restaurant = propRestaurant || hook.restaurant
+  const hours = propHours || hook.hours
+  const loading = propRestaurant ? false : hook.loading
+  const error = propRestaurant ? null : hook.error
   const { promotion } = usePromotion(restaurant?.id)
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -84,6 +94,16 @@ export default function HomePage() {
     const interval = setInterval(tick, 60000)
     return () => clearInterval(interval)
   }, [hours])
+
+  // Website add-on not enabled — bounce to ordering page. Cross-origin
+  // when on a custom domain (Navigate would stay on the wrong host).
+  useEffect(() => {
+    if (!restaurant) return
+    if (restaurant.website_enabled) return
+    if (!isMainDomain()) {
+      window.location.replace(`https://${MAIN_DOMAIN}/${restaurant.slug}`)
+    }
+  }, [restaurant])
 
   if (loading) {
     return (
@@ -104,10 +124,12 @@ export default function HomePage() {
     )
   }
 
-  // Website add-on not enabled — fall back to the customer ordering page.
-  if (!restaurant.website_enabled) {
-    return <Navigate to={`/${slug}`} replace />
+  // Website add-on not enabled — main-domain SPA redirect.
+  if (!restaurant.website_enabled && isMainDomain()) {
+    return <Navigate to={`/${restaurant.slug}`} replace />
   }
+  // Custom domain + disabled: render nothing while window.location.replace runs above.
+  if (!restaurant.website_enabled) return null
 
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
 

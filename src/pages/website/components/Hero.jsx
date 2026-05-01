@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import OrderLink from './OrderLink'
 
 export default function Hero({ restaurant }) {
   const { hero_image_url, logo_url, name, tagline, slug } = restaurant
@@ -31,19 +31,19 @@ export default function Hero({ restaurant }) {
 
         {/* CTAs — desktop only; mobile uses sticky bottom bar (Phase 2C) */}
         <div className="hidden md:flex items-center gap-4 mt-8">
-          <Link
-            to={`/${slug}`}
+          <OrderLink
+            slug={slug}
             className="px-7 py-3 rounded-full border-2 border-white text-white font-semibold text-base bg-transparent hover:bg-white/10 transition-colors"
           >
             See Menu
-          </Link>
-          <Link
-            to={`/${slug}`}
+          </OrderLink>
+          <OrderLink
+            slug={slug}
             className="px-7 py-3 rounded-full text-white font-semibold text-base hover:opacity-90 transition-opacity"
             style={{ backgroundColor: 'var(--brand-color)' }}
           >
             Order Online
-          </Link>
+          </OrderLink>
         </div>
       </div>
     </section>

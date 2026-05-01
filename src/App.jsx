@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { CartProvider } from './hooks/useCart'
+import { isMainDomain } from './lib/customDomain'
 import LandingPage from './pages/LandingPage'
 import MenuPage from './pages/customer/MenuPage'
 import CheckoutPage from './pages/customer/CheckoutPage'
@@ -11,26 +12,33 @@ import ApplePayTest from './pages/ApplePayTest'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import HomePage from './pages/website/HomePage'
+import CustomDomainShell from './CustomDomainShell'
+
+function MainRoutes() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/applepay-test" element={<ApplePayTest />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/admin" element={<AdminPage />} />
+      <Route path="/admin/login" element={<AdminPage />} />
+      <Route path="/:slug" element={<MenuPage />} />
+      <Route path="/:slug/home" element={<HomePage />} />
+      <Route path="/:slug/checkout" element={<CheckoutPage />} />
+      <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
+      <Route path="/:slug/tablet" element={<TabletPage />} />
+      <Route path="/:slug/tablet/login" element={<TabletPage />} />
+    </Routes>
+  )
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Toaster position="top-center" toastOptions={{ duration: 2000 }} />
       <CartProvider>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/applepay-test" element={<ApplePayTest />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          <Route path="/admin" element={<AdminPage />} />
-          <Route path="/admin/login" element={<AdminPage />} />
-          <Route path="/:slug" element={<MenuPage />} />
-          <Route path="/:slug/home" element={<HomePage />} />
-          <Route path="/:slug/checkout" element={<CheckoutPage />} />
-          <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
-          <Route path="/:slug/tablet" element={<TabletPage />} />
-          <Route path="/:slug/tablet/login" element={<TabletPage />} />
-        </Routes>
+        {isMainDomain() ? <MainRoutes /> : <CustomDomainShell />}
       </CartProvider>
     </BrowserRouter>
   )

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import HoursModal from './HoursModal'
+import OrderLink from './OrderLink'
 
 function StatusPill({ isOpen }) {
   return (
@@ -37,13 +37,13 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          <Link
-            to={`/${restaurant.slug}`}
+          <OrderLink
+            slug={restaurant.slug}
             onClick={onClose}
             className="block px-5 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
           >
             Order
-          </Link>
+          </OrderLink>
           <button
             onClick={() => { onClose(); onOpenHours() }}
             className="w-full text-left px-5 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50"
@@ -111,9 +111,9 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
             <span className="text-gray-500 truncate max-w-md">{restaurant.address}</span>
           )}
           <div className="flex items-center gap-5">
-            <Link to={`/${restaurant.slug}`} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
+            <OrderLink slug={restaurant.slug} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
               Menu
-            </Link>
+            </OrderLink>
             <button onClick={openHoursModal} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
               Hours
             </button>

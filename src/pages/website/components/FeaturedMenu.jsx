@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import OrderLink from './OrderLink'
 import { supabase } from '../../../lib/supabase'
 
 function formatPrice(item) {
@@ -12,8 +12,9 @@ function formatPrice(item) {
 
 function ItemCard({ item, slug }) {
   return (
-    <Link
-      to={`/${slug}?item=${item.id}`}
+    <OrderLink
+      slug={slug}
+      suffix={`?item=${item.id}`}
       className="block w-[220px] shrink-0 snap-start group"
     >
       <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-gray-100">
@@ -37,7 +38,7 @@ function ItemCard({ item, slug }) {
           <p className="text-sm text-gray-600 mt-0.5">{formatPrice(item)}</p>
         )}
       </div>
-    </Link>
+    </OrderLink>
   )
 }
 

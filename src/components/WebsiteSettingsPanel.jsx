@@ -175,6 +175,7 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
   const [instagramUrl, setInstagramUrl] = useState(restaurant?.instagram_url || '')
   const [facebookUrl, setFacebookUrl] = useState(restaurant?.facebook_url || '')
   const [primaryColor, setPrimaryColor] = useState(restaurant?.primary_color || '')
+  const [customDomain, setCustomDomain] = useState(restaurant?.custom_domain || '')
   const [saving, setSaving] = useState(false)
 
   // For tablet: gate is locked. For admin: gate controls disabling fields below.
@@ -240,6 +241,14 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     return url.startsWith('https://')
   }
 
+  function normalizeCustomDomain(raw) {
+    return (raw || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, '')
+      .replace(/\/+$/, '')
+  }
+
   async function handleSave() {
     if (instagramUrl && !validateUrl(instagramUrl)) {
       toast.error('Instagram URL must start with https://')
@@ -247,6 +256,11 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     }
     if (facebookUrl && !validateUrl(facebookUrl)) {
       toast.error('Facebook URL must start with https://')
+      return
+    }
+    const cleanedDomain = normalizeCustomDomain(customDomain)
+    if (cleanedDomain && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(cleanedDomain)) {
+      toast.error('Invalid custom domain — use a bare hostname like frankspizzaoakland.com')
       return
     }
     setSaving(true)
@@ -266,6 +280,7 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     }
     if (isAdmin) {
       payload.website_enabled = websiteEnabled
+      payload.custom_domain = cleanedDomain || null
     }
     console.log('[SAVE] payload:', payload)
     const { data, error } = await supabase
@@ -452,6 +467,28 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
           <HelpText>Used for buttons on your website.</HelpText>
         </div>
       </div>
+
+      {/* Admin-only: custom domain. Sits outside the websiteEnabled-gated
+          block so it can still be configured even if the website is off. */}
+      {isAdmin && (
+        <div className="border-t border-gray-100 pt-5">
+          <SectionHeader>Custom Domain (Admin Only)</SectionHeader>
+          <input
+            type="text"
+            value={customDomain}
+            onChange={e => setCustomDomain(e.target.value.toLowerCase())}
+            placeholder="frankspizzaoakland.com"
+            className="w-full h-11 px-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+          />
+          <p className={`text-xs mt-1 font-medium ${customDomain ? 'text-green-700' : 'text-gray-400'}`}>
+            {customDomain ? 'Configured' : 'Not Set'}
+          </p>
+          <HelpText>
+            After entering, manually add this domain to Vercel via the dashboard.
+            DNS records will be displayed there for the restaurant to configure at their registrar.
+          </HelpText>
+        </div>
+      )}
 
       <button
         type="button"

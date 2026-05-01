@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
-import { Link } from 'react-router-dom'
 import DirectBiteLogo from '../../../components/DirectBiteLogo'
+import OrderLink from './OrderLink'
 import { formatTime } from '../utils/hours'
 
 const DAY_ROWS = [
@@ -114,13 +114,13 @@ export default function Footer({ restaurant, hours }) {
                 )}
               </div>
             )}
-            <Link
-              to={`/${restaurant.slug}`}
+            <OrderLink
+              slug={restaurant.slug}
               className="inline-block w-full md:w-auto text-center px-7 py-3 rounded-full font-semibold text-white hover:opacity-90 transition-opacity"
               style={{ backgroundColor: 'var(--brand-color)' }}
             >
               Order Online
-            </Link>
+            </OrderLink>
           </div>
         </div>
 
