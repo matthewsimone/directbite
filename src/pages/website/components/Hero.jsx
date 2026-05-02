@@ -111,7 +111,7 @@ export default function Hero({ restaurant }) {
 
       {/* Centered content — pt-16 compensates for the -mt-16 on the section
           so content stays optically centered in the visible area below TopBar. */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-[calc(4rem+env(safe-area-inset-top))]">
+      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-[calc(4rem+env(safe-area-inset-top))] pb-[10vh] md:pb-0">
         <LogoFrame
           logoUrl={logo_url}
           shape={logo_frame_shape}
