@@ -10,6 +10,38 @@ const REVIEW_TEXT_MAX = 200
 const MAX_GALLERY = 8
 const MAX_REVIEWS = 3
 
+const HEXAGON_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
+
+const FRAME_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'circle', label: 'Circle' },
+  { value: 'pill_horizontal', label: 'H. Pill' },
+  { value: 'pill_vertical', label: 'V. Pill' },
+  { value: 'hexagon', label: 'Hexagon' },
+]
+
+function FramePreview({ shape }) {
+  return (
+    <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded">
+      {shape === 'none' && (
+        <span className="text-[10px] uppercase tracking-wider text-gray-400">none</span>
+      )}
+      {shape === 'circle' && (
+        <div className="w-9 h-9 bg-white rounded-full shadow-sm" />
+      )}
+      {shape === 'pill_horizontal' && (
+        <div className="w-11 h-6 bg-white rounded-full shadow-sm" />
+      )}
+      {shape === 'pill_vertical' && (
+        <div className="w-6 h-11 bg-white rounded-full shadow-sm" />
+      )}
+      {shape === 'hexagon' && (
+        <div className="w-9 h-9 bg-white shadow-sm" style={{ clipPath: HEXAGON_CLIP }} />
+      )}
+    </div>
+  )
+}
+
 function Toggle({ value, onChange, disabled }) {
   return (
     <button
@@ -164,6 +196,7 @@ function SectionHeader({ children }) {
 export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
   const [websiteEnabled, setWebsiteEnabled] = useState(!!restaurant?.website_enabled)
   const [logoUrl, setLogoUrl] = useState(restaurant?.logo_url || null)
+  const [logoFrameShape, setLogoFrameShape] = useState(restaurant?.logo_frame_shape || 'none')
   const [tagline, setTagline] = useState(restaurant?.tagline || '')
   const [aboutVisible, setAboutVisible] = useState(restaurant?.about_section_visible ?? true)
   const [aboutText, setAboutText] = useState(restaurant?.about_text || '')
@@ -243,6 +276,25 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     if (onSave && data) onSave(data)
   }
 
+  // Logo frame shape auto-persists on selection — same rationale as
+  // visibility toggles. Reverts to previous value if the write fails.
+  async function persistLogoFrameShape(next) {
+    const previous = logoFrameShape
+    setLogoFrameShape(next)
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({ logo_frame_shape: next })
+      .eq('id', restaurant.id)
+      .select()
+      .single()
+    if (error) {
+      toast.error(`Failed to save frame: ${error.message}`)
+      setLogoFrameShape(previous)
+      return
+    }
+    if (onSave && data) onSave(data)
+  }
+
   function addReview() {
     if (reviews.length >= MAX_REVIEWS) return
     setReviews([...reviews, { customer_name: '', stars: 5, text: '' }])
@@ -292,6 +344,7 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
       featured_menu_section_visible: featuredMenuVisible,
       reviews_section_visible: reviewsVisible,
       logo_url: logoUrl,
+      logo_frame_shape: logoFrameShape,
       gallery_urls: galleryUrls,
       instagram_url: instagramUrl.trim() || null,
       facebook_url: facebookUrl.trim() || null,
@@ -359,6 +412,30 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
             placeholder="Upload Logo"
           />
           <HelpText>Square logos work best. Recommended 400×400 or larger. Max 10MB.</HelpText>
+
+          <div className="mt-4">
+            <SectionHeader>Logo Frame Style</SectionHeader>
+            <div className="grid grid-cols-5 gap-2">
+              {FRAME_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => persistLogoFrameShape(opt.value)}
+                  className={`flex flex-col items-center gap-1.5 p-2 rounded-lg border transition-colors ${
+                    logoFrameShape === opt.value
+                      ? 'border-[#16A34A] bg-green-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <FramePreview shape={opt.value} />
+                  <span className="text-[10px] font-medium text-gray-700">{opt.label}</span>
+                </button>
+              ))}
+            </div>
+            <HelpText>
+              Choose how your logo displays on the website. “None” shows your logo as-is on a transparent background — best for circular or hexagonal logos that already have their own design. Use a frame for logos that look better with a white background container.
+            </HelpText>
+          </div>
         </div>
 
         {/* 2. Tagline */}

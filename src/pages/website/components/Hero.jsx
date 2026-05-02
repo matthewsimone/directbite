@@ -1,7 +1,47 @@
 import OrderLink from './OrderLink'
 
+const HEXAGON_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
+
+const SHAPE_BG = {
+  none: 'bg-transparent',
+  circle: 'bg-white rounded-full',
+  pill_horizontal: 'bg-white rounded-full',
+  pill_vertical: 'bg-white rounded-full',
+  hexagon: 'bg-white',
+}
+
+const SHAPE_SIZE = {
+  none: 'w-32 h-32 md:w-40 md:h-40',
+  circle: 'w-32 h-32 md:w-40 md:h-40',
+  pill_horizontal: 'w-44 h-28 md:w-56 md:h-36',
+  pill_vertical: 'w-28 h-44 md:w-36 md:h-56',
+  hexagon: 'w-32 h-32 md:w-40 md:h-40',
+}
+
+function LogoFrame({ logoUrl, shape, name }) {
+  if (!logoUrl) return null
+  const s = SHAPE_BG[shape] ? shape : 'none'
+  // 'none' renders the logo with no padding so the image fills the box
+  // (preserves Test Pizza's full-bleed circular look). Framed shapes get
+  // padding so the logo doesn't crowd the white container's edges.
+  const padding = s === 'none' ? '' : 'p-3 md:p-4'
+  const style = s === 'hexagon' ? { clipPath: HEXAGON_CLIP } : undefined
+  return (
+    <div
+      className={`mb-6 flex items-center justify-center ${SHAPE_BG[s]} ${SHAPE_SIZE[s]} ${padding}`}
+      style={style}
+    >
+      <img
+        src={logoUrl}
+        alt={`${name} logo`}
+        className="w-full h-full object-contain"
+      />
+    </div>
+  )
+}
+
 export default function Hero({ restaurant }) {
-  const { hero_image_url, logo_url, name, tagline, slug } = restaurant
+  const { hero_image_url, logo_url, logo_frame_shape, name, tagline, slug } = restaurant
 
   return (
     <section
@@ -14,13 +54,7 @@ export default function Hero({ restaurant }) {
       {/* Centered content — pt-16 compensates for the -mt-16 on the section
           so content stays optically centered in the visible area below TopBar. */}
       <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-16">
-        {logo_url && (
-          <img
-            src={logo_url}
-            alt={`${name} logo`}
-            className="w-20 h-20 md:w-[120px] md:h-[120px] rounded-full object-cover mb-6"
-          />
-        )}
+        <LogoFrame logoUrl={logo_url} shape={logo_frame_shape} name={name} />
         <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
           {name}
         </h1>
