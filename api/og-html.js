@@ -81,33 +81,45 @@ export default async function handler(req, res) {
 
   if (!host) return res.status(200).send(template)
 
+  // Pass through for main domain and Vercel preview deploys. Vercel's
+  // host-match regex was silently failing to filter these at the rewrite
+  // layer, so we filter here in the function instead.
+  if (host === 'directbite.co' || host.endsWith('.vercel.app')) {
+    return res.status(200).send(template)
+  }
+
   const url = process.env.VITE_SUPABASE_URL
   const anonKey = process.env.VITE_SUPABASE_ANON_KEY
   if (!url || !anonKey) return res.status(200).send(template)
 
-  const supabase = createClient(url, anonKey)
-  const { data: restaurant } = await supabase
-    .from('restaurants')
-    .select('name, tagline, about_text, hero_image_url, logo_url, custom_domain')
-    .eq('custom_domain', host)
-    .maybeSingle()
+  try {
+    const supabase = createClient(url, anonKey)
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('name, tagline, about_text, hero_image_url, logo_url, custom_domain')
+      .eq('custom_domain', host)
+      .maybeSingle()
 
-  if (!restaurant) return res.status(200).send(template)
+    if (!restaurant) return res.status(200).send(template)
 
-  const description =
-    restaurant.tagline ||
-    (restaurant.about_text ? truncateAtWord(restaurant.about_text, 150) : null) ||
-    `Order pickup or delivery direct from ${restaurant.name}`
+    const description =
+      restaurant.tagline ||
+      (restaurant.about_text ? truncateAtWord(restaurant.about_text, 150) : null) ||
+      `Order pickup or delivery direct from ${restaurant.name}`
 
-  const image = restaurant.hero_image_url || restaurant.logo_url || FALLBACK_IMAGE
+    const image = restaurant.hero_image_url || restaurant.logo_url || FALLBACK_IMAGE
 
-  const metaBlock = buildMetaBlock({
-    title: restaurant.name,
-    description,
-    image,
-    url: `https://${host}/`,
-    siteName: restaurant.name,
-  })
+    const metaBlock = buildMetaBlock({
+      title: restaurant.name,
+      description,
+      image,
+      url: `https://${host}/`,
+      siteName: restaurant.name,
+    })
 
-  return res.status(200).send(injectMeta(template, restaurant.name, metaBlock))
+    return res.status(200).send(injectMeta(template, restaurant.name, metaBlock))
+  } catch (err) {
+    console.error('og-html error:', err)
+    return res.status(200).send(template)
+  }
 }
