@@ -96,6 +96,23 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
     return () => clearInterval(interval)
   }, [hours])
 
+  // iOS Safari bfcache + hash-nav viewport recomputation fix.
+  // After bfcache restore (back-nav from a custom-domain "Order Online"
+  // jump to directbite.co) or hash-nav return (back from "#about"),
+  // env(safe-area-inset-top) is sometimes computed against stale
+  // viewport metrics, which clips PromoBar under the notch. Reading a
+  // layout property forces iOS to re-measure. Listen unconditionally
+  // (not gated on event.persisted) since hash-nav back doesn't mark the
+  // event as persisted but exhibits the same symptom.
+  useEffect(() => {
+    function forceReflow() {
+      // eslint-disable-next-line no-unused-expressions
+      document.body.offsetHeight
+    }
+    window.addEventListener('pageshow', forceReflow)
+    return () => window.removeEventListener('pageshow', forceReflow)
+  }, [])
+
   // Swap document title, PWA app-name meta tags, favicon, and manifest
   // hrefs to the restaurant's per-domain API endpoints. Restored on
   // unmount so admin/tablet/landing keep DirectBite defaults.
