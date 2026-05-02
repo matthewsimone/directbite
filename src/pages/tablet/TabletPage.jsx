@@ -68,12 +68,27 @@ export default function TabletPage() {
     return () => { clearInterval(interval); window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline) }
   }, [])
 
-  // Dynamic PWA manifest via Vercel serverless function — scoped to this restaurant's slug
+  // Dynamic PWA manifest via Vercel serverless function — scoped to this
+  // restaurant's slug. Create the link tag if it's missing (index.html no
+  // longer ships a static one — iOS would otherwise cache the static
+  // DirectBite manifest before our React swap could run).
   useEffect(() => {
-    const link = document.querySelector('link[rel="manifest"]')
-    const originalHref = link?.getAttribute('href')
-    if (link) link.setAttribute('href', `/api/tablet-manifest?slug=${slug}`)
-    return () => { if (link && originalHref) link.setAttribute('href', originalHref) }
+    let link = document.querySelector('link[rel="manifest"]')
+    const preExisting = !!link
+    const originalHref = link?.getAttribute('href') || null
+    if (!link) {
+      link = document.createElement('link')
+      link.rel = 'manifest'
+      document.head.appendChild(link)
+    }
+    link.setAttribute('href', `/api/tablet-manifest?slug=${slug}`)
+    return () => {
+      if (preExisting) {
+        if (originalHref) link.setAttribute('href', originalHref)
+      } else if (link.parentNode) {
+        link.parentNode.removeChild(link)
+      }
+    }
   }, [slug])
 
   // Fetch hours for open-hours polling check
