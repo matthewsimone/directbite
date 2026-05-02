@@ -11,7 +11,7 @@ body {
 
 #root {
   background-color: #ffffff;
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* Prevent iOS Safari auto-zoom on input focus */

@@ -113,7 +113,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="min-h-dvh bg-white flex items-center justify-center">
         <div className="w-8 h-8 border-3 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -121,7 +121,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
 
   if (error || !restaurant) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-6 text-center">
+      <div className="min-h-dvh bg-white flex items-center justify-center px-6 text-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Restaurant not found</h1>
           <p className="mt-2 text-sm text-gray-500">{error || 'No restaurant matches this URL.'}</p>
@@ -145,7 +145,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
 
   return (
     <div
-      className="min-h-screen bg-white pb-32 md:pb-0"
+      className="min-h-dvh bg-white pb-32 md:pb-0"
       style={{ '--brand-color': brandColor }}
     >
       <PromoBar promotion={promotion} />
