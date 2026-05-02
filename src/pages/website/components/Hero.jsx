@@ -1,35 +1,76 @@
 import OrderLink from './OrderLink'
 
-const HEXAGON_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
+const DEFAULT_BRAND_COLOR = '#16a34a'
 
-const SHAPE_BG = {
-  none: 'bg-transparent',
-  circle: 'bg-white rounded-full',
-  pill_horizontal: 'bg-white rounded-full',
-  pill_vertical: 'bg-white rounded-full',
-  hexagon: 'bg-white',
-}
+// Pointy-top/bottom hexagon (viewBox 0..100), corners softened with
+// quadratic curves of radius ~6. Drawn clockwise starting just past
+// the top vertex so each vertex gets a Q curve.
+const ROUNDED_HEXAGON_PATH = [
+  'M 55.4,2.7',
+  'L 94.6,22.3', 'Q 100,25 100,31',
+  'L 100,69',    'Q 100,75 94.6,77.7',
+  'L 55.4,97.3', 'Q 50,100 44.6,97.3',
+  'L 5.4,77.7',  'Q 0,75 0,69',
+  'L 0,31',      'Q 0,25 5.4,22.3',
+  'L 44.6,2.7',  'Q 50,0 55.4,2.7',
+  'Z',
+].join(' ')
 
 const SHAPE_SIZE = {
-  none: 'w-32 h-32 md:w-40 md:h-40',
-  circle: 'w-32 h-32 md:w-40 md:h-40',
-  pill_horizontal: 'w-44 h-28 md:w-56 md:h-36',
-  pill_vertical: 'w-28 h-44 md:w-36 md:h-56',
-  hexagon: 'w-32 h-32 md:w-40 md:h-40',
+  none: 'w-24 h-24 md:w-[120px] md:h-[120px]',
+  circle: 'w-24 h-24 md:w-[120px] md:h-[120px]',
+  pill_horizontal: 'w-36 h-24 md:w-[180px] md:h-[120px]',
+  pill_vertical: 'w-24 h-36 md:w-[120px] md:h-[180px]',
+  hexagon: 'w-24 h-24 md:w-[120px] md:h-[120px]',
 }
 
-function LogoFrame({ logoUrl, shape, name }) {
+function LogoFrame({ logoUrl, shape, name, brandColor }) {
   if (!logoUrl) return null
-  const s = SHAPE_BG[shape] ? shape : 'none'
-  // 'none' renders the logo with no padding so the image fills the box
-  // (preserves Test Pizza's full-bleed circular look). Framed shapes get
-  // padding so the logo doesn't crowd the white container's edges.
-  const padding = s === 'none' ? '' : 'p-3 md:p-4'
-  const style = s === 'hexagon' ? { clipPath: HEXAGON_CLIP } : undefined
+  const s = SHAPE_SIZE[shape] ? shape : 'none'
+  const sizeCls = SHAPE_SIZE[s]
+
+  if (s === 'none') {
+    return (
+      <div className={`mb-6 flex items-center justify-center ${sizeCls}`}>
+        <img src={logoUrl} alt={`${name} logo`} className="w-full h-full object-contain" />
+      </div>
+    )
+  }
+
+  if (s === 'hexagon') {
+    return (
+      <div className={`relative mb-6 ${sizeCls}`}>
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full"
+        >
+          <path
+            d={ROUNDED_HEXAGON_PATH}
+            fill="white"
+            stroke={brandColor}
+            strokeWidth="3"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+        <img
+          src={logoUrl}
+          alt={`${name} logo`}
+          className="absolute inset-0 w-full h-full object-contain p-3"
+        />
+      </div>
+    )
+  }
+
+  // circle, pill_horizontal, pill_vertical — true ellipses via border-radius:50%
   return (
     <div
-      className={`mb-6 flex items-center justify-center ${SHAPE_BG[s]} ${SHAPE_SIZE[s]} ${padding}`}
-      style={style}
+      className={`mb-6 flex items-center justify-center bg-white p-3 ${sizeCls}`}
+      style={{
+        borderRadius: '50%',
+        border: `3px solid ${brandColor}`,
+      }}
     >
       <img
         src={logoUrl}
@@ -41,7 +82,8 @@ function LogoFrame({ logoUrl, shape, name }) {
 }
 
 export default function Hero({ restaurant }) {
-  const { hero_image_url, logo_url, logo_frame_shape, name, tagline, slug } = restaurant
+  const { hero_image_url, logo_url, logo_frame_shape, name, tagline, slug, primary_color } = restaurant
+  const brandColor = primary_color || DEFAULT_BRAND_COLOR
 
   return (
     <section
@@ -54,7 +96,12 @@ export default function Hero({ restaurant }) {
       {/* Centered content — pt-16 compensates for the -mt-16 on the section
           so content stays optically centered in the visible area below TopBar. */}
       <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-16">
-        <LogoFrame logoUrl={logo_url} shape={logo_frame_shape} name={name} />
+        <LogoFrame
+          logoUrl={logo_url}
+          shape={logo_frame_shape}
+          name={name}
+          brandColor={brandColor}
+        />
         <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
           {name}
         </h1>

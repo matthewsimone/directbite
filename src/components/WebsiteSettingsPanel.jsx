@@ -10,33 +10,52 @@ const REVIEW_TEXT_MAX = 200
 const MAX_GALLERY = 8
 const MAX_REVIEWS = 3
 
-const HEXAGON_CLIP = 'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)'
+// Same rounded-hexagon path used on the hero.
+const ROUNDED_HEXAGON_PATH = [
+  'M 55.4,2.7',
+  'L 94.6,22.3', 'Q 100,25 100,31',
+  'L 100,69',    'Q 100,75 94.6,77.7',
+  'L 55.4,97.3', 'Q 50,100 44.6,97.3',
+  'L 5.4,77.7',  'Q 0,75 0,69',
+  'L 0,31',      'Q 0,25 5.4,22.3',
+  'L 44.6,2.7',  'Q 50,0 55.4,2.7',
+  'Z',
+].join(' ')
 
 const FRAME_OPTIONS = [
   { value: 'none', label: 'None' },
   { value: 'circle', label: 'Circle' },
-  { value: 'pill_horizontal', label: 'H. Pill' },
-  { value: 'pill_vertical', label: 'V. Pill' },
+  { value: 'pill_horizontal', label: 'Horizontal Oval' },
+  { value: 'pill_vertical', label: 'Vertical Oval' },
   { value: 'hexagon', label: 'Hexagon' },
 ]
 
-function FramePreview({ shape }) {
+function FramePreview({ shape, color }) {
+  const ovalStyle = { borderRadius: '50%', border: `2px solid ${color}` }
   return (
     <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded">
       {shape === 'none' && (
         <span className="text-[10px] uppercase tracking-wider text-gray-400">none</span>
       )}
       {shape === 'circle' && (
-        <div className="w-9 h-9 bg-white rounded-full shadow-sm" />
+        <div className="w-8 h-8 bg-white" style={ovalStyle} />
       )}
       {shape === 'pill_horizontal' && (
-        <div className="w-11 h-6 bg-white rounded-full shadow-sm" />
+        <div className="w-11 h-6 bg-white" style={ovalStyle} />
       )}
       {shape === 'pill_vertical' && (
-        <div className="w-6 h-11 bg-white rounded-full shadow-sm" />
+        <div className="w-6 h-11 bg-white" style={ovalStyle} />
       )}
       {shape === 'hexagon' && (
-        <div className="w-9 h-9 bg-white shadow-sm" style={{ clipPath: HEXAGON_CLIP }} />
+        <svg viewBox="0 0 100 100" className="w-9 h-9">
+          <path
+            d={ROUNDED_HEXAGON_PATH}
+            fill="white"
+            stroke={color}
+            strokeWidth="6"
+            strokeLinejoin="round"
+          />
+        </svg>
       )}
     </div>
   )
@@ -427,8 +446,10 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
-                  <FramePreview shape={opt.value} />
-                  <span className="text-[10px] font-medium text-gray-700">{opt.label}</span>
+                  <FramePreview shape={opt.value} color={primaryColor || DEFAULT_BRAND_COLOR} />
+                  <span className="text-[10px] font-medium text-gray-700 leading-tight text-center">
+                    {opt.label}
+                  </span>
                 </button>
               ))}
             </div>
