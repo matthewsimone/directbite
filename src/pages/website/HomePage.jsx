@@ -136,27 +136,30 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
   // tags to the restaurant's branding while this page is mounted.
   // Restored on unmount so other DirectBite pages keep the defaults.
   //
-  // Favicon: render the logo onto a 192×192 canvas with a white
-  // background (iOS home screen otherwise composites transparent PNGs
-  // against black) and crop the source to its non-transparent bounding
-  // box first — logos with built-in whitespace would otherwise render
-  // tiny once the OS downsamples to 16/32px.
+  // Favicon: two 192×192 canvases. Browser-tab icons get a transparent
+  // background so they sit clean against any tab theme; iOS Add to Home
+  // Screen icons get a solid white background since the OS otherwise
+  // composites transparent PNGs against the wallpaper. Both canvases
+  // crop the source to its non-transparent bounding box first — logos
+  // with built-in whitespace would otherwise render tiny once the OS
+  // downsamples to 16/32px.
   useEffect(() => {
     if (!restaurant) return
 
-    const ICON_SELECTORS = [
-      "link[rel='icon']",
-      "link[rel='shortcut icon']",
-      "link[rel='apple-touch-icon']",
-      "link[rel='apple-touch-icon-precomposed']",
+    const ICON_TARGETS = [
+      { selector: "link[rel='icon']", variant: 'transparent' },
+      { selector: "link[rel='shortcut icon']", variant: 'transparent' },
+      { selector: "link[rel='apple-touch-icon']", variant: 'white' },
+      { selector: "link[rel='apple-touch-icon-precomposed']", variant: 'white' },
     ]
     const META_NAMES = ['apple-mobile-web-app-title', 'application-name']
 
     // Snapshot each tag's state so cleanup can fully reverse our changes.
-    const iconStates = ICON_SELECTORS.map(selector => {
+    const iconStates = ICON_TARGETS.map(({ selector, variant }) => {
       const el = document.querySelector(selector)
       return {
         selector,
+        variant,
         element: el,
         preExisting: !!el,
         originalHref: el?.getAttribute('href') || null,
@@ -197,15 +200,6 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
       img.onload = () => {
         if (cancelled) return
         const SIZE = 192
-        const canvas = document.createElement('canvas')
-        canvas.width = SIZE
-        canvas.height = SIZE
-        const ctx = canvas.getContext('2d')
-
-        // White background — keeps iOS home screen icons readable on
-        // dark wallpapers and matches how most apps style their tile.
-        ctx.fillStyle = '#ffffff'
-        ctx.fillRect(0, 0, SIZE, SIZE)
 
         // Crop to the logo's actual content so built-in whitespace
         // doesn't shrink the rendered icon.
@@ -215,8 +209,22 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
         const h = bounds.height * ratio
         const x = (SIZE - w) / 2
         const y = (SIZE - h) / 2
-        ctx.drawImage(img, bounds.x, bounds.y, bounds.width, bounds.height, x, y, w, h)
-        const dataUrl = canvas.toDataURL('image/png')
+
+        function renderVariant(fillBackground) {
+          const canvas = document.createElement('canvas')
+          canvas.width = SIZE
+          canvas.height = SIZE
+          const ctx = canvas.getContext('2d')
+          if (fillBackground) {
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, SIZE, SIZE)
+          }
+          ctx.drawImage(img, bounds.x, bounds.y, bounds.width, bounds.height, x, y, w, h)
+          return canvas.toDataURL('image/png')
+        }
+
+        const transparentDataUrl = renderVariant(false)
+        const whiteDataUrl = renderVariant(true)
 
         iconStates.forEach(state => {
           if (!state.element) {
@@ -225,7 +233,10 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
             if (match) state.element.rel = match[1]
             document.head.appendChild(state.element)
           }
-          state.element.setAttribute('href', dataUrl)
+          state.element.setAttribute(
+            'href',
+            state.variant === 'white' ? whiteDataUrl : transparentDataUrl,
+          )
           state.element.removeAttribute('type')
         })
       }
