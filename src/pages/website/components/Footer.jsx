@@ -2,6 +2,7 @@ import { Fragment } from 'react'
 import DirectBiteLogo from '../../../components/DirectBiteLogo'
 import OrderLink from './OrderLink'
 import { formatTime } from '../utils/hours'
+import { formatDisplayAddress } from '../utils/address'
 
 const DAY_ROWS = [
   { idx: 1, label: 'Mon' },
@@ -77,7 +78,7 @@ export default function Footer({ restaurant, hours }) {
           <div>
             <p className="font-bold text-lg text-gray-900">{restaurant.name}</p>
             {restaurant.address && (
-              <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{restaurant.address}</p>
+              <p className="mt-2 text-sm text-gray-600 whitespace-pre-line">{formatDisplayAddress(restaurant.address)}</p>
             )}
             {phoneFormatted && (
               <a
@@ -90,8 +91,9 @@ export default function Footer({ restaurant, hours }) {
             )}
           </div>
 
-          {/* Hours */}
-          <div>
+          {/* Hours — centered on mobile so day/time pair sits as a group;
+              left-aligned on desktop to match the surrounding columns. */}
+          <div className="flex flex-col items-center md:items-start">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Hours</h3>
             <HoursList hours={hours} />
           </div>

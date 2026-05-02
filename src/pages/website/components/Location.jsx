@@ -1,4 +1,4 @@
-import { parseAddress } from '../utils/address'
+import { parseAddress, formatDisplayAddress } from '../utils/address'
 
 function formatPhone(raw) {
   if (!raw) return null
@@ -65,7 +65,7 @@ export default function Location({ restaurant }) {
                   {line2 && <p className="text-base text-gray-800">{line2}</p>}
                 </>
               ) : (
-                <p className="text-base text-gray-800">{restaurant.address || '—'}</p>
+                <p className="text-base text-gray-800">{formatDisplayAddress(restaurant.address) || '—'}</p>
               )}
             </div>
 

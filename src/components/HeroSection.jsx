@@ -1,3 +1,5 @@
+import { formatDisplayAddress } from '../pages/website/utils/address'
+
 export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
   return (
     <div className="w-full bg-white">
@@ -13,7 +15,7 @@ export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
           </div>
           <h1 className="text-4xl font-bold text-gray-900 leading-tight">{restaurant.name}</h1>
           {restaurant.address && (
-            <p className="mt-2 text-sm text-gray-500">{restaurant.address}</p>
+            <p className="mt-2 text-sm text-gray-500">{formatDisplayAddress(restaurant.address)}</p>
           )}
           <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
             <span>Pickup: ~{restaurant.estimated_pickup_minutes} min</span>
@@ -63,7 +65,7 @@ export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
           </div>
           <h1 className="text-2xl font-bold text-gray-900">{restaurant.name}</h1>
           {restaurant.address && (
-            <p className="mt-1 text-sm text-gray-500">{restaurant.address}</p>
+            <p className="mt-1 text-sm text-gray-500">{formatDisplayAddress(restaurant.address)}</p>
           )}
           <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
             <span>Pickup: ~{restaurant.estimated_pickup_minutes} min</span>

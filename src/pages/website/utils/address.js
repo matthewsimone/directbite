@@ -7,13 +7,25 @@
 // can decide to omit fields (e.g. Schema.org PostalAddress) rather than
 // emit garbage.
 
+// Google Places returns addresses with a trailing ", USA" — useful to
+// keep in the database for geocoding precision, but redundant for US
+// customers and breaks the parser (the last comma-separated segment is
+// expected to be "<STATE> <ZIP>", not "USA").
+const COUNTRY_SUFFIX = /,\s*(USA|United States)\s*$/i
+
+export function formatDisplayAddress(addr) {
+  if (!addr) return ''
+  return addr.replace(COUNTRY_SUFFIX, '').trim()
+}
+
 export function parseAddress(raw) {
   if (!raw || typeof raw !== 'string') {
     return { street: null, city: null, state: null, zip: null, line2: null }
   }
-  const parts = raw.split(',').map(p => p.trim()).filter(Boolean)
+  const cleaned = raw.replace(COUNTRY_SUFFIX, '').trim()
+  const parts = cleaned.split(',').map(p => p.trim()).filter(Boolean)
   if (parts.length < 3) {
-    return { street: raw.trim(), city: null, state: null, zip: null, line2: null }
+    return { street: cleaned, city: null, state: null, zip: null, line2: null }
   }
 
   const lastTokens = parts[parts.length - 1].split(/\s+/)
@@ -23,7 +35,7 @@ export function parseAddress(raw) {
 
   if (!state) {
     // Couldn't confidently parse the tail — fall back to raw line 1
-    return { street: raw.trim(), city: null, state: null, zip: null, line2: null }
+    return { street: cleaned, city: null, state: null, zip: null, line2: null }
   }
 
   const city = parts[parts.length - 2] || null

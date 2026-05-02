@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import HoursModal from './HoursModal'
 import OrderLink from './OrderLink'
+import { formatDisplayAddress } from '../utils/address'
 
 function StatusPill({ isOpen }) {
   return (
@@ -63,7 +64,7 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
 
         <div className="border-t border-gray-100 px-5 py-4 space-y-2 text-sm text-gray-600">
           <p className="font-medium text-gray-900">{status.statusText}</p>
-          {restaurant.address && <p>{restaurant.address}</p>}
+          {restaurant.address && <p>{formatDisplayAddress(restaurant.address)}</p>}
           {restaurant.phone && (
             <a
               href={`tel:${restaurant.phone}`}
@@ -108,7 +109,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
         {/* RIGHT — desktop */}
         <div className="hidden md:flex items-center gap-6 text-sm">
           {restaurant.address && (
-            <span className="text-gray-500 truncate max-w-md">{restaurant.address}</span>
+            <span className="text-gray-500 truncate max-w-md">{formatDisplayAddress(restaurant.address)}</span>
           )}
           <div className="flex items-center gap-5">
             <OrderLink slug={restaurant.slug} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">

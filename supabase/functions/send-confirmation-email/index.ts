@@ -125,7 +125,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
 
       ${order.delivery_address ? `
       <div style="background:#eff6ff;border-radius:8px;padding:12px 16px;margin-bottom:24px;">
-        <p style="margin:0;color:#1e40af;font-size:14px;"><strong>Delivery to:</strong> ${order.delivery_address}</p>
+        <p style="margin:0;color:#1e40af;font-size:14px;"><strong>Delivery to:</strong> ${order.delivery_address.replace(/,\s*(USA|United States)\s*$/i, '')}</p>
       </div>
       ` : ""}
 
