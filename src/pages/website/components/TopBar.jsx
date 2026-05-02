@@ -154,6 +154,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
       className={`sticky top-0 z-30 transition-all duration-300 ${
         scrolled ? 'bg-white shadow-sm' : 'bg-transparent'
       }`}
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
         {/* LEFT */}
