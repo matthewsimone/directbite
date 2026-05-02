@@ -45,7 +45,7 @@ function FacebookIcon() {
 function HoursList({ hours }) {
   const today = new Date().getDay()
   return (
-    <div className="w-56 text-sm leading-relaxed">
+    <div className="text-sm leading-relaxed">
       {DAY_ROWS.map(({ idx, label }) => {
         const h = (hours || []).find(hr => hr.day_of_week === idx)
         const closed = !h?.is_open || !h.open_time || !h.close_time
@@ -90,11 +90,13 @@ export default function Footer({ restaurant, hours }) {
             )}
           </div>
 
-          {/* Hours — centered on mobile so day/time pair sits as a group;
-              left-aligned on desktop to match the surrounding columns. */}
+          {/* Hours — heading + rows share the same w-56 block so they have
+              a common left edge (centered on mobile, left-aligned on desktop). */}
           <div className="flex flex-col items-center md:items-start">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Hours</h3>
-            <HoursList hours={hours} />
+            <div className="w-56">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Hours</h3>
+              <HoursList hours={hours} />
+            </div>
           </div>
 
           {/* Social + CTA */}
