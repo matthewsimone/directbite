@@ -223,6 +223,26 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
     if (onSave && data) onSave(data)
   }
 
+  // Section-visibility toggles auto-persist on change so they don't
+  // depend on the user clicking the panel's "Save Website Settings"
+  // button (or, in the admin manage panel, accidentally clicking the
+  // modal-level "Save Changes" button which doesn't touch these fields).
+  async function persistVisibility(field, next, setLocal) {
+    setLocal(next)
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({ [field]: next })
+      .eq('id', restaurant.id)
+      .select()
+      .single()
+    if (error) {
+      toast.error(`Failed to update visibility: ${error.message}`)
+      setLocal(!next)
+      return
+    }
+    if (onSave && data) onSave(data)
+  }
+
   function addReview() {
     if (reviews.length >= MAX_REVIEWS) return
     setReviews([...reviews, { customer_name: '', stars: 5, text: '' }])
@@ -360,7 +380,10 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
         <div>
           <div className="flex items-center justify-between">
             <SectionHeader>Show Featured section on website</SectionHeader>
-            <Toggle value={featuredMenuVisible} onChange={setFeaturedMenuVisible} />
+            <Toggle
+              value={featuredMenuVisible}
+              onChange={next => persistVisibility('featured_menu_section_visible', next, setFeaturedMenuVisible)}
+            />
           </div>
           <HelpText>Items marked “Feature on Website” in your Menu tab appear here. Toggle off to hide section entirely.</HelpText>
         </div>
@@ -369,7 +392,10 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <SectionHeader>Show About section on website</SectionHeader>
-            <Toggle value={aboutVisible} onChange={setAboutVisible} />
+            <Toggle
+              value={aboutVisible}
+              onChange={next => persistVisibility('about_section_visible', next, setAboutVisible)}
+            />
           </div>
           <textarea
             rows={4}
@@ -388,7 +414,10 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <SectionHeader>Show Gallery section on website</SectionHeader>
-            <Toggle value={galleryVisible} onChange={setGalleryVisible} />
+            <Toggle
+              value={galleryVisible}
+              onChange={next => persistVisibility('gallery_section_visible', next, setGalleryVisible)}
+            />
           </div>
           <GalleryGrid urls={galleryUrls} onChange={persistGallery} disabled={!galleryVisible} slug={restaurant?.slug} />
           <HelpText>Up to 8 photos. Even numbers (2, 4, 6, 8) display best. Recommended: food, kitchen, or interior.</HelpText>
@@ -398,7 +427,10 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <SectionHeader>Show Reviews section on website</SectionHeader>
-            <Toggle value={reviewsVisible} onChange={setReviewsVisible} />
+            <Toggle
+              value={reviewsVisible}
+              onChange={next => persistVisibility('reviews_section_visible', next, setReviewsVisible)}
+            />
           </div>
           <div className={`space-y-3 ${!reviewsVisible ? 'opacity-40 pointer-events-none' : ''}`}>
             {reviews.map((r, i) => (
