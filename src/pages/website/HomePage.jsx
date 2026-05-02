@@ -188,9 +188,23 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
         state.element = document.createElement('meta')
         state.element.setAttribute('name', state.name)
         document.head.appendChild(state.element)
+        console.log(`[FAVICON] created <meta name="${state.name}">`)
       }
       state.element.setAttribute('content', restaurant.name)
     })
+
+    // The static manifest.webmanifest hardcodes name=\"DirectBite\", which
+    // iOS Safari uses for Add-to-Home-Screen in preference to the
+    // apple-mobile-web-app-title meta tag. Detach the manifest link
+    // while we're on a restaurant website so iOS falls through to the
+    // per-restaurant meta tag set above.
+    const manifestLink = document.querySelector("link[rel='manifest']")
+    const manifestParent = manifestLink?.parentNode || null
+    const manifestNextSibling = manifestLink?.nextSibling || null
+    if (manifestLink && manifestParent) {
+      manifestParent.removeChild(manifestLink)
+      console.log('[FAVICON] removed <link rel="manifest"> for restaurant website context')
+    }
 
     let cancelled = false
 
@@ -263,6 +277,9 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
           state.element.parentNode.removeChild(state.element)
         }
       })
+      if (manifestLink && manifestParent) {
+        manifestParent.insertBefore(manifestLink, manifestNextSibling)
+      }
     }
   }, [restaurant])
 
