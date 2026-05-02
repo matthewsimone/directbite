@@ -1,4 +1,3 @@
-import { Fragment } from 'react'
 import DirectBiteLogo from '../../../components/DirectBiteLogo'
 import OrderLink from './OrderLink'
 import { formatTime } from '../utils/hours'
@@ -46,19 +45,19 @@ function FacebookIcon() {
 function HoursList({ hours }) {
   const today = new Date().getDay()
   return (
-    <div className="grid grid-cols-[auto_auto] gap-x-8 gap-y-0.5 text-sm leading-tight">
+    <div className="w-56 text-sm leading-relaxed">
       {DAY_ROWS.map(({ idx, label }) => {
         const h = (hours || []).find(hr => hr.day_of_week === idx)
         const closed = !h?.is_open || !h.open_time || !h.close_time
         const isToday = idx === today
         const tone = isToday ? 'font-bold text-green-700' : 'text-gray-600'
         return (
-          <Fragment key={idx}>
-            <span className={tone}>{label}</span>
-            <span className={tone}>
-              {closed ? 'Closed' : `${formatTime(h.open_time)}-${formatTime(h.close_time)}`}
+          <div key={idx} className={`flex justify-between ${tone}`}>
+            <span>{label}</span>
+            <span>
+              {closed ? 'Closed' : `${formatTime(h.open_time)} - ${formatTime(h.close_time)}`}
             </span>
-          </Fragment>
+          </div>
         )
       })}
     </div>
