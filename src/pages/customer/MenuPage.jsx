@@ -6,6 +6,7 @@ import { useMenu } from '../../hooks/useMenu'
 import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
 import { useWalletDetection } from '../../hooks/useWalletDetection'
+import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import HeroSection from '../../components/HeroSection'
 import PromotionBanner from '../../components/PromotionBanner'
 import CategoryTabs from '../../components/CategoryTabs'
@@ -21,6 +22,8 @@ export default function MenuPage() {
   const { restaurant, isOpen, nextOpenTime, loading: restLoading, error } = useRestaurant(slug)
   // Pre-detect Apple Pay / Google Pay availability (caches in sessionStorage)
   useWalletDetection(restaurant?.stripe_account_id)
+  // Per-restaurant tab branding + Add-to-Home-Screen manifest.
+  useRestaurantBranding(restaurant, 'ordering')
   const {
     categories,
     items,

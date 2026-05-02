@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { usePromotion } from '../../hooks/usePromotion'
+import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import PromoBar from './components/PromoBar'
 import TopBar from './components/TopBar'
 import Hero from './components/Hero'
@@ -17,43 +18,6 @@ import { parseAddress } from './utils/address'
 import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
 
 const SCHEMA_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
-// Find the bounding box of non-transparent pixels in the loaded image so
-// the favicon canvas can crop away built-in whitespace and render the
-// logo at the largest possible size.
-function getNonTransparentBounds(img) {
-  const tempCanvas = document.createElement('canvas')
-  tempCanvas.width = img.width
-  tempCanvas.height = img.height
-  const tempCtx = tempCanvas.getContext('2d')
-  tempCtx.drawImage(img, 0, 0)
-  const data = tempCtx.getImageData(0, 0, img.width, img.height).data
-
-  let minX = img.width, minY = img.height, maxX = 0, maxY = 0
-  for (let y = 0; y < img.height; y++) {
-    for (let x = 0; x < img.width; x++) {
-      const alpha = data[(y * img.width + x) * 4 + 3]
-      if (alpha > 10) {
-        if (x < minX) minX = x
-        if (x > maxX) maxX = x
-        if (y < minY) minY = y
-        if (y > maxY) maxY = y
-      }
-    }
-  }
-
-  // Fully opaque source (JPEG, or no transparent pixels detected) — use full image
-  if (maxX === 0 && maxY === 0) {
-    return { x: 0, y: 0, width: img.width, height: img.height }
-  }
-
-  return {
-    x: minX,
-    y: minY,
-    width: maxX - minX + 1,
-    height: maxY - minY + 1,
-  }
-}
 
 function buildSchemaJsonLd(restaurant, hours) {
   const { street, city, state, zip } = parseAddress(restaurant.address)
@@ -132,199 +96,10 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
     return () => clearInterval(interval)
   }, [hours])
 
-  // Swap the browser tab icon, document title, and PWA app-name meta
-  // tags to the restaurant's branding while this page is mounted.
-  // Restored on unmount so other DirectBite pages keep the defaults.
-  //
-  // Favicon: two 192×192 canvases. Browser-tab icons get a transparent
-  // background so they sit clean against any tab theme; iOS Add to Home
-  // Screen icons get a solid white background since the OS otherwise
-  // composites transparent PNGs against the wallpaper. Both canvases
-  // crop the source to its non-transparent bounding box first — logos
-  // with built-in whitespace would otherwise render tiny once the OS
-  // downsamples to 16/32px.
-  useEffect(() => {
-    if (!restaurant) return
-
-    const ICON_TARGETS = [
-      { selector: "link[rel='icon']", variant: 'transparent' },
-      { selector: "link[rel='shortcut icon']", variant: 'transparent' },
-      { selector: "link[rel='apple-touch-icon']", variant: 'white' },
-      { selector: "link[rel='apple-touch-icon-precomposed']", variant: 'white' },
-      { selector: "link[rel='mask-icon']", variant: 'transparent' },
-    ]
-    const META_NAMES = ['apple-mobile-web-app-title', 'application-name']
-
-    // Snapshot each tag's state so cleanup can fully reverse our changes.
-    const iconStates = ICON_TARGETS.map(({ selector, variant }) => {
-      const el = document.querySelector(selector)
-      return {
-        selector,
-        variant,
-        element: el,
-        preExisting: !!el,
-        originalHref: el?.getAttribute('href') || null,
-        originalType: el?.getAttribute('type') || null,
-      }
-    })
-    const metaStates = META_NAMES.map(name => {
-      const el = document.querySelector(`meta[name='${name}']`)
-      return {
-        name,
-        element: el,
-        preExisting: !!el,
-        originalContent: el?.getAttribute('content') || null,
-      }
-    })
-
-    const originalTitle = document.title
-    document.title = restaurant.tagline
-      ? `${restaurant.name} — ${restaurant.tagline}`
-      : restaurant.name
-
-    // PWA "Add to Home Screen" name — applied immediately, doesn't wait
-    // on the canvas render.
-    metaStates.forEach(state => {
-      if (!state.element) {
-        state.element = document.createElement('meta')
-        state.element.setAttribute('name', state.name)
-        document.head.appendChild(state.element)
-        console.log(`[FAVICON] created <meta name="${state.name}">`)
-      }
-      state.element.setAttribute('content', restaurant.name)
-    })
-
-    // The static manifest.webmanifest hardcodes name=\"DirectBite\", which
-    // iOS Safari uses for Add-to-Home-Screen in preference to the
-    // apple-mobile-web-app-title meta tag. Replace its href with a blob
-    // URL containing a per-restaurant manifest so iOS reads the right
-    // name + icons from the source it actually trusts. Original href is
-    // captured for cleanup and the blob URL is revoked on unmount.
-    let manifestLink = document.querySelector("link[rel='manifest']")
-    const originalManifestHref = manifestLink?.getAttribute('href') || null
-    const manifestPreExisting = !!manifestLink
-    let manifestObjectUrl = null
-    if (!manifestLink) {
-      manifestLink = document.createElement('link')
-      manifestLink.rel = 'manifest'
-      document.head.appendChild(manifestLink)
-    }
-
-    let cancelled = false
-
-    if (restaurant.logo_url) {
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.onload = () => {
-        if (cancelled) return
-        const SIZE = 192
-
-        // Crop to the logo's actual content so built-in whitespace
-        // doesn't shrink the rendered icon.
-        const bounds = getNonTransparentBounds(img)
-        const ratio = Math.min(SIZE / bounds.width, SIZE / bounds.height)
-        const w = bounds.width * ratio
-        const h = bounds.height * ratio
-        const x = (SIZE - w) / 2
-        const y = (SIZE - h) / 2
-
-        function renderVariant(fillBackground) {
-          const canvas = document.createElement('canvas')
-          canvas.width = SIZE
-          canvas.height = SIZE
-          const ctx = canvas.getContext('2d')
-          if (fillBackground) {
-            ctx.fillStyle = '#ffffff'
-            ctx.fillRect(0, 0, SIZE, SIZE)
-          }
-          ctx.drawImage(img, bounds.x, bounds.y, bounds.width, bounds.height, x, y, w, h)
-          return canvas.toDataURL('image/png')
-        }
-
-        const transparentDataUrl = renderVariant(false)
-        const whiteDataUrl = renderVariant(true)
-
-        iconStates.forEach(state => {
-          if (!state.element) {
-            state.element = document.createElement('link')
-            const match = state.selector.match(/rel='([^']+)'/)
-            if (match) state.element.rel = match[1]
-            document.head.appendChild(state.element)
-          }
-          state.element.setAttribute(
-            'href',
-            state.variant === 'white' ? whiteDataUrl : transparentDataUrl,
-          )
-          state.element.removeAttribute('type')
-        })
-
-        // Build a per-restaurant manifest as a blob URL. iOS Safari
-        // re-reads the manifest at "Add to Home Screen" time, so the
-        // dialog's name field comes from this JSON instead of the
-        // static DirectBite-branded one shipped in /public.
-        const manifestData = {
-          name: restaurant.name,
-          short_name: restaurant.name,
-          icons: [{ src: whiteDataUrl, sizes: '192x192', type: 'image/png' }],
-          start_url: '/',
-          display: 'standalone',
-          background_color: '#ffffff',
-          theme_color: restaurant.primary_color || '#16a34a',
-        }
-        const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/manifest+json' })
-        manifestObjectUrl = URL.createObjectURL(manifestBlob)
-        manifestLink.setAttribute('href', manifestObjectUrl)
-        console.log('[FAVICON] manifest swapped to per-restaurant blob:', manifestData.name)
-      }
-      img.src = restaurant.logo_url
-    } else {
-      // No logo — still need a per-restaurant manifest so the Add to
-      // Home Screen name reads correctly. Skip icons in that case.
-      const manifestData = {
-        name: restaurant.name,
-        short_name: restaurant.name,
-        start_url: '/',
-        display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: restaurant.primary_color || '#16a34a',
-      }
-      const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/manifest+json' })
-      manifestObjectUrl = URL.createObjectURL(manifestBlob)
-      manifestLink.setAttribute('href', manifestObjectUrl)
-      console.log('[FAVICON] manifest swapped to per-restaurant blob (no logo):', manifestData.name)
-    }
-
-    return () => {
-      cancelled = true
-      document.title = originalTitle
-      iconStates.forEach(state => {
-        if (!state.element) return
-        if (state.preExisting) {
-          if (state.originalHref) state.element.setAttribute('href', state.originalHref)
-          if (state.originalType) state.element.setAttribute('type', state.originalType)
-        } else if (state.element.parentNode) {
-          state.element.parentNode.removeChild(state.element)
-        }
-      })
-      metaStates.forEach(state => {
-        if (!state.element) return
-        if (state.preExisting) {
-          if (state.originalContent) state.element.setAttribute('content', state.originalContent)
-        } else if (state.element.parentNode) {
-          state.element.parentNode.removeChild(state.element)
-        }
-      })
-      if (manifestLink) {
-        if (manifestPreExisting) {
-          if (originalManifestHref) manifestLink.setAttribute('href', originalManifestHref)
-          else manifestLink.removeAttribute('href')
-        } else if (manifestLink.parentNode) {
-          manifestLink.parentNode.removeChild(manifestLink)
-        }
-      }
-      if (manifestObjectUrl) URL.revokeObjectURL(manifestObjectUrl)
-    }
-  }, [restaurant])
+  // Swap document title, PWA app-name meta tags, favicon, and manifest
+  // hrefs to the restaurant's per-domain API endpoints. Restored on
+  // unmount so admin/tablet/landing keep DirectBite defaults.
+  useRestaurantBranding(restaurant, 'website')
 
   // Website add-on not enabled — bounce to ordering page. Cross-origin
   // when on a custom domain (Navigate would stay on the wrong host).
