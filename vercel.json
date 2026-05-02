@@ -2,7 +2,9 @@
   "rewrites": [
     {
       "source": "/",
-      "has": [{ "type": "host", "value": "(?<host>.+)" }],
+      "has": [
+        { "type": "host", "value": "(?<host>www\\.testpizza\\.co)" }
+      ],
       "destination": "/api/og-html?host=:host"
     },
     { "source": "/(.*)", "destination": "/index.html" }
