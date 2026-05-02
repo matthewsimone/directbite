@@ -68,10 +68,7 @@ export default function FeaturedMenu({ restaurant }) {
   return (
     <section className="bg-white py-10 md:py-16">
       <div className="max-w-[1280px] mx-auto px-6 md:px-8">
-        <h2 className="text-3xl md:text-4xl font-bold text-gray-900">Featured Menu</h2>
-        <p className="text-base md:text-lg text-gray-600 mt-2 mb-6 md:mb-8">
-          Try our most popular items
-        </p>
+        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8">Featured</h2>
 
         {/* Mobile: horizontal scroll */}
         <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-6 pb-2 -mx-6 px-6">

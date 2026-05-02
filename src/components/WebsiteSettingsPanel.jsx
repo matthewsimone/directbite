@@ -356,7 +356,16 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
           <HelpText>A short one-liner shown in the hero of your website.</HelpText>
         </div>
 
-        {/* 3. About */}
+        {/* 3. Featured */}
+        <div>
+          <div className="flex items-center justify-between">
+            <SectionHeader>Show Featured section on website</SectionHeader>
+            <Toggle value={featuredMenuVisible} onChange={setFeaturedMenuVisible} />
+          </div>
+          <HelpText>Items marked “Feature on Website” in your Menu tab appear here. Toggle off to hide section entirely.</HelpText>
+        </div>
+
+        {/* 4. About */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <SectionHeader>Show About section on website</SectionHeader>
@@ -373,15 +382,6 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
           />
           <p className="text-xs text-gray-400 text-right">{aboutText.length} / {ABOUT_MAX}</p>
           <HelpText>Tell customers about your restaurant — your story, what makes you special.</HelpText>
-        </div>
-
-        {/* 4. Featured Menu */}
-        <div>
-          <div className="flex items-center justify-between">
-            <SectionHeader>Show Featured Menu section on website</SectionHeader>
-            <Toggle value={featuredMenuVisible} onChange={setFeaturedMenuVisible} />
-          </div>
-          <HelpText>Items marked “Feature on Website” in your Menu tab appear here. Toggle off to hide section entirely.</HelpText>
         </div>
 
         {/* 5. Gallery */}

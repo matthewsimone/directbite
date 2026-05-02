@@ -151,11 +151,11 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
       <PromoBar promotion={promotion} />
       <TopBar restaurant={restaurant} status={status} hours={hours} onDrawerOpenChange={setDrawerOpen} />
       <Hero restaurant={restaurant} />
-      {restaurant.about_section_visible && restaurant.about_text && (
-        <About restaurant={restaurant} />
-      )}
       {restaurant.featured_menu_section_visible && (
         <FeaturedMenu restaurant={restaurant} />
+      )}
+      {restaurant.about_section_visible && restaurant.about_text && (
+        <About restaurant={restaurant} />
       )}
       {restaurant.gallery_section_visible && galleryUrls.length > 0 && (
         <Gallery urls={galleryUrls} />
