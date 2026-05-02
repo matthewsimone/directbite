@@ -1,5 +1,15 @@
 {
   "rewrites": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "(?<host>(?!.*directbite\\.co).+)" }],
+      "destination": "/api/og-html?host=:host"
+    },
     { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/og-html.js": {
+      "includeFiles": "dist/index.html"
+    }
+  }
 }
