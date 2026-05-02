@@ -46,7 +46,7 @@ function FacebookIcon() {
 function HoursList({ hours }) {
   const today = new Date().getDay()
   return (
-    <div className="grid grid-cols-[auto_auto] gap-x-6 gap-y-0.5 text-sm leading-tight">
+    <div className="grid grid-cols-[auto_auto] gap-x-8 gap-y-0.5 text-sm leading-tight">
       {DAY_ROWS.map(({ idx, label }) => {
         const h = (hours || []).find(hr => hr.day_of_week === idx)
         const closed = !h?.is_open || !h.open_time || !h.close_time
