@@ -31,30 +31,38 @@ const FRAME_OPTIONS = [
 ]
 
 function FramePreview({ shape, color }) {
-  const ovalStyle = { borderRadius: '50%', border: `2px solid ${color}` }
+  // Mini version of the actual hero badge: white fill + brand border +
+  // thin white trim outside, with a gray dot standing in for the logo.
+  const ovalStyle = {
+    borderRadius: '50%',
+    boxShadow: `0 0 0 1.5px ${color}, 0 0 0 3px white`,
+  }
+  const dotCls = 'w-1.5 h-1.5 rounded-full bg-gray-400'
   return (
     <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded">
       {shape === 'none' && (
         <span className="text-[10px] uppercase tracking-wider text-gray-400">none</span>
       )}
       {shape === 'circle' && (
-        <div className="w-8 h-8 bg-white" style={ovalStyle} />
+        <div className="w-7 h-7 bg-white flex items-center justify-center" style={ovalStyle}>
+          <span className={dotCls} />
+        </div>
       )}
       {shape === 'pill_horizontal' && (
-        <div className="w-11 h-6 bg-white" style={ovalStyle} />
+        <div className="w-10 h-5 bg-white flex items-center justify-center" style={ovalStyle}>
+          <span className={dotCls} />
+        </div>
       )}
       {shape === 'pill_vertical' && (
-        <div className="w-6 h-11 bg-white" style={ovalStyle} />
+        <div className="w-5 h-10 bg-white flex items-center justify-center" style={ovalStyle}>
+          <span className={dotCls} />
+        </div>
       )}
       {shape === 'hexagon' && (
-        <svg viewBox="0 0 100 100" className="w-9 h-9">
-          <path
-            d={ROUNDED_HEXAGON_PATH}
-            fill="white"
-            stroke={color}
-            strokeWidth="6"
-            strokeLinejoin="round"
-          />
+        <svg viewBox="0 0 100 100" className="w-8 h-8" style={{ overflow: 'visible' }}>
+          <path d={ROUNDED_HEXAGON_PATH} fill="white" stroke="white" strokeWidth="13" strokeLinejoin="round" />
+          <path d={ROUNDED_HEXAGON_PATH} fill="none" stroke={color} strokeWidth="6" strokeLinejoin="round" />
+          <circle cx="50" cy="50" r="9" fill="#9ca3af" />
         </svg>
       )}
     </div>

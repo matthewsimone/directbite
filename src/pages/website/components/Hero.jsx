@@ -44,10 +44,21 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           className="absolute inset-0 w-full h-full"
+          style={{ overflow: 'visible' }}
         >
+          {/* White outer trim — wider stroke drawn first (behind). */}
           <path
             d={ROUNDED_HEXAGON_PATH}
             fill="white"
+            stroke="white"
+            strokeWidth="9"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          {/* Brand-color border on top — narrower stroke. */}
+          <path
+            d={ROUNDED_HEXAGON_PATH}
+            fill="none"
             stroke={brandColor}
             strokeWidth="3"
             strokeLinejoin="round"
@@ -57,19 +68,21 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
         <img
           src={logoUrl}
           alt={`${name} logo`}
-          className="absolute inset-0 w-full h-full object-contain p-3"
+          className="absolute inset-0 w-full h-full object-contain p-2"
         />
       </div>
     )
   }
 
-  // circle, pill_horizontal, pill_vertical — true ellipses via border-radius:50%
+  // circle, pill_horizontal, pill_vertical — true ellipses via border-radius:50%.
+  // Stacked box-shadows give us a brand-color ring + a white trim outside it
+  // (a single border can't produce the two-layer "sticker" edge).
   return (
     <div
-      className={`mb-6 flex items-center justify-center bg-white p-3 ${sizeCls}`}
+      className={`mb-6 flex items-center justify-center bg-white p-2 ${sizeCls}`}
       style={{
         borderRadius: '50%',
-        border: `3px solid ${brandColor}`,
+        boxShadow: `0 0 0 3px ${brandColor}, 0 0 0 6px white`,
       }}
     >
       <img
