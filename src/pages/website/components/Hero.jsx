@@ -18,10 +18,10 @@ const ROUNDED_HEXAGON_PATH = [
 
 const SHAPE_SIZE = {
   none: 'w-36 h-36 md:w-48 md:h-48',
-  circle: 'w-28 h-28 md:w-36 md:h-36',
-  pill_horizontal: 'w-44 h-28 md:w-56 md:h-36',
-  pill_vertical: 'w-28 h-44 md:w-36 md:h-56',
-  hexagon: 'w-28 h-28 md:w-36 md:h-36',
+  circle: 'w-24 h-24 md:w-[120px] md:h-[120px]',
+  pill_horizontal: 'w-36 h-24 md:w-[180px] md:h-[120px]',
+  pill_vertical: 'w-24 h-36 md:w-[120px] md:h-[180px]',
+  hexagon: 'w-24 h-24 md:w-[120px] md:h-[120px]',
 }
 
 function LogoFrame({ logoUrl, shape, name, brandColor }) {
@@ -68,7 +68,7 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
         <img
           src={logoUrl}
           alt={`${name} logo`}
-          className="absolute inset-0 w-full h-full object-contain p-3"
+          className="absolute inset-0 w-full h-full object-contain p-1.5"
         />
       </div>
     )
@@ -79,7 +79,7 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
   // (a single border can't produce the two-layer "sticker" edge).
   return (
     <div
-      className={`mb-6 flex items-center justify-center bg-white p-3 ${sizeCls}`}
+      className={`mb-6 flex items-center justify-center bg-white p-1.5 ${sizeCls}`}
       style={{
         borderRadius: '50%',
         boxShadow: `0 0 0 3px ${brandColor}, 0 0 0 6px white`,
