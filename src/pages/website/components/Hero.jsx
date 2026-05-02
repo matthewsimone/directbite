@@ -17,7 +17,7 @@ const ROUNDED_HEXAGON_PATH = [
 ].join(' ')
 
 const SHAPE_SIZE = {
-  none: 'w-24 h-24 md:w-[120px] md:h-[120px]',
+  none: 'w-32 h-32 md:w-40 md:h-40',
   circle: 'w-24 h-24 md:w-[120px] md:h-[120px]',
   pill_horizontal: 'w-36 h-24 md:w-[180px] md:h-[120px]',
   pill_vertical: 'w-24 h-36 md:w-[120px] md:h-[180px]',
