@@ -1,14 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import HoursModal from './HoursModal'
 import OrderLink from './OrderLink'
 import { formatDisplayAddress } from '../utils/address'
 
-function StatusPill({ isOpen }) {
+const HERO_SHADOW = '[text-shadow:0_1px_2px_rgba(0,0,0,0.5)]'
+
+function StatusPill({ isOpen, scrolled }) {
+  let cls
+  if (scrolled) {
+    cls = isOpen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+  } else {
+    cls = isOpen ? 'bg-white/20 text-white' : 'bg-red-500/70 text-white'
+  }
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-        isOpen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-      }`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold transition-colors duration-300 ${cls}`}
     >
       {isOpen ? 'OPEN' : 'CLOSED'}
     </span>
@@ -26,7 +32,7 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2">
             <span className="font-bold text-base">{restaurant.name}</span>
-            <StatusPill isOpen={status.isOpen} />
+            <StatusPill isOpen={status.isOpen} scrolled={true} />
           </div>
           <button
             onClick={onClose}
@@ -83,6 +89,18 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
 export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }) {
   const [drawerOpen, setDrawerOpenState] = useState(false)
   const [hoursModalOpen, setHoursModalOpen] = useState(false)
+  const [scrolled, setScrolled] = useState(() =>
+    typeof window !== 'undefined' && window.scrollY > 100
+  )
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 100)
+    }
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   function setDrawerOpen(next) {
     setDrawerOpenState(next)
@@ -93,15 +111,27 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
     setHoursModalOpen(true)
   }
 
+  const textCls = scrolled ? 'text-gray-900' : `text-white ${HERO_SHADOW}`
+  const mutedCls = scrolled ? 'text-gray-500' : `text-white/90 ${HERO_SHADOW}`
+  const linkCls = `font-semibold transition-colors duration-300 hover:text-[var(--brand-color)] ${textCls}`
+
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-gray-100">
+    <header
+      className={`sticky top-0 z-30 transition-all duration-300 ${
+        scrolled
+          ? 'bg-white border-b border-gray-100'
+          : 'bg-transparent border-b border-transparent'
+      }`}
+    >
       <div className="max-w-[1280px] mx-auto px-4 md:px-8 py-3 md:py-4 flex items-center justify-between gap-4">
         {/* LEFT */}
         <div className="flex items-center gap-3 min-w-0">
-          <span className="font-bold text-base md:text-lg truncate">{restaurant.name}</span>
-          <StatusPill isOpen={status.isOpen} />
+          <span className={`font-bold text-base md:text-lg truncate transition-colors duration-300 ${textCls}`}>
+            {restaurant.name}
+          </span>
+          <StatusPill isOpen={status.isOpen} scrolled={scrolled} />
           {/* Hours summary — desktop only */}
-          <span className="hidden md:inline text-sm text-gray-500 truncate">
+          <span className={`hidden md:inline text-sm truncate transition-colors duration-300 ${mutedCls}`}>
             {status.statusText.replace(/^OPEN\s/, '').replace(/^CLOSED · /, '')}
           </span>
         </div>
@@ -109,17 +139,19 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
         {/* RIGHT — desktop */}
         <div className="hidden md:flex items-center gap-6 text-sm">
           {restaurant.address && (
-            <span className="text-gray-500 truncate max-w-md">{formatDisplayAddress(restaurant.address)}</span>
+            <span className={`truncate max-w-md transition-colors duration-300 ${mutedCls}`}>
+              {formatDisplayAddress(restaurant.address)}
+            </span>
           )}
           <div className="flex items-center gap-5">
-            <OrderLink slug={restaurant.slug} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
+            <OrderLink slug={restaurant.slug} className={linkCls}>
               Menu
             </OrderLink>
-            <button onClick={openHoursModal} className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
+            <button onClick={openHoursModal} className={linkCls}>
               Hours
             </button>
             {restaurant.about_section_visible !== false && (
-              <a href="#about" className="font-semibold text-gray-900 hover:text-[var(--brand-color)]">
+              <a href="#about" className={linkCls}>
                 About
               </a>
             )}
@@ -130,7 +162,9 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
         <button
           onClick={() => setDrawerOpen(true)}
           aria-label="Open menu"
-          className="md:hidden w-10 h-10 flex items-center justify-center text-gray-900"
+          className={`md:hidden w-10 h-10 flex items-center justify-center transition-colors duration-300 ${
+            scrolled ? 'text-gray-900' : 'text-white'
+          }`}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />

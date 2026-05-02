@@ -5,14 +5,15 @@ export default function Hero({ restaurant }) {
 
   return (
     <section
-      className="relative w-full h-[65vh] md:h-[70vh] bg-gray-100 bg-cover bg-center"
+      className="relative w-full h-[65vh] md:h-[70vh] -mt-16 bg-gray-100 bg-cover bg-center"
       style={hero_image_url ? { backgroundImage: `url(${hero_image_url})` } : undefined}
     >
       {/* Dark gradient overlay — keeps white text legible regardless of image */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
 
-      {/* Centered content */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6">
+      {/* Centered content — pt-16 compensates for the -mt-16 on the section
+          so content stays optically centered in the visible area below TopBar. */}
+      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-16">
         {logo_url && (
           <img
             src={logo_url}
