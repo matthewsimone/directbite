@@ -162,10 +162,18 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
             {restaurant.name}
           </span>
           <StatusPill isOpen={status.isOpen} scrolled={scrolled} />
-          {/* Hours summary — desktop only */}
-          <span className={`hidden md:inline text-sm truncate transition-colors duration-300 ${mutedCls}`}>
-            {status.statusText.replace(/^OPEN\s/, '').replace(/^CLOSED · /, '')}
-          </span>
+          {/* Hours summary — desktop always; mobile only when closed and we
+              have an "Opens at …" hint to give customers a return time. */}
+          {(() => {
+            const compact = status.statusText.replace(/^OPEN\s/, '').replace(/^CLOSED · /, '')
+            const showOnMobile = !status.isOpen && status.statusText.startsWith('CLOSED · ')
+            const visibility = showOnMobile ? 'inline' : 'hidden md:inline'
+            return (
+              <span className={`${visibility} text-sm truncate transition-colors duration-300 ${mutedCls}`}>
+                {compact}
+              </span>
+            )
+          })()}
         </div>
 
         {/* RIGHT — desktop */}
