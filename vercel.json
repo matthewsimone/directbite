@@ -2,7 +2,8 @@
   "rewrites": [
     {
       "source": "/",
-      "has": [{ "type": "host", "value": "(?<host>(?!.*directbite\\.co).+)" }],
+      "has": [{ "type": "host", "value": "(?<host>.+)" }],
+      "missing": [{ "type": "host", "value": ".*directbite\\.co.*" }],
       "destination": "/api/og-html?host=:host"
     },
     { "source": "/(.*)", "destination": "/index.html" }
