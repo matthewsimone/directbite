@@ -18,6 +18,43 @@ import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
 
 const SCHEMA_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+// Find the bounding box of non-transparent pixels in the loaded image so
+// the favicon canvas can crop away built-in whitespace and render the
+// logo at the largest possible size.
+function getNonTransparentBounds(img) {
+  const tempCanvas = document.createElement('canvas')
+  tempCanvas.width = img.width
+  tempCanvas.height = img.height
+  const tempCtx = tempCanvas.getContext('2d')
+  tempCtx.drawImage(img, 0, 0)
+  const data = tempCtx.getImageData(0, 0, img.width, img.height).data
+
+  let minX = img.width, minY = img.height, maxX = 0, maxY = 0
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      const alpha = data[(y * img.width + x) * 4 + 3]
+      if (alpha > 10) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+
+  // Fully opaque source (JPEG, or no transparent pixels detected) — use full image
+  if (maxX === 0 && maxY === 0) {
+    return { x: 0, y: 0, width: img.width, height: img.height }
+  }
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+  }
+}
+
 function buildSchemaJsonLd(restaurant, hours) {
   const { street, city, state, zip } = parseAddress(restaurant.address)
   const canonicalUrl = restaurant.custom_domain
@@ -95,15 +132,15 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
     return () => clearInterval(interval)
   }, [hours])
 
-  // Swap the browser tab icon + title to the restaurant's branding while
-  // this page is mounted. Restored on unmount so other DirectBite pages
-  // (admin, tablet, ordering) keep the default.
+  // Swap the browser tab icon, document title, and PWA app-name meta
+  // tags to the restaurant's branding while this page is mounted.
+  // Restored on unmount so other DirectBite pages keep the defaults.
   //
-  // Logos aren't always square — drawing them straight into the favicon
-  // link would let the browser stretch them. We letterbox onto a 192×192
-  // transparent canvas (high-DPI rendering on retina + mobile) and
-  // update every icon link tag — including apple-touch-icon variants
-  // mobile browsers prefer — creating any that don't already exist.
+  // Favicon: render the logo onto a 192×192 canvas with a white
+  // background (iOS home screen otherwise composites transparent PNGs
+  // against black) and crop the source to its non-transparent bounding
+  // box first — logos with built-in whitespace would otherwise render
+  // tiny once the OS downsamples to 16/32px.
   useEffect(() => {
     if (!restaurant) return
 
@@ -113,6 +150,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
       "link[rel='apple-touch-icon']",
       "link[rel='apple-touch-icon-precomposed']",
     ]
+    const META_NAMES = ['apple-mobile-web-app-title', 'application-name']
 
     // Snapshot each tag's state so cleanup can fully reverse our changes.
     const iconStates = ICON_SELECTORS.map(selector => {
@@ -125,11 +163,31 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
         originalType: el?.getAttribute('type') || null,
       }
     })
+    const metaStates = META_NAMES.map(name => {
+      const el = document.querySelector(`meta[name='${name}']`)
+      return {
+        name,
+        element: el,
+        preExisting: !!el,
+        originalContent: el?.getAttribute('content') || null,
+      }
+    })
 
     const originalTitle = document.title
     document.title = restaurant.tagline
       ? `${restaurant.name} — ${restaurant.tagline}`
       : restaurant.name
+
+    // PWA "Add to Home Screen" name — applied immediately, doesn't wait
+    // on the canvas render.
+    metaStates.forEach(state => {
+      if (!state.element) {
+        state.element = document.createElement('meta')
+        state.element.setAttribute('name', state.name)
+        document.head.appendChild(state.element)
+      }
+      state.element.setAttribute('content', restaurant.name)
+    })
 
     let cancelled = false
 
@@ -143,20 +201,25 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
         canvas.width = SIZE
         canvas.height = SIZE
         const ctx = canvas.getContext('2d')
-        // No background fill — keeps the canvas transparent so the
-        // restaurant logo letterboxes cleanly into the browser tab.
-        const ratio = Math.min(SIZE / img.width, SIZE / img.height)
-        const w = img.width * ratio
-        const h = img.height * ratio
+
+        // White background — keeps iOS home screen icons readable on
+        // dark wallpapers and matches how most apps style their tile.
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, SIZE, SIZE)
+
+        // Crop to the logo's actual content so built-in whitespace
+        // doesn't shrink the rendered icon.
+        const bounds = getNonTransparentBounds(img)
+        const ratio = Math.min(SIZE / bounds.width, SIZE / bounds.height)
+        const w = bounds.width * ratio
+        const h = bounds.height * ratio
         const x = (SIZE - w) / 2
         const y = (SIZE - h) / 2
-        ctx.drawImage(img, x, y, w, h)
+        ctx.drawImage(img, bounds.x, bounds.y, bounds.width, bounds.height, x, y, w, h)
         const dataUrl = canvas.toDataURL('image/png')
 
         iconStates.forEach(state => {
           if (!state.element) {
-            // Mobile browsers may need an icon tag we don't ship by
-            // default — create it so the swap takes effect everywhere.
             state.element = document.createElement('link')
             const match = state.selector.match(/rel='([^']+)'/)
             if (match) state.element.rel = match[1]
@@ -177,6 +240,14 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
         if (state.preExisting) {
           if (state.originalHref) state.element.setAttribute('href', state.originalHref)
           if (state.originalType) state.element.setAttribute('type', state.originalType)
+        } else if (state.element.parentNode) {
+          state.element.parentNode.removeChild(state.element)
+        }
+      })
+      metaStates.forEach(state => {
+        if (!state.element) return
+        if (state.preExisting) {
+          if (state.originalContent) state.element.setAttribute('content', state.originalContent)
         } else if (state.element.parentNode) {
           state.element.parentNode.removeChild(state.element)
         }
