@@ -151,6 +151,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
       { selector: "link[rel='shortcut icon']", variant: 'transparent' },
       { selector: "link[rel='apple-touch-icon']", variant: 'white' },
       { selector: "link[rel='apple-touch-icon-precomposed']", variant: 'white' },
+      { selector: "link[rel='mask-icon']", variant: 'transparent' },
     ]
     const META_NAMES = ['apple-mobile-web-app-title', 'application-name']
 
@@ -195,15 +196,18 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
 
     // The static manifest.webmanifest hardcodes name=\"DirectBite\", which
     // iOS Safari uses for Add-to-Home-Screen in preference to the
-    // apple-mobile-web-app-title meta tag. Detach the manifest link
-    // while we're on a restaurant website so iOS falls through to the
-    // per-restaurant meta tag set above.
-    const manifestLink = document.querySelector("link[rel='manifest']")
-    const manifestParent = manifestLink?.parentNode || null
-    const manifestNextSibling = manifestLink?.nextSibling || null
-    if (manifestLink && manifestParent) {
-      manifestParent.removeChild(manifestLink)
-      console.log('[FAVICON] removed <link rel="manifest"> for restaurant website context')
+    // apple-mobile-web-app-title meta tag. Replace its href with a blob
+    // URL containing a per-restaurant manifest so iOS reads the right
+    // name + icons from the source it actually trusts. Original href is
+    // captured for cleanup and the blob URL is revoked on unmount.
+    let manifestLink = document.querySelector("link[rel='manifest']")
+    const originalManifestHref = manifestLink?.getAttribute('href') || null
+    const manifestPreExisting = !!manifestLink
+    let manifestObjectUrl = null
+    if (!manifestLink) {
+      manifestLink = document.createElement('link')
+      manifestLink.rel = 'manifest'
+      document.head.appendChild(manifestLink)
     }
 
     let cancelled = false
@@ -253,8 +257,41 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
           )
           state.element.removeAttribute('type')
         })
+
+        // Build a per-restaurant manifest as a blob URL. iOS Safari
+        // re-reads the manifest at "Add to Home Screen" time, so the
+        // dialog's name field comes from this JSON instead of the
+        // static DirectBite-branded one shipped in /public.
+        const manifestData = {
+          name: restaurant.name,
+          short_name: restaurant.name,
+          icons: [{ src: whiteDataUrl, sizes: '192x192', type: 'image/png' }],
+          start_url: '/',
+          display: 'standalone',
+          background_color: '#ffffff',
+          theme_color: restaurant.primary_color || '#16a34a',
+        }
+        const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/manifest+json' })
+        manifestObjectUrl = URL.createObjectURL(manifestBlob)
+        manifestLink.setAttribute('href', manifestObjectUrl)
+        console.log('[FAVICON] manifest swapped to per-restaurant blob:', manifestData.name)
       }
       img.src = restaurant.logo_url
+    } else {
+      // No logo — still need a per-restaurant manifest so the Add to
+      // Home Screen name reads correctly. Skip icons in that case.
+      const manifestData = {
+        name: restaurant.name,
+        short_name: restaurant.name,
+        start_url: '/',
+        display: 'standalone',
+        background_color: '#ffffff',
+        theme_color: restaurant.primary_color || '#16a34a',
+      }
+      const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/manifest+json' })
+      manifestObjectUrl = URL.createObjectURL(manifestBlob)
+      manifestLink.setAttribute('href', manifestObjectUrl)
+      console.log('[FAVICON] manifest swapped to per-restaurant blob (no logo):', manifestData.name)
     }
 
     return () => {
@@ -277,9 +314,15 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
           state.element.parentNode.removeChild(state.element)
         }
       })
-      if (manifestLink && manifestParent) {
-        manifestParent.insertBefore(manifestLink, manifestNextSibling)
+      if (manifestLink) {
+        if (manifestPreExisting) {
+          if (originalManifestHref) manifestLink.setAttribute('href', originalManifestHref)
+          else manifestLink.removeAttribute('href')
+        } else if (manifestLink.parentNode) {
+          manifestLink.parentNode.removeChild(manifestLink)
+        }
       }
+      if (manifestObjectUrl) URL.revokeObjectURL(manifestObjectUrl)
     }
   }, [restaurant])
 
