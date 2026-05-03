@@ -26,7 +26,7 @@ work — including unfurl/preview rendering on iMessage, Slack, and
 social. Missing any of the three causes a partial failure that's
 easy to misdiagnose:
 
-1. **DNS at the registrar** — apex A → `76.76.21.21`, www CNAME →
+1. **DNS at the registrar** — apex A → `216.150.1.1`, www CNAME →
    `cname.vercel-dns.com`. See [Required DNS records](#required-dns-records).
 2. **Vercel project domain** — added in Settings → Domains. See
    [Step 2](#step-2--add-the-domain-to-vercel).
@@ -34,37 +34,17 @@ easy to misdiagnose:
    no scheme, no trailing slash, no `www.`. See
    [Step 1](#step-1--configure-in-directbite-admin).
 
-If unfurls show DirectBite branding instead of the restaurant's, the
-apex DNS is most likely pointing at the registrar's parking IP rather
-than Vercel's — see the [registrar trap](#required-dns-records).
-
 ## Required DNS records
 
 | Record | Host | Value |
 |---|---|---|
-| **A** | `@` (apex) | `76.76.21.21` |
+| **A** | `@` (apex) | `216.150.1.1` |
 | **CNAME** | `www` | `cname.vercel-dns.com.` |
 
-> **The registrar trap.** Namecheap, GoDaddy, and several other
-> registrars auto-populate the apex with a *URL Forwarding* /
-> *Parking* record pointing at their own IP (e.g. Namecheap's
-> `216.150.1.1`) the moment a domain is registered. The apex appears
-> to work — visiting `https://customdomain.com` redirects to
-> `https://www.customdomain.com` and the site loads — but every
-> request to the apex hits the registrar, not Vercel. The www
-> subdomain works correctly, masking the failure for human visitors.
->
-> Crawlers and unfurl bots (iMessage, Slack, Twitter, Facebook) hit
-> the apex directly and may not follow the registrar's redirect
-> chain — they see DirectBite's default branding instead of the
-> restaurant's, with no obvious DNS error. **Always replace the
-> registrar's auto-populated apex record with the A record above
-> before leaving the registrar's DNS panel.**
->
-> First hit on this: testpizza.co (2026-05-02). The site loaded
-> normally in browsers but iMessage unfurled DirectBite. Fixed by
-> deleting Namecheap's auto-created `216.150.1.1` URL Forwarding
-> record and adding `76.76.21.21` manually.
+As of May 2026, Vercel currently has two apex A-record IPs:
+`216.150.1.1` (recommended for new setups, what the dashboard
+returns) and `76.76.21.21` (legacy, still in service). Existing
+domains pointed at the legacy IP keep working — no need to migrate.
 
 Verify with:
 
@@ -72,9 +52,8 @@ Verify with:
 dig +short <domain> A
 ```
 
-Should return exactly `76.76.21.21`. Anything else (especially
-`216.150.x.x` or another registrar IP) means the apex is still
-misconfigured.
+Should return either `216.150.1.1` or `76.76.21.21` — both are
+Vercel. Anything else means the apex isn't pointed at Vercel.
 
 ## Step 1 — Configure in DirectBite admin
 
@@ -90,7 +69,8 @@ misconfigured.
 1. Vercel dashboard → DirectBite project → **Settings → Domains**.
 2. **Add Domain** → enter the same hostname → **Add**.
 3. Vercel returns the DNS records the registrar needs. Typically:
-   - **A** record on the apex / root → `76.76.21.21`
+   - **A** record on the apex / root → `216.150.1.1` (or `76.76.21.21`
+     for older configs — both are Vercel)
    - **CNAME** on `www` → `cname.vercel-dns.com`
 4. Add both root and `www` so customers reach the site either way; the
    shell strips `www.` before lookup so a single DB row covers both.
@@ -104,7 +84,7 @@ misconfigured.
 3. Delete the default *Parking Page* records (URL Redirect / CNAME on
    `@` and `www`). They block the Vercel records.
 4. Add the records Vercel showed in Step 2:
-   - Type **A Record**, Host `@`, Value `76.76.21.21`, TTL Automatic.
+   - Type **A Record**, Host `@`, Value `216.150.1.1`, TTL Automatic.
    - Type **CNAME Record**, Host `www`, Value `cname.vercel-dns.com.`,
      TTL Automatic.
 5. Save.
@@ -117,15 +97,15 @@ misconfigured.
 
 ### GoDaddy / others
 
-Pattern is the same: A on apex pointing at `76.76.21.21`, CNAME on `www`
+Pattern is the same: A on apex pointing at `216.150.1.1`, CNAME on `www`
 pointing at `cname.vercel-dns.com`. Drop any forwarding/parking records
 the registrar enabled by default.
 
 ## Step 4 — Verify
 
 - DNS propagation usually completes in 5–30 min; some registrars take an
-  hour. Check progress with `dig +short {domain} A` (must return exactly
-  `76.76.21.21` — see [the registrar trap](#required-dns-records)) or
+  hour. Check progress with `dig +short {domain} A` — should return
+  `216.150.1.1` or `76.76.21.21` (both are Vercel apex IPs) — or use
   `https://www.whatsmydns.net`.
 - Vercel auto-provisions a Let's Encrypt certificate once DNS resolves;
   the domain will show **Valid Configuration** in the Domains tab.
@@ -133,10 +113,11 @@ the registrar enabled by default.
 - Click **Order Online** → should leave the custom domain and land on
   `directbite.co/{slug}`.
 - **Unfurl test.** Text or message the bare apex URL (e.g.
-  `https://customdomain.com`) to yourself in iMessage. The preview must
-  show the restaurant's name + tagline + hero image. If it shows
-  DirectBite, the apex A record is wrong — see
-  [Required DNS records](#required-dns-records).
+  `https://customdomain.com`) to yourself in iMessage. The preview
+  should show the restaurant's name + tagline + hero image. If it
+  shows DirectBite, the Edge Middleware OG injection didn't fire —
+  check `vercel logs --environment production --since 5m | grep og-html`
+  for invocation traces.
 
 ## Removing a domain
 
@@ -161,7 +142,11 @@ the registrar enabled by default.
 - **`www` works but apex doesn't (or vice versa)**: only one of the two
   DNS records was set up. Both root A and `www` CNAME are needed.
 - **Site loads in browsers but unfurls show DirectBite branding**:
-  classic registrar URL-forwarding trap. The apex A record is pointing
-  at the registrar's parking IP, not Vercel's. `dig +short {domain} A`
-  will return something other than `76.76.21.21`. See
-  [Required DNS records](#required-dns-records).
+  the Edge Middleware → `/api/og-html` injection didn't fire for this
+  request. Check `vercel logs --environment production --since 5m |
+  grep og-html` for invocation traces. If zero invocations, the
+  middleware didn't catch the host (verify the host isn't in the
+  main-domain / preview-domain pass-through list in `middleware.js`).
+  If invocations exist but unfurls still show DirectBite, the function
+  fell through to the vanilla template — verify
+  `restaurants.custom_domain` matches the hostname exactly.
