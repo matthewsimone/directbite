@@ -27,6 +27,19 @@ export default function TabletPage() {
   const failCount = useRef(0)
   const [pingStats, setPingStats] = useState({ success: 0, total: 0, lastTime: null, fails: 0 })
 
+  // Eagerly load the Epson ePOS SDK so window.epson is ready before the
+  // first order arrives. Loaded here (not in index.html) so it doesn't
+  // ship on website / customer / admin routes. Idempotent — bails if
+  // the SDK already loaded or another tablet mount already injected.
+  useEffect(() => {
+    if (window.epson || document.getElementById('epson-epos-sdk')) return
+    const s = document.createElement('script')
+    s.id = 'epson-epos-sdk'
+    s.src = '/epos-2.27.0.js'
+    s.async = true
+    document.head.appendChild(s)
+  }, [])
+
   useEffect(() => {
     const goOnline = () => {
       console.log('[ONLINE] Banner hidden — window online event')

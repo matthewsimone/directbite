@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '')
-
 export default function ApplePayTest() {
   const [result, setResult] = useState('Loading Stripe...')
   const [key, setKey] = useState('')
@@ -11,7 +9,7 @@ export default function ApplePayTest() {
     const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
     setKey(pk.slice(0, 12) + '...')
 
-    stripePromise.then(stripe => {
+    loadStripe(pk).then(stripe => {
       if (!stripe) {
         setResult('ERROR: Stripe failed to load')
         return
