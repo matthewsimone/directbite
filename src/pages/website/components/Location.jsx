@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { parseAddress, formatDisplayAddress } from '../utils/address'
 
 function formatPhone(raw) {
@@ -22,6 +23,35 @@ export default function Location({ restaurant }) {
   const phoneFormatted = formatPhone(restaurant.phone)
   const phoneTel = restaurant.phone ? restaurant.phone.replace(/\D/g, '') : null
 
+  // Defer the Maps iframe until the section approaches the viewport. The
+  // embed pulls ~390 KiB and ~300ms of main-thread work — not worth paying
+  // for users who never scroll past Reviews. `loading="lazy"` alone is a
+  // hint the browser ignores in practice (PSI's Lighthouse fetches it
+  // anyway), so we gate render on IntersectionObserver instead.
+  const mapContainerRef = useRef(null)
+  const [shouldLoadMap, setShouldLoadMap] = useState(false)
+
+  useEffect(() => {
+    if (!mapSrc || shouldLoadMap) return
+    const node = mapContainerRef.current
+    if (!node) return
+    if (typeof IntersectionObserver === 'undefined') {
+      setShouldLoadMap(true)
+      return
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShouldLoadMap(true)
+          io.disconnect()
+        }
+      },
+      { rootMargin: '300px 0px' }
+    )
+    io.observe(node)
+    return () => io.disconnect()
+  }, [mapSrc, shouldLoadMap])
+
   return (
     <section className="bg-white py-10 md:py-16">
       <div className="max-w-[1280px] mx-auto px-6 md:px-8">
@@ -30,8 +60,11 @@ export default function Location({ restaurant }) {
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
-          <div className="rounded-2xl overflow-hidden bg-gray-100 h-[250px] md:h-[400px]">
-            {mapSrc ? (
+          <div
+            ref={mapContainerRef}
+            className="rounded-2xl overflow-hidden bg-gray-100 h-[250px] md:h-[400px]"
+          >
+            {mapSrc && shouldLoadMap ? (
               <iframe
                 title={`Map of ${restaurant.name}`}
                 src={mapSrc}
@@ -42,11 +75,11 @@ export default function Location({ restaurant }) {
                 loading="lazy"
                 referrerPolicy="no-referrer-when-downgrade"
               />
-            ) : (
+            ) : !mapSrc ? (
               <div className="w-full h-full flex items-center justify-center text-sm text-gray-400">
                 Map unavailable
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="space-y-6 md:py-2">
