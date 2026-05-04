@@ -173,6 +173,16 @@ serve(async (req: Request) => {
       );
     }
 
+    // Reserved slugs — collide with app routes (admin, api, _next) or
+    // middleware paths (r → /r/:slug QR redirect).
+    const RESERVED_SLUGS = new Set(["admin", "api", "_next", "r"]);
+    if (RESERVED_SLUGS.has(slug)) {
+      return new Response(
+        JSON.stringify({ error: `Slug '${slug}' is reserved` }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Check slug uniqueness
     const { data: existing } = await supabase
       .from("restaurants")

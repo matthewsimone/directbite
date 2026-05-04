@@ -1,7 +1,7 @@
-import { rewrite } from '@vercel/functions'
+import { rewrite, waitUntil } from '@vercel/functions'
 
 export const config = {
-  matcher: ['/', '/:slug/tablet', '/:slug/tablet/login'],
+  matcher: ['/', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
 }
 
 export default async function middleware(request) {
@@ -25,6 +25,56 @@ export default async function middleware(request) {
     return rewrite(target)
   }
 
+  // Permanent QR redirect: /r/:slug → restaurants.redirect_url. Lets us
+  // print one sticker per restaurant and change the destination from
+  // admin without reprinting. Scan log is fire-and-forget via waitUntil
+  // so the 302 doesn't block on the DB write.
+  const qrMatch = url.pathname.match(/^\/r\/([^/]+)\/?$/)
+  if (qrMatch) {
+    const slug = decodeURIComponent(qrMatch[1])
+    const supabaseUrl = process.env.VITE_SUPABASE_URL
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY
+
+    let target = `https://directbite.co/${slug}`
+    if (supabaseUrl && anonKey) {
+      try {
+        const lookupRes = await fetch(
+          `${supabaseUrl}/rest/v1/restaurants?slug=eq.${encodeURIComponent(slug)}&select=id,redirect_url&limit=1`,
+          { headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` } }
+        )
+        if (lookupRes.ok) {
+          const rows = await lookupRes.json()
+          if (rows.length > 0) {
+            const r = rows[0]
+            target = r.redirect_url || `https://directbite.co/${slug}`
+            waitUntil(
+              fetch(`${supabaseUrl}/rest/v1/scans`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  apikey: anonKey,
+                  Authorization: `Bearer ${anonKey}`,
+                  Prefer: 'return=minimal',
+                },
+                body: JSON.stringify({ restaurant_id: r.id }),
+              }).catch(() => null)
+            )
+          } else {
+            target = 'https://directbite.co'
+          }
+        }
+      } catch {
+        // Fall through to slug-default redirect rather than 500 — getting
+        // customers to the ordering page matters more than scan logging.
+      }
+    }
+
+    return new Response(null, {
+      status: 302,
+      headers: { Location: target, 'Cache-Control': 'no-store' },
+    })
+  }
+
   // Tablet PWA manifest injection (existing behavior, preserved).
   if (url.pathname.match(/^\/[^/]+\/tablet(\/login)?$/)) {
     try {
@@ -32,7 +82,7 @@ export default async function middleware(request) {
       const slug = pathParts[0]
 
       // Safety checks — skip non-restaurant paths
-      if (!slug || slug === 'api' || slug === '_next' || slug === 'admin') {
+      if (!slug || slug === 'api' || slug === '_next' || slug === 'admin' || slug === 'r') {
         return
       }
 

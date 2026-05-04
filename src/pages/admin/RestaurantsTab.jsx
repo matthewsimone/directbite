@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import AddressAutocomplete from '../../components/AddressAutocomplete'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
+import QRRedirectPanel from '../../components/QRRedirectPanel'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -156,6 +157,13 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
           restaurant={data}
           onSave={updated => { setData(updated); onUpdate(updated) }}
           isAdmin={true}
+        />
+
+        <hr />
+
+        <QRRedirectPanel
+          restaurant={data}
+          onUpdate={updated => { setData(updated); onUpdate(updated) }}
         />
       </div>
 
