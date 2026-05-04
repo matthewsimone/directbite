@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
+import { loadStripe } from '@stripe/stripe-js/pure'
 
 const CACHE_KEY = 'walletAvailability'
 const CACHE_TTL = 5 * 60 * 1000 // 5 minutes

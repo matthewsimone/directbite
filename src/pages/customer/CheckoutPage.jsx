@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { loadStripe } from '@stripe/stripe-js'
+import { loadStripe } from '@stripe/stripe-js/pure'
 import {
   Elements,
   PaymentElement,

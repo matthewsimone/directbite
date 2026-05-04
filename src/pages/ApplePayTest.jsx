@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
+import { loadStripe } from '@stripe/stripe-js/pure'
 
 export default function ApplePayTest() {
   const [result, setResult] = useState('Loading Stripe...')
