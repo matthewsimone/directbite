@@ -62,6 +62,24 @@ export default function QRRedirectPanel({ restaurant, onUpdate }) {
     if (data && onUpdate) onUpdate(data)
   }, [redirectUrl, restaurant.id, onUpdate])
 
+  const handleDownload = useCallback(async () => {
+    try {
+      const res = await fetch(qrCodeUrl)
+      if (!res.ok) throw new Error('fetch failed')
+      const blob = await res.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = objectUrl
+      a.download = `${restaurant.name} QR Code.svg`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objectUrl)
+    } catch (err) {
+      setMessage(`Download failed: ${err.message}`)
+    }
+  }, [qrCodeUrl, restaurant.name])
+
   const handleGenerate = useCallback(async () => {
     setGenerating(true); setMessage('')
     const { data: { session } } = await supabase.auth.getSession()
@@ -129,13 +147,12 @@ export default function QRRedirectPanel({ restaurant, onUpdate }) {
         <label className="text-xs text-gray-500 block mb-1">QR Code</label>
         <div className="flex items-center gap-2">
           {qrCodeUrl ? (
-            <a
-              href={qrCodeUrl}
-              download={`${restaurant.slug}-qr.svg`}
+            <button
+              onClick={handleDownload}
               className="px-3 h-9 inline-flex items-center rounded-lg border border-gray-300 text-sm font-semibold hover:bg-gray-50"
             >
               Download QR
-            </a>
+            </button>
           ) : (
             <button
               onClick={handleGenerate}
