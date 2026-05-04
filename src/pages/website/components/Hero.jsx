@@ -31,15 +31,19 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
 
   if (s === 'none') {
     return (
-      <div className={`mb-6 flex items-center justify-center ${sizeCls}`}>
+      <div className={`mb-6 shrink-0 flex items-center justify-center ${sizeCls}`}>
         <img src={logoUrl} alt={`${name} logo`} className="w-full h-full object-contain" />
       </div>
     )
   }
 
   if (s === 'hexagon') {
+    // Outer is a flex centering container so the <img> is a normal
+    // flex child (matches circle/oval). Earlier the img was a second
+    // absolutely-positioned sibling stacked on the SVG — that pattern
+    // dropped the image on iOS Safari in landscape orientation.
     return (
-      <div className={`relative mb-6 ${sizeCls}`}>
+      <div className={`relative mb-6 shrink-0 flex items-center justify-center ${sizeCls}`}>
         <svg
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
@@ -68,7 +72,7 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
         <img
           src={logoUrl}
           alt={`${name} logo`}
-          className="absolute inset-0 w-full h-full object-contain p-1.5"
+          className="relative w-full h-full object-contain p-1.5"
         />
       </div>
     )
@@ -79,7 +83,7 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
   // (a single border can't produce the two-layer "sticker" edge).
   return (
     <div
-      className={`mb-6 flex items-center justify-center bg-white p-1.5 ${sizeCls}`}
+      className={`mb-6 shrink-0 flex items-center justify-center bg-white p-1.5 ${sizeCls}`}
       style={{
         borderRadius: '50%',
         boxShadow: `0 0 0 3px ${brandColor}, 0 0 0 6px white`,
