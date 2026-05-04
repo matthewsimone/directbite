@@ -43,6 +43,8 @@ export default function MenuPage() {
   const [showCart, setShowCart] = useState(false)
 
   const sectionRefs = useRef({})
+  const programmaticScrollRef = useRef(false)
+  const programmaticScrollTimeoutRef = useRef(null)
 
   // Set initial active category
   useEffect(() => {
@@ -56,6 +58,9 @@ export default function MenuPage() {
     if (categories.length === 0) return
 
     function handleScroll() {
+      // Suppressed during smooth-scroll-to-section so we don't flicker
+      // through every category the page passes on the way to the tapped one.
+      if (programmaticScrollRef.current) return
       const offset = 140
       let closest = null
       let closestDist = Infinity
@@ -79,19 +84,53 @@ export default function MenuPage() {
       if (closest) setActiveCategory(closest)
     }
 
+    function handleScrollEnd() {
+      programmaticScrollRef.current = false
+      if (programmaticScrollTimeoutRef.current) {
+        clearTimeout(programmaticScrollTimeoutRef.current)
+        programmaticScrollTimeoutRef.current = null
+      }
+    }
+
     window.addEventListener('scroll', handleScroll, { passive: true })
+    window.addEventListener('scrollend', handleScrollEnd)
     handleScroll()
 
-    return () => window.removeEventListener('scroll', handleScroll)
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('scrollend', handleScrollEnd)
+    }
   }, [categories, items])
 
   const handleCategorySelect = useCallback((categoryId) => {
     setActiveCategory(categoryId)
+    // Suppress scroll-based active-category updates until the smooth
+    // scroll lands. Cleared by the scrollend listener; the timeout is
+    // a fallback for browsers without scrollend support and for taps
+    // that don't actually move the page.
+    programmaticScrollRef.current = true
+    if (programmaticScrollTimeoutRef.current) {
+      clearTimeout(programmaticScrollTimeoutRef.current)
+    }
+    programmaticScrollTimeoutRef.current = setTimeout(() => {
+      programmaticScrollRef.current = false
+      programmaticScrollTimeoutRef.current = null
+    }, 1000)
+
     const el = sectionRefs.current[categoryId]
     if (el) {
       const offset = 120
       const top = el.getBoundingClientRect().top + window.scrollY - offset
       window.scrollTo({ top, behavior: 'smooth' })
+    }
+  }, [])
+
+  // Clean up any pending suppression timeout if the page unmounts mid-scroll.
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollTimeoutRef.current) {
+        clearTimeout(programmaticScrollTimeoutRef.current)
+      }
     }
   }, [])
 
