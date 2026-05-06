@@ -279,6 +279,78 @@ const BUTTON_LABEL_RE =
   /^(\+\s*)?add(\s+to\s+(cart|bag|order))?$|^customi[sz]e$|^show\s+more$|^see\s+more$|^view$/i
 
 function extractItemFromCard($, $card, idx) {
+  // ──────────────── DIAGNOSTIC: price markup dump ────────────────
+  // Triggers on any card whose text mentions "cheese pizza" so we can
+  // see how Slice ships discounted vs regular prices.
+  const cardTextLower = ($card.text() || '').toLowerCase()
+  if (cardTextLower.includes('cheese pizza')) {
+    const dollarElements = []
+    $card.find('*').each((_, el) => {
+      const $el = $(el)
+      // Only count elements whose OWN text (not descendants) contains $.
+      const ownText = $el.contents()
+        .filter(function () { return this.type === 'text' })
+        .text()
+        .trim()
+      if (!/\$\s*\d/.test(ownText)) return
+
+      const cls = $el.attr('class') || ''
+      const styleAttr = $el.attr('style') || ''
+      const tagName = (el.tagName || '').toLowerCase()
+
+      // Look up the ancestor chain for any strike-through indicator.
+      let strikeAncestor = null
+      let $p = $el.parent()
+      while ($p.length && $p[0] !== $card[0]) {
+        const pTag = ($p[0].tagName || '').toLowerCase()
+        const pCls = $p.attr('class') || ''
+        const pStyle = $p.attr('style') || ''
+        if (['s', 'del', 'strike'].includes(pTag)) {
+          strikeAncestor = `tag:${pTag}`
+          break
+        }
+        if (/strike|line-through|original|regular|was[-_]?price|old[-_]?price/i.test(pCls)) {
+          strikeAncestor = `class:${pCls.slice(0, 100)}`
+          break
+        }
+        if (/line-through/i.test(pStyle)) {
+          strikeAncestor = 'style:line-through'
+          break
+        }
+        $p = $p.parent()
+      }
+
+      dollarElements.push({
+        tag: tagName,
+        class: cls.slice(0, 200),
+        style: styleAttr.slice(0, 200),
+        dataAttrs: Object.fromEntries(
+          Object.entries(el.attribs || {}).filter(([k]) => k.startsWith('data-'))
+        ),
+        ownText: ownText.slice(0, 100),
+        isStrikeTag: ['s', 'del', 'strike'].includes(tagName),
+        hasLineThroughStyle: /line-through/i.test(styleAttr),
+        strikeAncestor,
+      })
+    })
+
+    const strikeTags = []
+    $card.find('s, del, strike').each((_, el) => {
+      const $el = $(el)
+      strikeTags.push({
+        tag: (el.tagName || '').toLowerCase(),
+        text: ($el.text() || '').trim().slice(0, 100),
+        class: ($el.attr('class') || '').slice(0, 200),
+        style: ($el.attr('style') || '').slice(0, 200),
+      })
+    })
+
+    console.log('[import-menu] cheese-pizza card HTML', ($card.html() || '').slice(0, 4000))
+    console.log('[import-menu] cheese-pizza dollar elements', JSON.stringify(dollarElements, null, 2))
+    console.log('[import-menu] cheese-pizza strike tags', JSON.stringify(strikeTags, null, 2))
+  }
+  // ────────────────────── end diagnostic ──────────────────────
+
   const imageUrl = $card.find('img').first().attr('src') || null
 
   const fields = []
