@@ -155,6 +155,14 @@ function extractItemData(modalRoot) {
   )
   const optionEls = [...sizeNameEls, ...toppingNameEls]
 
+  // ──────────────── DIAGNOSTIC: option/clustering trace ────────────────
+  console.log('[DB-Capture] option counts', {
+    item: itemName,
+    sizeOptions: sizeNameEls.length,
+    toppingOptions: toppingNameEls.length,
+    total: optionEls.length,
+  })
+
   if (optionEls.length === 0) {
     return {
       item_name: itemName,
@@ -164,16 +172,30 @@ function extractItemData(modalRoot) {
     }
   }
 
-  // Group options by their nearest ancestor that contains a
-  // topping-select-label hint. Each modifier group ships one such
-  // hint, so the smallest containing ancestor is the group root.
   const groupsByContainer = new Map()
+  const trace = []
   for (const optEl of optionEls) {
     const container = findGroupContainer(optEl, modalRoot)
+    trace.push({
+      dataName: optEl.getAttribute('data-name'),
+      text: (optEl.textContent || '').trim().slice(0, 60),
+      containerFound: !!container,
+      containerLabel: container ? findLabelText(container) : null,
+    })
     if (!container) continue
     if (!groupsByContainer.has(container)) groupsByContainer.set(container, [])
     groupsByContainer.get(container).push(optEl)
   }
+  console.log('[DB-Capture] option → container assignments', trace)
+  console.log(
+    '[DB-Capture] groups by container',
+    Array.from(groupsByContainer.entries()).map(([container, els]) => ({
+      label: findLabelText(container),
+      optionCount: els.length,
+      sample: els.slice(0, 3).map((e) => (e.textContent || '').trim().slice(0, 40)),
+    }))
+  )
+  // ──────────────────── end diagnostic ────────────────────
 
   const modifier_groups = []
   for (const [container, els] of groupsByContainer) {
