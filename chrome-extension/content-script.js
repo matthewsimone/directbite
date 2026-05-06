@@ -104,7 +104,58 @@ function extractItemData(modalRoot) {
     modalRoot.querySelector('[role="heading"]')
   const itemName = heading ? heading.textContent.trim() : null
   if (!itemName) {
-    console.warn('[DB-Capture] modal had no heading — skipping')
+    // ──────────────── DIAGNOSTIC: dump modal structure ────────────────
+    console.warn('[DB-Capture] modal had no heading — dumping structure for selector tuning')
+
+    console.log(
+      '[DB-Capture] modal outerHTML (first 5000)',
+      (modalRoot.outerHTML || '').slice(0, 5000)
+    )
+
+    console.log(
+      '[DB-Capture] modal textContent head (200)',
+      (modalRoot.textContent || '').trim().slice(0, 200)
+    )
+
+    const paragraphs = []
+    modalRoot.querySelectorAll('p').forEach((el) => {
+      const text = (el.textContent || '').trim()
+      if (!text) return
+      paragraphs.push({
+        text: text.slice(0, 100),
+        class: (el.getAttribute('class') || '').slice(0, 50),
+      })
+    })
+    console.log('[DB-Capture] <p> elements', paragraphs)
+
+    const shortDivs = []
+    modalRoot.querySelectorAll('div').forEach((el) => {
+      // Only count direct text — exclude divs whose text comes entirely
+      // from descendants (those are layout containers, not titles).
+      const ownText = Array.from(el.childNodes)
+        .filter((n) => n.nodeType === 3)
+        .map((n) => n.textContent || '')
+        .join('')
+        .trim()
+      if (!ownText || ownText.length >= 100) return
+      shortDivs.push({
+        text: ownText.slice(0, 100),
+        class: (el.getAttribute('class') || '').slice(0, 50),
+      })
+    })
+    console.log('[DB-Capture] <div> with own text < 100 chars', shortDivs.slice(0, 30))
+
+    const ariaCandidates = []
+    modalRoot.querySelectorAll('[role="heading"], [aria-label]').forEach((el) => {
+      ariaCandidates.push({
+        tag: el.tagName.toLowerCase(),
+        role: el.getAttribute('role') || null,
+        ariaLabel: el.getAttribute('aria-label') || null,
+        text: (el.textContent || '').trim().slice(0, 100),
+      })
+    })
+    console.log('[DB-Capture] role="heading" / [aria-label] elements', ariaCandidates)
+    // ──────────────────── end diagnostic ────────────────────
     return null
   }
 
