@@ -279,6 +279,62 @@ function normalizeItem(it, idx) {
 }
 
 function parseFromDom($) {
+  // ──────────────── DIAGNOSTIC: actual DOM structure ────────────────
+  // Walk siblings of the first h2[id] to see what Slice ships now.
+  const $firstH2 = $('h2[id]').first()
+  if ($firstH2.length) {
+    const siblings = []
+    let $cursor = $firstH2.next()
+    let safety = 0
+    while ($cursor.length && !$cursor.is('h2') && safety < 20) {
+      const el = $cursor[0]
+      siblings.push({
+        tag: el.tagName,
+        class: ($cursor.attr('class') || '').slice(0, 200),
+        testId: $cursor.attr('data-testid') || null,
+        childCount: $cursor.children().length,
+        textHead: ($cursor.text() || '').trim().slice(0, 300),
+      })
+      $cursor = $cursor.next()
+      safety += 1
+    }
+    console.log('[import-menu] first-h2 info', {
+      id: $firstH2.attr('id'),
+      text: ($firstH2.text() || '').trim().slice(0, 100),
+      siblingCount: siblings.length,
+    })
+    console.log('[import-menu] first-h2 siblings', JSON.stringify(siblings, null, 2))
+  }
+
+  // Scan globally for the smallest item-shaped node: has a class hinting
+  // at "card/item/product/dish/menu" AND contains a $-price pattern, but
+  // doesn't have a descendant that also matches — so we land on the
+  // actual item card, not its grid container.
+  const priceCandidates = []
+  $('[class]').each((_, el) => {
+    if (priceCandidates.length >= 3) return false
+    const $el = $(el)
+    const cls = $el.attr('class') || ''
+    if (!/card|item|product|dish|menu/i.test(cls)) return
+    const text = $el.text() || ''
+    if (!/\$\s*\d+(?:\.\d{1,2})?/.test(text)) return
+    const descendantMatches = $el.find('[class]').filter((_, d) => {
+      const $d = $(d)
+      const dCls = $d.attr('class') || ''
+      const dText = $d.text() || ''
+      return /card|item|product|dish|menu/i.test(dCls) && /\$\s*\d+(?:\.\d{1,2})?/.test(dText)
+    }).length
+    if (descendantMatches > 0) return
+    priceCandidates.push({
+      tag: el.tagName,
+      class: cls.slice(0, 200),
+      testId: $el.attr('data-testid') || null,
+      textHead: text.trim().slice(0, 200),
+    })
+  })
+  console.log('[import-menu] price-bearing candidates', JSON.stringify(priceCandidates, null, 2))
+  // ──────────────────── end diagnostic ────────────────────
+
   const categories = []
   let categoryIdx = 0
 
