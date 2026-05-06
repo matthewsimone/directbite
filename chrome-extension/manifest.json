@@ -4,6 +4,10 @@
   "version": "0.1.0",
   "description": "Captures menu modifier data from Slice menu pages and sends it to DirectBite admin.",
   "permissions": ["storage"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "DirectBite Modifier Capture"
+  },
   "host_permissions": [
     "https://slicelife.com/*",
     "https://*.slicelife.com/*",
