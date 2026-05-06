@@ -152,39 +152,54 @@ function extractItemData(modalRoot) {
   }
 }
 
-// Group container detection — primary strategy clusters by data-name
-// family (smallest ancestor containing 2+ options of the same data-name).
-// Works for any multi-option group regardless of whether the group has
-// a topping-select-label hint. Required-only groups (sizes) and
-// optional-only groups (toppings) both ship multiple options.
+// Group container detection.
+// 1. Cluster: smallest ancestor of the option containing 2+ options
+//    of the same data-name family (sizes vs toppings).
+// 2. Expand: the cluster is sometimes a tight option-grid wrapper
+//    that doesn't include the group's label or topping-select-label
+//    hint. Walk up at most 2 levels while the cluster lacks a label
+//    descendant and we wouldn't cross into another group's options.
+// 3. Single-option fallback: smallest ancestor whose preceding-sibling
+//    chain has a non-modifier text-bearing element.
 function findGroupContainer(optionEl, modalRoot) {
   const dn = optionEl.getAttribute('data-name')
   if (!dn) return null
 
-  let cursor = optionEl.parentElement
-  while (cursor && cursor !== modalRoot) {
-    const siblings = cursor.querySelectorAll(`[data-name="${dn}"]`)
-    if (siblings.length >= 2) return cursor
-    cursor = cursor.parentElement
+  let cluster = optionEl.parentElement
+  while (cluster && cluster !== modalRoot) {
+    if (cluster.querySelectorAll(`[data-name="${dn}"]`).length >= 2) break
+    cluster = cluster.parentElement
   }
 
-  // Fallback for single-option groups (rare — e.g. "Make It → Gluten
-  // Free"): smallest ancestor whose previous-sibling chain contains a
-  // text-bearing element that isn't another modifier element.
-  cursor = optionEl.parentElement
-  while (cursor && cursor !== modalRoot) {
-    let prev = cursor.previousElementSibling
-    while (prev) {
-      const text = directText(prev)
-      const dnPrev = prev.getAttribute('data-name') || ''
-      if (text && !/option|topping/.test(dnPrev)) {
-        return cursor.parentElement || cursor
+  if (!cluster || cluster === modalRoot) {
+    // Single-option fallback.
+    let cursor = optionEl.parentElement
+    while (cursor && cursor !== modalRoot) {
+      let prev = cursor.previousElementSibling
+      while (prev) {
+        const text = directText(prev)
+        const dnPrev = prev.getAttribute('data-name') || ''
+        if (text && !/option|topping/.test(dnPrev)) {
+          return cursor.parentElement || cursor
+        }
+        prev = prev.previousElementSibling
       }
-      prev = prev.previousElementSibling
+      cursor = cursor.parentElement
     }
-    cursor = cursor.parentElement
+    return null
   }
-  return null
+
+  // Expand cluster to include the group's label / hint when missing.
+  const otherDn = dn === 'productModal.option'
+    ? 'productModal.topping.name'
+    : 'productModal.option'
+  for (let i = 0; i < 2; i++) {
+    if (findLabelText(cluster) !== null) break
+    if (!cluster.parentElement || cluster.parentElement === modalRoot) break
+    if (cluster.parentElement.querySelector(`[data-name="${otherDn}"]`)) break
+    cluster = cluster.parentElement
+  }
+  return cluster
 }
 
 function directText(el) {
@@ -205,27 +220,38 @@ function findSelectableAncestor(optionEl) {
   return null
 }
 
-// Group label — walk preceding siblings of the first option, stepping
-// up through ancestors as needed, until we find a text-bearing element
-// whose data-name isn't a modifier (option/topping/topping-select-label).
-function findGroupLabel(container, optionEls) {
-  if (optionEls.length === 0) return '(unnamed group)'
-  let cursor = optionEls[0]
-  while (cursor && cursor !== container) {
-    let prev = cursor.previousElementSibling
-    while (prev) {
-      const text = (prev.textContent || '').trim()
-      const dn = prev.getAttribute('data-name') || ''
-      if (text && !/option|topping/.test(dn)) {
-        // First line only — handles cases where the candidate also
-        // wraps adjacent text we don't want (rare).
-        return text.split('\n')[0].trim()
-      }
-      prev = prev.previousElementSibling
+// Depth-first walk of `container` for the first label-like text:
+// short direct text, outside any modifier subtree (option / topping /
+// topping-select-label / role=radio / role=checkbox). Returns the
+// string or null. Used by findGroupContainer to decide whether the
+// cluster needs expanding, and by findGroupLabel for final extraction.
+function findLabelText(container) {
+  function visit(el) {
+    if (!el) return null
+    const dn = (el.getAttribute && el.getAttribute('data-name')) || ''
+    const role = (el.getAttribute && el.getAttribute('role')) || ''
+    if (/option|topping/.test(dn)) return null
+    if (role === 'radio' || role === 'checkbox') return null
+
+    const ownText = directText(el)
+    if (ownText && ownText.length < 50) return ownText.split('\n')[0].trim()
+
+    for (const child of el.children) {
+      const found = visit(child)
+      if (found) return found
     }
-    cursor = cursor.parentElement
+    return null
   }
-  return '(unnamed group)'
+
+  for (const child of container.children) {
+    const found = visit(child)
+    if (found) return found
+  }
+  return null
+}
+
+function findGroupLabel(container, optionEls) {
+  return findLabelText(container) || '(unnamed group)'
 }
 
 function extractGroup(container, optionEls) {
@@ -248,7 +274,9 @@ function extractGroup(container, optionEls) {
   if (selection_type === 'single') {
     max_selections = 1
   } else {
-    const m = hintText.match(/(?:up to|select)\s*(\d+)/i)
+    // Multi-select hint patterns: "Up to N", "Select up to N",
+    // "Pick up to N", "Choose N", "Select N", etc.
+    const m = hintText.match(/(?:up to|pick|choose|select)\s+(?:up to\s+)?(\d+)/i)
     if (m) max_selections = parseInt(m[1], 10)
   }
 
