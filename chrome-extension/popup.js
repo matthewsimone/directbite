@@ -2,7 +2,7 @@ const STORAGE_KEY = 'directbite_captured_items'
 const CAPTURING_FLAG = 'directbite_capturing'
 const RESTAURANT_ID_KEY = 'directbite_restaurant_id'
 const BEARER_TOKEN_KEY = 'directbite_bearer_token'
-const API_URL = 'https://directbite.co/api/import-modifiers'
+const API_URL = 'https://www.directbite.co/api/import-modifiers'
 
 const els = {
   status: document.getElementById('status'),
