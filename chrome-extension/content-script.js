@@ -10,6 +10,7 @@
 
 const STORAGE_KEY = 'directbite_captured_items'
 const CAPTURING_FLAG = 'directbite_capturing'
+const DEBUG_WINDOW_KEY = '__dbCapture'
 const HYDRATION_DELAY_MS = 400 // wait for the modal to fully render
 const DEDUP_WINDOW_MS = 5000 // don't re-capture the same item this fast
 
@@ -270,5 +271,9 @@ async function saveCapture(data) {
   filtered.push(data)
 
   await chrome.storage.local.set({ [STORAGE_KEY]: filtered })
+  // Mirror to window so the slicelife.com page console can inspect
+  // captures without needing extension-context devtools.
+  window[DEBUG_WINDOW_KEY] = filtered
   console.log('[DB-Capture] captured:', data.item_name, '(' + data.modifier_groups.length + ' groups)')
+  console.log('[DB-Capture] window.__dbCapture has', filtered.length, 'items')
 }
