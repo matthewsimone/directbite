@@ -235,6 +235,7 @@ function parseFromDom($) {
   //  - Each direct child of that container is one item card.
   const categories = []
   let categoryIdx = 0
+  let firstCardLogged = false  // diagnostic gate — log only the first card we process
 
   $('h2[id]').each((_, h2El) => {
     const $h2 = $(h2El)
@@ -258,7 +259,9 @@ function parseFromDom($) {
 
     const items = []
     $container.children().each((_, cardEl) => {
-      const item = extractItemFromCard($, $(cardEl), items.length)
+      const shouldLog = !firstCardLogged
+      firstCardLogged = true
+      const item = extractItemFromCard($, $(cardEl), items.length, shouldLog)
       if (item) items.push(item)
     })
 
@@ -278,12 +281,11 @@ function parseFromDom($) {
 const BUTTON_LABEL_RE =
   /^(\+\s*)?add(\s+to\s+(cart|bag|order))?$|^customi[sz]e$|^show\s+more$|^see\s+more$|^view$/i
 
-function extractItemFromCard($, $card, idx) {
+function extractItemFromCard($, $card, idx, shouldLog = false) {
   // ──────────────── DIAGNOSTIC: price markup dump ────────────────
-  // Triggers on any card whose text mentions "cheese pizza" so we can
-  // see how Slice ships discounted vs regular prices.
-  const cardTextLower = ($card.text() || '').toLowerCase()
-  if (cardTextLower.includes('cheese pizza')) {
+  // Triggers on the very first card we process, so it works regardless
+  // of what the restaurant calls its menu items.
+  if (shouldLog) {
     const dollarElements = []
     $card.find('*').each((_, el) => {
       const $el = $(el)
@@ -345,9 +347,9 @@ function extractItemFromCard($, $card, idx) {
       })
     })
 
-    console.log('[import-menu] cheese-pizza card HTML', ($card.html() || '').slice(0, 4000))
-    console.log('[import-menu] cheese-pizza dollar elements', JSON.stringify(dollarElements, null, 2))
-    console.log('[import-menu] cheese-pizza strike tags', JSON.stringify(strikeTags, null, 2))
+    console.log('[import-menu] first-card HTML', ($card.html() || '').slice(0, 4000))
+    console.log('[import-menu] first-card dollar elements', JSON.stringify(dollarElements, null, 2))
+    console.log('[import-menu] first-card strike tags', JSON.stringify(strikeTags, null, 2))
   }
   // ────────────────────── end diagnostic ──────────────────────
 
