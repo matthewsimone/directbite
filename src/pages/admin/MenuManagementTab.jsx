@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
+import MenuImportModal from '../../components/MenuImportModal'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -478,6 +479,9 @@ export default function MenuManagementTab() {
   const [dragItemId, setDragItemId] = useState(null)
   const [dragOverItemId, setDragOverItemId] = useState(null)
 
+  // Menu import modal
+  const [showImportModal, setShowImportModal] = useState(false)
+
   useEffect(() => {
     supabase.from('restaurants').select('id, name, slug').order('name').then(({ data }) => {
       setRestaurants(data || [])
@@ -610,6 +614,14 @@ export default function MenuManagementTab() {
             <option value="">Select a restaurant...</option>
             {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
+          {selectedRestaurant && (
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="px-3 h-9 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50"
+            >
+              Import Menu
+            </button>
+          )}
           {selectedRestaurant && (
             <span className="text-xs text-gray-500 ml-auto">Featured on website: {featuredCount} / {FEATURED_LIMIT}</span>
           )}
@@ -797,6 +809,14 @@ export default function MenuManagementTab() {
             onSaved={() => { setEditingGroup(undefined); fetchMenu() }}
           />
         </div>
+      )}
+
+      {showImportModal && selectedRestaurant && (
+        <MenuImportModal
+          restaurant={restaurants.find(r => r.id === selectedRestaurant)}
+          onClose={() => setShowImportModal(false)}
+          onImported={fetchMenu}
+        />
       )}
     </div>
   )
