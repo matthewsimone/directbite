@@ -153,53 +153,20 @@ function extractItemData(modalRoot) {
 }
 
 // Group container detection.
-// 1. Cluster: smallest ancestor of the option containing 2+ options
-//    of the same data-name family (sizes vs toppings).
-// 2. Expand: the cluster is sometimes a tight option-grid wrapper
-//    that doesn't include the group's label or topping-select-label
-//    hint. Walk up at most 2 levels while the cluster lacks a label
-//    descendant and we wouldn't cross into another group's options.
-// 3. Single-option fallback: smallest ancestor whose preceding-sibling
-//    chain has a non-modifier text-bearing element.
+// Walk up from the option to the smallest ancestor that contains a
+// label-bearing descendant (a short non-modifier text outside any
+// option / topping / hint / svg / button subtree). That ancestor
+// is the group container. This unifies multi-option groups (where
+// the option-wrapper has no label so we walk past it to the group
+// container with the label) and single-option groups (same walk,
+// just one option inside).
 function findGroupContainer(optionEl, modalRoot) {
-  const dn = optionEl.getAttribute('data-name')
-  if (!dn) return null
-
-  let cluster = optionEl.parentElement
-  while (cluster && cluster !== modalRoot) {
-    if (cluster.querySelectorAll(`[data-name="${dn}"]`).length >= 2) break
-    cluster = cluster.parentElement
+  let cursor = optionEl.parentElement
+  while (cursor && cursor !== modalRoot) {
+    if (findLabelText(cursor) !== null) return cursor
+    cursor = cursor.parentElement
   }
-
-  if (!cluster || cluster === modalRoot) {
-    // Single-option fallback.
-    let cursor = optionEl.parentElement
-    while (cursor && cursor !== modalRoot) {
-      let prev = cursor.previousElementSibling
-      while (prev) {
-        const text = directText(prev)
-        const dnPrev = prev.getAttribute('data-name') || ''
-        if (text && !/option|topping/.test(dnPrev)) {
-          return cursor.parentElement || cursor
-        }
-        prev = prev.previousElementSibling
-      }
-      cursor = cursor.parentElement
-    }
-    return null
-  }
-
-  // Expand cluster to include the group's label / hint when missing.
-  const otherDn = dn === 'productModal.option'
-    ? 'productModal.topping.name'
-    : 'productModal.option'
-  for (let i = 0; i < 2; i++) {
-    if (findLabelText(cluster) !== null) break
-    if (!cluster.parentElement || cluster.parentElement === modalRoot) break
-    if (cluster.parentElement.querySelector(`[data-name="${otherDn}"]`)) break
-    cluster = cluster.parentElement
-  }
-  return cluster
+  return null
 }
 
 function directText(el) {
@@ -228,10 +195,15 @@ function findSelectableAncestor(optionEl) {
 function findLabelText(container) {
   function visit(el) {
     if (!el) return null
-    const dn = (el.getAttribute && el.getAttribute('data-name')) || ''
+    const tag = (el.tagName || '').toLowerCase()
+    // Skip UI control subtrees — close buttons hold SVG <title>
+    // elements like "Circle X" that would otherwise leak through
+    // as a label.
+    if (tag === 'svg' || tag === 'button') return null
     const role = (el.getAttribute && el.getAttribute('role')) || ''
+    if (role === 'radio' || role === 'checkbox' || role === 'button') return null
+    const dn = (el.getAttribute && el.getAttribute('data-name')) || ''
     if (/option|topping/.test(dn)) return null
-    if (role === 'radio' || role === 'checkbox') return null
 
     const ownText = directText(el)
     if (ownText && ownText.length < 50) return ownText.split('\n')[0].trim()
