@@ -80,6 +80,7 @@ export default function ItemModal({
           placement: 'whole',
           price: Number(topping.price),
           fullPrice: Number(topping.price),
+          priceHalf: topping.price_half != null ? Number(topping.price_half) : null,
           groupId: group.id,
           placementType: 'pizza',
         },
@@ -91,7 +92,8 @@ export default function ItemModal({
     setSelectedToppings(prev =>
       prev.map(t => {
         if (t.toppingId !== toppingId) return t
-        const price = placement === 'whole' ? t.fullPrice : t.fullPrice / 2
+        const halfPrice = t.priceHalf ?? t.fullPrice / 2
+        const price = placement === 'whole' ? t.fullPrice : halfPrice
         return { ...t, placement, price: Math.round(price * 100) / 100 }
       })
     )
@@ -423,7 +425,7 @@ function PizzaToppingGroup({ group, groupToppings, selectedToppings, onToggle, o
                       <span className="block text-xs mt-0.5 opacity-80">
                         {p === 'whole'
                           ? formatCurrency(topping.price)
-                          : formatCurrency(topping.price / 2)}
+                          : formatCurrency(topping.price_half ?? topping.price / 2)}
                       </span>
                     </button>
                   ))}

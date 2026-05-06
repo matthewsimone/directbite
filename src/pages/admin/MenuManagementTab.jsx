@@ -247,7 +247,7 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
 
   useEffect(() => {
     if (group) fetchToppings()
-    else setToppings([{ name: '', price: '', _key: Math.random().toString(36).slice(2) }])
+    else setToppings([{ name: '', price: '', price_half: '', _key: Math.random().toString(36).slice(2) }])
   }, [group?.id])
 
   async function fetchToppings() {
@@ -257,7 +257,7 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   }
 
   function addTopping() {
-    setToppings(prev => [...prev, { name: '', price: '', _key: Math.random().toString(36).slice(2) }])
+    setToppings(prev => [...prev, { name: '', price: '', price_half: '', _key: Math.random().toString(36).slice(2) }])
   }
 
   function removeTopping(key) {
@@ -308,12 +308,13 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
     // Upsert toppings
     for (let i = 0; i < valid.length; i++) {
       const t = valid[i]
+      const priceHalf = (t.price_half === '' || t.price_half == null) ? null : parseFloat(t.price_half)
       if (t.id) {
-        await supabase.from('toppings').update({ name: t.name, price: parseFloat(t.price), sort_order: i }).eq('id', t.id)
+        await supabase.from('toppings').update({ name: t.name, price: parseFloat(t.price), price_half: priceHalf, sort_order: i }).eq('id', t.id)
       } else {
         await supabase.from('toppings').insert({
           topping_group_id: groupId, restaurant_id: restaurantId,
-          name: t.name, price: parseFloat(t.price), sort_order: i,
+          name: t.name, price: parseFloat(t.price), price_half: priceHalf, sort_order: i,
         })
       }
     }
@@ -397,15 +398,34 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
             <label className="text-xs text-gray-500 uppercase font-semibold">{placementType === 'addon' ? 'Add-Ons' : 'Toppings'}</label>
             <button onClick={addTopping} className="text-xs text-[#16A34A] font-semibold">+ Add Topping</button>
           </div>
+          {placementType === 'pizza' && (
+            <p className="text-xs text-gray-400 mb-2">
+              Half price is optional — leave blank to charge whole / 2 for left or right placements.
+            </p>
+          )}
           {toppings.map(t => (
             <div key={t._key} className="flex gap-2 mb-2">
               <input value={t.name} onChange={e => updateTopping(t._key, 'name', e.target.value)}
                 placeholder="Topping name" className="flex-1 h-9 px-3 border border-gray-300 rounded-lg text-sm" />
-              <div className="relative w-24">
+              <div className="relative w-20">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                 <input type="number" step="0.01" value={t.price} onChange={e => updateTopping(t._key, 'price', e.target.value)}
-                  placeholder="0.00" className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-lg text-sm" />
+                  placeholder="Whole" title="Whole-pizza price"
+                  className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-lg text-sm" />
               </div>
+              {placementType === 'pizza' && (
+                <div className="relative w-20">
+                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                  <input
+                    type="number" step="0.01"
+                    value={t.price_half ?? ''}
+                    onChange={e => updateTopping(t._key, 'price_half', e.target.value)}
+                    placeholder="Half"
+                    title="Half-pizza price (optional, defaults to whole / 2)"
+                    className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+              )}
               <button onClick={() => removeTopping(t._key)} className="text-red-400 hover:text-red-600 text-lg px-1">&times;</button>
             </div>
           ))}
