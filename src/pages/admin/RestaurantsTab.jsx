@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import AddressAutocomplete from '../../components/AddressAutocomplete'
@@ -130,7 +131,27 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
               currentImageUrl={data.hero_image_url}
               bucketName="hero-images"
               storagePath={`${data.slug}/hero.jpg`}
-              onUpload={url => setData(prev => ({ ...prev, hero_image_url: url }))}
+              onUpload={async (url) => {
+                // Auto-persist: admin-create-restaurant Edge Function
+                // doesn't include hero_image_url in its update payload,
+                // so we sidestep it and write directly. Matches the
+                // tablet SettingsTab pattern. No "Save Changes" click
+                // needed for image fields.
+                const { data: updated, error } = await supabase
+                  .from('restaurants')
+                  .update({ hero_image_url: url })
+                  .eq('id', restaurant.id)
+                  .select()
+                  .single()
+                if (error) {
+                  toast.error(`Hero image save failed: ${error.message}`)
+                  return
+                }
+                if (updated) {
+                  setData(updated)
+                  onUpdate(updated)
+                }
+              }}
               placeholder="Upload Hero Image"
             />
           </div>
