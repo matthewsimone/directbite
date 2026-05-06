@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "DirectBite Modifier Capture",
+  "version": "0.1.0",
+  "description": "Captures menu modifier data from Slice menu pages and sends it to DirectBite admin.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://slicelife.com/*",
+    "https://*.slicelife.com/*",
+    "https://directbite.co/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://slicelife.com/*",
+        "https://*.slicelife.com/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
