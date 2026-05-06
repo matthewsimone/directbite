@@ -235,7 +235,6 @@ function parseFromDom($) {
   //  - Each direct child of that container is one item card.
   const categories = []
   let categoryIdx = 0
-  let firstCardLogged = false  // diagnostic gate — log only the first card we process
 
   $('h2[id]').each((_, h2El) => {
     const $h2 = $(h2El)
@@ -259,9 +258,7 @@ function parseFromDom($) {
 
     const items = []
     $container.children().each((_, cardEl) => {
-      const shouldLog = !firstCardLogged
-      firstCardLogged = true
-      const item = extractItemFromCard($, $(cardEl), items.length, shouldLog)
+      const item = extractItemFromCard($, $(cardEl), items.length)
       if (item) items.push(item)
     })
 
@@ -281,80 +278,29 @@ function parseFromDom($) {
 const BUTTON_LABEL_RE =
   /^(\+\s*)?add(\s+to\s+(cart|bag|order))?$|^customi[sz]e$|^show\s+more$|^see\s+more$|^view$/i
 
-function extractItemFromCard($, $card, idx, shouldLog = false) {
-  // ──────────────── DIAGNOSTIC: price markup dump ────────────────
-  // Triggers on the very first card we process, so it works regardless
-  // of what the restaurant calls its menu items.
-  if (shouldLog) {
-    const dollarElements = []
-    $card.find('*').each((_, el) => {
-      const $el = $(el)
-      // Only count elements whose OWN text (not descendants) contains $.
-      const ownText = $el.contents()
-        .filter(function () { return this.type === 'text' })
-        .text()
-        .trim()
-      if (!/\$\s*\d/.test(ownText)) return
-
-      const cls = $el.attr('class') || ''
-      const styleAttr = $el.attr('style') || ''
-      const tagName = (el.tagName || '').toLowerCase()
-
-      // Look up the ancestor chain for any strike-through indicator.
-      let strikeAncestor = null
-      let $p = $el.parent()
-      while ($p.length && $p[0] !== $card[0]) {
-        const pTag = ($p[0].tagName || '').toLowerCase()
-        const pCls = $p.attr('class') || ''
-        const pStyle = $p.attr('style') || ''
-        if (['s', 'del', 'strike'].includes(pTag)) {
-          strikeAncestor = `tag:${pTag}`
-          break
-        }
-        if (/strike|line-through|original|regular|was[-_]?price|old[-_]?price/i.test(pCls)) {
-          strikeAncestor = `class:${pCls.slice(0, 100)}`
-          break
-        }
-        if (/line-through/i.test(pStyle)) {
-          strikeAncestor = 'style:line-through'
-          break
-        }
-        $p = $p.parent()
-      }
-
-      dollarElements.push({
-        tag: tagName,
-        class: cls.slice(0, 200),
-        style: styleAttr.slice(0, 200),
-        dataAttrs: Object.fromEntries(
-          Object.entries(el.attribs || {}).filter(([k]) => k.startsWith('data-'))
-        ),
-        ownText: ownText.slice(0, 100),
-        isStrikeTag: ['s', 'del', 'strike'].includes(tagName),
-        hasLineThroughStyle: /line-through/i.test(styleAttr),
-        strikeAncestor,
-      })
-    })
-
-    const strikeTags = []
-    $card.find('s, del, strike').each((_, el) => {
-      const $el = $(el)
-      strikeTags.push({
-        tag: (el.tagName || '').toLowerCase(),
-        text: ($el.text() || '').trim().slice(0, 100),
-        class: ($el.attr('class') || '').slice(0, 200),
-        style: ($el.attr('style') || '').slice(0, 200),
-      })
-    })
-
-    console.log('[import-menu] first-card HTML', ($card.html() || '').slice(0, 4000))
-    console.log('[import-menu] first-card dollar elements', JSON.stringify(dollarElements, null, 2))
-    console.log('[import-menu] first-card strike tags', JSON.stringify(strikeTags, null, 2))
-  }
-  // ────────────────────── end diagnostic ──────────────────────
-
+function extractItemFromCard($, $card, idx) {
   const imageUrl = $card.find('img').first().attr('src') || null
 
+  // Price — Slice ships data-testid="menuProductPrice" for the regular
+  // price and data-testid="menuStrikethroughPrice" for the discounted
+  // price (when an item is on sale). We always want the regular price
+  // since restaurant payouts are based on that, not Slice's promotion.
+  // Fall back to scanning card text for items without the testid (no
+  // discount → some single-price markup we don't have a hook on).
+  let priceVal = null
+  const $regularPriceEl = $card.find('[data-testid="menuProductPrice"]').first()
+  if ($regularPriceEl.length) {
+    const m = ($regularPriceEl.text() || '').match(/\$\s*(\d+(?:\.\d{1,2})?)/)
+    if (m) priceVal = Number(m[1])
+  }
+  if (priceVal == null) {
+    const m = ($card.text() || '').match(/\$\s*(\d+(?:\.\d{1,2})?)/)
+    if (m) priceVal = Number(m[1])
+  }
+
+  // Walk leaves for badge / name / description. Skip $-only leaves —
+  // those are price elements (regular or strikethrough), already
+  // handled above.
   const fields = []
   $card.find('*').each((_, el) => {
     const $el = $(el)
@@ -364,27 +310,15 @@ function extractItemFromCard($, $card, idx, shouldLog = false) {
   })
 
   let isBestSeller = false
-  let priceVal = null
   const others = []
   for (const text of fields) {
     if (/^best\s*seller$/i.test(text)) {
       isBestSeller = true
       continue
     }
-    const priceOnly = text.match(/^\$\s*(\d+(?:\.\d{1,2})?)$/)
-    if (priceOnly) {
-      priceVal = Number(priceOnly[1])
-      continue
-    }
+    if (/^\$\s*\d+(?:\.\d{1,2})?$/.test(text)) continue
     if (BUTTON_LABEL_RE.test(text)) continue
     others.push(text)
-  }
-
-  // Fallback if the price wasn't an isolated leaf — pull the first $
-  // amount out of the card's full text.
-  if (priceVal == null) {
-    const m = ($card.text() || '').match(/\$\s*(\d+(?:\.\d{1,2})?)/)
-    if (m) priceVal = Number(m[1])
   }
 
   if (others.length === 0 || priceVal == null) return null
