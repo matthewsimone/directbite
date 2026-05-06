@@ -103,10 +103,47 @@ function findModalRoot(node) {
 //   [data-name="topping-select-label"]           — group hint ("Required, select only one")
 // Class names are obfuscated CSS-module hashes — we don't target them.
 
+// Reject aria-labels and headings that look like internal/technical
+// container names rather than the actual menu-item title.
+const TECHNICAL_NAME_RE = /productmodal|^container$|^dialog$|^modal/i
+
+function extractItemName(modalRoot) {
+  // 1. aria-label on the dialog root, if it's not technical.
+  const aria = (modalRoot.getAttribute('aria-label') || '').trim()
+  if (aria && !TECHNICAL_NAME_RE.test(aria)) return aria
+
+  // 2. aria-labelledby pointing to a heading-like element.
+  const labelledBy = modalRoot.getAttribute('aria-labelledby')
+  if (labelledBy) {
+    const target =
+      modalRoot.querySelector(`#${CSS.escape(labelledBy)}`) ||
+      document.getElementById(labelledBy)
+    if (target) {
+      const text = (target.textContent || '').trim()
+      if (text && !TECHNICAL_NAME_RE.test(text)) return text
+    }
+  }
+
+  // 3. First heading inside the modal.
+  const heading = modalRoot.querySelector('h1, h2, h3, [role="heading"]')
+  if (heading) {
+    const text = (heading.textContent || '').trim()
+    if (text && !TECHNICAL_NAME_RE.test(text)) return text
+  }
+
+  // 4. Any non-technical aria-label inside the modal.
+  for (const el of modalRoot.querySelectorAll('[aria-label]')) {
+    const a = (el.getAttribute('aria-label') || '').trim()
+    if (a && !TECHNICAL_NAME_RE.test(a) && !ICON_LABEL_RE.test(a)) return a
+  }
+
+  return null
+}
+
 function extractItemData(modalRoot) {
-  const itemName = (modalRoot.getAttribute('aria-label') || '').trim()
+  const itemName = extractItemName(modalRoot)
   if (!itemName) {
-    console.warn('[DB-Capture] modal has no aria-label — skipping')
+    console.warn('[DB-Capture] could not resolve item name — skipping')
     return null
   }
 
@@ -192,13 +229,15 @@ function findSelectableAncestor(optionEl) {
 // topping-select-label / role=radio / role=checkbox). Returns the
 // string or null. Used by findGroupContainer to decide whether the
 // cluster needs expanding, and by findGroupLabel for final extraction.
+// Known SVG/icon labels that surface from close buttons even when
+// the subtree skip misses them — usually because Slice nests the
+// title element in something we don't recognize as a button.
+const ICON_LABEL_RE = /^(circle\s*x|x|close|menu)$/i
+
 function findLabelText(container) {
   function visit(el) {
     if (!el) return null
     const tag = (el.tagName || '').toLowerCase()
-    // Skip UI control subtrees — close buttons hold SVG <title>
-    // elements like "Circle X" that would otherwise leak through
-    // as a label.
     if (tag === 'svg' || tag === 'button') return null
     const role = (el.getAttribute && el.getAttribute('role')) || ''
     if (role === 'radio' || role === 'checkbox' || role === 'button') return null
@@ -206,7 +245,21 @@ function findLabelText(container) {
     if (/option|topping/.test(dn)) return null
 
     const ownText = directText(el)
-    if (ownText && ownText.length < 50) return ownText.split('\n')[0].trim()
+    if (ownText && ownText.length < 50) {
+      // Reject obvious icon labels that may slip past the subtree
+      // skip on edge-case button structures.
+      if (ICON_LABEL_RE.test(ownText.trim())) return null
+      // Belt: walk ancestors up to (but not including) the search
+      // root; if any are svg/button/role=button, reject.
+      let p = el.parentElement
+      while (p && p !== container) {
+        const pTag = (p.tagName || '').toLowerCase()
+        const pRole = (p.getAttribute && p.getAttribute('role')) || ''
+        if (pTag === 'svg' || pTag === 'button' || pRole === 'button') return null
+        p = p.parentElement
+      }
+      return ownText.split('\n')[0].trim()
+    }
 
     for (const child of el.children) {
       const found = visit(child)
