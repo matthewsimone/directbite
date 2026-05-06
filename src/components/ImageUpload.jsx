@@ -25,27 +25,12 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
 
   async function handleFileChange(e) {
     const file = e.target.files?.[0]
-    // TEMP DIAGNOSTIC — remove after pinpointing hero-upload silent failure
-    console.log('[IU] handleFileChange called', {
-      storagePath,
-      bucketName,
-      currentImageUrl,
-      hasFile: !!file,
-      fileName: file?.name,
-      fileSize: file?.size,
-      fileType: file?.type,
-      hasSupabase: !!supabase,
-    })
-    if (!file || !supabase) {
-      console.log('[IU] EXITING — no file or no supabase')
-      return
-    }
+    if (!file || !supabase) return
 
     // Reset input so the same file can be re-selected on retry
     e.target.value = ''
 
     const ext = file.name.split('.').pop().toLowerCase()
-    console.log('[IU] ext check', { ext, allowed: ['jpg', 'jpeg', 'png', 'webp'].includes(ext) })
     if (!['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
       setError('Please select a JPEG, PNG, or WebP image')
       return
@@ -60,7 +45,6 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
     setPreview(localUrl)
 
     const filePath = storagePath.replace(/\.[^.]+$/, '') + '.' + ext
-    console.log('[IU] starting upload', { bucketName, filePath })
 
     // Simulate progress since supabase-js doesn't expose upload progress
     const progressInterval = setInterval(() => {
@@ -70,7 +54,6 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
     const { error: uploadErr } = await supabase.storage
       .from(bucketName)
       .upload(filePath, file, { upsert: true })
-    console.log('[IU] upload returned', { uploadErr: uploadErr?.message || null })
 
     clearInterval(progressInterval)
 
