@@ -76,6 +76,7 @@ export default async function handler(req, res) {
   lastImportByAdmin.set(adminEmail, now)
 
   let html
+  let finalUrl = parsedUrl.toString()
   try {
     const response = await fetch(parsedUrl.toString(), {
       headers: {
@@ -86,8 +87,18 @@ export default async function handler(req, res) {
       redirect: 'follow',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
+    finalUrl = response.url || finalUrl
+    console.log('[import-menu] fetch result', {
+      requestedUrl: parsedUrl.toString(),
+      finalUrl,
+      status: response.status,
+      contentType: response.headers.get('content-type'),
+      contentLength: response.headers.get('content-length'),
+    })
     if (!response.ok) return res.status(200).json(NO_MATCH_RESPONSE(url))
     html = await response.text()
+    console.log('[import-menu] html length', html.length)
+    console.log('[import-menu] html head', html.slice(0, 1000))
   } catch (err) {
     console.error('[import-menu] Fetch failed:', err?.message || err)
     return res.status(200).json(NO_MATCH_RESPONSE(url))
@@ -110,12 +121,30 @@ export default async function handler(req, res) {
 
 function parseSlice(html, sourceUrl) {
   const $ = cheerio.load(html)
-  if (!looksLikeSlice($, sourceUrl)) return null
+  const hostname = (() => {
+    try { return new URL(sourceUrl).hostname } catch { return null }
+  })()
+  const looksSlice = looksLikeSlice($, sourceUrl)
+  console.log('[import-menu] detection', { hostname, looksSlice })
+  if (!looksSlice) return null
 
   const fromNextData = parseFromNextData($)
+  if (fromNextData) {
+    console.log('[import-menu] next-data result', {
+      categoryCount: fromNextData.categories.length,
+      firstCategoryName: fromNextData.categories[0]?.name || null,
+      firstCategoryItemCount: fromNextData.categories[0]?.items?.length || 0,
+    })
+  }
   if (fromNextData && fromNextData.categories.length > 0) return fromNextData
 
-  return parseFromDom($)
+  const fromDom = parseFromDom($)
+  console.log('[import-menu] dom-fallback result', {
+    h2WithIdCount: $('h2[id]').length,
+    h2AnyCount: $('h2').length,
+    categoryCount: fromDom.categories.length,
+  })
+  return fromDom
 }
 
 function looksLikeSlice($, sourceUrl) {
@@ -136,14 +165,25 @@ function looksLikeSlice($, sourceUrl) {
 
 function parseFromNextData($) {
   const raw = $('#__NEXT_DATA__').first().html()
+  console.log('[import-menu] __NEXT_DATA__ presence', {
+    found: !!raw,
+    length: raw ? raw.length : 0,
+  })
   if (!raw) return null
 
   let data
   try {
     data = JSON.parse(raw)
-  } catch {
+  } catch (err) {
+    console.log('[import-menu] __NEXT_DATA__ JSON.parse failed:', err.message)
     return null
   }
+
+  console.log('[import-menu] __NEXT_DATA__ keys', {
+    topLevel: Object.keys(data || {}),
+    propsKeys: Object.keys(data?.props || {}),
+    pagePropsKeys: Object.keys(data?.props?.pageProps || {}),
+  })
 
   const probes = [
     ['props', 'pageProps', 'menu'],
@@ -154,6 +194,7 @@ function parseFromNextData($) {
   ]
 
   let menu = null
+  let matchedPath = null
   for (const path of probes) {
     let cursor = data
     let ok = true
@@ -166,12 +207,23 @@ function parseFromNextData($) {
     }
     if (ok && cursor) {
       menu = cursor
+      matchedPath = path.join('.')
       break
     }
   }
+  console.log('[import-menu] menu probe', {
+    matchedPath,
+    hasMenu: !!menu,
+    menuKeys: menu && typeof menu === 'object' ? Object.keys(menu) : null,
+  })
   if (!menu) return null
 
   const cats = Array.isArray(menu.categories) ? menu.categories : []
+  console.log('[import-menu] categories array', {
+    isArray: Array.isArray(menu.categories),
+    length: cats.length,
+    firstCategoryKeys: cats[0] && typeof cats[0] === 'object' ? Object.keys(cats[0]) : null,
+  })
   if (cats.length === 0) return null
 
   const categories = cats
