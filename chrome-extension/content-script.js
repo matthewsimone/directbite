@@ -152,13 +152,47 @@ function extractItemData(modalRoot) {
   }
 }
 
+// Group container detection — primary strategy clusters by data-name
+// family (smallest ancestor containing 2+ options of the same data-name).
+// Works for any multi-option group regardless of whether the group has
+// a topping-select-label hint. Required-only groups (sizes) and
+// optional-only groups (toppings) both ship multiple options.
 function findGroupContainer(optionEl, modalRoot) {
+  const dn = optionEl.getAttribute('data-name')
+  if (!dn) return null
+
   let cursor = optionEl.parentElement
   while (cursor && cursor !== modalRoot) {
-    if (cursor.querySelector('[data-name="topping-select-label"]')) return cursor
+    const siblings = cursor.querySelectorAll(`[data-name="${dn}"]`)
+    if (siblings.length >= 2) return cursor
+    cursor = cursor.parentElement
+  }
+
+  // Fallback for single-option groups (rare — e.g. "Make It → Gluten
+  // Free"): smallest ancestor whose previous-sibling chain contains a
+  // text-bearing element that isn't another modifier element.
+  cursor = optionEl.parentElement
+  while (cursor && cursor !== modalRoot) {
+    let prev = cursor.previousElementSibling
+    while (prev) {
+      const text = directText(prev)
+      const dnPrev = prev.getAttribute('data-name') || ''
+      if (text && !/option|topping/.test(dnPrev)) {
+        return cursor.parentElement || cursor
+      }
+      prev = prev.previousElementSibling
+    }
     cursor = cursor.parentElement
   }
   return null
+}
+
+function directText(el) {
+  return Array.from(el.childNodes)
+    .filter((n) => n.nodeType === 3)
+    .map((n) => n.textContent || '')
+    .join('')
+    .trim()
 }
 
 function findSelectableAncestor(optionEl) {
@@ -171,26 +205,34 @@ function findSelectableAncestor(optionEl) {
   return null
 }
 
-function extractGroup(container, optionEls) {
-  const hintEl = container.querySelector('[data-name="topping-select-label"]')
-  const hintText = hintEl ? (hintEl.textContent || '').trim() : ''
-
-  // Group label — the previous sibling of the hint (skipping option/
-  // topping wrappers). On Slice this is a sibling div with the visible
-  // header text like "Choose an option" or "Add Toppings".
-  let label = '(unnamed group)'
-  if (hintEl) {
-    let prev = hintEl.previousElementSibling
+// Group label — walk preceding siblings of the first option, stepping
+// up through ancestors as needed, until we find a text-bearing element
+// whose data-name isn't a modifier (option/topping/topping-select-label).
+function findGroupLabel(container, optionEls) {
+  if (optionEls.length === 0) return '(unnamed group)'
+  let cursor = optionEls[0]
+  while (cursor && cursor !== container) {
+    let prev = cursor.previousElementSibling
     while (prev) {
       const text = (prev.textContent || '').trim()
       const dn = prev.getAttribute('data-name') || ''
       if (text && !/option|topping/.test(dn)) {
-        label = text
-        break
+        // First line only — handles cases where the candidate also
+        // wraps adjacent text we don't want (rare).
+        return text.split('\n')[0].trim()
       }
       prev = prev.previousElementSibling
     }
+    cursor = cursor.parentElement
   }
+  return '(unnamed group)'
+}
+
+function extractGroup(container, optionEls) {
+  const hintEl = container.querySelector('[data-name="topping-select-label"]')
+  const hintText = hintEl ? (hintEl.textContent || '').trim() : ''
+
+  const label = findGroupLabel(container, optionEls)
 
   // Selection type — peek at the first option's selectable ancestor.
   // role="radio" → single, role="checkbox" → multi.
