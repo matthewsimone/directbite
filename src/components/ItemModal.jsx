@@ -1,6 +1,46 @@
 import { useState, useEffect, useRef } from 'react'
 import { formatCurrency } from '../utils/format'
 
+// Compute pre-selected toppings from each group's is_default flags.
+// Runs once at modal mount via lazy useState initializer.
+function computeDefaultToppings(toppingGroupsForItem, getToppingsForGroup) {
+  if (!toppingGroupsForItem || toppingGroupsForItem.length === 0) return []
+  const defaults = []
+  for (const group of toppingGroupsForItem) {
+    const groupDefaults = getToppingsForGroup(group.id).filter(t => t.is_available && t.is_default)
+    if (groupDefaults.length === 0) continue
+
+    const isPizza = group.placement_type !== 'addon'
+    const selectionType = group.selection_type || 'unlimited'
+
+    // Single-select addons: take only the first flagged default even
+    // if dirty data has multiple, so the radio invariant holds.
+    let toAdd = (!isPizza && selectionType === 'single')
+      ? groupDefaults.slice(0, 1)
+      : groupDefaults
+
+    // Limited addons: clamp to max_selections so we don't ship an
+    // un-saveable cart on first paint.
+    if (!isPizza && selectionType === 'limited' && group.max_selections) {
+      toAdd = toAdd.slice(0, group.max_selections)
+    }
+
+    for (const t of toAdd) {
+      defaults.push({
+        toppingId: t.id,
+        toppingName: t.name,
+        placement: 'whole',
+        price: Number(t.price),
+        fullPrice: Number(t.price),
+        priceHalf: t.price_half != null ? Number(t.price_half) : null,
+        groupId: group.id,
+        placementType: isPizza ? 'pizza' : 'addon',
+      })
+    }
+  }
+  return defaults
+}
+
 export default function ItemModal({
   item,
   sizes,
@@ -11,7 +51,9 @@ export default function ItemModal({
   onClose,
 }) {
   const [selectedSizeId, setSelectedSizeId] = useState(null)
-  const [selectedToppings, setSelectedToppings] = useState([])
+  const [selectedToppings, setSelectedToppings] = useState(() =>
+    computeDefaultToppings(toppingGroupsForItem, getToppingsForGroup)
+  )
   const [specialInstructions, setSpecialInstructions] = useState('')
   const [quantity, setQuantity] = useState(1)
   const [visible, setVisible] = useState(false)
