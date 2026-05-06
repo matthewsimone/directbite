@@ -94,79 +94,30 @@ function findModalRoot(node) {
 // Extraction
 // ────────────────────────────────────────────────────────────────────
 
+// Slice ships stable data-name attributes for modifier elements:
+//   [data-name="productModal.option"]            — size option (name + nested price)
+//   [data-name="productModal.option.price"]      — size option price
+//   [data-name="productModal.topping.name"]      — topping name
+//   [data-name="productModal.topping.price"]     — topping price
+//   [data-name="topping-select-label"]           — group hint ("Required, select only one")
+// Class names are obfuscated CSS-module hashes — we don't target them.
+
 function extractItemData(modalRoot) {
-  // Item name — first prominent heading. The modal's outer header
-  // typically holds the item name; "CHOOSE AN OPTION" / similar
-  // group labels come later as h2/h3 inside the body.
-  const heading =
-    modalRoot.querySelector('h1') ||
-    modalRoot.querySelector('h2') ||
-    modalRoot.querySelector('[role="heading"]')
-  const itemName = heading ? heading.textContent.trim() : null
+  const itemName = (modalRoot.getAttribute('aria-label') || '').trim()
   if (!itemName) {
-    // ──────────────── DIAGNOSTIC: dump modal structure ────────────────
-    console.warn('[DB-Capture] modal had no heading — dumping structure for selector tuning')
-
-    console.log(
-      '[DB-Capture] modal outerHTML (first 5000)',
-      (modalRoot.outerHTML || '').slice(0, 5000)
-    )
-
-    console.log(
-      '[DB-Capture] modal textContent head (200)',
-      (modalRoot.textContent || '').trim().slice(0, 200)
-    )
-
-    const paragraphs = []
-    modalRoot.querySelectorAll('p').forEach((el) => {
-      const text = (el.textContent || '').trim()
-      if (!text) return
-      paragraphs.push({
-        text: text.slice(0, 100),
-        class: (el.getAttribute('class') || '').slice(0, 50),
-      })
-    })
-    console.log('[DB-Capture] <p> elements', paragraphs)
-
-    const shortDivs = []
-    modalRoot.querySelectorAll('div').forEach((el) => {
-      // Only count direct text — exclude divs whose text comes entirely
-      // from descendants (those are layout containers, not titles).
-      const ownText = Array.from(el.childNodes)
-        .filter((n) => n.nodeType === 3)
-        .map((n) => n.textContent || '')
-        .join('')
-        .trim()
-      if (!ownText || ownText.length >= 100) return
-      shortDivs.push({
-        text: ownText.slice(0, 100),
-        class: (el.getAttribute('class') || '').slice(0, 50),
-      })
-    })
-    console.log('[DB-Capture] <div> with own text < 100 chars', shortDivs.slice(0, 30))
-
-    const ariaCandidates = []
-    modalRoot.querySelectorAll('[role="heading"], [aria-label]').forEach((el) => {
-      ariaCandidates.push({
-        tag: el.tagName.toLowerCase(),
-        role: el.getAttribute('role') || null,
-        ariaLabel: el.getAttribute('aria-label') || null,
-        text: (el.textContent || '').trim().slice(0, 100),
-      })
-    })
-    console.log('[DB-Capture] role="heading" / [aria-label] elements', ariaCandidates)
-    // ──────────────────── end diagnostic ────────────────────
+    console.warn('[DB-Capture] modal has no aria-label — skipping')
     return null
   }
 
-  // Modifier inputs — radio + checkbox + ARIA equivalents in case
-  // Slice uses div-based custom controls.
-  const inputs = Array.from(
-    modalRoot.querySelectorAll(
-      'input[type="radio"], input[type="checkbox"], [role="radio"], [role="checkbox"]'
-    )
+  const sizeNameEls = Array.from(
+    modalRoot.querySelectorAll('[data-name="productModal.option"]')
   )
-  if (inputs.length === 0) {
+  const toppingNameEls = Array.from(
+    modalRoot.querySelectorAll('[data-name="productModal.topping.name"]')
+  )
+  const optionEls = [...sizeNameEls, ...toppingNameEls]
+
+  if (optionEls.length === 0) {
     return {
       item_name: itemName,
       source_url: window.location.href,
@@ -175,17 +126,20 @@ function extractItemData(modalRoot) {
     }
   }
 
-  // Group inputs by their nearest semantic group container.
+  // Group options by their nearest ancestor that contains a
+  // topping-select-label hint. Each modifier group ships one such
+  // hint, so the smallest containing ancestor is the group root.
   const groupsByContainer = new Map()
-  for (const input of inputs) {
-    const container = findGroupContainer(input, modalRoot)
+  for (const optEl of optionEls) {
+    const container = findGroupContainer(optEl, modalRoot)
+    if (!container) continue
     if (!groupsByContainer.has(container)) groupsByContainer.set(container, [])
-    groupsByContainer.get(container).push(input)
+    groupsByContainer.get(container).push(optEl)
   }
 
   const modifier_groups = []
-  for (const [container, groupInputs] of groupsByContainer) {
-    const group = extractGroup(container, groupInputs)
+  for (const [container, els] of groupsByContainer) {
+    const group = extractGroup(container, els)
     if (group) modifier_groups.push(group)
   }
 
@@ -197,77 +151,107 @@ function extractItemData(modalRoot) {
   }
 }
 
-function findGroupContainer(input, modalRoot) {
-  let cursor = input.parentElement
+function findGroupContainer(optionEl, modalRoot) {
+  let cursor = optionEl.parentElement
   while (cursor && cursor !== modalRoot) {
-    if (cursor.tagName === 'FIELDSET') return cursor
-    const role = cursor.getAttribute && cursor.getAttribute('role')
-    if (role === 'group' || role === 'radiogroup') return cursor
+    if (cursor.querySelector('[data-name="topping-select-label"]')) return cursor
     cursor = cursor.parentElement
   }
-  // Fallback: two levels up — typically the row's container is the
-  // option, the next level is the group.
-  return input.parentElement?.parentElement || input.parentElement || modalRoot
+  return null
 }
 
-function extractGroup(container, inputs) {
-  // Group label — first heading or legend within the container.
-  const labelEl =
-    container.querySelector('legend') ||
-    container.querySelector('h2, h3, h4') ||
-    container.querySelector('[role="heading"]')
-  const label = labelEl ? labelEl.textContent.trim().split('\n')[0] : '(unnamed group)'
+function findSelectableAncestor(optionEl) {
+  let cursor = optionEl.parentElement
+  while (cursor) {
+    const role = cursor.getAttribute && cursor.getAttribute('role')
+    if (role === 'radio' || role === 'checkbox') return cursor
+    cursor = cursor.parentElement
+  }
+  return null
+}
 
-  // Selection type — radios = single, anything else = multi.
-  const allRadios = inputs.every((i) => {
-    const t = i.type || i.getAttribute('role')
-    return t === 'radio'
-  })
-  const selection_type = allRadios ? 'single' : 'multi'
+function extractGroup(container, optionEls) {
+  const hintEl = container.querySelector('[data-name="topping-select-label"]')
+  const hintText = hintEl ? (hintEl.textContent || '').trim() : ''
 
-  // Required — heuristic. "Required" badge or asterisk near the label.
-  const containerHead = (container.textContent || '').slice(0, 200)
-  const required = /required|\*/i.test(containerHead)
+  // Group label — the previous sibling of the hint (skipping option/
+  // topping wrappers). On Slice this is a sibling div with the visible
+  // header text like "Choose an option" or "Add Toppings".
+  let label = '(unnamed group)'
+  if (hintEl) {
+    let prev = hintEl.previousElementSibling
+    while (prev) {
+      const text = (prev.textContent || '').trim()
+      const dn = prev.getAttribute('data-name') || ''
+      if (text && !/option|topping/.test(dn)) {
+        label = text
+        break
+      }
+      prev = prev.previousElementSibling
+    }
+  }
 
-  // Max selections — "Choose up to N" / "Pick up to N" / "Up to N".
-  const maxMatch = (container.textContent || '').match(
-    /(?:choose|select|pick|up to)\s*(\d+)/i
-  )
-  const max_selections =
-    selection_type === 'single' ? 1 : maxMatch ? parseInt(maxMatch[1], 10) : null
+  // Selection type — peek at the first option's selectable ancestor.
+  // role="radio" → single, role="checkbox" → multi.
+  let selection_type = 'multi'
+  const firstSelectable = optionEls[0] && findSelectableAncestor(optionEls[0])
+  if (firstSelectable && firstSelectable.getAttribute('role') === 'radio') {
+    selection_type = 'single'
+  }
+
+  const required = /required/i.test(hintText)
+
+  let max_selections = null
+  if (selection_type === 'single') {
+    max_selections = 1
+  } else {
+    const m = hintText.match(/(?:up to|select)\s*(\d+)/i)
+    if (m) max_selections = parseInt(m[1], 10)
+  }
 
   const options = []
-  for (const input of inputs) {
-    const option = extractOption(input)
+  for (const optEl of optionEls) {
+    const option = extractOption(optEl)
     if (option) options.push(option)
   }
 
   return { label, selection_type, required, max_selections, options }
 }
 
-function extractOption(input) {
-  const row =
-    input.closest('label') ||
-    input.parentElement?.closest('li, [role="option"]') ||
-    input.parentElement
-  if (!row) return null
+function extractOption(optEl) {
+  const dn = optEl.getAttribute('data-name')
+  const isSize = dn === 'productModal.option'
 
-  const text = (row.textContent || '').trim()
-  if (!text) return null
+  let priceText = ''
+  let name = ''
 
-  const priceMatch = text.match(/\$\s*(\d+(?:\.\d{1,2})?)/)
-  const price = priceMatch ? Number(priceMatch[1]) : 0
+  if (isSize) {
+    // Size: productModal.option contains both name and a nested
+    // productModal.option.price span. Strip the price text from the
+    // full text to get the name.
+    const priceEl = optEl.querySelector('[data-name="productModal.option.price"]')
+    priceText = priceEl ? (priceEl.textContent || '').trim() : ''
+    const fullText = (optEl.textContent || '').trim()
+    name = priceText ? fullText.replace(priceText, '').trim() : fullText
+  } else {
+    // Topping: productModal.topping.name is just the name; price is a
+    // sibling productModal.topping.price inside the same role=checkbox.
+    name = (optEl.textContent || '').trim()
+    const selectable = findSelectableAncestor(optEl)
+    if (selectable) {
+      const priceEl = selectable.querySelector('[data-name="productModal.topping.price"]')
+      priceText = priceEl ? (priceEl.textContent || '').trim() : ''
+    }
+  }
 
-  // Strip the price + optional leading + sign from the row text to
-  // leave the option name. e.g. "+ $3.00 Pepperoni" → "Pepperoni".
-  const name = text
-    .replace(/\+?\s*\$\s*\d+(?:\.\d{1,2})?\s*\+?/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  name = name.replace(/\s+/g, ' ').trim()
   if (!name) return null
 
-  const is_default =
-    input.checked === true || input.getAttribute('aria-checked') === 'true'
+  const priceMatch = priceText.match(/\$\s*(\d+(?:\.\d{1,2})?)/)
+  const price = priceMatch ? Number(priceMatch[1]) : 0
+
+  const selectable = findSelectableAncestor(optEl)
+  const is_default = selectable?.getAttribute('aria-checked') === 'true'
 
   return { name, price, is_default }
 }
@@ -286,11 +270,5 @@ async function saveCapture(data) {
   filtered.push(data)
 
   await chrome.storage.local.set({ [STORAGE_KEY]: filtered })
-  console.log(
-    '[DB-Capture] captured:',
-    data.item_name,
-    `(${data.modifier_groups.length} groups, ${data.modifier_groups.reduce(
-      (s, g) => s + g.options.length, 0
-    )} options)`
-  )
+  console.log('[DB-Capture] captured:', data.item_name, '(' + data.modifier_groups.length + ' groups)')
 }
