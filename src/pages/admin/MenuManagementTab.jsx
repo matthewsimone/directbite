@@ -269,6 +269,20 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
     setToppings(prev => prev.map(t => t._key === key ? { ...t, [field]: value } : t))
   }
 
+  // Single-select addon groups can have at most one default. When
+  // checking a new default, clear is_default on every other topping
+  // in the group so the saved data stays consistent with the radio
+  // invariant the customer modal enforces. Unchecking just toggles
+  // off the one row — leaving zero defaults is valid.
+  function setDefaultSelected(key, checked) {
+    const isSingleAddon = placementType === 'addon' && selectionType === 'single'
+    setToppings(prev => prev.map(t => {
+      if (t._key === key) return { ...t, is_default: checked }
+      if (checked && isSingleAddon) return { ...t, is_default: false }
+      return t
+    }))
+  }
+
   async function handleSave() {
     if (!name.trim()) return
     setSaving(true)
@@ -434,7 +448,7 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
                 <input
                   type="checkbox"
                   checked={!!t.is_default}
-                  onChange={e => updateTopping(t._key, 'is_default', e.target.checked)}
+                  onChange={e => setDefaultSelected(t._key, e.target.checked)}
                   className="accent-[#16A34A] w-3.5 h-3.5"
                 />
                 <span className="text-xs text-gray-500">Default selected</span>
