@@ -153,73 +153,22 @@ function extractItemData(modalRoot) {
   const toppingNameEls = Array.from(
     modalRoot.querySelectorAll('[data-name="productModal.topping.name"]')
   )
-  const optionEls = [...sizeNameEls, ...toppingNameEls]
 
-  // ──────────────── DIAGNOSTIC: option/clustering trace ────────────────
-  console.log('[DB-Capture] option counts', {
-    item: itemName,
-    sizeOptions: sizeNameEls.length,
-    toppingOptions: toppingNameEls.length,
-    total: optionEls.length,
-  })
-
-  // Enumerate every selectable element in the modal (role=radio or
-  // role=checkbox). For each, dump tag, class, all data-* attrs,
-  // text head, and whether any of the known option children are
-  // inside it. Surfaces the markup Slice uses for "Add Extra" style
-  // single-option checkbox groups that the current selectors miss.
-  const selectables = []
-  modalRoot.querySelectorAll('[role="radio"], [role="checkbox"]').forEach((el) => {
-    const dataAttrs = {}
-    for (const attr of el.attributes || []) {
-      if (attr.name.startsWith('data-')) dataAttrs[attr.name] = attr.value
-    }
-    selectables.push({
-      role: el.getAttribute('role'),
-      tag: (el.tagName || '').toLowerCase(),
-      class: (el.getAttribute('class') || '').slice(0, 80),
-      dataAttrs,
-      ariaChecked: el.getAttribute('aria-checked'),
-      hasKnownOptionChild: !!el.querySelector(
+  // "Bare role" options — role=radio/checkbox elements with no
+  // productModal.* inner data-name. Slice uses this for "Add Extra"
+  // / "Make It" style groups where name + price live as plain text
+  // inside the role container, alongside an unchecked/checked
+  // placeholder div.
+  const bareRoleEls = Array.from(
+    modalRoot.querySelectorAll('[role="radio"], [role="checkbox"]')
+  ).filter(
+    (el) =>
+      !el.querySelector(
         '[data-name="productModal.option"], [data-name="productModal.topping.name"]'
-      ),
-      text: (el.textContent || '').trim().slice(0, 100),
-    })
-  })
-  console.log('[DB-Capture] selectables in modal', selectables)
-
-  // Drill into the first selectable that doesn't have a known option
-  // child — its descendants will reveal what attribute carries the
-  // option name + price.
-  const orphan = selectables.find((s) => !s.hasKnownOptionChild)
-  if (orphan) {
-    const orphanEl = Array.from(
-      modalRoot.querySelectorAll('[role="radio"], [role="checkbox"]')
-    ).find(
-      (el) =>
-        !el.querySelector(
-          '[data-name="productModal.option"], [data-name="productModal.topping.name"]'
-        )
-    )
-    if (orphanEl) {
-      const allDataNames = []
-      orphanEl.querySelectorAll('*').forEach((d) => {
-        const dn = d.getAttribute('data-name')
-        if (dn) {
-          allDataNames.push({
-            dataName: dn,
-            tag: (d.tagName || '').toLowerCase(),
-            text: (d.textContent || '').trim().slice(0, 60),
-          })
-        }
-      })
-      console.log('[DB-Capture] orphan selectable inner data-names', allDataNames)
-      console.log(
-        '[DB-Capture] orphan selectable outerHTML (first 2500)',
-        (orphanEl.outerHTML || '').slice(0, 2500)
       )
-    }
-  }
+  )
+
+  const optionEls = [...sizeNameEls, ...toppingNameEls, ...bareRoleEls]
 
   if (optionEls.length === 0) {
     return {
@@ -231,29 +180,12 @@ function extractItemData(modalRoot) {
   }
 
   const groupsByContainer = new Map()
-  const trace = []
   for (const optEl of optionEls) {
     const container = findGroupContainer(optEl, modalRoot)
-    trace.push({
-      dataName: optEl.getAttribute('data-name'),
-      text: (optEl.textContent || '').trim().slice(0, 60),
-      containerFound: !!container,
-      containerLabel: container ? findLabelText(container) : null,
-    })
     if (!container) continue
     if (!groupsByContainer.has(container)) groupsByContainer.set(container, [])
     groupsByContainer.get(container).push(optEl)
   }
-  console.log('[DB-Capture] option → container assignments', trace)
-  console.log(
-    '[DB-Capture] groups by container',
-    Array.from(groupsByContainer.entries()).map(([container, els]) => ({
-      label: findLabelText(container),
-      optionCount: els.length,
-      sample: els.slice(0, 3).map((e) => (e.textContent || '').trim().slice(0, 40)),
-    }))
-  )
-  // ──────────────────── end diagnostic ────────────────────
 
   const modifier_groups = []
   for (const [container, els] of groupsByContainer) {
@@ -295,7 +227,9 @@ function directText(el) {
 }
 
 function findSelectableAncestor(optionEl) {
-  let cursor = optionEl.parentElement
+  // Start from optionEl itself — for "bare role" options the element
+  // we collected IS the role=radio/checkbox container.
+  let cursor = optionEl
   while (cursor) {
     const role = cursor.getAttribute && cursor.getAttribute('role')
     if (role === 'radio' || role === 'checkbox') return cursor
@@ -395,6 +329,14 @@ function extractGroup(container, optionEls) {
 }
 
 function extractOption(optEl) {
+  // Bare role options: the option element IS the role=radio/checkbox
+  // container, with no productModal.* descendant. Slice uses this
+  // for "Add Extra" / "Make It" groups.
+  const role = optEl.getAttribute('role')
+  if (role === 'radio' || role === 'checkbox') {
+    return extractBareRoleOption(optEl)
+  }
+
   const dn = optEl.getAttribute('data-name')
   const isSize = dn === 'productModal.option'
 
@@ -428,6 +370,40 @@ function extractOption(optEl) {
 
   const selectable = findSelectableAncestor(optEl)
   const is_default = selectable?.getAttribute('aria-checked') === 'true'
+
+  return { name, price, is_default }
+}
+
+// "Bare role" option extractor — for role=radio/checkbox containers
+// without a productModal.* inner data-name. Name + price live as
+// plain text alongside an unchecked/checked indicator subtree we
+// need to skip.
+function extractBareRoleOption(roleEl) {
+  function gather(el, parts) {
+    if (!el) return
+    const dn = (el.getAttribute && el.getAttribute('data-name')) || ''
+    // Skip the unchecked/checked state indicator subtree.
+    if (/^(un)?checked$/i.test(dn)) return
+    const direct = directText(el)
+    if (direct) parts.push(direct)
+    for (const child of el.children) gather(child, parts)
+  }
+
+  const parts = []
+  gather(roleEl, parts)
+  const fullText = parts.join(' ').replace(/\s+/g, ' ').trim()
+  if (!fullText) return null
+
+  const priceMatch = fullText.match(/\$\s*(\d+(?:\.\d{1,2})?)/)
+  const price = priceMatch ? Number(priceMatch[1]) : 0
+
+  const name = fullText
+    .replace(/\+?\s*\$\s*\d+(?:\.\d{1,2})?\s*\+?/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!name) return null
+
+  const is_default = roleEl.getAttribute('aria-checked') === 'true'
 
   return { name, price, is_default }
 }
