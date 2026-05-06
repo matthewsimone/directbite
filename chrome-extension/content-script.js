@@ -163,6 +163,64 @@ function extractItemData(modalRoot) {
     total: optionEls.length,
   })
 
+  // Enumerate every selectable element in the modal (role=radio or
+  // role=checkbox). For each, dump tag, class, all data-* attrs,
+  // text head, and whether any of the known option children are
+  // inside it. Surfaces the markup Slice uses for "Add Extra" style
+  // single-option checkbox groups that the current selectors miss.
+  const selectables = []
+  modalRoot.querySelectorAll('[role="radio"], [role="checkbox"]').forEach((el) => {
+    const dataAttrs = {}
+    for (const attr of el.attributes || []) {
+      if (attr.name.startsWith('data-')) dataAttrs[attr.name] = attr.value
+    }
+    selectables.push({
+      role: el.getAttribute('role'),
+      tag: (el.tagName || '').toLowerCase(),
+      class: (el.getAttribute('class') || '').slice(0, 80),
+      dataAttrs,
+      ariaChecked: el.getAttribute('aria-checked'),
+      hasKnownOptionChild: !!el.querySelector(
+        '[data-name="productModal.option"], [data-name="productModal.topping.name"]'
+      ),
+      text: (el.textContent || '').trim().slice(0, 100),
+    })
+  })
+  console.log('[DB-Capture] selectables in modal', selectables)
+
+  // Drill into the first selectable that doesn't have a known option
+  // child — its descendants will reveal what attribute carries the
+  // option name + price.
+  const orphan = selectables.find((s) => !s.hasKnownOptionChild)
+  if (orphan) {
+    const orphanEl = Array.from(
+      modalRoot.querySelectorAll('[role="radio"], [role="checkbox"]')
+    ).find(
+      (el) =>
+        !el.querySelector(
+          '[data-name="productModal.option"], [data-name="productModal.topping.name"]'
+        )
+    )
+    if (orphanEl) {
+      const allDataNames = []
+      orphanEl.querySelectorAll('*').forEach((d) => {
+        const dn = d.getAttribute('data-name')
+        if (dn) {
+          allDataNames.push({
+            dataName: dn,
+            tag: (d.tagName || '').toLowerCase(),
+            text: (d.textContent || '').trim().slice(0, 60),
+          })
+        }
+      })
+      console.log('[DB-Capture] orphan selectable inner data-names', allDataNames)
+      console.log(
+        '[DB-Capture] orphan selectable outerHTML (first 2500)',
+        (orphanEl.outerHTML || '').slice(0, 2500)
+      )
+    }
+  }
+
   if (optionEls.length === 0) {
     return {
       item_name: itemName,
