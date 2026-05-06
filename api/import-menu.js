@@ -76,7 +76,6 @@ export default async function handler(req, res) {
   lastImportByAdmin.set(adminEmail, now)
 
   let html
-  let finalUrl = parsedUrl.toString()
   try {
     const response = await fetch(parsedUrl.toString(), {
       headers: {
@@ -87,18 +86,8 @@ export default async function handler(req, res) {
       redirect: 'follow',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
-    finalUrl = response.url || finalUrl
-    console.log('[import-menu] fetch result', {
-      requestedUrl: parsedUrl.toString(),
-      finalUrl,
-      status: response.status,
-      contentType: response.headers.get('content-type'),
-      contentLength: response.headers.get('content-length'),
-    })
     if (!response.ok) return res.status(200).json(NO_MATCH_RESPONSE(url))
     html = await response.text()
-    console.log('[import-menu] html length', html.length)
-    console.log('[import-menu] html head', html.slice(0, 1000))
   } catch (err) {
     console.error('[import-menu] Fetch failed:', err?.message || err)
     return res.status(200).json(NO_MATCH_RESPONSE(url))
@@ -121,30 +110,12 @@ export default async function handler(req, res) {
 
 function parseSlice(html, sourceUrl) {
   const $ = cheerio.load(html)
-  const hostname = (() => {
-    try { return new URL(sourceUrl).hostname } catch { return null }
-  })()
-  const looksSlice = looksLikeSlice($, sourceUrl)
-  console.log('[import-menu] detection', { hostname, looksSlice })
-  if (!looksSlice) return null
+  if (!looksLikeSlice($, sourceUrl)) return null
 
   const fromNextData = parseFromNextData($)
-  if (fromNextData) {
-    console.log('[import-menu] next-data result', {
-      categoryCount: fromNextData.categories.length,
-      firstCategoryName: fromNextData.categories[0]?.name || null,
-      firstCategoryItemCount: fromNextData.categories[0]?.items?.length || 0,
-    })
-  }
   if (fromNextData && fromNextData.categories.length > 0) return fromNextData
 
-  const fromDom = parseFromDom($)
-  console.log('[import-menu] dom-fallback result', {
-    h2WithIdCount: $('h2[id]').length,
-    h2AnyCount: $('h2').length,
-    categoryCount: fromDom.categories.length,
-  })
-  return fromDom
+  return parseFromDom($)
 }
 
 function looksLikeSlice($, sourceUrl) {
@@ -165,25 +136,14 @@ function looksLikeSlice($, sourceUrl) {
 
 function parseFromNextData($) {
   const raw = $('#__NEXT_DATA__').first().html()
-  console.log('[import-menu] __NEXT_DATA__ presence', {
-    found: !!raw,
-    length: raw ? raw.length : 0,
-  })
   if (!raw) return null
 
   let data
   try {
     data = JSON.parse(raw)
-  } catch (err) {
-    console.log('[import-menu] __NEXT_DATA__ JSON.parse failed:', err.message)
+  } catch {
     return null
   }
-
-  console.log('[import-menu] __NEXT_DATA__ keys', {
-    topLevel: Object.keys(data || {}),
-    propsKeys: Object.keys(data?.props || {}),
-    pagePropsKeys: Object.keys(data?.props?.pageProps || {}),
-  })
 
   const probes = [
     ['props', 'pageProps', 'menu'],
@@ -194,7 +154,6 @@ function parseFromNextData($) {
   ]
 
   let menu = null
-  let matchedPath = null
   for (const path of probes) {
     let cursor = data
     let ok = true
@@ -207,23 +166,12 @@ function parseFromNextData($) {
     }
     if (ok && cursor) {
       menu = cursor
-      matchedPath = path.join('.')
       break
     }
   }
-  console.log('[import-menu] menu probe', {
-    matchedPath,
-    hasMenu: !!menu,
-    menuKeys: menu && typeof menu === 'object' ? Object.keys(menu) : null,
-  })
   if (!menu) return null
 
   const cats = Array.isArray(menu.categories) ? menu.categories : []
-  console.log('[import-menu] categories array', {
-    isArray: Array.isArray(menu.categories),
-    length: cats.length,
-    firstCategoryKeys: cats[0] && typeof cats[0] === 'object' ? Object.keys(cats[0]) : null,
-  })
   if (cats.length === 0) return null
 
   const categories = cats
@@ -279,81 +227,40 @@ function normalizeItem(it, idx) {
 }
 
 function parseFromDom($) {
-  // ──────────────── DIAGNOSTIC: actual DOM structure ────────────────
-  // Walk siblings of the first h2[id] to see what Slice ships now.
-  const $firstH2 = $('h2[id]').first()
-  if ($firstH2.length) {
-    const siblings = []
-    let $cursor = $firstH2.next()
-    let safety = 0
-    while ($cursor.length && !$cursor.is('h2') && safety < 20) {
-      const el = $cursor[0]
-      siblings.push({
-        tag: el.tagName,
-        class: ($cursor.attr('class') || '').slice(0, 200),
-        testId: $cursor.attr('data-testid') || null,
-        childCount: $cursor.children().length,
-        textHead: ($cursor.text() || '').trim().slice(0, 300),
-      })
-      $cursor = $cursor.next()
-      safety += 1
-    }
-    console.log('[import-menu] first-h2 info', {
-      id: $firstH2.attr('id'),
-      text: ($firstH2.text() || '').trim().slice(0, 100),
-      siblingCount: siblings.length,
-    })
-    console.log('[import-menu] first-h2 siblings', JSON.stringify(siblings, null, 2))
-  }
-
-  // Scan globally for the smallest item-shaped node: has a class hinting
-  // at "card/item/product/dish/menu" AND contains a $-price pattern, but
-  // doesn't have a descendant that also matches — so we land on the
-  // actual item card, not its grid container.
-  const priceCandidates = []
-  $('[class]').each((_, el) => {
-    if (priceCandidates.length >= 3) return false
-    const $el = $(el)
-    const cls = $el.attr('class') || ''
-    if (!/card|item|product|dish|menu/i.test(cls)) return
-    const text = $el.text() || ''
-    if (!/\$\s*\d+(?:\.\d{1,2})?/.test(text)) return
-    const descendantMatches = $el.find('[class]').filter((_, d) => {
-      const $d = $(d)
-      const dCls = $d.attr('class') || ''
-      const dText = $d.text() || ''
-      return /card|item|product|dish|menu/i.test(dCls) && /\$\s*\d+(?:\.\d{1,2})?/.test(dText)
-    }).length
-    if (descendantMatches > 0) return
-    priceCandidates.push({
-      tag: el.tagName,
-      class: cls.slice(0, 200),
-      testId: $el.attr('data-testid') || null,
-      textHead: text.trim().slice(0, 200),
-    })
-  })
-  console.log('[import-menu] price-bearing candidates', JSON.stringify(priceCandidates, null, 2))
-  // ──────────────────── end diagnostic ────────────────────
-
+  // Slice ships obfuscated CSS-module class names, so structural
+  // traversal beats class-based selectors. For each h2[id]:
+  //  - Walk forward siblings until the next h2.
+  //  - The "items container" is the sibling with the most direct
+  //    children (skipping single-child description blocks).
+  //  - Each direct child of that container is one item card.
   const categories = []
   let categoryIdx = 0
 
   $('h2[id]').each((_, h2El) => {
     const $h2 = $(h2El)
-    const name = $h2.text().trim()
+    const name = ($h2.text() || '').trim()
     if (!name) return
 
-    const items = []
+    let $container = null
+    let bestCount = 0
     let $cursor = $h2.next()
-    while ($cursor.length && !$cursor.is('h2')) {
-      $cursor
-        .find('[data-testid*="menu-item"], [class*="menu-item"], [class*="MenuItem"], li, article')
-        .each((_, el) => {
-          const item = extractItemFromDom($, $(el), items.length)
-          if (item) items.push(item)
-        })
+    let safety = 0
+    while ($cursor.length && !$cursor.is('h2') && safety < 10) {
+      const childCount = $cursor.children().length
+      if (childCount > bestCount) {
+        bestCount = childCount
+        $container = $cursor
+      }
       $cursor = $cursor.next()
+      safety += 1
     }
+    if (!$container || bestCount < 2) return
+
+    const items = []
+    $container.children().each((_, cardEl) => {
+      const item = extractItemFromCard($, $(cardEl), items.length)
+      if (item) items.push(item)
+    })
 
     if (items.length > 0) {
       categoryIdx += 1
@@ -364,24 +271,57 @@ function parseFromDom($) {
   return { categories }
 }
 
-function extractItemFromDom($, $el, idx) {
-  const name =
-    ($el.find('h3, h4, [data-testid*="name"]').first().text() || '').trim() ||
-    ($el.find('strong').first().text() || '').trim()
-  if (!name) return null
+// Slice's React cards put each piece of info (badge, name, description,
+// price) in its own leaf element, so we walk descendants and pick out
+// leaves — elements with no element children — by what their text looks
+// like. More resilient than guessing class names.
+const BUTTON_LABEL_RE =
+  /^(\+\s*)?add(\s+to\s+(cart|bag|order))?$|^customi[sz]e$|^show\s+more$|^see\s+more$|^view$/i
 
-  const priceMatch = $el.text().match(/\$\s*(\d+(?:\.\d{1,2})?)/)
-  const price = priceMatch ? Number(priceMatch[1]) : null
-  if (price == null || !Number.isFinite(price) || price < 0) return null
+function extractItemFromCard($, $card, idx) {
+  const imageUrl = $card.find('img').first().attr('src') || null
 
-  const description = ($el.find('p').first().text() || '').trim() || null
-  const imageUrl = $el.find('img').first().attr('src') || null
-  const isBestSeller = /best.?seller/i.test($el.text())
+  const fields = []
+  $card.find('*').each((_, el) => {
+    const $el = $(el)
+    if ($el.children().length > 0) return
+    const text = ($el.text() || '').trim()
+    if (text) fields.push(text)
+  })
+
+  let isBestSeller = false
+  let priceVal = null
+  const others = []
+  for (const text of fields) {
+    if (/^best\s*seller$/i.test(text)) {
+      isBestSeller = true
+      continue
+    }
+    const priceOnly = text.match(/^\$\s*(\d+(?:\.\d{1,2})?)$/)
+    if (priceOnly) {
+      priceVal = Number(priceOnly[1])
+      continue
+    }
+    if (BUTTON_LABEL_RE.test(text)) continue
+    others.push(text)
+  }
+
+  // Fallback if the price wasn't an isolated leaf — pull the first $
+  // amount out of the card's full text.
+  if (priceVal == null) {
+    const m = ($card.text() || '').match(/\$\s*(\d+(?:\.\d{1,2})?)/)
+    if (m) priceVal = Number(m[1])
+  }
+
+  if (others.length === 0 || priceVal == null) return null
+
+  const name = others[0]
+  const description = others.length > 1 ? others.slice(1).join(' ').trim() : null
 
   return {
     name,
-    description,
-    base_price: price,
+    description: description || null,
+    base_price: priceVal,
     image_url: imageUrl,
     original_image_url: imageUrl,
     is_best_seller: isBestSeller,
