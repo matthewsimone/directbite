@@ -16,27 +16,26 @@ export function useMenu(restaurantId) {
     async function fetch() {
       setLoading(true)
 
+      // item_sizes and item_topping_groups have no restaurant_id column,
+      // so we filter via an inner-join on menu_items. Without this, the
+      // queries pull globally and hit PostgREST's 1000-row default cap —
+      // for restaurants whose links sit past row 1000 in the global table,
+      // some rows silently vanish and items render with missing modifiers.
       const [catRes, itemRes, sizeRes, tgRes, topRes, itgRes] = await Promise.all([
         supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
         supabase.from('menu_items').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('item_sizes').select('*').order('sort_order'),
+        supabase.from('item_sizes').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).order('sort_order'),
         supabase.from('topping_groups').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
         supabase.from('toppings').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('item_topping_groups').select('*'),
+        supabase.from('item_topping_groups').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId),
       ])
 
       setCategories(catRes.data || [])
       setItems(itemRes.data || [])
-
-      // Filter sizes to only those belonging to this restaurant's items
-      const itemIds = new Set((itemRes.data || []).map(i => i.id))
-      setSizes((sizeRes.data || []).filter(s => itemIds.has(s.item_id)))
-
+      setSizes(sizeRes.data || [])
       setToppingGroups(tgRes.data || [])
       setToppings(topRes.data || [])
-
-      // Filter item_topping_groups to this restaurant's items
-      setItemToppingGroups((itgRes.data || []).filter(itg => itemIds.has(itg.item_id)))
+      setItemToppingGroups(itgRes.data || [])
 
       setLoading(false)
     }
