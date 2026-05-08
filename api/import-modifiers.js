@@ -89,6 +89,7 @@ export default async function handler(req, res) {
   let itemsProcessed = 0
   const itemsSkipped = []
   let sizesUpdated = 0
+  let sizesRenamed = 0
   let toppingGroupsCreated = 0
   let toppingsCreated = 0
   const errors = []
@@ -118,8 +119,45 @@ export default async function handler(req, res) {
       const isSizeGroup = g === 0 && /^choose\s+an?\s+option$/i.test(groupLabel)
 
       if (isSizeGroup) {
-        // Single-option size: import-menu already wrote the price; leave it alone.
-        if (options.length === 1) continue
+        // Single-option size: rename the existing item_sizes row so the
+        // captured Slice label (e.g., "Slice", "Whole Pie") replaces the
+        // empty name written at static-import time. Preserves the row id
+        // so historical order_items.item_size_id references stay valid.
+        if (options.length === 1) {
+          const newName = (options[0].name || '').trim()
+          if (!newName) continue
+
+          const { data: existingSizes, error: fetchErr } = await supabase
+            .from('item_sizes')
+            .select('id, name')
+            .eq('item_id', menuItem.id)
+          if (fetchErr) {
+            errors.push(`Size lookup for "${itemName}": ${fetchErr.message}`)
+            continue
+          }
+          if (!existingSizes || existingSizes.length === 0) {
+            console.warn(`[modifier-import] no existing size row for item ${menuItem.id} ("${itemName}") — skipping rename`)
+            continue
+          }
+          if (existingSizes.length > 1) {
+            console.warn(`[modifier-import] ${existingSizes.length} size rows for item ${menuItem.id} ("${itemName}") — ambiguous, skipping rename`)
+            continue
+          }
+
+          const existing = existingSizes[0]
+          const oldName = existing.name || ''
+          const { error: updErr } = await supabase
+            .from('item_sizes')
+            .update({ name: newName })
+            .eq('id', existing.id)
+          if (updErr) {
+            errors.push(`Size rename for "${itemName}": ${updErr.message}`)
+            continue
+          }
+          console.log(`[modifier-import] renamed size for item ${menuItem.id}: '${oldName}' -> '${newName}'`)
+          sizesRenamed += 1
+          continue
+        }
 
         // Multi-option size: replace existing item_sizes if no FK from order_items.
         const { data: existingSizes } = await supabase
@@ -260,6 +298,7 @@ export default async function handler(req, res) {
     items_processed: itemsProcessed,
     items_skipped: itemsSkipped,
     sizes_updated: sizesUpdated,
+    sizes_renamed: sizesRenamed,
     topping_groups_created: toppingGroupsCreated,
     toppings_created: toppingsCreated,
     errors,
