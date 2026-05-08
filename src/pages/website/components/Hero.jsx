@@ -42,6 +42,8 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
     // flex child (matches circle/oval). Earlier the img was a second
     // absolutely-positioned sibling stacked on the SVG — that pattern
     // dropped the image on iOS Safari in landscape orientation.
+    // 12-vertex polygon clip inscribed in the rounded hex outline so
+    // edge-to-edge square logos don't poke past the curve.
     return (
       <div className={`relative mb-6 shrink-0 flex items-center justify-center ${sizeCls}`}>
         <svg
@@ -72,7 +74,11 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
         <img
           src={logoUrl}
           alt={`${name} logo`}
-          className="relative w-full h-full object-contain p-1.5"
+          className="relative w-full h-full object-contain p-3"
+          style={{
+            clipPath:
+              'polygon(44.6% 2.7%, 55.4% 2.7%, 94.6% 22.3%, 100% 31%, 100% 69%, 94.6% 77.7%, 55.4% 97.3%, 44.6% 97.3%, 5.4% 77.7%, 0% 69%, 0% 31%, 5.4% 22.3%)',
+          }}
         />
       </div>
     )
@@ -81,9 +87,12 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
   // circle, pill_horizontal, pill_vertical — true ellipses via border-radius:50%.
   // Stacked box-shadows give us a brand-color ring + a white trim outside it
   // (a single border can't produce the two-layer "sticker" edge).
+  // overflow-hidden clips the image to the rounded boundary so edge-to-edge
+  // square logos don't bleed past the curve. box-shadow renders outside the
+  // border box and is unaffected by overflow clipping.
   return (
     <div
-      className={`mb-6 shrink-0 flex items-center justify-center bg-white p-1.5 ${sizeCls}`}
+      className={`mb-6 shrink-0 flex items-center justify-center bg-white p-3 overflow-hidden ${sizeCls}`}
       style={{
         borderRadius: '50%',
         boxShadow: `0 0 0 3px ${brandColor}, 0 0 0 6px white`,
