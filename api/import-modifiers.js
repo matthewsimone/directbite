@@ -87,11 +87,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'captured_items is empty' })
   }
 
-  // Pre-fetch menu — we lookup items by lowercased name within this restaurant.
-  // A single item name can map to multiple menu_items rows when the static
-  // importer creates one row per category appearance (e.g., "Plain Pizza" in
-  // both "Pizza" and "House Favorites"). All matching rows get the same
-  // modifier set applied below.
+  // Pre-fetch menu — we lookup items by (name, category) within this restaurant.
+  // The static importer creates one menu_items row per category appearance, so
+  // (name, category) is the natural unique key. Captures from the Chrome
+  // extension carry the Slice category they were clicked from; this map keys
+  // each row exactly so we don't fan a single capture across rows that may
+  // represent genuinely different products with the same name in different
+  // categories (e.g., "Chicken Parm" pizza vs entree).
   const { data: menuItems, error: menuErr } = await supabase
     .from('menu_items')
     .select('id, name, category_id, menu_categories(name)')
@@ -99,11 +101,11 @@ export default async function handler(req, res) {
   if (menuErr) {
     return res.status(500).json({ error: `Failed to load menu: ${menuErr.message}` })
   }
-  const menuItemsByName = new Map()
+  const menuItemsByNameAndCategory = new Map()
   for (const m of menuItems || []) {
-    const key = (m.name || '').toLowerCase().trim()
-    if (!menuItemsByName.has(key)) menuItemsByName.set(key, [])
-    menuItemsByName.get(key).push(m)
+    const name = (m.name || '').toLowerCase().trim()
+    const category = (m.menu_categories?.name || '').toLowerCase().trim()
+    menuItemsByNameAndCategory.set(`${name}::${category}`, m)
   }
 
   let itemsProcessed = 0
@@ -120,38 +122,37 @@ export default async function handler(req, res) {
     const itemName = (captured.item_name || '').trim()
     if (!itemName) continue
 
-    const matches = menuItemsByName.get(itemName.toLowerCase()) || []
-    if (matches.length === 0) {
-      itemsSkipped.push(itemName)
+    const category = (captured.category || '').trim()
+    if (!category) {
+      errors.push(`"${itemName}" has no category — recapture from a category section`)
+      continue
+    }
+
+    const key = `${itemName.toLowerCase()}::${category.toLowerCase()}`
+    const menuItem = menuItemsByNameAndCategory.get(key)
+    if (!menuItem) {
+      itemsSkipped.push(`${itemName} [${category}]`)
       continue
     }
     itemsProcessed += 1
 
-    // Any-match placement type: if any duplicate sits in a pizza-like
-    // category, treat the whole capture as pizza. Slice presents the same
-    // modifiers regardless of which category the customer clicked from, so
-    // duplicates spanning categories (e.g., "Plain Pizza" in both "Pizza"
-    // and "House Favorites") still get pizza-style placement.
-    const placementTypeForToppings = matches.some(
-      (m) => isPizzaCategory(m.menu_categories?.name || '')
-    ) ? 'pizza' : 'addon'
+    const placementTypeForToppings = isPizzaCategory(menuItem.menu_categories?.name || '')
+      ? 'pizza'
+      : 'addon'
 
-    // Per-item replace: clear existing item_topping_groups for every
-    // matching menu_item before processing this capture's groups.
-    let clearFailed = false
-    for (const menuItem of matches) {
+    // Per-item replace: clear existing item_topping_groups for this row
+    // before processing the capture's groups.
+    {
       const { error: clearErr } = await supabase
         .from('item_topping_groups')
         .delete()
         .eq('item_id', menuItem.id)
       if (clearErr) {
-        errors.push(`Clear links for "${itemName}" (${menuItem.id}): ${clearErr.message}`)
-        clearFailed = true
-        break
+        errors.push(`Clear links for "${itemName}" [${category}]: ${clearErr.message}`)
+        continue
       }
       linksReplaced += 1
     }
-    if (clearFailed) continue
 
     const groups = Array.isArray(captured.modifier_groups) ? captured.modifier_groups : []
 
@@ -168,90 +169,84 @@ export default async function handler(req, res) {
         // captured Slice label (e.g., "Slice", "Whole Pie") replaces the
         // empty name written at static-import time. Preserves the row id
         // so historical order_items.item_size_id references stay valid.
-        // Applied to each matching duplicate independently.
         if (options.length === 1) {
           const newName = (options[0].name || '').trim()
           if (!newName) continue
 
-          for (const menuItem of matches) {
-            const { data: existingSizes, error: fetchErr } = await supabase
-              .from('item_sizes')
-              .select('id, name')
-              .eq('item_id', menuItem.id)
-            if (fetchErr) {
-              errors.push(`Size lookup for "${itemName}" (${menuItem.id}): ${fetchErr.message}`)
-              continue
-            }
-            if (!existingSizes || existingSizes.length === 0) {
-              console.warn(`[modifier-import] no existing size row for item ${menuItem.id} ("${itemName}") — skipping rename`)
-              continue
-            }
-            if (existingSizes.length > 1) {
-              console.warn(`[modifier-import] ${existingSizes.length} size rows for item ${menuItem.id} ("${itemName}") — ambiguous, skipping rename`)
-              continue
-            }
-
-            const existing = existingSizes[0]
-            const oldName = existing.name || ''
-            const { error: updErr } = await supabase
-              .from('item_sizes')
-              .update({ name: newName })
-              .eq('id', existing.id)
-            if (updErr) {
-              errors.push(`Size rename for "${itemName}" (${menuItem.id}): ${updErr.message}`)
-              continue
-            }
-            console.log(`[modifier-import] renamed size for item ${menuItem.id}: '${oldName}' -> '${newName}'`)
-            sizesRenamed += 1
+          const { data: existingSizes, error: fetchErr } = await supabase
+            .from('item_sizes')
+            .select('id, name')
+            .eq('item_id', menuItem.id)
+          if (fetchErr) {
+            errors.push(`Size lookup for "${itemName}" [${category}]: ${fetchErr.message}`)
+            continue
           }
+          if (!existingSizes || existingSizes.length === 0) {
+            console.warn(`[modifier-import] no existing size row for item ${menuItem.id} ("${itemName}" [${category}]) — skipping rename`)
+            continue
+          }
+          if (existingSizes.length > 1) {
+            console.warn(`[modifier-import] ${existingSizes.length} size rows for item ${menuItem.id} ("${itemName}" [${category}]) — ambiguous, skipping rename`)
+            continue
+          }
+
+          const existing = existingSizes[0]
+          const oldName = existing.name || ''
+          const { error: updErr } = await supabase
+            .from('item_sizes')
+            .update({ name: newName })
+            .eq('id', existing.id)
+          if (updErr) {
+            errors.push(`Size rename for "${itemName}" [${category}]: ${updErr.message}`)
+            continue
+          }
+          console.log(`[modifier-import] renamed size for item ${menuItem.id}: '${oldName}' -> '${newName}'`)
+          sizesRenamed += 1
           continue
         }
 
-        // Multi-option size: replace existing item_sizes if no FK from
-        // order_items. Applied per matching menu_item.
-        for (const menuItem of matches) {
-          const { data: existingSizes } = await supabase
+        // Multi-option size: replace existing item_sizes if no FK from order_items.
+        const { data: existingSizes } = await supabase
+          .from('item_sizes')
+          .select('id')
+          .eq('item_id', menuItem.id)
+        const sizeIds = (existingSizes || []).map((s) => s.id)
+        if (sizeIds.length > 0) {
+          const { count } = await supabase
+            .from('order_items')
+            .select('id', { count: 'exact', head: true })
+            .in('item_size_id', sizeIds)
+          if ((count || 0) > 0) {
+            errors.push(
+              `Sizes for "${itemName}" [${category}] skipped — referenced by ${count} existing order(s)`
+            )
+            continue
+          }
+          const { error: delErr } = await supabase
             .from('item_sizes')
-            .select('id')
-            .eq('item_id', menuItem.id)
-          const sizeIds = (existingSizes || []).map((s) => s.id)
-          if (sizeIds.length > 0) {
-            const { count } = await supabase
-              .from('order_items')
-              .select('id', { count: 'exact', head: true })
-              .in('item_size_id', sizeIds)
-            if ((count || 0) > 0) {
-              errors.push(
-                `Sizes for "${itemName}" (${menuItem.id}) skipped — referenced by ${count} existing order(s)`
-              )
-              continue
-            }
-            const { error: delErr } = await supabase
-              .from('item_sizes')
-              .delete()
-              .in('id', sizeIds)
-            if (delErr) {
-              errors.push(`Sizes for "${itemName}" (${menuItem.id}) delete failed: ${delErr.message}`)
-              continue
-            }
+            .delete()
+            .in('id', sizeIds)
+          if (delErr) {
+            errors.push(`Sizes for "${itemName}" [${category}] delete failed: ${delErr.message}`)
+            continue
           }
-
-          let allOk = true
-          for (let i = 0; i < options.length; i++) {
-            const opt = options[i]
-            const { error } = await supabase.from('item_sizes').insert({
-              item_id: menuItem.id,
-              name: (opt.name || '').trim(),
-              price: roundCents(opt.price),
-              sort_order: i,
-            })
-            if (error) {
-              errors.push(`Size "${opt.name}" for "${itemName}" (${menuItem.id}): ${error.message}`)
-              allOk = false
-            }
-          }
-          if (allOk) sizesUpdated += 1
         }
+
+        let allOk = true
+        for (let i = 0; i < options.length; i++) {
+          const opt = options[i]
+          const { error } = await supabase.from('item_sizes').insert({
+            item_id: menuItem.id,
+            name: (opt.name || '').trim(),
+            price: roundCents(opt.price),
+            sort_order: i,
+          })
+          if (error) {
+            errors.push(`Size "${opt.name}" for "${itemName}" [${category}]: ${error.message}`)
+            allOk = false
+          }
+        }
+        if (allOk) sizesUpdated += 1
         continue
       }
 
@@ -337,18 +332,16 @@ export default async function handler(req, res) {
         }
       }
 
-      // Link each matching menu_item → group. We cleared all links for these
-      // items earlier, so these inserts always create fresh rows. sort_order
-      // = capture index preserves Slice's display order.
-      for (const menuItem of matches) {
-        const { error: linkErr } = await supabase.from('item_topping_groups').insert({
-          item_id: menuItem.id,
-          topping_group_id: groupId,
-          sort_order: g,
-        })
-        if (linkErr) {
-          errors.push(`Link "${itemName}" (${menuItem.id}) → "${groupLabel}": ${linkErr.message}`)
-        }
+      // Link item → group. We cleared all links for this item earlier, so
+      // this insert always creates a fresh row. sort_order = capture index
+      // preserves Slice's display order.
+      const { error: linkErr } = await supabase.from('item_topping_groups').insert({
+        item_id: menuItem.id,
+        topping_group_id: groupId,
+        sort_order: g,
+      })
+      if (linkErr) {
+        errors.push(`Link "${itemName}" [${category}] → "${groupLabel}": ${linkErr.message}`)
       }
     }
   }

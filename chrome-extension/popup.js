@@ -49,7 +49,14 @@ function render() {
     const ul = document.createElement('ul')
     for (const item of items) {
       const li = document.createElement('li')
-      li.textContent = item.item_name
+      const nameEl = document.createElement('div')
+      nameEl.className = 'item-name'
+      nameEl.textContent = item.item_name
+      li.appendChild(nameEl)
+      const catEl = document.createElement('div')
+      catEl.className = 'item-category' + (item.category ? '' : ' missing')
+      catEl.textContent = item.category || '(no category captured)'
+      li.appendChild(catEl)
       ul.appendChild(li)
     }
     els.itemsBody.replaceChildren(ul)

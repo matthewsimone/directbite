@@ -10,18 +10,52 @@
 
 const STORAGE_KEY = 'directbite_captured_items'
 const CAPTURING_FLAG = 'directbite_capturing'
+const SCHEMA_KEY = 'directbite_capture_schema'
+const SCHEMA_VERSION = 2 // v2 = captures include `category` field; v1 buffers wiped
 const DEBUG_WINDOW_KEY = '__dbCapture'
 const HYDRATION_DELAY_MS = 400 // wait for the modal to fully render
 const DEDUP_WINDOW_MS = 5000 // don't re-capture the same item this fast
 
+// Slice marks each menu category section with data-name="...-category"
+// (e.g., "menu-page-category", "house-favorites-category"). The visible
+// <h2> inside that section is the category name.
+const CATEGORY_DATA_NAME_RE = /-category$/
+
 let capturing = true // default ON until popup wires the flag
 let lastCaptureSignature = null
 let lastCaptureTime = 0
+let currentCategory = null // most recent category section the user clicked into
 
-// Read initial capture state.
-chrome.storage.local.get([CAPTURING_FLAG]).then((data) => {
+// Read initial capture state and migrate buffer if needed. v1 captures
+// have no `category` field — wipe on first load of v2 so we don't ship
+// half-attributed captures to the server.
+chrome.storage.local.get([CAPTURING_FLAG, SCHEMA_KEY]).then((data) => {
   if (CAPTURING_FLAG in data) capturing = !!data[CAPTURING_FLAG]
+  if (data[SCHEMA_KEY] !== SCHEMA_VERSION) {
+    chrome.storage.local.set({
+      [STORAGE_KEY]: [],
+      [SCHEMA_KEY]: SCHEMA_VERSION,
+    })
+    console.log('[DB-Capture] schema migrated → buffer cleared')
+  }
 })
+
+// Track the category the user last clicked into. Capture-phase listener
+// at document level runs before any Slice handlers, so currentCategory
+// is set synchronously before the modal mutation fires.
+document.addEventListener('click', (e) => {
+  const path = e.composedPath ? e.composedPath() : []
+  for (const el of path) {
+    if (!el || !el.getAttribute) continue
+    const dn = el.getAttribute('data-name') || ''
+    if (!CATEGORY_DATA_NAME_RE.test(dn)) continue
+    const heading = el.querySelector('h1, h2, h3, h4')
+    if (!heading) continue
+    const text = (heading.textContent || '').trim()
+    if (text) currentCategory = text
+    break
+  }
+}, true)
 
 // Respond to popup toggle.
 chrome.storage.onChanged.addListener((changes) => {
@@ -68,7 +102,7 @@ function maybeCaptureFrom(rootNode) {
     const data = extractItemData(modalRoot)
     if (!data) return
 
-    const sig = `${data.item_name}:${data.modifier_groups.length}`
+    const sig = `${data.item_name}::${data.category || ''}::${data.modifier_groups.length}`
     const now = Date.now()
     if (sig === lastCaptureSignature && now - lastCaptureTime < DEDUP_WINDOW_MS) return
     lastCaptureSignature = sig
@@ -173,6 +207,7 @@ function extractItemData(modalRoot) {
   if (optionEls.length === 0) {
     return {
       item_name: itemName,
+      category: currentCategory,
       source_url: window.location.href,
       captured_at: new Date().toISOString(),
       modifier_groups: [],
@@ -195,6 +230,7 @@ function extractItemData(modalRoot) {
 
   return {
     item_name: itemName,
+    category: currentCategory,
     source_url: window.location.href,
     captured_at: new Date().toISOString(),
     modifier_groups,
@@ -445,15 +481,24 @@ async function saveCapture(data) {
   const stored = await chrome.storage.local.get([STORAGE_KEY])
   const existing = stored[STORAGE_KEY] || []
 
-  // De-dup by item name within the buffer — last write wins so the
-  // user can re-open an item to refresh its capture.
-  const filtered = existing.filter((x) => x.item_name !== data.item_name)
+  // De-dup by (item_name, category). Re-capturing the same item in the
+  // same category replaces; capturing the same name in a different
+  // category creates a new entry. Empty/null categories are equivalent.
+  const cat = data.category || ''
+  const filtered = existing.filter(
+    (x) => x.item_name !== data.item_name || (x.category || '') !== cat
+  )
   filtered.push(data)
 
   await chrome.storage.local.set({ [STORAGE_KEY]: filtered })
   // Mirror to window so the slicelife.com page console can inspect
   // captures without needing extension-context devtools.
   window[DEBUG_WINDOW_KEY] = filtered
-  console.log('[DB-Capture] captured:', data.item_name, '(' + data.modifier_groups.length + ' groups)')
+  console.log(
+    '[DB-Capture] captured:',
+    data.item_name,
+    `[${data.category || 'no category'}]`,
+    '(' + data.modifier_groups.length + ' groups)'
+  )
   console.log('[DB-Capture] window.__dbCapture has', filtered.length, 'items')
 }
