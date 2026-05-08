@@ -11,6 +11,20 @@ function roundCents(v) {
   return Math.round((Number(v) || 0) * 100) / 100
 }
 
+// Deterministic signature of a topping group's contents, used to decide
+// whether a captured group is "the same" as an existing one. Sort by
+// name so order doesn't matter; normalize fields so trivial differences
+// (case, whitespace, missing booleans) don't produce false misses.
+function toppingsSig(toppings) {
+  const norm = (toppings || []).map((t) => ({
+    n: (t.name || '').toLowerCase().trim(),
+    p: roundCents(t.price),
+    d: !!t.is_default,
+  }))
+  norm.sort((a, b) => (a.n < b.n ? -1 : a.n > b.n ? 1 : 0))
+  return JSON.stringify(norm)
+}
+
 export default async function handler(req, res) {
   const origin = req.headers.origin || ''
   if (/^chrome-extension:\/\//.test(origin) || /^https:\/\/(www\.)?directbite\.co$/.test(origin)) {
@@ -91,6 +105,8 @@ export default async function handler(req, res) {
   let sizesUpdated = 0
   let sizesRenamed = 0
   let toppingGroupsCreated = 0
+  let groupsReused = 0
+  let linksReplaced = 0
   let toppingsCreated = 0
   const errors = []
 
@@ -107,6 +123,22 @@ export default async function handler(req, res) {
 
     const categoryName = menuItem.menu_categories?.name || ''
     const placementTypeForToppings = isPizzaCategory(categoryName) ? 'pizza' : 'addon'
+
+    // Per-item replace: Slice is the source of truth. Clear all existing
+    // item_topping_groups for this menu_item before processing its groups
+    // so stale links (groups Slice no longer shows) get removed. New links
+    // are inserted by the group loop below.
+    {
+      const { error: clearErr } = await supabase
+        .from('item_topping_groups')
+        .delete()
+        .eq('item_id', menuItem.id)
+      if (clearErr) {
+        errors.push(`Clear links for "${itemName}": ${clearErr.message}`)
+        continue
+      }
+      linksReplaced += 1
+    }
 
     const groups = Array.isArray(captured.modifier_groups) ? captured.modifier_groups : []
 
@@ -209,19 +241,39 @@ export default async function handler(req, res) {
       const desiredMaxSelections =
         group.max_selections != null ? Number(group.max_selections) : null
 
-      // Reuse if a group with this name already exists on the restaurant.
-      // Don't update existing — admin edits are preserved.
-      const { data: existingGroups } = await supabase
+      // Content-signature dedup: a captured group is "the same" as an existing
+      // one only if name (case-insensitive), placement_type, selection_type, AND
+      // its full topping set (name + price + is_default) all match. This avoids
+      // wrong reuse where a "Toppings" pizza group gets bound to a sandwich.
+      const capturedSig = toppingsSig(options)
+
+      const { data: candidates } = await supabase
         .from('topping_groups')
         .select('id')
         .eq('restaurant_id', restaurantId)
+        .eq('placement_type', placementTypeForToppings)
+        .eq('selection_type', desiredSelectionType)
         .ilike('name', groupLabel)
 
-      let groupId
-      if (existingGroups && existingGroups.length > 0) {
-        groupId = existingGroups[0].id
-      } else {
-        const { data: insertedGroup, error } = await supabase
+      let groupId = null
+      for (const cand of candidates || []) {
+        const { data: candToppings, error: candErr } = await supabase
+          .from('toppings')
+          .select('name, price, is_default')
+          .eq('topping_group_id', cand.id)
+        if (candErr) {
+          console.warn(`[modifier-import] candidate ${cand.id} topping fetch failed:`, candErr.message)
+          continue
+        }
+        if (toppingsSig(candToppings || []) === capturedSig) {
+          groupId = cand.id
+          groupsReused += 1
+          break
+        }
+      }
+
+      if (!groupId) {
+        const { data: insertedGroup, error: insErr } = await supabase
           .from('topping_groups')
           .insert({
             restaurant_id: restaurantId,
@@ -235,61 +287,44 @@ export default async function handler(req, res) {
           })
           .select('id')
           .single()
-        if (error || !insertedGroup) {
+        if (insErr || !insertedGroup) {
           errors.push(
-            `Group "${groupLabel}" for "${itemName}": ${error?.message || 'insert failed'}`
+            `Group "${groupLabel}" for "${itemName}": ${insErr?.message || 'insert failed'}`
           )
           continue
         }
         groupId = insertedGroup.id
         toppingGroupsCreated += 1
+
+        // Fresh group → insert all its toppings. No dedup needed.
+        for (let i = 0; i < options.length; i++) {
+          const opt = options[i]
+          const optName = (opt.name || '').trim()
+          if (!optName) continue
+          const { error: tErr } = await supabase.from('toppings').insert({
+            topping_group_id: groupId,
+            restaurant_id: restaurantId,
+            name: optName,
+            price: roundCents(opt.price),
+            is_default: !!opt.is_default,
+            sort_order: i,
+          })
+          if (tErr) {
+            errors.push(`Topping "${optName}" in "${groupLabel}": ${tErr.message}`)
+            continue
+          }
+          toppingsCreated += 1
+        }
       }
 
-      // Toppings — dedup by lowercased name within the group.
-      const { data: existingToppings } = await supabase
-        .from('toppings')
-        .select('name')
-        .eq('topping_group_id', groupId)
-      const existingNames = new Set(
-        (existingToppings || []).map((t) => (t.name || '').toLowerCase().trim())
-      )
-
-      for (let i = 0; i < options.length; i++) {
-        const opt = options[i]
-        const optName = (opt.name || '').trim()
-        if (!optName) continue
-        if (existingNames.has(optName.toLowerCase())) continue
-        const { error } = await supabase.from('toppings').insert({
-          topping_group_id: groupId,
-          restaurant_id: restaurantId,
-          name: optName,
-          price: roundCents(opt.price),
-          is_default: !!opt.is_default,
-          sort_order: i,
-        })
-        if (error) {
-          errors.push(`Topping "${optName}" in "${groupLabel}": ${error.message}`)
-          continue
-        }
-        toppingsCreated += 1
-        existingNames.add(optName.toLowerCase())
-      }
-
-      // Link item → group (idempotent).
-      const { data: existingLinks } = await supabase
-        .from('item_topping_groups')
-        .select('id')
-        .eq('item_id', menuItem.id)
-        .eq('topping_group_id', groupId)
-        .limit(1)
-      if (!existingLinks || existingLinks.length === 0) {
-        const { error: linkErr } = await supabase.from('item_topping_groups').insert({
-          item_id: menuItem.id,
-          topping_group_id: groupId,
-        })
-        if (linkErr) {
-          errors.push(`Link "${itemName}" → "${groupLabel}": ${linkErr.message}`)
-        }
+      // Link item → group. We cleared all links for this item earlier, so
+      // these inserts always create fresh rows.
+      const { error: linkErr } = await supabase.from('item_topping_groups').insert({
+        item_id: menuItem.id,
+        topping_group_id: groupId,
+      })
+      if (linkErr) {
+        errors.push(`Link "${itemName}" → "${groupLabel}": ${linkErr.message}`)
       }
     }
   }
@@ -300,6 +335,8 @@ export default async function handler(req, res) {
     sizes_updated: sizesUpdated,
     sizes_renamed: sizesRenamed,
     topping_groups_created: toppingGroupsCreated,
+    groups_reused: groupsReused,
+    links_replaced: linksReplaced,
     toppings_created: toppingsCreated,
     errors,
   })
