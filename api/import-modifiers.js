@@ -318,10 +318,12 @@ export default async function handler(req, res) {
       }
 
       // Link item → group. We cleared all links for this item earlier, so
-      // these inserts always create fresh rows.
+      // these inserts always create fresh rows. sort_order = capture index
+      // preserves Slice's display order.
       const { error: linkErr } = await supabase.from('item_topping_groups').insert({
         item_id: menuItem.id,
         topping_group_id: groupId,
+        sort_order: g,
       })
       if (linkErr) {
         errors.push(`Link "${itemName}" → "${groupLabel}": ${linkErr.message}`)

@@ -19,6 +19,8 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
   const [featuredOnWebsite, setFeaturedOnWebsite] = useState(item?.featured_on_website ?? false)
   const [sizes, setSizes] = useState([])
   const [assignedGroupIds, setAssignedGroupIds] = useState([])
+  const [dragLinkId, setDragLinkId] = useState(null)
+  const [dragOverLinkId, setDragOverLinkId] = useState(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -32,7 +34,7 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
   async function fetchItemDetails() {
     const [sizesRes, groupsRes] = await Promise.all([
       supabase.from('item_sizes').select('*').eq('item_id', item.id).order('sort_order'),
-      supabase.from('item_topping_groups').select('topping_group_id').eq('item_id', item.id),
+      supabase.from('item_topping_groups').select('topping_group_id, sort_order').eq('item_id', item.id).order('sort_order'),
     ])
     setSizes((sizesRes.data || []).map(s => ({ ...s, _key: s.id })))
     setAssignedGroupIds((groupsRes.data || []).map(g => g.topping_group_id))
@@ -50,10 +52,28 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
     setSizes(prev => prev.map(s => s._key === key ? { ...s, [field]: value } : s))
   }
 
-  function toggleGroup(groupId) {
-    setAssignedGroupIds(prev =>
-      prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
-    )
+  function addGroup(groupId) {
+    setAssignedGroupIds(prev => prev.includes(groupId) ? prev : [...prev, groupId])
+  }
+
+  function removeGroup(groupId) {
+    setAssignedGroupIds(prev => prev.filter(id => id !== groupId))
+  }
+
+  // Local drag-reorder of assigned topping groups. Final sort_order is
+  // persisted by handleSave's wipe-and-reinsert path below, mirroring how
+  // sizes are persisted in this same editor (sort_order = array index).
+  function handleLinkDrop(targetGroupId) {
+    if (!dragLinkId || dragLinkId === targetGroupId) return
+    const dragIdx = assignedGroupIds.indexOf(dragLinkId)
+    const targetIdx = assignedGroupIds.indexOf(targetGroupId)
+    if (dragIdx === -1 || targetIdx === -1) return
+    const reordered = [...assignedGroupIds]
+    const [moved] = reordered.splice(dragIdx, 1)
+    reordered.splice(targetIdx, 0, moved)
+    setAssignedGroupIds(reordered)
+    setDragLinkId(null)
+    setDragOverLinkId(null)
   }
 
   async function handleSave() {
@@ -119,7 +139,7 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
     await supabase.from('item_topping_groups').delete().eq('item_id', itemId)
     if (assignedGroupIds.length > 0) {
       await supabase.from('item_topping_groups').insert(
-        assignedGroupIds.map(gId => ({ item_id: itemId, topping_group_id: gId }))
+        assignedGroupIds.map((gId, i) => ({ item_id: itemId, topping_group_id: gId, sort_order: i }))
       )
     }
 
@@ -207,22 +227,58 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
           ))}
         </div>
 
-        {/* Topping groups */}
+        {/* Topping groups — assigned (drag to reorder) + available */}
         <div>
           <label className="text-xs text-gray-500 uppercase font-semibold mb-2 block">Topping Groups</label>
           {toppingGroups.length === 0 ? (
             <p className="text-xs text-gray-400">No topping groups exist yet</p>
           ) : (
-            <div className="space-y-1">
-              {toppingGroups.map(g => (
-                <label key={g.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input type="checkbox" checked={assignedGroupIds.includes(g.id)}
-                    onChange={() => toggleGroup(g.id)}
-                    className="accent-[#16A34A] w-4 h-4" />
-                  {g.name}
-                </label>
-              ))}
-            </div>
+            <>
+              {assignedGroupIds.length > 0 && (
+                <div className="space-y-1 mb-2">
+                  {assignedGroupIds.map(gId => {
+                    const g = toppingGroups.find(tg => tg.id === gId)
+                    if (!g) return null
+                    return (
+                      <div key={g.id}
+                        draggable
+                        onDragStart={e => { setDragLinkId(g.id); e.dataTransfer.effectAllowed = 'move' }}
+                        onDragEnd={() => { setDragLinkId(null); setDragOverLinkId(null) }}
+                        onDragOver={e => { if (dragLinkId && dragLinkId !== g.id) { e.preventDefault(); setDragOverLinkId(g.id) } }}
+                        onDragLeave={() => setDragOverLinkId(null)}
+                        onDrop={() => { setDragOverLinkId(null); handleLinkDrop(g.id) }}
+                        className={`flex items-center gap-2 px-2 py-1.5 bg-white border rounded text-sm cursor-grab active:cursor-grabbing transition-all ${
+                          dragLinkId === g.id ? 'opacity-30' : ''
+                        } ${dragOverLinkId === g.id && dragLinkId && dragLinkId !== g.id ? 'border-t-2 border-t-[#16A34A]' : 'border-gray-200'}`}
+                      >
+                        <svg className="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+                          <circle cx="5" cy="3" r="1.5"/><circle cx="11" cy="3" r="1.5"/>
+                          <circle cx="5" cy="8" r="1.5"/><circle cx="11" cy="8" r="1.5"/>
+                          <circle cx="5" cy="13" r="1.5"/><circle cx="11" cy="13" r="1.5"/>
+                        </svg>
+                        <span className="flex-1">{g.name}</span>
+                        <button onClick={() => removeGroup(g.id)}
+                          className="text-red-400 hover:text-red-600 text-lg px-1 leading-none"
+                          aria-label="Remove">&times;</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {toppingGroups.some(g => !assignedGroupIds.includes(g.id)) && (
+                <div className={`space-y-0.5 ${assignedGroupIds.length > 0 ? 'pt-2 border-t border-gray-100' : ''}`}>
+                  {assignedGroupIds.length > 0 && (
+                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold mb-1">Available</p>
+                  )}
+                  {toppingGroups.filter(g => !assignedGroupIds.includes(g.id)).map(g => (
+                    <button key={g.id} onClick={() => addGroup(g.id)}
+                      className="block w-full text-left text-sm text-gray-600 hover:bg-gray-50 px-2 py-1 rounded">
+                      + {g.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

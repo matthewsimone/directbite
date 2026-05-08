@@ -53,10 +53,12 @@ export function useMenu(restaurantId) {
   }
 
   function getToppingGroupsForItem(itemId) {
-    const groupIds = itemToppingGroups
+    const links = itemToppingGroups
       .filter(itg => itg.item_id === itemId)
-      .map(itg => itg.topping_group_id)
-    return toppingGroups.filter(tg => groupIds.includes(tg.id))
+      .slice()
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    const byId = new Map(toppingGroups.map(g => [g.id, g]))
+    return links.map(l => byId.get(l.topping_group_id)).filter(Boolean)
   }
 
   function getToppingsForGroup(groupId) {
