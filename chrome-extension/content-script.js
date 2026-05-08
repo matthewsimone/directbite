@@ -174,6 +174,33 @@ function extractItemName(modalRoot) {
   return null
 }
 
+// Extract a normalized high-res image URL from the modal's <picture> element.
+// Slice serves images via imgix with query-param sizing — we strip the query
+// params and rebuild a consistent variant so the server-side fetch is uniform
+// regardless of which srcset entry we picked.
+function extractImageUrl(modalRoot) {
+  const pic = modalRoot.querySelector('picture')
+  if (!pic) return null
+
+  const candidates = []
+  for (const source of pic.querySelectorAll('source')) {
+    const srcset = source.getAttribute('srcset') || ''
+    for (const part of srcset.split(',')) {
+      const url = part.trim().split(/\s+/)[0]
+      if (url) candidates.push(url)
+    }
+  }
+  const img = pic.querySelector('img')
+  if (img && img.src) candidates.push(img.src)
+
+  for (const url of candidates) {
+    if (!/imgix\.net\//i.test(url)) continue
+    const baseUrl = url.split('?')[0]
+    return `${baseUrl}?fit=crop&w=1200&h=750&auto=format,compress&q=80`
+  }
+  return null
+}
+
 function extractItemData(modalRoot) {
   const itemName = extractItemName(modalRoot)
   if (!itemName) {
@@ -208,6 +235,7 @@ function extractItemData(modalRoot) {
     return {
       item_name: itemName,
       category: currentCategory,
+      image_url: extractImageUrl(modalRoot),
       source_url: window.location.href,
       captured_at: new Date().toISOString(),
       modifier_groups: [],
@@ -231,6 +259,7 @@ function extractItemData(modalRoot) {
   return {
     item_name: itemName,
     category: currentCategory,
+    image_url: extractImageUrl(modalRoot),
     source_url: window.location.href,
     captured_at: new Date().toISOString(),
     modifier_groups,

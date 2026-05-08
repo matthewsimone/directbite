@@ -11,6 +11,50 @@ function roundCents(v) {
   return Math.round((Number(v) || 0) * 100) / 100
 }
 
+// Self-host a captured image to Supabase Storage and update menu_items.image_url.
+// Idempotent: if the row's existing image_url already points at our Supabase
+// project, do nothing. Force JPEG via Accept header so storage extension is
+// always .jpg, regardless of imgix's auto=format negotiation.
+async function uploadImage(supabase, supabaseUrl, restaurantId, menuItem, sourceImageUrl) {
+  const currentUrl = menuItem.image_url || ''
+  if (currentUrl.startsWith(supabaseUrl)) return { skipped: true }
+
+  let resp
+  try {
+    resp = await fetch(sourceImageUrl, { headers: { Accept: 'image/jpeg' } })
+  } catch (err) {
+    return { error: `image fetch failed: ${err.message}` }
+  }
+  if (!resp.ok) {
+    return { error: `image fetch ${resp.status}` }
+  }
+  const buffer = await resp.arrayBuffer()
+
+  const path = `${restaurantId}/${menuItem.id}.jpg`
+  const { error: upErr } = await supabase.storage
+    .from('menu-images')
+    .upload(path, buffer, { contentType: 'image/jpeg', upsert: true })
+  if (upErr) {
+    return { error: `image upload failed: ${upErr.message}` }
+  }
+
+  const { data: urlData } = supabase.storage.from('menu-images').getPublicUrl(path)
+  const publicUrl = urlData?.publicUrl
+  if (!publicUrl) {
+    return { error: 'image upload succeeded but public URL was empty' }
+  }
+
+  const { error: updErr } = await supabase
+    .from('menu_items')
+    .update({ image_url: publicUrl })
+    .eq('id', menuItem.id)
+  if (updErr) {
+    return { error: `image URL update failed: ${updErr.message}` }
+  }
+
+  return { url: publicUrl }
+}
+
 // Deterministic signature of a topping group's contents, used to decide
 // whether a captured group is "the same" as an existing one. Sort by
 // name so order doesn't matter; normalize fields so trivial differences
@@ -116,6 +160,8 @@ export default async function handler(req, res) {
   let groupsReused = 0
   let linksReplaced = 0
   let toppingsCreated = 0
+  let imagesUploaded = 0
+  let imagesSkipped = 0
   const errors = []
 
   for (const captured of capturedItems) {
@@ -139,6 +185,19 @@ export default async function handler(req, res) {
     const placementTypeForToppings = isPizzaCategory(menuItem.menu_categories?.name || '')
       ? 'pizza'
       : 'addon'
+
+    // Self-host the captured image. Tangential to modifier work — failures
+    // here are logged but don't block the rest of the per-item pipeline.
+    if (captured.image_url) {
+      const imgResult = await uploadImage(supabase, supabaseUrl, restaurantId, menuItem, captured.image_url)
+      if (imgResult.error) {
+        errors.push(`Image for "${itemName}" [${category}]: ${imgResult.error}`)
+      } else if (imgResult.skipped) {
+        imagesSkipped += 1
+      } else {
+        imagesUploaded += 1
+      }
+    }
 
     // Per-item replace: clear existing item_topping_groups for this row
     // before processing the capture's groups.
@@ -355,6 +414,8 @@ export default async function handler(req, res) {
     groups_reused: groupsReused,
     links_replaced: linksReplaced,
     toppings_created: toppingsCreated,
+    images_uploaded: imagesUploaded,
+    images_skipped: imagesSkipped,
     errors,
   })
 }
