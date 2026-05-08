@@ -38,39 +38,23 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
   }
 
   if (s === 'hexagon') {
-    // Outer is a flex centering container so the <img> is a normal
-    // flex child (matches circle/oval). Earlier the img was a second
-    // absolutely-positioned sibling stacked on the SVG — that pattern
-    // dropped the image on iOS Safari in landscape orientation.
-    // 12-vertex polygon clip inscribed in the rounded hex outline so
-    // edge-to-edge square logos don't poke past the curve.
+    // Three layers, in source order so paint order is: bg fill → image →
+    // strokes. Putting the strokes on top hides any sliver between the
+    // image's polygon clip and the rounded hex curve, which previously
+    // showed as a faint dark fringe along the edge.
     return (
       <div className={`relative mb-6 shrink-0 flex items-center justify-center ${sizeCls}`}>
+        {/* Layer 1: white-filled hex. Defines the visible background the
+            image is composited onto. */}
         <svg
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           className="absolute inset-0 w-full h-full"
-          style={{ overflow: 'visible' }}
         >
-          {/* White outer trim — wider stroke drawn first (behind). */}
-          <path
-            d={ROUNDED_HEXAGON_PATH}
-            fill="white"
-            stroke="white"
-            strokeWidth="9"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-          />
-          {/* Brand-color border on top — narrower stroke. */}
-          <path
-            d={ROUNDED_HEXAGON_PATH}
-            fill="none"
-            stroke={brandColor}
-            strokeWidth="3"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-          />
+          <path d={ROUNDED_HEXAGON_PATH} fill="white" />
         </svg>
+        {/* Layer 2: clipped image. relative keeps it as the flex child
+            driving container size. */}
         <img
           src={logoUrl}
           alt={`${name} logo`}
@@ -80,6 +64,31 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
               'polygon(44.6% 2.7%, 55.4% 2.7%, 94.6% 22.3%, 100% 31%, 100% 69%, 94.6% 77.7%, 55.4% 97.3%, 44.6% 97.3%, 5.4% 77.7%, 0% 69%, 0% 31%, 5.4% 22.3%)',
           }}
         />
+        {/* Layer 3: strokes only, on top. White outer trim (9px) covers
+            the clip-edge gap; brand-color stroke (3px) crowns it. */}
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full"
+          style={{ overflow: 'visible' }}
+        >
+          <path
+            d={ROUNDED_HEXAGON_PATH}
+            fill="none"
+            stroke="white"
+            strokeWidth="9"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={ROUNDED_HEXAGON_PATH}
+            fill="none"
+            stroke={brandColor}
+            strokeWidth="3"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
       </div>
     )
   }
