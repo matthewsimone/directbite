@@ -143,7 +143,52 @@ export default function TabletPage() {
   }, [restaurant?.id, setRestaurant])
 
   // Order polling, chime, auto-print — runs regardless of active tab
-  const { orders, setOrders, loading: ordersLoading, stopChime, fetchOrders } = useOrderPolling(restaurant, hours)
+  const { orders, setOrders, loading: ordersLoading, stopChime, fetchOrders, diagnostics } = useOrderPolling(restaurant, hours)
+
+  // D3 fix: refetch orders on visibility change so wake-from-sleep
+  // doesn't wait up to 10s for the next poll.
+  useEffect(() => {
+    if (!restaurant?.id) return
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        console.log('[VISIBILITY] became visible — forcing order refetch')
+        diagnostics.current.visibilityRefetches++
+        fetchOrders()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [restaurant?.id, fetchOrders, diagnostics])
+
+  useEffect(() => {
+    if (!restaurant?.id) return
+
+    function handleOnline() {
+      console.log('[ONLINE] reconnected — forcing order refetch')
+      fetchOrders()
+    }
+
+    window.addEventListener('online', handleOnline)
+    return () => window.removeEventListener('online', handleOnline)
+  }, [restaurant?.id, fetchOrders])
+
+  // Auth state surveillance — surface refresh failures and token rotation in logs.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[AUTH]', event, 'expires_at=', session?.expires_at, 'has_token=', !!session?.access_token)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Force re-render of debug overlay every second so diagnostics ref values stay fresh.
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    if (!showDebug) return
+    const tick = setInterval(() => forceTick(n => n + 1), 1000)
+    return () => clearInterval(tick)
+  }, [showDebug])
 
   if (loading) {
     return (
@@ -224,8 +269,15 @@ export default function TabletPage() {
 
       {/* Debug overlay */}
       {showDebug && (
-        <div className="fixed bottom-2 right-2 z-50 bg-gray-900/80 text-gray-300 text-xs font-mono px-3 py-1.5 rounded-lg">
-          Online: {isOnline ? 'true' : 'false'} · Pings: {pingStats.success}/{pingStats.total} · Last: {pingStats.lastTime || '—'} · Fails: {pingStats.fails}
+        <div className="fixed bottom-2 right-2 z-50 bg-gray-900/90 text-gray-200 text-[10px] font-mono px-3 py-2 rounded-lg leading-tight max-w-[380px]">
+          <div>Net: online={isOnline ? 'T' : 'F'} pings={pingStats.success}/{pingStats.total} fails={pingStats.fails} last={pingStats.lastTime || '—'}</div>
+          <div>Poll: {diagnostics.current.pollSuccesses}/{diagnostics.current.pollAttempts} ok · fail={diagnostics.current.pollFailures} · last={diagnostics.current.lastPollAt?.slice(11, 19) || '—'}</div>
+          <div>Last ok: {diagnostics.current.lastSuccessAt?.slice(11, 19) || '—'} · returned={diagnostics.current.ordersReturnedLastPoll}</div>
+          {diagnostics.current.lastErrorMessage && (
+            <div className="text-red-400 truncate">Err: {diagnostics.current.lastErrorCode || '—'}: {diagnostics.current.lastErrorMessage}</div>
+          )}
+          <div>Audio: {diagnostics.current.audioContextState} · chimes={diagnostics.current.chimePlayed}/{diagnostics.current.chimeAttempts} · suspFails={diagnostics.current.chimeFailedSuspended}</div>
+          <div>Vis refetches: {diagnostics.current.visibilityRefetches}</div>
         </div>
       )}
 
