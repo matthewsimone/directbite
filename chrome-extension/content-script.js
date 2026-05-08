@@ -202,15 +202,44 @@ function extractItemData(modalRoot) {
 }
 
 // Group container detection.
-// Walk up from the option to the smallest ancestor that contains a
-// label-bearing descendant (a short non-modifier text outside any
-// option / topping / hint / svg / button subtree). That ancestor
-// is the group container. This unifies multi-option groups (where
-// the option-wrapper has no label so we walk past it to the group
-// container with the label) and single-option groups (same walk,
-// just one option inside).
+// Walk up from the option to the smallest ancestor whose textContent
+// shows a Slice group-header signal — either an instructions subtitle
+// ("Select only one" / "Select up to N") or a label starting with the
+// group's action verb ("Choose / Add / Pick / Select / Make ...").
+//
+// We previously stopped at any ancestor with a non-modifier short text
+// descendant. That was too lenient: when an inner group wrapper had its
+// label inside an element findLabelText skipped (e.g., a button-wrapped
+// accordion header), the walk continued up to a shared ancestor and
+// merged distinct groups into one bucket. The header-signal predicate
+// is specific enough to identify the correct wrapper even when its
+// label is otherwise unreachable.
+//
+// "Select only one" / "Select up to N" is Slice's standard subtitle on
+// every modifier group (including the size hint via topping-select-label),
+// so it's the strongest signal. The label-prefix fallback catches any
+// group whose subtitle phrasing differs.
+const GROUP_HEADER_SUBTITLE_RE = /select\s+(?:only\s+one|up\s+to\s+\d+)/i
+const GROUP_HEADER_LABEL_RE = /^(choose|add|pick|select|make)\b/i
+
+function hasGroupHeaderSignal(container) {
+  const text = container.textContent || ''
+  if (GROUP_HEADER_SUBTITLE_RE.test(text)) return true
+  const label = findLabelText(container)
+  if (label && GROUP_HEADER_LABEL_RE.test(label)) return true
+  return false
+}
+
 function findGroupContainer(optionEl, modalRoot) {
+  // Prefer ancestors that match the group-header signal.
   let cursor = optionEl.parentElement
+  while (cursor && cursor !== modalRoot) {
+    if (hasGroupHeaderSignal(cursor)) return cursor
+    cursor = cursor.parentElement
+  }
+  // Fallback: any ancestor with a label-bearing descendant. Only reached
+  // if no group-header signal exists anywhere up the chain (rare).
+  cursor = optionEl.parentElement
   while (cursor && cursor !== modalRoot) {
     if (findLabelText(cursor) !== null) return cursor
     cursor = cursor.parentElement
