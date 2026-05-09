@@ -664,6 +664,29 @@ export default function MenuManagementTab() {
     setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_available: !i.is_available } : i))
   }
 
+  // Move an item up or down within its category. Mobile fallback for the
+  // HTML5 drag-and-drop reorder, which is unreliable in iOS Safari.
+  async function moveItem(itemId, categoryId, direction) {
+    const catItems = items.filter(i => i.category_id === categoryId).sort((a, b) => a.sort_order - b.sort_order)
+    const idx = catItems.findIndex(i => i.id === itemId)
+    const targetIdx = idx + direction
+    if (idx === -1 || targetIdx < 0 || targetIdx >= catItems.length) return
+    const reordered = [...catItems]
+    const [moved] = reordered.splice(idx, 1)
+    reordered.splice(targetIdx, 0, moved)
+    const newOrderMap = new Map(reordered.map((item, i) => [item.id, i]))
+    setItems(prev => {
+      const updated = prev.map(item => {
+        const newOrder = newOrderMap.get(item.id)
+        return newOrder !== undefined ? { ...item, sort_order: newOrder } : item
+      })
+      return updated.sort((a, b) => a.sort_order - b.sort_order)
+    })
+    for (let i = 0; i < reordered.length; i++) {
+      await supabase.from('menu_items').update({ sort_order: i }).eq('id', reordered[i].id)
+    }
+  }
+
   async function deleteItem(itemId) {
     if (!confirm('Delete this item?')) return
     await supabase.from('menu_items').delete().eq('id', itemId)
@@ -687,24 +710,24 @@ export default function MenuManagementTab() {
 
   return (
     <div className="h-full flex">
-      <div className={`flex-1 overflow-y-auto p-6 ${showPanel ? 'max-w-[calc(100%-400px)]' : ''}`}>
-        <div className="flex items-center gap-4 mb-4">
-          <h2 className="text-xl font-bold">Menu Management</h2>
+      <div className={`flex-1 overflow-y-auto p-4 md:p-6 ${showPanel ? 'md:max-w-[calc(100%-400px)]' : ''}`}>
+        <div className="flex flex-wrap items-center gap-2 md:gap-4 mb-4">
+          <h2 className="text-xl font-bold w-full md:w-auto">Menu Management</h2>
           <select value={selectedRestaurant} onChange={e => { setSelectedRestaurant(e.target.value); setEditingItem(null); setEditingGroup(undefined) }}
-            className="h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
+            className="h-11 md:h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white flex-1 md:flex-none min-w-0">
             <option value="">Select a restaurant...</option>
             {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
           {selectedRestaurant && (
             <button
               onClick={() => setShowImportModal(true)}
-              className="px-3 h-9 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50"
+              className="px-3 h-11 md:h-9 border border-gray-300 rounded-lg text-sm font-semibold hover:bg-gray-50 shrink-0"
             >
               Import Menu
             </button>
           )}
           {selectedRestaurant && (
-            <span className="text-xs text-gray-500 ml-auto">Featured on website: {featuredCount} / {FEATURED_LIMIT}</span>
+            <span className="text-xs text-gray-500 w-full md:w-auto md:ml-auto">Featured: {featuredCount} / {FEATURED_LIMIT}</span>
           )}
         </div>
 
@@ -789,15 +812,28 @@ export default function MenuManagementTab() {
                         <p className="font-medium text-sm">{item.name}</p>
                         {getMinPrice(item) && <p className="text-xs text-gray-500">{getMinPrice(item)}{(item.item_sizes?.length || 0) > 1 ? '+' : ''}</p>}
                       </div>
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-2 md:gap-3 shrink-0">
+                        {/* Mobile reorder fallback — HTML5 drag is unreliable on iOS */}
+                        <div className="md:hidden flex flex-col">
+                          <button onClick={() => moveItem(item.id, cat.id, -1)}
+                            className="w-7 h-5 flex items-center justify-center text-gray-500"
+                            aria-label="Move up">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 10 10"><path d="M5 2l4 4H1z" /></svg>
+                          </button>
+                          <button onClick={() => moveItem(item.id, cat.id, 1)}
+                            className="w-7 h-5 flex items-center justify-center text-gray-500"
+                            aria-label="Move down">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 10 10"><path d="M5 8l4-4H1z" /></svg>
+                          </button>
+                        </div>
                         <button onClick={() => toggleItemAvailability(item)}
                           className={`relative w-10 h-6 rounded-full transition-colors ${item.is_available ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
                           <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${item.is_available ? 'left-4.5' : 'left-0.5'}`} />
                         </button>
                         <button onClick={() => setEditingItem({ item, categoryId: cat.id })}
-                          className="text-xs text-[#16A34A] font-semibold">Edit</button>
+                          className="text-xs text-[#16A34A] font-semibold min-h-[44px] px-2 md:min-h-0 md:px-0">Edit</button>
                         <button onClick={() => deleteItem(item.id)}
-                          className="text-xs text-red-500">Delete</button>
+                          className="text-xs text-red-500 min-h-[44px] px-2 md:min-h-0 md:px-0">Delete</button>
                       </div>
                     </div>
                   ))}
@@ -857,7 +893,7 @@ export default function MenuManagementTab() {
 
       {/* Side panel */}
       {editingItem && (
-        <div className="w-[400px] shrink-0">
+        <div className="fixed inset-0 z-40 md:relative md:inset-auto md:z-auto md:w-[400px] md:shrink-0">
           <ItemEditor
             item={editingItem.item}
             categoryId={editingItem.categoryId}
@@ -882,7 +918,7 @@ export default function MenuManagementTab() {
         </div>
       )}
       {editingGroup !== undefined && !editingItem && (
-        <div className="w-[400px] shrink-0">
+        <div className="fixed inset-0 z-40 md:relative md:inset-auto md:z-auto md:w-[400px] md:shrink-0">
           <ToppingGroupEditor
             group={editingGroup}
             restaurantId={selectedRestaurant}

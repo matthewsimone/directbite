@@ -71,19 +71,19 @@ function Step2({ data, setData }) {
     <div className="space-y-4">
       <h3 className="text-lg font-bold">Hours</h3>
       {data.hours.map(h => (
-        <div key={h.day_of_week} className="flex items-center gap-3">
-          <span className="w-24 text-sm font-medium">{DAY_NAMES[h.day_of_week]}</span>
+        <div key={h.day_of_week} className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <span className="w-20 sm:w-24 text-sm font-medium">{DAY_NAMES[h.day_of_week]}</span>
           <button onClick={() => updateHour(h.day_of_week, 'is_open', !h.is_open)}
-            className={`relative w-12 h-7 rounded-full transition-colors ${h.is_open ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
+            className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${h.is_open ? 'bg-[#16A34A]' : 'bg-gray-300'}`}>
             <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${h.is_open ? 'left-5.5' : 'left-0.5'}`} />
           </button>
           {h.is_open ? (
-            <div className="flex items-center gap-1 flex-1">
+            <div className="flex items-center gap-1 flex-1 basis-full sm:basis-0 min-w-0">
               <input type="time" value={h.open_time} onChange={e => updateHour(h.day_of_week, 'open_time', e.target.value)}
-                className="h-9 px-2 border border-gray-300 rounded-lg text-sm flex-1" />
+                className="h-10 sm:h-9 px-2 border border-gray-300 rounded-lg text-sm flex-1 min-w-0" />
               <span className="text-gray-400 text-xs">to</span>
               <input type="time" value={h.close_time} onChange={e => updateHour(h.day_of_week, 'close_time', e.target.value)}
-                className="h-9 px-2 border border-gray-300 rounded-lg text-sm flex-1" />
+                className="h-10 sm:h-9 px-2 border border-gray-300 rounded-lg text-sm flex-1 min-w-0" />
             </div>
           ) : (
             <span className="text-sm text-gray-400">Closed</span>
@@ -326,7 +326,7 @@ export default function OnboardingTab() {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-6">
+    <div className="h-full overflow-y-auto p-4 md:p-6">
       <h2 className="text-xl font-bold mb-6">Onboard New Restaurant</h2>
 
       <div className="max-w-xl mx-auto">

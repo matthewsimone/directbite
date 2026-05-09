@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAdminAuth } from '../../hooks/useAdminAuth'
 import DirectBiteLogo from '../../components/DirectBiteLogo'
 import AdminLogin from './AdminLogin'
@@ -9,16 +9,34 @@ import MenuManagementTab from './MenuManagementTab'
 import OnboardingTab from './OnboardingTab'
 
 const TABS = [
-  { key: 'orders', label: 'Orders', icon: OrdersIcon },
-  { key: 'restaurants', label: 'Restaurants', icon: RestaurantsIcon },
-  { key: 'revenue', label: 'Revenue', icon: RevenueIcon },
-  { key: 'menu', label: 'Menu Management', icon: MenuIcon },
-  { key: 'onboarding', label: 'Onboarding', icon: OnboardingIcon },
+  { key: 'orders', label: 'Orders', short: 'Orders', icon: OrdersIcon },
+  { key: 'restaurants', label: 'Restaurants', short: 'Stores', icon: RestaurantsIcon },
+  { key: 'revenue', label: 'Revenue', short: 'Revenue', icon: RevenueIcon },
+  { key: 'menu', label: 'Menu Management', short: 'Menu', icon: MenuIcon },
+  { key: 'onboarding', label: 'Onboarding', short: 'New', icon: OnboardingIcon },
 ]
 
 export default function AdminPage() {
   const { session, loading, error, login, logout } = useAdminAuth()
   const [activeTab, setActiveTab] = useState('orders')
+
+  // PWA manifest + apple-touch-icon for /admin. Injected at mount so it
+  // doesn't apply to other routes (per the index.html note about iOS
+  // caching static manifest tags).
+  useEffect(() => {
+    const manifest = document.createElement('link')
+    manifest.rel = 'manifest'
+    manifest.href = '/admin-manifest.webmanifest'
+    document.head.appendChild(manifest)
+    const appleIcon = document.createElement('link')
+    appleIcon.rel = 'apple-touch-icon'
+    appleIcon.href = '/icon-192.svg'
+    document.head.appendChild(appleIcon)
+    return () => {
+      manifest.remove()
+      appleIcon.remove()
+    }
+  }, [])
 
   if (loading) {
     return (
@@ -33,9 +51,9 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="h-screen flex bg-gray-50">
-      {/* Sidebar */}
-      <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
+    <div className="h-screen flex flex-col md:flex-row bg-gray-50">
+      {/* Sidebar — desktop only */}
+      <aside className="hidden md:flex w-56 bg-white border-r border-gray-200 flex-col shrink-0">
         <div className="px-5 py-4 border-b border-gray-200">
           <DirectBiteLogo color="dark" height={24} />
           <p className="text-xs text-gray-400 mt-1">Admin Panel</p>
@@ -65,11 +83,14 @@ export default function AdminPage() {
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
+        <header
+          className="bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0"
+          style={{ height: 'calc(3.5rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
+        >
           <DirectBiteLogo color="dark" height={20} />
           <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-500">{session.user.email}</span>
-            <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+            <span className="hidden md:inline text-sm text-gray-500">{session.user.email}</span>
+            <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600 transition-colors min-h-[44px] px-2">
               Sign Out
             </button>
           </div>
@@ -83,6 +104,29 @@ export default function AdminPage() {
           {activeTab === 'menu' && <MenuManagementTab />}
           {activeTab === 'onboarding' && <OnboardingTab />}
         </main>
+
+        {/* Mobile bottom nav */}
+        <nav
+          className="md:hidden flex items-stretch bg-white border-t border-gray-200 shrink-0"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          {TABS.map(tab => {
+            const Icon = tab.icon
+            const isActive = activeTab === tab.key
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 min-h-[56px] text-[10px] font-semibold uppercase tracking-wide transition-colors ${
+                  isActive ? 'text-[#16A34A]' : 'text-gray-500'
+                }`}
+              >
+                <Icon active={isActive} />
+                {tab.short}
+              </button>
+            )
+          })}
+        </nav>
       </div>
     </div>
   )

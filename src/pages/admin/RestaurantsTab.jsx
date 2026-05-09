@@ -90,7 +90,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
     <div className="h-full flex flex-col border-l border-gray-200 bg-white">
       <div className="flex items-center justify-between p-4 border-b">
         <h3 className="font-bold text-lg">{data.name}</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none w-11 h-11 flex items-center justify-center">&times;</button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -218,7 +218,7 @@ export default function RestaurantsTab() {
 
   return (
     <div className="h-full flex">
-      <div className={`flex-1 overflow-y-auto p-6 ${selected ? 'max-w-[calc(100%-420px)]' : ''}`}>
+      <div className={`flex-1 overflow-y-auto p-4 md:p-6 ${selected ? 'md:max-w-[calc(100%-420px)]' : ''}`}>
         <h2 className="text-xl font-bold mb-4">Restaurants</h2>
 
         {loading ? (
@@ -229,19 +229,19 @@ export default function RestaurantsTab() {
           <div className="space-y-3">
             {restaurants.map(r => (
               <div key={r.id}
-                className={`bg-white rounded-lg border p-4 flex items-center justify-between cursor-pointer hover:border-[#16A34A] transition-colors ${
+                className={`bg-white rounded-lg border p-4 flex items-center justify-between gap-3 cursor-pointer hover:border-[#16A34A] transition-colors ${
                   selected?.id === r.id ? 'border-[#16A34A] ring-1 ring-[#16A34A]' : 'border-gray-200'
                 }`}
                 onClick={() => setSelected(r)}
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <span className={`w-3 h-3 rounded-full shrink-0 ${r.is_open ? 'bg-green-500' : 'bg-red-500'}`} />
-                  <div>
-                    <p className="font-medium">{r.name}</p>
-                    <p className="text-sm text-gray-500">directbite.co/{r.slug}</p>
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{r.name}</p>
+                    <p className="text-sm text-gray-500 truncate">directbite.co/{r.slug}</p>
                   </div>
                 </div>
-                <button className="px-3 py-1.5 text-sm font-semibold text-[#16A34A] border border-[#16A34A] rounded-lg hover:bg-green-50">
+                <button className="px-3 py-1.5 text-sm font-semibold text-[#16A34A] border border-[#16A34A] rounded-lg hover:bg-green-50 shrink-0 min-h-[44px]">
                   Manage
                 </button>
               </div>
@@ -251,7 +251,7 @@ export default function RestaurantsTab() {
       </div>
 
       {selected && (
-        <div className="w-[420px] shrink-0">
+        <div className="fixed inset-0 z-40 md:relative md:inset-auto md:z-auto md:w-[420px] md:shrink-0">
           <ManagePanel restaurant={selected} onClose={() => setSelected(null)} onUpdate={handleUpdate} />
         </div>
       )}

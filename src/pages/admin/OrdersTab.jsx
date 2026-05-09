@@ -162,7 +162,7 @@ function OrderDetailPanel({ order, onClose, onRefresh }) {
     <div className="h-full flex flex-col border-l border-gray-200 bg-white">
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <h3 className="font-bold text-lg">Order #{order.order_number}</h3>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none w-11 h-11 flex items-center justify-center">&times;</button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -355,32 +355,32 @@ export default function OrdersTab() {
   return (
     <div className="h-full flex">
       {/* Main content */}
-      <div className={`flex-1 overflow-y-auto p-6 ${selectedOrder ? 'max-w-[calc(100%-400px)]' : ''}`}>
-        <div className="flex items-center justify-between mb-4">
+      <div className={`flex-1 overflow-y-auto p-4 md:p-6 ${selectedOrder ? 'md:max-w-[calc(100%-400px)]' : ''}`}>
+        <div className="flex items-center justify-between mb-4 gap-2">
           <h2 className="text-xl font-bold">All Orders</h2>
           {adjustments.length > 0 && (
-            <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-1 rounded-full">
-              {adjustments.length} Pending Adjustment{adjustments.length > 1 ? 's' : ''}
+            <span className="bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-1 rounded-full shrink-0">
+              {adjustments.length} Pending
             </span>
           )}
         </div>
 
         {/* Filters */}
-        <div className="flex gap-3 mb-4 flex-wrap">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-4">
           <select value={filterRestaurant} onChange={e => setFilterRestaurant(e.target.value)}
-            className="h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
+            className="h-11 sm:h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
             <option value="all">All Restaurants</option>
             {restaurants.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
           <select value={filterDate} onChange={e => setFilterDate(e.target.value)}
-            className="h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
+            className="h-11 sm:h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
             <option value="today">Today</option>
             <option value="week">This Week</option>
             <option value="month">This Month</option>
             <option value="all">All Time</option>
           </select>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-            className="h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
+            className="h-11 sm:h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
             <option value="all">All Statuses</option>
             <option value="new">New</option>
             <option value="in_progress">In Progress</option>
@@ -392,52 +392,80 @@ export default function OrdersTab() {
         {/* Adjustments */}
         <AdjustmentsPanel adjustments={adjustments} restaurants={restaurants} onAction={handleAdjustmentAction} />
 
-        {/* Orders table */}
+        {/* Orders table — desktop / Card list — mobile */}
         {loading ? (
           <p className="text-gray-400 text-center mt-8">Loading orders...</p>
         ) : orders.length === 0 ? (
           <p className="text-gray-400 text-center mt-8">No orders found</p>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
-                  <th className="px-4 py-3">Order#</th>
-                  <th className="px-4 py-3">Restaurant</th>
-                  <th className="px-4 py-3">Customer</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Amount</th>
-                  <th className="px-4 py-3">Time</th>
-                  <th className="px-4 py-3">Print</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.map(order => (
-                  <tr
-                    key={order.id}
-                    onClick={() => setSelectedOrder(order)}
-                    className={`border-t border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${selectedOrder?.id === order.id ? 'bg-green-50' : ''}`}
-                  >
-                    <td className="px-4 py-3 font-medium">#{order.order_number}</td>
-                    <td className="px-4 py-3">{order.restaurants?.name}</td>
-                    <td className="px-4 py-3">{order.customer_name}</td>
-                    <td className="px-4 py-3 capitalize">{order.order_type}</td>
-                    <td className="px-4 py-3">{statusBadge(order.status)} {refundBadge(order)}</td>
-                    <td className="px-4 py-3 font-medium">{formatMoney(order.total_amount)}</td>
-                    <td className="px-4 py-3 text-gray-500">{formatDate(order.created_at)} {formatTime(order.created_at)}</td>
-                    <td className="px-4 py-3">{printStatusBadge(order)}</td>
+          <>
+            {/* Mobile: card list */}
+            <div className="md:hidden space-y-2">
+              {orders.map(order => (
+                <button
+                  key={order.id}
+                  onClick={() => setSelectedOrder(order)}
+                  className={`w-full text-left bg-white rounded-lg border p-3 transition-colors ${
+                    selectedOrder?.id === order.id ? 'border-[#16A34A] ring-1 ring-[#16A34A]' : 'border-gray-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-semibold">#{order.order_number}</span>
+                    <span className="font-semibold">{formatMoney(order.total_amount)}</span>
+                  </div>
+                  <p className="text-sm text-gray-700 truncate">{order.restaurants?.name}</p>
+                  <p className="text-sm text-gray-600 truncate">{order.customer_name} · <span className="capitalize">{order.order_type}</span></p>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {statusBadge(order.status)}
+                    {refundBadge(order)}
+                    {printStatusBadge(order)}
+                    <span className="text-xs text-gray-400 ml-auto">{formatDate(order.created_at)} {formatTime(order.created_at)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {/* Desktop: table */}
+            <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="px-4 py-3">Order#</th>
+                    <th className="px-4 py-3">Restaurant</th>
+                    <th className="px-4 py-3">Customer</th>
+                    <th className="px-4 py-3">Type</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Amount</th>
+                    <th className="px-4 py-3">Time</th>
+                    <th className="px-4 py-3">Print</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {orders.map(order => (
+                    <tr
+                      key={order.id}
+                      onClick={() => setSelectedOrder(order)}
+                      className={`border-t border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors ${selectedOrder?.id === order.id ? 'bg-green-50' : ''}`}
+                    >
+                      <td className="px-4 py-3 font-medium">#{order.order_number}</td>
+                      <td className="px-4 py-3">{order.restaurants?.name}</td>
+                      <td className="px-4 py-3">{order.customer_name}</td>
+                      <td className="px-4 py-3 capitalize">{order.order_type}</td>
+                      <td className="px-4 py-3">{statusBadge(order.status)} {refundBadge(order)}</td>
+                      <td className="px-4 py-3 font-medium">{formatMoney(order.total_amount)}</td>
+                      <td className="px-4 py-3 text-gray-500">{formatDate(order.created_at)} {formatTime(order.created_at)}</td>
+                      <td className="px-4 py-3">{printStatusBadge(order)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
-      {/* Detail panel */}
+      {/* Detail panel — docked sidebar on desktop, fullscreen overlay on mobile */}
       {selectedOrder && (
-        <div className="w-[400px] shrink-0">
+        <div className="fixed inset-0 z-40 md:relative md:inset-auto md:z-auto md:w-[400px] md:shrink-0">
           <OrderDetailPanel
             order={selectedOrder}
             onClose={() => setSelectedOrder(null)}
