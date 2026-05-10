@@ -22,6 +22,33 @@ function padDW(left, right) {
   return left + (gap > 0 ? ' '.repeat(gap) : ' ') + right
 }
 
+// Greedy word wrap. Lines fit within maxChars; a single word longer than
+// maxChars is broken mid-word so nothing overflows the column.
+function wrapText(text, maxChars) {
+  if (!text) return ['']
+  const words = text.split(' ')
+  const lines = []
+  let current = ''
+  for (const word of words) {
+    if (word.length > maxChars) {
+      if (current) { lines.push(current); current = '' }
+      let rest = word
+      while (rest.length > maxChars) {
+        lines.push(rest.slice(0, maxChars))
+        rest = rest.slice(maxChars)
+      }
+      current = rest
+    } else if ((current + (current ? ' ' : '') + word).length <= maxChars) {
+      current = current ? `${current} ${word}` : word
+    } else {
+      lines.push(current)
+      current = word
+    }
+  }
+  if (current) lines.push(current)
+  return lines
+}
+
 // Splits a single address string like "350 Ramapo Valley Rd, Oakland, NJ 07436"
 // into ["350 Ramapo Valley Rd", "Oakland, NJ 07436"]. If the address can't be
 // split confidently, returns the single line as-is.
@@ -203,29 +230,41 @@ export async function printOrder(printerIp, order, rest) {
               const qtyPrefix = `${qty}x  ` // 4+ chars; longer if qty has 2 digits
               const priceStr = fmt(lineTotal)
 
-              // Tier 1: qty + NAME + price all fit on one 2x line (≤24 chars)
-              if (qtyPrefix.length + rawName.length + 1 + priceStr.length <= DW) {
-                bold(true)
-                printer.addTextSize(2, 1)
-                printer.addText(padDW(qtyPrefix + rawName, priceStr) + '\n')
-                printer.addTextSize(1, 1)
-                bold(false)
-              } else if (qtyPrefix.length + rawName.length <= DW) {
-                // Tier 2: name fits at 2x but no room for price → 2x line
-                // for qty+name, then 1x line with right-aligned price.
-                bold(true)
-                printer.addTextSize(2, 1)
-                printer.addText(qtyPrefix + rawName + '\n')
-                printer.addTextSize(1, 1)
-                bold(false)
-                printer.addText(pad('', priceStr) + '\n')
+              // Wrap the name across as many 2x bold lines as needed.
+              // Line 1 reserves the right side for the price; continuation
+              // lines indent to align under the item name (4 spaces at 2x =
+              // same horizontal offset as "1x  " on line 1). If the first
+              // wrapped line is too long to share its line with the price,
+              // re-wrap that line tighter and push the overflow onto the
+              // continuation list.
+              const line1Capacity = DW - qtyPrefix.length - 1 - priceStr.length
+              const continuationCapacity = DW - qtyPrefix.length
+              const wrappedLines = wrapText(rawName, continuationCapacity)
+              const indent = ' '.repeat(qtyPrefix.length)
+
+              bold(true)
+              printer.addTextSize(2, 1)
+
+              let continuationStart
+              if (wrappedLines[0].length <= line1Capacity) {
+                printer.addText(padDW(qtyPrefix + wrappedLines[0], priceStr) + '\n')
+                continuationStart = 1
               } else {
-                // Tier 3: name too long even at 2x → fall back to 1x bold
-                // full line, same shape as the original receipt.
-                bold(true)
-                printer.addText(pad(qtyPrefix + rawName, priceStr) + '\n')
-                bold(false)
+                const firstLineWrapped = wrapText(wrappedLines[0], line1Capacity)
+                printer.addText(padDW(qtyPrefix + firstLineWrapped[0], priceStr) + '\n')
+                // Replace wrappedLines[0] with the overflow from the
+                // re-wrap; only firstLineWrapped[0] has been printed, so
+                // the loop must start at index 0 to render the rest.
+                wrappedLines.splice(0, 1, ...firstLineWrapped.slice(1))
+                continuationStart = 0
               }
+
+              for (let i = continuationStart; i < wrappedLines.length; i++) {
+                printer.addText(indent + wrappedLines[i] + '\n')
+              }
+
+              printer.addTextSize(1, 1)
+              bold(false)
 
               if (sizeName) {
                 printer.addText(`        ${sizeName}\n`)
