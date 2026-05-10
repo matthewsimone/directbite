@@ -20,6 +20,20 @@ function fmtDate(dateStr) {
   return `${date} · ${time}`
 }
 
+// "TODAY 7:15 PM" or "THU 5/7 7:15 PM" — UPPERCASE 3-letter day code.
+// Used only by the FUTURE ORDER banner.
+function fmtScheduledForReceipt(isoString) {
+  const d = new Date(isoString)
+  const now = new Date()
+  const isToday = d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  if (isToday) return `TODAY ${time}`
+  const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()]
+  return `${dayAbbr} ${d.getMonth() + 1}/${d.getDate()} ${time}`
+}
+
 /**
  * Print an order receipt on an Epson thermal printer (Slice-style format)
  * @param {string} printerIp - IP address of the printer
@@ -64,6 +78,24 @@ export async function printOrder(printerIp, order, rest) {
             const C = printer.ALIGN_CENTER
             const L = printer.ALIGN_LEFT
             const bold = (on) => printer.addTextStyle(false, false, on, printer.COLOR_1)
+
+            // ── 0. FUTURE ORDER BANNER ──
+            // Top-of-receipt visual flag for scheduled orders so the
+            // kitchen can tell instantly that this order is not for now.
+            // ASAP orders skip this section entirely.
+            if (order.scheduled_for) {
+              const eqLine = '='.repeat(W)
+              printer.addTextAlign(C)
+              printer.addText(eqLine + '\n')
+              bold(true)
+              printer.addTextSize(2, 2)
+              printer.addText('*** FUTURE ORDER ***\n')
+              printer.addText(`*** ${fmtScheduledForReceipt(order.scheduled_for)} ***\n`)
+              printer.addTextSize(1, 1)
+              bold(false)
+              printer.addText(eqLine + '\n')
+              printer.addText('\n')
+            }
 
             // ── 1. HEADER ──
             printer.addTextAlign(C)

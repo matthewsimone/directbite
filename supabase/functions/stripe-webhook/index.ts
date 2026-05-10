@@ -41,6 +41,36 @@ async function sendConfirmationEmail(orderId: string) {
   }
 }
 
+// ---------- Send restaurant email alert ----------
+async function sendRestaurantEmail(orderId: string) {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-order-restaurant-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+      },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+
+    if (!response.ok) {
+      console.error("Restaurant email failed:", await response.text());
+    } else {
+      const result = await response.json();
+      if (result.skipped) {
+        console.log("Restaurant email skipped (no notification_email configured)");
+      } else if (result.success) {
+        console.log(`Restaurant email sent for order ${orderId}`);
+      }
+    }
+  } catch (err: any) {
+    console.error("Restaurant email error:", err.message);
+  }
+}
+
 // ---------- Send SMS order alert ----------
 async function sendOrderSms(orderId: string) {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -90,8 +120,22 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     total_amount,
     special_instructions,
     include_utensils,
+    scheduled_for: rawScheduledFor,
     items,
   } = orderData;
+
+  // Validate scheduled_for. Defense-in-depth — client validates too, but
+  // we never want to lose a paid order over a bad timestamp. Invalid
+  // input falls back to null (ASAP) and is logged.
+  let scheduled_for: string | null = null;
+  if (rawScheduledFor != null && rawScheduledFor !== "") {
+    const parsed = new Date(rawScheduledFor);
+    if (isNaN(parsed.getTime())) {
+      console.warn(`[stripe-webhook] invalid scheduled_for "${rawScheduledFor}" on payment intent ${paymentIntentId} — falling back to ASAP`);
+    } else {
+      scheduled_for = parsed.toISOString();
+    }
+  }
 
   // Idempotency check — prevent duplicate orders from webhook retries
   // Only skip if the order AND its items are fully written
@@ -141,6 +185,8 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
       stripe_charge_id: chargeId,
       special_instructions: special_instructions || null,
       include_utensils: include_utensils || false,
+      scheduled_for,
+      accepted_at: null,
     })
     .select()
     .single();
@@ -272,11 +318,14 @@ serve(async (req: Request) => {
 
         // Printing handled by tablet via Epson ePOS SDK (auto-prints on new order detection)
 
-        // Send confirmation email
+        // Send confirmation email to customer
         await sendConfirmationEmail(order.id);
 
         // Send SMS alert to restaurant (if enabled)
         await sendOrderSms(order.id);
+
+        // Send order email to restaurant (if notification_email configured)
+        await sendRestaurantEmail(order.id);
 
         break;
       }

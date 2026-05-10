@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { useMenu } from '../../hooks/useMenu'
 import { usePromotion } from '../../hooks/usePromotion'
+import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
 import { useCart } from '../../hooks/useCart'
 import { useWalletDetection } from '../../hooks/useWalletDetection'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
@@ -19,7 +20,18 @@ import CartSheet from '../../components/CartSheet'
 export default function MenuPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { restaurant, isOpen, nextOpenTime, loading: restLoading, error } = useRestaurant(slug)
+  const { restaurant, hours, isOpen, nextOpenTime, loading: restLoading, error } = useRestaurant(slug)
+
+  // First bookable slot for the closed-state banner. Uses a 30-min lead
+  // floor — checkout will recompute against the order-type's prep time.
+  const nextSlotLabel = (() => {
+    if (isOpen || !hours || hours.length === 0) return null
+    const dates = getAvailableDates(hours, { leadTimeMinutes: 30 })
+    if (dates.length === 0) return null
+    const slots = getAvailableTimeSlots(dates[0].date, hours, { leadTimeMinutes: 30 })
+    if (slots.length === 0) return null
+    return formatScheduledLabel(slots[0].value)
+  })()
   // Pre-detect Apple Pay / Google Pay availability (caches in sessionStorage)
   useWalletDetection(restaurant?.stripe_account_id)
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
@@ -140,13 +152,12 @@ export default function MenuPage() {
         toast.error('This item is currently unavailable')
         return
       }
-      if (!isOpen) {
-        toast.error('Ordering is currently closed')
-        return
-      }
+      // Closed restaurants no longer block — users can browse, add to cart,
+      // and pick a future slot at checkout. The closed-hours banner above
+      // explains the state.
       setSelectedItem(item)
     },
-    [isOpen]
+    []
   )
 
   const handleAddToCart = useCallback(
@@ -215,6 +226,23 @@ export default function MenuPage() {
     <div className="min-h-screen bg-white pb-24">
       <PromotionBanner promotion={promotion} />
       <HeroSection restaurant={restaurant} isOpen={isOpen} nextOpenTime={nextOpenTime} />
+      {!isOpen && nextSlotLabel && (
+        <div className="bg-amber-50 border-y border-amber-200 px-6 py-4">
+          <div className="max-w-[1100px] mx-auto flex items-start gap-3 text-amber-900">
+            <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="text-base font-semibold">
+                Next Available Order: {nextSlotLabel}
+              </p>
+              <p className="mt-1 text-sm text-amber-800/90">
+                Browse the menu and place an order for later — we'll have it ready when we open.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Popular Items section */}
       {!searchQuery && items.some(i => i.is_popular && i.is_available) && (
         <div className="max-w-[1100px] mx-auto px-6 sm:px-8 pt-6">

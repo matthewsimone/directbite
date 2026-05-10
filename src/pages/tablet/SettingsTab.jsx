@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
@@ -62,6 +63,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [savedPrinter, setSavedPrinter] = useState(false)
   const [savingSms, setSavingSms] = useState(false)
   const [savedSms, setSavedSms] = useState(false)
+  const [savingNotifyEmail, setSavingNotifyEmail] = useState(false)
+  const [savedNotifyEmail, setSavedNotifyEmail] = useState(false)
 
   // Local state for editable fields
   const [pickupMinutes, setPickupMinutes] = useState(restaurant?.estimated_pickup_minutes || 30)
@@ -82,6 +85,9 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
   const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
   const [smsPhone, setSmsPhone] = useState(restaurant?.sms_phone || '')
+  const [notificationEmail, setNotificationEmail] = useState(restaurant?.notification_email || '')
+
+  const [bulkUpdating, setBulkUpdating] = useState(false)
 
   useEffect(() => {
     fetchHours()
@@ -207,6 +213,50 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     setTimeout(() => setSavedDelivery(false), 2000)
   }
 
+  // End-of-shift bulk action: flip all in-progress orders for this
+  // restaurant to 'complete' (the DB enum value — not 'completed') in
+  // a single update. Pure status mutation — no reprint, no SMS, no
+  // webhook. RLS already restricts to this tablet's restaurant_id.
+  async function handleBulkComplete() {
+    if (!restaurant || bulkUpdating) return
+    setBulkUpdating(true)
+    try {
+      const { count, error: countErr } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurant.id)
+        .eq('status', 'in_progress')
+      if (countErr) {
+        console.error('[BulkComplete] count failed', countErr)
+        toast.error(`Couldn't load count: ${countErr.message}`)
+        return
+      }
+      const n = count || 0
+      if (n === 0) {
+        toast('No in-progress orders to complete.')
+        return
+      }
+      if (!confirm(`Mark all ${n} in-progress order${n === 1 ? '' : 's'} as completed? This cannot be undone.`)) return
+
+      const { error: updErr } = await supabase
+        .from('orders')
+        .update({ status: 'complete' })
+        .eq('restaurant_id', restaurant.id)
+        .eq('status', 'in_progress')
+      if (updErr) {
+        console.error('[BulkComplete] update failed', updErr)
+        toast.error(`Failed to mark complete: ${updErr.message}`)
+        return
+      }
+      toast.success(`Marked ${n} order${n === 1 ? '' : 's'} as completed`)
+    } catch (err) {
+      console.error('[BulkComplete] exception', err)
+      toast.error(`Unexpected error: ${err?.message || err}`)
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
   async function saveTax() {
     setSavingTax(true)
     setSavedTax(false)
@@ -229,6 +279,20 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   return (
     <div className="h-full overflow-y-auto p-4">
       <div className="max-w-lg mx-auto space-y-4">
+        {/* End of shift — bulk-complete in-progress orders */}
+        <Section title="End of Shift">
+          <p className="text-sm text-gray-600">
+            Bulk-mark every order currently In Progress as Completed. Use at the end of a shift to clear out anything that didn't get marked done individually.
+          </p>
+          <button
+            onClick={handleBulkComplete}
+            disabled={bulkUpdating}
+            className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] disabled:opacity-50 transition-colors"
+          >
+            {bulkUpdating ? 'Updating...' : 'Mark all in-progress as completed'}
+          </button>
+        </Section>
+
         {/* Restaurant Info (read only) */}
         <Section title="Restaurant Info">
           <div className="space-y-3">
@@ -517,6 +581,29 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               <p className="text-xs text-gray-400 mt-1">US number. You'll receive a text for every new order.</p>
             </div>
           )}
+        </Section>
+
+        {/* Notification Email */}
+        <Section title="Order Notification Email" onSave={async () => {
+          setSavingNotifyEmail(true); setSavedNotifyEmail(false)
+          const trimmed = notificationEmail.trim()
+          const { data } = await supabase.from('restaurants').update({
+            notification_email: trimmed || null,
+          }).eq('id', restaurant.id).select().single()
+          if (data) setRestaurant(data)
+          setSavingNotifyEmail(false); setSavedNotifyEmail(true)
+          setTimeout(() => setSavedNotifyEmail(false), 2000)
+        }} saving={savingNotifyEmail} saved={savedNotifyEmail}>
+          <div>
+            <input
+              type="email"
+              value={notificationEmail}
+              onChange={e => setNotificationEmail(e.target.value)}
+              placeholder="orders@yourrestaurant.com"
+              className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+            />
+            <p className="text-xs text-gray-400 mt-1">We'll email this address whenever a new order comes in. Leave blank to disable.</p>
+          </div>
         </Section>
 
         {/* Website Settings (paid add-on) */}

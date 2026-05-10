@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 export function useRestaurant(slug) {
@@ -9,39 +9,62 @@ export function useRestaurant(slug) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Tracks whether the component is still mounted so async setState calls
+  // after unmount become no-ops. Set true on every (re)mount to handle
+  // React StrictMode's mount→unmount→mount cycle in dev.
+  const mountedRef = useRef(true)
   useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  const load = useCallback(async () => {
     if (!slug) return
     if (!supabase) {
-      setError('Supabase is not configured. Check your .env file.')
-      setLoading(false)
+      if (mountedRef.current) {
+        setError('Supabase is not configured. Check your .env file.')
+        setLoading(false)
+      }
       return
     }
 
-    async function fetch() {
+    if (mountedRef.current) {
       setLoading(true)
+      setError(null)
+    }
+
+    try {
       const { data: rest, error: restErr } = await supabase
         .from('restaurants')
         .select('*')
         .eq('slug', slug)
         .single()
 
+      if (!mountedRef.current) return
       if (restErr || !rest) {
         setError(restErr?.message || 'Restaurant not found')
-        setLoading(false)
         return
       }
-
       setRestaurant(rest)
 
-      const { data: hoursData } = await supabase
+      const { data: hoursData, error: hoursErr } = await supabase
         .from('hours')
         .select('*')
         .eq('restaurant_id', rest.id)
         .order('day_of_week')
 
+      if (!mountedRef.current) return
+      if (hoursErr) {
+        // Hours failure is non-fatal — restaurant is loaded; show as
+        // closed with no nextOpenTime rather than blocking the page.
+        console.error('useRestaurant: hours load failed', hoursErr)
+        setHours([])
+        setIsOpen(false)
+        setNextOpenTime(null)
+        return
+      }
       setHours(hoursData || [])
 
-      // Check if currently open
       const now = new Date()
       const dayOfWeek = now.getDay()
       const currentTime = now.toLocaleTimeString('en-US', {
@@ -60,29 +83,49 @@ export function useRestaurant(slug) {
 
       setIsOpen(open)
 
-      // Find next open time if currently closed
       if (!open) {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+        let resolved = null
         for (let i = 0; i < 7; i++) {
           const checkDay = (dayOfWeek + i) % 7
           const h = (hoursData || []).find(hr => hr.day_of_week === checkDay)
           if (h?.is_open && h.open_time) {
             if (i === 0 && currentTime < h.open_time) {
-              setNextOpenTime(`today at ${formatTime(h.open_time)}`)
+              resolved = `today at ${formatTime(h.open_time)}`
               break
             } else if (i > 0) {
-              setNextOpenTime(`${dayNames[checkDay]} at ${formatTime(h.open_time)}`)
+              resolved = `${dayNames[checkDay]} at ${formatTime(h.open_time)}`
               break
             }
           }
         }
+        setNextOpenTime(resolved)
+      } else {
+        setNextOpenTime(null)
       }
-
-      setLoading(false)
+    } catch (err) {
+      if (!mountedRef.current) return
+      console.error('useRestaurant: load failed', err)
+      setError(err?.message || 'Failed to load restaurant')
+    } finally {
+      if (mountedRef.current) setLoading(false)
     }
-
-    fetch()
   }, [slug])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // Phone backgrounded → returned: re-run the fetch in case the in-flight
+  // request was suspended and never resolved, or hours rolled over while
+  // away (open/closed status drifts).
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [load])
 
   return { restaurant, hours, isOpen, nextOpenTime, loading, error }
 }

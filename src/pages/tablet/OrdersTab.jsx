@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { printOrder } from '../../utils/epsonPrint'
+import { formatPhone } from '../../utils/format'
+import { formatScheduledLabel } from '../../utils/scheduling'
 
 // ── Format helpers ──
 function formatTime(dateStr) {
@@ -22,6 +24,15 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   const isNew = order.status === 'new'
   const showRetry = (order.print_status === 'failed' || order.print_status === 'pending') && onRetryPrint
 
+  // Customer info line. Each segment is independently optional so missing
+  // phone or address gracefully degrades. delivery_address is only
+  // included for delivery orders; for pickup it's omitted even if present.
+  const customerInfo = [
+    order.customer_name,
+    order.customer_phone ? formatPhone(order.customer_phone) : null,
+    isDelivery && order.delivery_address ? order.delivery_address : null,
+  ].filter(Boolean).join(', ')
+
   return (
     <div className={`w-full text-left bg-white rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isNew ? 'animate-pulse-subtle' : ''}`}>
       <button
@@ -41,7 +52,17 @@ function OrderCard({ order, onTap, onRetryPrint }) {
           <span className="font-bold text-sm tracking-wide uppercase">
             {isDelivery ? 'DELIVERY' : 'PICKUP'}
           </span>
+          {order.scheduled_for && (
+            <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-300 text-black text-xs font-semibold whitespace-nowrap">
+              Scheduled {formatScheduledLabel(order.scheduled_for)}
+            </span>
+          )}
         </div>
+        {customerInfo && (
+          <div className="text-sm text-gray-500 mb-1 truncate">
+            {customerInfo}
+          </div>
+        )}
         <div className="flex justify-between items-center text-gray-600 text-sm">
           <div className="flex items-center gap-1.5">
             <span className="font-medium text-gray-900">#{order.order_number}</span>
@@ -151,9 +172,16 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         return
       }
     } else {
+      // accepted_at stamps the moment the restaurant first acts on a new
+      // order — both Accept (scheduled) and Mark In Progress count as
+      // acceptance. Don't overwrite on later transitions.
+      const updates = { status: newStatus }
+      if (order.status === 'new' && (newStatus === 'scheduled' || newStatus === 'in_progress')) {
+        updates.accepted_at = new Date().toISOString()
+      }
       const { error } = await supabase
         .from('orders')
-        .update({ status: newStatus })
+        .update(updates)
         .eq('id', order.id)
 
       if (error) {
@@ -252,6 +280,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         </div>
         <span className={`ml-auto px-3 py-1 rounded-full text-xs font-semibold uppercase ${
           order.status === 'new' ? 'bg-yellow-100 text-yellow-800' :
+          order.status === 'scheduled' ? 'bg-amber-200 text-amber-900' :
           order.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
           order.status === 'complete' ? 'bg-green-100 text-green-800' :
           'bg-red-100 text-red-800'
@@ -262,6 +291,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-6" style={{ WebkitOverflowScrolling: 'touch' }}>
+        {order.scheduled_for && (
+          <div className="bg-amber-100 border border-amber-300 rounded-xl px-4 py-3">
+            <p className="text-base font-semibold text-amber-900">
+              Scheduled for: {formatScheduledLabel(order.scheduled_for)}
+            </p>
+          </div>
+        )}
+
         {/* Customer info */}
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Customer</h3>
@@ -419,7 +456,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         {/* Status options */}
         {showStatusOptions && !showCancelConfirm && (
           <div className="bg-gray-50 p-4 rounded-xl space-y-3">
-            {order.status === 'new' && (
+            {order.status === 'new' && !order.scheduled_for && (
               <button
                 onClick={() => updateStatus('in_progress')}
                 disabled={updating}
@@ -428,7 +465,16 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 Mark In Progress
               </button>
             )}
-            {order.status === 'in_progress' && (
+            {order.status === 'new' && order.scheduled_for && (
+              <button
+                onClick={() => updateStatus('scheduled')}
+                disabled={updating}
+                className="w-full h-12 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-50"
+              >
+                Accept
+              </button>
+            )}
+            {(order.status === 'in_progress' || order.status === 'scheduled') && (
               <button
                 onClick={() => updateStatus('complete')}
                 disabled={updating}
@@ -560,6 +606,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
 
   const subTabs = [
     { key: 'new', label: 'New' },
+    { key: 'scheduled', label: 'Scheduled' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'complete', label: 'Complete' },
   ]
@@ -603,10 +650,21 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     setSelectedOrder(updatedOrder)
   }
 
-  const filteredOrders = orders.filter(o => {
-    if (subTab === 'complete') return o.status === 'complete' || o.status === 'cancelled'
-    return o.status === subTab
-  })
+  const filteredOrders = (() => {
+    const filtered = orders.filter(o => {
+      if (subTab === 'complete') return o.status === 'complete' || o.status === 'cancelled'
+      return o.status === subTab
+    })
+    // Scheduled tab: next-up first so the kitchen sees the most urgent
+    // upcoming order at the top. Other tabs keep the polling-query order
+    // (created_at DESC).
+    if (subTab === 'scheduled') {
+      return [...filtered].sort(
+        (a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime()
+      )
+    }
+    return filtered
+  })()
 
   if (selectedOrder) {
     return (

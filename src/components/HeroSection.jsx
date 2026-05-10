@@ -23,11 +23,6 @@ export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
               <span>Delivery: ~{restaurant.estimated_delivery_minutes} min</span>
             )}
           </div>
-          {!isOpen && nextOpenTime && (
-            <p className="mt-3 text-sm text-red-500 font-medium">
-              Opens {nextOpenTime}
-            </p>
-          )}
         </div>
         {/* Right: image */}
         <div className="w-[60%] h-72">
@@ -73,11 +68,6 @@ export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
               <span>Delivery: ~{restaurant.estimated_delivery_minutes} min</span>
             )}
           </div>
-          {!isOpen && nextOpenTime && (
-            <p className="mt-2 text-sm text-red-500 font-medium">
-              Opens {nextOpenTime}
-            </p>
-          )}
         </div>
       </div>
     </div>

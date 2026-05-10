@@ -164,7 +164,7 @@ export function useOrderPolling(restaurant, hours) {
         .from('orders')
         .select('*')
         .eq('restaurant_id', restaurant.id)
-        .in('status', ['new', 'in_progress', 'complete', 'cancelled'])
+        .in('status', ['new', 'in_progress', 'scheduled', 'complete', 'cancelled'])
         .order('created_at', { ascending: false })
 
       if (error) {

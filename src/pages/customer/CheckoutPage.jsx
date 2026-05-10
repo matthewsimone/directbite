@@ -15,6 +15,8 @@ import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
 import { haversineDistanceMiles, calculateDeliveryFeeCents } from '../../utils/haversine'
+import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
+import TimePickerModal from '../../components/TimePickerModal'
 // @googlemaps/js-api-loader is dynamically imported when needed
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
 import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
@@ -22,29 +24,42 @@ import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
 // ---------- Tip Selector ----------
-function TipSelector({ subtotal, onTipChange }) {
-  const [tipType, setTipType] = useState('10')
+// Order-type-dependent default: pickup → "No Tip"; delivery → 15%. Once the
+// user taps any option, userSelectedRef latches on for the session and
+// further orderType switches no longer reset the selection.
+function TipSelector({ subtotal, orderType, onTipChange }) {
+  const [tipType, setTipType] = useState(orderType === 'delivery' ? '15' : 'none')
   const [customTip, setCustomTip] = useState('')
+  const userSelectedRef = useRef(false)
 
-  // Set default 10% tip on mount
+  // Apply default whenever orderType (or subtotal) changes, unless the
+  // user has manually selected. Replaces the prior mount-only effect.
   useEffect(() => {
-    if (subtotal > 0) {
-      onTipChange(Math.round(subtotal * 0.1 * 100) / 100)
+    if (userSelectedRef.current) return
+    if (orderType === 'delivery') {
+      setTipType('15')
+      onTipChange(subtotal > 0 ? Math.round(subtotal * 0.15 * 100) / 100 : 0)
+    } else {
+      setTipType('none')
+      onTipChange(0)
     }
-  }, [])
+  }, [orderType, subtotal])
 
   function selectPreset(pct) {
+    userSelectedRef.current = true
     setTipType(pct)
     setCustomTip('')
     onTipChange(Math.round(subtotal * (Number(pct) / 100) * 100) / 100)
   }
 
   function selectCustom() {
+    userSelectedRef.current = true
     setTipType('custom')
     onTipChange(Number(customTip) || 0)
   }
 
   function selectNone() {
+    userSelectedRef.current = true
     setTipType('none')
     setCustomTip('')
     onTipChange(0)
@@ -493,11 +508,16 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 export default function CheckoutPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { restaurant, loading: restLoading } = useRestaurant(slug)
+  const { restaurant, hours, isOpen, loading: restLoading } = useRestaurant(slug)
   const { promotion } = usePromotion(restaurant?.id)
   const { items, subtotal, clearCart } = useCart()
 
   const [orderType, setOrderType] = useState('pickup')
+  // null = ASAP order; ISO timestamp = scheduled future order. The button
+  // label reflects this directly; the modal handles its own internal
+  // selection state and only writes back on Update.
+  const [scheduledFor, setScheduledFor] = useState(null)
+  const [showTimePicker, setShowTimePicker] = useState(false)
   const [includeUtensils, setIncludeUtensils] = useState(false)
   const [specialInstructions, setSpecialInstructions] = useState('')
   const [tip, setTip] = useState(0)
@@ -546,6 +566,24 @@ export default function CheckoutPage() {
       ? restaurant?.estimated_pickup_minutes
       : restaurant?.estimated_delivery_minutes
 
+  // Schedule lead time floors at 30 min (locked spec) but honors longer
+  // prep estimates so we don't offer slots the kitchen can't honor.
+  const leadTimeMinutes = Math.max(Number(estimatedTime) || 30, 30)
+
+  // Pre-populate scheduledFor with the first available slot when the
+  // restaurant is closed — there's no ASAP option in that state, so the
+  // button must already show a real future time.
+  useEffect(() => {
+    if (!restaurant) return
+    if (isOpen) return
+    if (scheduledFor) return
+    const dates = getAvailableDates(hours, { leadTimeMinutes })
+    if (dates.length === 0) return
+    const slots = getAvailableTimeSlots(dates[0].date, hours, { leadTimeMinutes })
+    if (slots.length === 0) return
+    setScheduledFor(slots[0].value)
+  }, [restaurant, isOpen, hours, leadTimeMinutes, scheduledFor])
+
   // Build full delivery address string
   const fullDeliveryAddress = orderType === 'delivery' && deliveryAddress.trim()
     ? `${deliveryAddress.trim()}${deliveryApt.trim() ? `, Apt ${deliveryApt.trim()}` : ''}`
@@ -555,6 +593,7 @@ export default function CheckoutPage() {
   const buildOrderData = useCallback(() => ({
     restaurant_id: restaurant?.id,
     order_type: orderType,
+    scheduled_for: scheduledFor,
     customer_name: customerName.trim(),
     customer_phone: customerPhone.trim(),
     customer_email: customerEmail.trim(),
@@ -585,7 +624,7 @@ export default function CheckoutPage() {
         placement_type: t.placementType || 'pizza',
       })),
     })),
-  }), [restaurant?.id, orderType, customerName, customerPhone, customerEmail, fullDeliveryAddress, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items])
+  }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items])
 
   // Load Google Maps JS API when delivery selected
   useEffect(() => {
@@ -872,11 +911,35 @@ export default function CheckoutPage() {
               </button>
             )}
           </div>
-          <p className="mt-2 text-sm text-gray-500">
-            {orderType === 'pickup'
-              ? `Ready in approximately ${restaurant.estimated_pickup_minutes} mins`
-              : `Delivery in approximately ${restaurant.estimated_delivery_minutes} mins`}
-          </p>
+          {!scheduledFor && isOpen && (
+            <p className="mt-2 text-sm text-gray-500">
+              {orderType === 'pickup'
+                ? `Ready in approximately ${restaurant.estimated_pickup_minutes} mins`
+                : `Delivery in approximately ${restaurant.estimated_delivery_minutes} mins`}
+            </p>
+          )}
+        </div>
+
+        {/* When */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
+            When
+          </h3>
+          <button
+            type="button"
+            onClick={() => setShowTimePicker(true)}
+            className="w-full flex items-center gap-3 px-4 py-3.5 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+          >
+            <svg className="w-5 h-5 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-base text-gray-900 font-medium text-left">
+              {scheduledFor ? formatScheduledLabel(scheduledFor) : 'ASAP'}
+            </span>
+            <svg className="ml-auto w-5 h-5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
 
         {/* Delivery Address */}
@@ -957,7 +1020,7 @@ export default function CheckoutPage() {
           </button>
         </div>
 
-        <TipSelector subtotal={discountedSubtotal} onTipChange={setTip} />
+        <TipSelector subtotal={discountedSubtotal} orderType={orderType} onTipChange={setTip} />
 
         {/* Order Summary */}
         <div>
@@ -1113,6 +1176,17 @@ export default function CheckoutPage() {
           )}
         </div>
       </div>
+
+      <TimePickerModal
+        open={showTimePicker}
+        onClose={() => setShowTimePicker(false)}
+        onUpdate={value => setScheduledFor(value)}
+        orderType={orderType}
+        hours={hours}
+        isOpen={isOpen}
+        leadTimeMinutes={leadTimeMinutes}
+        scheduledFor={scheduledFor}
+      />
     </div>
   )
 }

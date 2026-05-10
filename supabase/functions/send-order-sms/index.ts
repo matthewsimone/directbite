@@ -27,6 +27,20 @@ function formatMoney(amount: number): string {
   return `$${Number(amount || 0).toFixed(2)}`;
 }
 
+// "Today 7:15 PM" or "Thu 5/7 7:15 PM" — proper-case 3-letter day code,
+// no "at" because SMS is character-tight. Mirrors the email helper.
+function formatScheduledShort(isoString: string): string {
+  const d = new Date(isoString);
+  const now = new Date();
+  const isToday = d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+  if (isToday) return `Today ${time}`;
+  const dayAbbr = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
+  return `${dayAbbr} ${d.getMonth() + 1}/${d.getDate()} ${time}`;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -89,8 +103,16 @@ serve(async (req: Request) => {
     // Build SMS message
     const orderType = order.order_type.toUpperCase();
     const tabletUrl = `directbite.co/${restaurant.slug}/tablet`;
+    const scheduledLabel = order.scheduled_for ? formatScheduledShort(order.scheduled_for) : null;
 
-    let message = `New ${orderType} order #${order.order_number}\n`;
+    let firstLine: string;
+    if (scheduledLabel) {
+      firstLine = `New SCHEDULED ${orderType} order #${order.order_number} for ${scheduledLabel}`;
+    } else {
+      firstLine = `New ${orderType} order #${order.order_number}`;
+    }
+
+    let message = `${firstLine}\n`;
     message += `${formatMoney(order.total_amount)} - ${order.customer_name} - ${formatPhone(order.customer_phone)}\n`;
 
     if (order.order_type === "delivery" && order.delivery_address) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 export function useMenu(restaurantId) {
@@ -10,12 +10,19 @@ export function useMenu(restaurantId) {
   const [itemToppingGroups, setItemToppingGroups] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // See useRestaurant for rationale — guard async setState against
+  // post-unmount + StrictMode double-invocation.
+  const mountedRef = useRef(true)
   useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  const load = useCallback(async () => {
     if (!restaurantId || !supabase) return
+    if (mountedRef.current) setLoading(true)
 
-    async function fetch() {
-      setLoading(true)
-
+    try {
       // item_sizes and item_topping_groups have no restaurant_id column,
       // so we filter via an inner-join on menu_items. Without this, the
       // queries pull globally and hit PostgREST's 1000-row default cap —
@@ -30,18 +37,36 @@ export function useMenu(restaurantId) {
         supabase.from('item_topping_groups').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId),
       ])
 
+      if (!mountedRef.current) return
+
       setCategories(catRes.data || [])
       setItems(itemRes.data || [])
       setSizes(sizeRes.data || [])
       setToppingGroups(tgRes.data || [])
       setToppings(topRes.data || [])
       setItemToppingGroups(itgRes.data || [])
-
-      setLoading(false)
+    } catch (err) {
+      if (mountedRef.current) {
+        console.error('useMenu: load failed', err)
+      }
+    } finally {
+      if (mountedRef.current) setLoading(false)
     }
-
-    fetch()
   }, [restaurantId])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // Phone backgrounded → returned: re-run the fetch in case the in-flight
+  // request was suspended and never resolved.
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') load()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [load])
 
   function getItemsByCategory(categoryId) {
     return items.filter(i => i.category_id === categoryId)
