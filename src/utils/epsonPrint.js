@@ -280,13 +280,12 @@ export async function printOrder(printerIp, order, rest) {
               bold(false)
 
               // Sub-item lines (size, modifiers, per-item Note) print at
-              // 1x2 — single-width keeps the column count at 48 so wrapping
-              // and indent math don't change, but doubled height makes
-              // them legible from across the kitchen.
+              // 1x1 bold all-caps. Bold + caps gives kitchen legibility
+              // without the receipt-length cost of 1x2 height stretch.
               if (sizeName) {
-                printer.addTextSize(1, 2)
-                printer.addText(`        ${sizeName}\n`)
-                printer.addTextSize(1, 1)
+                bold(true)
+                printer.addText(`        ${sizeName.toUpperCase()}\n`)
+                bold(false)
               }
 
               // Modifiers — bare `+` prefix (no space after) so the plus
@@ -301,9 +300,9 @@ export async function printOrder(printerIp, order, rest) {
                 const isAddon = (t.placement_type || t.placementType) === 'addon'
                 const placement = isAddon ? '' : `${(t.placement || '').toUpperCase()}: `
                 const tPriceStr = tPrice === 0 ? 'Free' : `+${fmt(tPrice)}${qty > 1 ? ' ea' : ''}`
-                printer.addTextSize(1, 2)
-                printer.addText(`        +${placement}${tName}  ${tPriceStr}\n`)
-                printer.addTextSize(1, 1)
+                bold(true)
+                printer.addText(`        +${placement}${tName.toUpperCase()}  ${tPriceStr}\n`)
+                bold(false)
               }
 
               // Per-item special instructions — sits with the item it
@@ -311,9 +310,9 @@ export async function printOrder(printerIp, order, rest) {
               // Section 6). Same 8-space indent as size and modifiers.
               const instructions = item.special_instructions || item.specialInstructions
               if (instructions) {
-                printer.addTextSize(1, 2)
-                printer.addText(`        Note: ${instructions}\n`)
-                printer.addTextSize(1, 1)
+                bold(true)
+                printer.addText(`        NOTE: ${instructions.toUpperCase()}\n`)
+                bold(false)
               }
 
               // Dotted divider between items.
