@@ -106,6 +106,7 @@ export async function printOrder(printerIp, order, rest) {
           try {
             const sep = '-'.repeat(W)
             const eqLine = '='.repeat(W)
+            const dotSep = '- '.repeat(W / 2)
             const items = order.items || []
             const C = printer.ALIGN_CENTER
             const L = printer.ALIGN_LEFT
@@ -186,6 +187,10 @@ export async function printOrder(printerIp, order, rest) {
             // Item name + qty + price at 2x1 bold uppercase — the single
             // biggest legibility win. Three-tier width fallback handles
             // long item names without overflowing the 24-char 2x line.
+            // Column header anchors the price column for the kitchen.
+            printer.addText(pad('Qty  Item(s)', 'Price') + '\n')
+            printer.addText(sep + '\n')
+
             for (let idx = 0; idx < items.length; idx++) {
               const item = items[idx]
               const topsTotal = (item.order_item_toppings || item.toppings || []).reduce(
@@ -223,12 +228,14 @@ export async function printOrder(printerIp, order, rest) {
               }
 
               if (sizeName) {
-                printer.addText(`    ${sizeName}\n`)
+                printer.addText(`        ${sizeName}\n`)
               }
 
-              // Modifiers — `> ` ASCII prefix (chosen over `→` for codepage
-              // safety). LEFT/RIGHT/WHOLE placement is preserved; addons
-              // skip the placement label.
+              // Modifiers — bare `+` prefix (no space after) so the plus
+              // sits directly under the item-name column. 8-space indent
+              // aligns the `+` with the start of the 2x item name (4 chars
+              // at 2x = 8 chars of 1x width). LEFT/RIGHT/WHOLE placement
+              // preserved; addons skip the placement label.
               const toppings = item.order_item_toppings || item.toppings || []
               for (const t of toppings) {
                 const tName = t.topping_name || t.toppingName
@@ -236,20 +243,20 @@ export async function printOrder(printerIp, order, rest) {
                 const isAddon = (t.placement_type || t.placementType) === 'addon'
                 const placement = isAddon ? '' : `${(t.placement || '').toUpperCase()}: `
                 const tPriceStr = tPrice === 0 ? 'Free' : `+${fmt(tPrice)}${qty > 1 ? ' ea' : ''}`
-                printer.addText(`    > ${placement}${tName}  ${tPriceStr}\n`)
+                printer.addText(`        +${placement}${tName}  ${tPriceStr}\n`)
               }
 
-              // Per-item special instructions — italic-style "Note:" prefix
-              // sits with the item it belongs to (distinct from the
-              // order-level NOTE block in Section 6).
+              // Per-item special instructions — sits with the item it
+              // belongs to (distinct from the order-level NOTE block in
+              // Section 6). Same 8-space indent as size and modifiers.
               const instructions = item.special_instructions || item.specialInstructions
               if (instructions) {
-                printer.addText(`    Note: ${instructions}\n`)
+                printer.addText(`        Note: ${instructions}\n`)
               }
 
-              // Single blank line between items (no dotted divider).
+              // Dotted divider between items.
               if (idx < items.length - 1) {
-                printer.addText('\n')
+                printer.addText(dotSep + '\n')
               }
             }
 
