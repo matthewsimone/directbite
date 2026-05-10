@@ -805,6 +805,7 @@ export default function CheckoutPage() {
         orderNumber: null, // Will show "Processing..." until webhook writes it
         customerName: customerName.trim(),
         orderType,
+        scheduledFor,
         estimatedTime,
         items,
         subtotal: fullSubtotal,

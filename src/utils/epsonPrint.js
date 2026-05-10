@@ -21,17 +21,24 @@ function fmtDate(dateStr) {
 }
 
 // "TODAY 7:15 PM" or "THU 5/7 7:15 PM" — UPPERCASE 3-letter day code.
-// Used only by the FUTURE ORDER banner.
+// Used only by the FUTURE ORDER banner. Explicit America/New_York
+// timezone so the receipt is right even if the tablet's locale drifts
+// (defensive — current tablets are physically in NJ).
 function fmtScheduledForReceipt(isoString) {
   const d = new Date(isoString)
-  const now = new Date()
-  const isToday = d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
-  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-  if (isToday) return `TODAY ${time}`
-  const dayAbbr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][d.getDay()]
-  return `${dayAbbr} ${d.getMonth() + 1}/${d.getDate()} ${time}`
+  const tz = 'America/New_York'
+  const dateOpts = { timeZone: tz, year: 'numeric', month: 'numeric', day: 'numeric' }
+  const todayKey = new Intl.DateTimeFormat('en-US', dateOpts).format(new Date())
+  const scheduledKey = new Intl.DateTimeFormat('en-US', dateOpts).format(d)
+  const time = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(d)
+  if (todayKey === scheduledKey) return `TODAY ${time}`
+  const dayShort = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(d)
+  const monthDay = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, month: 'numeric', day: 'numeric',
+  }).format(d)
+  return `${dayShort.toUpperCase()} ${monthDay} ${time}`
 }
 
 /**
@@ -79,24 +86,6 @@ export async function printOrder(printerIp, order, rest) {
             const L = printer.ALIGN_LEFT
             const bold = (on) => printer.addTextStyle(false, false, on, printer.COLOR_1)
 
-            // ── 0. FUTURE ORDER BANNER ──
-            // Top-of-receipt visual flag for scheduled orders so the
-            // kitchen can tell instantly that this order is not for now.
-            // ASAP orders skip this section entirely.
-            if (order.scheduled_for) {
-              const eqLine = '='.repeat(W)
-              printer.addTextAlign(C)
-              printer.addText(eqLine + '\n')
-              bold(true)
-              printer.addTextSize(2, 2)
-              printer.addText('*** FUTURE ORDER ***\n')
-              printer.addText(`*** ${fmtScheduledForReceipt(order.scheduled_for)} ***\n`)
-              printer.addTextSize(1, 1)
-              bold(false)
-              printer.addText(eqLine + '\n')
-              printer.addText('\n')
-            }
-
             // ── 1. HEADER ──
             printer.addTextAlign(C)
             bold(true)
@@ -106,6 +95,23 @@ export async function printOrder(printerIp, order, rest) {
             bold(false)
             if (rest.address) printer.addText(rest.address + '\n')
             if (rest.phone) printer.addText(rest.phone + '\n')
+
+            // ── 1b. FUTURE ORDER BANNER ──
+            // Visual flag for scheduled orders so the kitchen sees the
+            // future-time call-out right under the restaurant header.
+            // ASAP orders skip this section entirely.
+            if (order.scheduled_for) {
+              const eqLine = '='.repeat(W)
+              printer.addText(eqLine + '\n')
+              bold(true)
+              printer.addTextSize(2, 2)
+              printer.addText('*** FUTURE ORDER ***\n')
+              printer.addText(`*** ${fmtScheduledForReceipt(order.scheduled_for)} ***\n`)
+              printer.addTextSize(1, 1)
+              bold(false)
+              printer.addText(eqLine + '\n')
+            }
+
             printer.addText('\n')
 
             // ── 2. PICKUP/DELIVERY + PAID ──

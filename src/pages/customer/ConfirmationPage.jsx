@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate, useSearchParams } from 'react-rout
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../hooks/useCart'
 import { formatCurrency, formatPhone } from '../../utils/format'
+import { formatScheduledLabel } from '../../utils/scheduling'
 
 export default function ConfirmationPage() {
   const { slug } = useParams()
@@ -57,6 +58,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
     orderNumber: initialOrderNumber,
     customerName,
     orderType,
+    scheduledFor,
     estimatedTime,
     items,
     subtotal,
@@ -103,6 +105,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
       orderNumber={orderNumber}
       customerName={customerName}
       orderType={orderType}
+      scheduledFor={scheduledFor}
       estimatedTime={estimatedTime}
       items={items}
       subtotal={subtotal}
@@ -224,6 +227,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
       orderNumber={order.order_number}
       customerName={order.customer_name}
       orderType={order.order_type}
+      scheduledFor={order.scheduled_for}
       estimatedTime={estimatedTime}
       items={displayItems}
       subtotal={order.subtotal}
@@ -246,11 +250,13 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
 
 // ── Shared confirmation layout ──
 function ConfirmationLayout({
-  orderNumber, customerName, orderType, estimatedTime,
+  orderNumber, customerName, orderType, scheduledFor, estimatedTime,
   items, subtotal, discountAmount, discountPercentage,
   deliveryFee, taxAmount, tip, serviceFee, total,
   restaurantName, restaurantPhone, includeUtensils, specialInstructions, slug, navigate,
 }) {
+  const isScheduled = !!scheduledFor
+  const scheduledLabel = isScheduled ? formatScheduledLabel(scheduledFor) : null
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-lg mx-auto px-5 py-10">
@@ -263,7 +269,9 @@ function ConfirmationLayout({
           </div>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 text-center">Order Confirmed!</h1>
+        <h1 className="text-3xl font-bold text-gray-900 text-center">
+          {isScheduled ? 'Order Scheduled!' : 'Order Confirmed!'}
+        </h1>
         <p className="text-lg text-gray-500 text-center mt-2">
           Thank you, {customerName}!
         </p>
@@ -279,7 +287,11 @@ function ConfirmationLayout({
               </span>
             )}
           </p>
-          {estimatedTime && (
+          {isScheduled ? (
+            <p className="text-sm text-gray-600">
+              Your order will be ready at {scheduledLabel}
+            </p>
+          ) : estimatedTime && (
             <p className="text-sm text-gray-600">
               {orderType === 'pickup'
                 ? `Estimated pickup in ~${estimatedTime} mins`

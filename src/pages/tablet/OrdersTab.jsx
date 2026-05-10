@@ -721,6 +721,11 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
                 {orders.filter(o => o.status === 'new').length}
               </span>
             )}
+            {tab.key === 'scheduled' && orders.filter(o => o.status === 'scheduled').length > 0 && (
+              <span className="ml-2 bg-amber-300 text-black text-xs rounded-full px-2 py-0.5">
+                {orders.filter(o => o.status === 'scheduled').length}
+              </span>
+            )}
           </button>
         ))}
       </div>

@@ -17,16 +17,24 @@ function formatMoney(amount: number): string {
   return `$${Number(amount).toFixed(2)}`;
 }
 
+// "Today 7:15 PM" or "Thu 5/7 7:15 PM" — no "at", matches the SMS
+// format. Hardcoded America/New_York timezone (see send-confirmation-email
+// for rationale).
 function formatScheduledShort(isoString: string): string {
   const d = new Date(isoString);
-  const now = new Date();
-  const isToday = d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-  if (isToday) return `Today ${time}`;
-  const dayAbbr = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
-  return `${dayAbbr} ${d.getMonth() + 1}/${d.getDate()} ${time}`;
+  const tz = "America/New_York";
+  const dateOpts: Intl.DateTimeFormatOptions = { timeZone: tz, year: "numeric", month: "numeric", day: "numeric" };
+  const todayKey = new Intl.DateTimeFormat("en-US", dateOpts).format(new Date());
+  const scheduledKey = new Intl.DateTimeFormat("en-US", dateOpts).format(d);
+  const time = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, hour: "numeric", minute: "2-digit", hour12: true,
+  }).format(d);
+  if (todayKey === scheduledKey) return `Today ${time}`;
+  const dayShort = new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "short" }).format(d);
+  const monthDay = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz, month: "numeric", day: "numeric",
+  }).format(d);
+  return `${dayShort} ${monthDay} ${time}`;
 }
 
 function buildRestaurantHtml(order: any, restaurant: any, items: any[]): string {
