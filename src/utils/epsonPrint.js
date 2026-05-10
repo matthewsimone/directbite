@@ -245,13 +245,26 @@ export async function printOrder(printerIp, order, rest) {
               bold(true)
               printer.addTextSize(2, 1)
 
+              // Print the line 1 in two parts so the qty+name stays bold
+              // and the price drops to non-bold (still 2x), making the
+              // price visually recede next to the bigger item name.
               let continuationStart
               if (wrappedLines[0].length <= line1Capacity) {
-                printer.addText(padDW(qtyPrefix + wrappedLines[0], priceStr) + '\n')
+                const namePart = qtyPrefix + wrappedLines[0]
+                const padding = ' '.repeat(Math.max(1, DW - namePart.length - priceStr.length))
+                printer.addText(namePart + padding)
+                bold(false)
+                printer.addText(priceStr + '\n')
+                bold(true)
                 continuationStart = 1
               } else {
                 const firstLineWrapped = wrapText(wrappedLines[0], line1Capacity)
-                printer.addText(padDW(qtyPrefix + firstLineWrapped[0], priceStr) + '\n')
+                const namePart = qtyPrefix + firstLineWrapped[0]
+                const padding = ' '.repeat(Math.max(1, DW - namePart.length - priceStr.length))
+                printer.addText(namePart + padding)
+                bold(false)
+                printer.addText(priceStr + '\n')
+                bold(true)
                 // Replace wrappedLines[0] with the overflow from the
                 // re-wrap; only firstLineWrapped[0] has been printed, so
                 // the loop must start at index 0 to render the rest.
@@ -266,8 +279,14 @@ export async function printOrder(printerIp, order, rest) {
               printer.addTextSize(1, 1)
               bold(false)
 
+              // Sub-item lines (size, modifiers, per-item Note) print at
+              // 1x2 — single-width keeps the column count at 48 so wrapping
+              // and indent math don't change, but doubled height makes
+              // them legible from across the kitchen.
               if (sizeName) {
+                printer.addTextSize(1, 2)
                 printer.addText(`        ${sizeName}\n`)
+                printer.addTextSize(1, 1)
               }
 
               // Modifiers — bare `+` prefix (no space after) so the plus
@@ -282,7 +301,9 @@ export async function printOrder(printerIp, order, rest) {
                 const isAddon = (t.placement_type || t.placementType) === 'addon'
                 const placement = isAddon ? '' : `${(t.placement || '').toUpperCase()}: `
                 const tPriceStr = tPrice === 0 ? 'Free' : `+${fmt(tPrice)}${qty > 1 ? ' ea' : ''}`
+                printer.addTextSize(1, 2)
                 printer.addText(`        +${placement}${tName}  ${tPriceStr}\n`)
+                printer.addTextSize(1, 1)
               }
 
               // Per-item special instructions — sits with the item it
@@ -290,7 +311,9 @@ export async function printOrder(printerIp, order, rest) {
               // Section 6). Same 8-space indent as size and modifiers.
               const instructions = item.special_instructions || item.specialInstructions
               if (instructions) {
+                printer.addTextSize(1, 2)
                 printer.addText(`        Note: ${instructions}\n`)
+                printer.addTextSize(1, 1)
               }
 
               // Dotted divider between items.
