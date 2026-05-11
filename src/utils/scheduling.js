@@ -20,7 +20,13 @@ function parseTimeOnDate(date, timeStr) {
 }
 
 function formatTimeLabel(date) {
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  // Strip the space before AM/PM so "11:30AM" stays on one line in the
+  // mobile UI even at narrow widths. All consumers (banner, picker button,
+  // confirmation page, tablet badge) inherit this format via
+  // formatScheduledLabel.
+  return date
+    .toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    .replace(' ', '')
 }
 
 export function formatDateLabel(date) {

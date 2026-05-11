@@ -234,10 +234,10 @@ export default function MenuPage() {
             </svg>
             <div>
               <p className="text-base font-semibold">
-                Next Available Order: {nextSlotLabel}
+                Order Ahead
               </p>
               <p className="mt-1 text-sm text-amber-800/90">
-                Browse the menu and place an order for later — we'll have it ready when we open.
+                Next Available: {nextSlotLabel}
               </p>
             </div>
           </div>
