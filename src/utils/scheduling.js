@@ -6,6 +6,12 @@
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+// Restaurants should not be slammed at the moment they unlock the door.
+// Hold scheduling slots back by this much from the listed open time so
+// the kitchen has time to ramp up. Applied uniformly to today + future
+// dates; the today path still respects now + leadTimeMinutes on top.
+const OPEN_BUFFER_MINUTES = 30
+
 function parseTimeOnDate(date, timeStr) {
   const [h, m] = timeStr.split(':').map(Number)
   const out = new Date(date)
@@ -45,6 +51,7 @@ export function getAvailableTimeSlots(date, hours, { leadTimeMinutes = 30, inter
 
   const open = parseTimeOnDate(date, dayHours.open_time)
   const close = parseTimeOnDate(date, dayHours.close_time)
+  const earliestOpen = new Date(open.getTime() + OPEN_BUFFER_MINUTES * 60 * 1000)
 
   const now = new Date()
   const isToday =
@@ -54,12 +61,12 @@ export function getAvailableTimeSlots(date, hours, { leadTimeMinutes = 30, inter
 
   let cursor
   if (isToday) {
-    const earliest = new Date(now.getTime() + leadTimeMinutes * 60 * 1000)
-    cursor = new Date(Math.max(open.getTime(), earliest.getTime()))
+    const earliestNow = new Date(now.getTime() + leadTimeMinutes * 60 * 1000)
+    cursor = new Date(Math.max(earliestOpen.getTime(), earliestNow.getTime()))
     const rounded = Math.ceil(cursor.getMinutes() / intervalMinutes) * intervalMinutes
     cursor.setMinutes(rounded, 0, 0)
   } else {
-    cursor = new Date(open)
+    cursor = new Date(earliestOpen)
   }
 
   const slots = []
