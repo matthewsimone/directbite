@@ -34,7 +34,7 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   ].filter(Boolean).join(', ')
 
   return (
-    <div className={`w-full text-left bg-white rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isUnacked ? 'ring-2 ring-green-500 animate-pulse' : ''}`}>
+    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isUnacked ? 'animate-flash-green' : 'bg-white'}`}>
       <button
         onClick={() => onTap(order)}
         className="w-full text-left p-4"
