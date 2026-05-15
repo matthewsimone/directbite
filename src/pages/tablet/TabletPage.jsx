@@ -143,7 +143,7 @@ export default function TabletPage() {
   }, [restaurant?.id, setRestaurant])
 
   // Order polling, chime, auto-print — runs regardless of active tab
-  const { orders, setOrders, loading: ordersLoading, stopChime, fetchOrders, diagnostics } = useOrderPolling(restaurant, hours)
+  const { orders, setOrders, loading: ordersLoading, fetchOrders, diagnostics } = useOrderPolling(restaurant, hours)
 
   // D3 fix: refetch orders on visibility change so wake-from-sleep
   // doesn't wait up to 10s for the next poll.
@@ -261,7 +261,7 @@ export default function TabletPage() {
 
       {/* Tab content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'orders' && <OrdersTab restaurant={restaurant} setRestaurant={setRestaurant} orders={orders} setOrders={setOrders} ordersLoading={ordersLoading} stopChime={stopChime} fetchOrders={fetchOrders} />}
+        {activeTab === 'orders' && <OrdersTab restaurant={restaurant} setRestaurant={setRestaurant} orders={orders} setOrders={setOrders} ordersLoading={ordersLoading} fetchOrders={fetchOrders} />}
         {activeTab === 'menu' && <MenuTab restaurant={restaurant} />}
         {activeTab === 'promotions' && <PromotionsTab restaurant={restaurant} />}
         {activeTab === 'settings' && <SettingsTab restaurant={restaurant} setRestaurant={setRestaurant} />}

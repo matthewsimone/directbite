@@ -21,7 +21,7 @@ function formatMoney(amount) {
 function OrderCard({ order, onTap, onRetryPrint }) {
   const isDelivery = order.order_type === 'delivery'
   const borderColor = isDelivery ? 'border-l-blue-500' : 'border-l-[#16A34A]'
-  const isNew = order.status === 'new'
+  const isUnacked = order.status === 'new' && !order.acknowledged_at
   const showRetry = (order.print_status === 'failed' || order.print_status === 'pending') && onRetryPrint
 
   // Customer info line. Each segment is independently optional so missing
@@ -34,7 +34,7 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   ].filter(Boolean).join(', ')
 
   return (
-    <div className={`w-full text-left bg-white rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isNew ? 'animate-pulse-subtle' : ''}`}>
+    <div className={`w-full text-left bg-white rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isUnacked ? 'ring-2 ring-green-500 animate-pulse' : ''}`}>
       <button
         onClick={() => onTap(order)}
         className="w-full text-left p-4"
@@ -600,7 +600,7 @@ function Row({ label, value, className = '' }) {
 
 // ── Main OrdersTab ──
 // Polling, chime, and auto-print are handled by useOrderPolling in TabletPage
-export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, stopChime, fetchOrders }) {
+export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, fetchOrders }) {
   const [subTab, setSubTab] = useState('new')
   const [selectedOrder, setSelectedOrder] = useState(null)
 
@@ -611,11 +611,22 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     { key: 'complete', label: 'Complete' },
   ]
 
-  function handleOrderTap(order) {
-    if (order.status === 'new') {
-      stopChime()
-    }
+  async function handleOrderTap(order) {
+    // Open the detail panel first so the UI is snappy; the ack write
+    // runs in parallel. Optimistic local patch stops the green pulse
+    // immediately — the next poll cycle reconciles. If the DB write
+    // fails, the next poll re-introduces the un-ack state and the
+    // pulse resumes.
     setSelectedOrder(order)
+    if (order.status === 'new' && !order.acknowledged_at) {
+      const ackAt = new Date().toISOString()
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, acknowledged_at: ackAt } : o))
+      const { error } = await supabase
+        .from('orders')
+        .update({ acknowledged_at: ackAt })
+        .eq('id', order.id)
+      if (error) console.error('[Ack] write failed', error)
+    }
   }
 
   async function handleRetryPrint(order) {

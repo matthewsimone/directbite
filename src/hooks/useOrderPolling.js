@@ -2,32 +2,50 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { printOrder } from '../utils/epsonPrint'
 
-// ── Web Audio chime generator ──
-function createChime(audioCtx) {
-  const now = audioCtx.currentTime
-  const frequencies = [880, 1108.73, 1318.51]
-  frequencies.forEach((freq, i) => {
-    const osc = audioCtx.createOscillator()
-    const gain = audioCtx.createGain()
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(freq, now)
-    gain.gain.setValueAtTime(0, now + i * 0.08)
-    gain.gain.linearRampToValueAtTime(0.3, now + i * 0.08 + 0.05)
-    gain.gain.linearRampToValueAtTime(0, now + i * 0.08 + 0.6)
-    osc.connect(gain)
-    gain.connect(audioCtx.destination)
-    osc.start(now + i * 0.08)
-    osc.stop(now + i * 0.08 + 0.7)
-  })
+// ── Looping audio element (module-level singleton) ──
+// Created lazily on first call so the constructor doesn't run during
+// SSR / non-browser test contexts. Lives at module scope so re-mounts
+// of the hook (e.g. tab switches) reuse the same element instead of
+// orphaning a running clip. Fully Kiosk's "Autoplay Audio" setting
+// covers <audio> elements with autoplay/loop semantics; that's the
+// reason we use an element here instead of synthesizing via Web Audio.
+let audioElement = null
+
+function getAudioElement() {
+  if (typeof window === 'undefined') return null
+  if (!audioElement) {
+    audioElement = new Audio('/chime.wav')
+    audioElement.loop = true
+    audioElement.preload = 'auto'
+  }
+  return audioElement
+}
+
+// One-time gesture-based unlock for non-FullyKiosk environments (admin
+// staff viewing the tablet page from a phone/laptop). Calling .play()
+// inside a gesture handler primes the element so later programmatic
+// plays succeed even without further gestures. Harmless on Fully Kiosk
+// (the FK autoplay setting already covers element-based audio).
+let unlocked = false
+function installGestureUnlock() {
+  if (typeof window === 'undefined' || unlocked) return
+  const unlock = () => {
+    unlocked = true
+    const a = getAudioElement()
+    if (!a) return
+    a.play().then(() => { a.pause(); a.currentTime = 0 }).catch(() => {})
+    document.removeEventListener('touchstart', unlock)
+    document.removeEventListener('click', unlock)
+  }
+  document.addEventListener('touchstart', unlock, { once: true, passive: true })
+  document.addEventListener('click', unlock, { once: true })
 }
 
 export function useOrderPolling(restaurant, hours) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
-  const audioCtxRef = useRef(null)
-  const chimeIntervalRef = useRef(null)
   const knownOrderIds = useRef(new Set())
-  const hasNewAlert = useRef(false)
+  const isPlayingRef = useRef(false)
 
   const diagnostics = useRef({
     pollAttempts: 0,
@@ -39,13 +57,14 @@ export function useOrderPolling(restaurant, hours) {
     lastErrorCode: null,
     lastErrorMessage: null,
     ordersReturnedLastPoll: 0,
-    audioContextState: 'none',
-    chimeAttempts: 0,
-    chimePlayed: 0,
-    chimeSuppressedByLatch: 0,
-    chimeFailedSuspended: 0,
+    audioPlayAttempts: 0,
+    audioPlayFailures: 0,
+    audioPauseAttempts: 0,
+    lastAudioError: null,
     visibilityRefetches: 0,
   })
+
+  useEffect(() => { installGestureUnlock() }, [])
 
   function isRestaurantOpen() {
     if (!hours || hours.length === 0) return true
@@ -59,61 +78,27 @@ export function useOrderPolling(restaurant, hours) {
     return currentTime >= todayHours.open_time && currentTime <= todayHours.close_time
   }
 
-  async function startChime() {
-    diagnostics.current.chimeAttempts++
-
-    // C2 fix: latch only suppresses re-arming the interval, not individual plays.
-    // Each new order should still attempt at least one chime even if previously latched.
-    const wasAlreadyAlerting = hasNewAlert.current
-    hasNewAlert.current = true
-
-    // C1 fix: ensure context exists and is running before scheduling oscillators.
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)()
-      audioCtxRef.current.onstatechange = () => {
-        diagnostics.current.audioContextState = audioCtxRef.current?.state || 'none'
-        console.log('[CHIME] state change ->', audioCtxRef.current?.state)
-      }
-    }
-
-    diagnostics.current.audioContextState = audioCtxRef.current.state
-    console.log('[CHIME] startChime', { state: audioCtxRef.current.state, wasAlreadyAlerting })
-
-    if (audioCtxRef.current.state === 'suspended') {
-      try {
-        await audioCtxRef.current.resume()
-        console.log('[CHIME] resumed, new state:', audioCtxRef.current.state)
-      } catch (err) {
-        diagnostics.current.chimeFailedSuspended++
-        console.error('[CHIME] resume failed', err)
-        return
-      }
-    }
-
-    if (audioCtxRef.current.state !== 'running') {
-      diagnostics.current.chimeFailedSuspended++
-      console.warn('[CHIME] context not running after resume attempt:', audioCtxRef.current.state)
-      return
-    }
-
-    createChime(audioCtxRef.current)
-    diagnostics.current.chimePlayed++
-
-    if (!chimeIntervalRef.current) {
-      chimeIntervalRef.current = setInterval(() => {
-        if (audioCtxRef.current && audioCtxRef.current.state === 'running') {
-          createChime(audioCtxRef.current)
-          diagnostics.current.chimePlayed++
-        }
-      }, 3000)
-    }
-  }
-
-  function stopChime() {
-    hasNewAlert.current = false
-    if (chimeIntervalRef.current) {
-      clearInterval(chimeIntervalRef.current)
-      chimeIntervalRef.current = null
+  // Drive the audio element based on whether any un-acknowledged new
+  // orders exist in the just-fetched data. The element's `loop` attr
+  // handles repetition natively — no setInterval needed.
+  function syncAudioState(hasUnacked) {
+    const a = getAudioElement()
+    if (!a) return
+    if (hasUnacked && !isPlayingRef.current) {
+      diagnostics.current.audioPlayAttempts++
+      a.play().then(() => {
+        isPlayingRef.current = true
+      }).catch(err => {
+        diagnostics.current.audioPlayFailures++
+        diagnostics.current.lastAudioError = err?.message || String(err)
+        console.warn('[CHIME] play blocked:', err)
+        // Pulsing green tile already covers the no-audio case visually.
+      })
+    } else if (!hasUnacked && isPlayingRef.current) {
+      diagnostics.current.audioPauseAttempts++
+      a.pause()
+      a.currentTime = 0
+      isPlayingRef.current = false
     }
   }
 
@@ -191,16 +176,23 @@ export function useOrderPolling(restaurant, hours) {
       console.log('[POLL] resp ok', { count: data.length, durationMs: Date.now() - startedAt })
 
       const newOrderIds = new Set(data.map(o => o.id))
+
+      // Auto-print first-seen new orders. knownOrderIds dedups print
+      // attempts across the session — independent of chime/ack state.
       const freshNew = data.filter(
         o => o.status === 'new' && !knownOrderIds.current.has(o.id)
       )
-
       if (freshNew.length > 0 && knownOrderIds.current.size > 0) {
-        startChime()
         for (const newOrder of freshNew) {
           autoPrint(newOrder)
         }
       }
+
+      // Chime decision: any un-acknowledged new order in the restaurant
+      // → keep audio playing. Reload-safe because acknowledged_at lives
+      // in the DB; reload re-fetches, re-evaluates, re-plays as needed.
+      const hasUnacked = data.some(o => o.status === 'new' && !o.acknowledged_at)
+      syncAudioState(hasUnacked)
 
       // Retry failed/pending prints on every poll cycle
       if (restaurant.printer_ip) {
@@ -236,14 +228,24 @@ export function useOrderPolling(restaurant, hours) {
     const interval = setInterval(() => {
       if (isRestaurantOpen()) fetchOrders()
     }, 10000)
-    return () => { clearInterval(interval); stopChime() }
+    return () => {
+      clearInterval(interval)
+      // Don't tear down the audio element on unmount — it's module-level
+      // and will be reused by the next mount. We do pause it so a stale
+      // chime doesn't keep playing if the tablet navigates away mid-loop.
+      const a = getAudioElement()
+      if (a && isPlayingRef.current) {
+        a.pause()
+        a.currentTime = 0
+        isPlayingRef.current = false
+      }
+    }
   }, [fetchOrders])
 
   return {
     orders,
     setOrders,
     loading,
-    stopChime,
     fetchOrders,
     diagnostics,
   }
