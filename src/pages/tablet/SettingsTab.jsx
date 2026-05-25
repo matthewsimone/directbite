@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
+import ReportsView from './ReportsView'
 // ZipCodeManager removed — replaced by radius-based delivery
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -88,6 +89,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [notificationEmail, setNotificationEmail] = useState(restaurant?.notification_email || '')
 
   const [bulkUpdating, setBulkUpdating] = useState(false)
+  const [showReports, setShowReports] = useState(false)
 
   useEffect(() => {
     fetchHours()
@@ -276,6 +278,10 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     setTimeout(() => setSavedTax(false), 2000)
   }
 
+  if (showReports) {
+    return <ReportsView restaurant={restaurant} onBack={() => setShowReports(false)} />
+  }
+
   return (
     <div className="h-full overflow-y-auto p-4">
       <div className="max-w-lg mx-auto space-y-4">
@@ -290,6 +296,19 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] disabled:opacity-50 transition-colors"
           >
             {bulkUpdating ? 'Updating...' : 'Mark all in-progress as completed'}
+          </button>
+        </Section>
+
+        {/* Reports — opens a full-screen sub-view with date-range sales totals */}
+        <Section title="Reports">
+          <p className="text-sm text-gray-600">
+            View totals for sales, tips, tax, delivery, and adjustments over a date range.
+          </p>
+          <button
+            onClick={() => setShowReports(true)}
+            className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] transition-colors"
+          >
+            Open Sales Report
           </button>
         </Section>
 

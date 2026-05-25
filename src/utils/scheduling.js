@@ -165,3 +165,87 @@ export function groupOrdersByCreatedAtNy(orders) {
   }
   return groups
 }
+
+// Returns getNyDateKey for `daysAgo` days before now. Used for rolling-
+// window presets like "Last 7 Days" (daysAgo=6 to include today).
+export function getNyDateKeyForOffset(daysAgo) {
+  return getNyDateKey(new Date(Date.now() - daysAgo * DAY_MS))
+}
+
+// Given a YYYY-MM-DD reference key in NY time, returns { startKey, endKey }
+// for either that same calendar month (start = first of month, end = the
+// reference) or the prior calendar month (start = first of prior month,
+// end = last day of prior month). Last-day uses the Date.UTC(y, m, 0)
+// trick which returns the final day of month `m` (1-indexed).
+export function getNyMonthBounds(referenceKey, { prior } = {}) {
+  const [y, m] = referenceKey.split('-').map(Number)
+  if (!prior) {
+    const mm = String(m).padStart(2, '0')
+    return { startKey: `${y}-${mm}-01`, endKey: referenceKey }
+  }
+  const prevYear = m === 1 ? y - 1 : y
+  const prevMonth = m === 1 ? 12 : m - 1
+  const lastDay = new Date(Date.UTC(prevYear, prevMonth, 0)).getUTCDate()
+  const mm = String(prevMonth).padStart(2, '0')
+  const dd = String(lastDay).padStart(2, '0')
+  return {
+    startKey: `${prevYear}-${mm}-01`,
+    endKey: `${prevYear}-${mm}-${dd}`,
+  }
+}
+
+// Computes the date range for a Sales Report preset. Returns startKey/
+// endKey as YYYY-MM-DD strings (NY time, inclusive) plus a wider UTC
+// envelope (queryStartIso/queryEndIso) that's guaranteed to cover any
+// moment falling on a NY day in [startKey, endKey] regardless of DST.
+// Callers should post-filter results with getNyDateKey for precise
+// NY-day membership. The envelope is start - 1 day to end + 2 days
+// (UTC midnight on each), which covers NY-evening rows that land on
+// the next UTC day even at the deepest DST offset.
+export function getRangeForPreset(preset, { customStart, customEnd } = {}) {
+  const todayKey = getNyDateKey(new Date())
+  let startKey
+  let endKey
+  switch (preset) {
+    case 'today':
+      startKey = todayKey
+      endKey = todayKey
+      break
+    case 'yesterday':
+      startKey = getNyDateKeyForOffset(1)
+      endKey = getNyDateKeyForOffset(1)
+      break
+    case 'last7':
+      startKey = getNyDateKeyForOffset(6)
+      endKey = todayKey
+      break
+    case 'last30':
+      startKey = getNyDateKeyForOffset(29)
+      endKey = todayKey
+      break
+    case 'thisMonth': {
+      const bounds = getNyMonthBounds(todayKey)
+      startKey = bounds.startKey
+      endKey = bounds.endKey
+      break
+    }
+    case 'lastMonth': {
+      const bounds = getNyMonthBounds(todayKey, { prior: true })
+      startKey = bounds.startKey
+      endKey = bounds.endKey
+      break
+    }
+    case 'custom':
+      startKey = customStart
+      endKey = customEnd
+      break
+    default:
+      startKey = todayKey
+      endKey = todayKey
+  }
+  const [sy, sm, sd] = startKey.split('-').map(Number)
+  const [ey, em, ed] = endKey.split('-').map(Number)
+  const queryStartIso = new Date(Date.UTC(sy, sm - 1, sd - 1, 0, 0, 0)).toISOString()
+  const queryEndIso = new Date(Date.UTC(ey, em - 1, ed + 2, 0, 0, 0)).toISOString()
+  return { startKey, endKey, queryStartIso, queryEndIso }
+}
