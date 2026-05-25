@@ -96,6 +96,16 @@ verify_jwt = false
 
 
 # ---------------------------------------------------------------------------
+# Uber Direct support functions (JWT off; handler-side validation of
+# tablet JWT or service-role token, matching admin-refund pattern).
+# uber-webhook is in the Webhook receivers section above.
+# ---------------------------------------------------------------------------
+
+[functions.uber-token]
+verify_jwt = false
+
+
+# ---------------------------------------------------------------------------
 # Admin endpoints with platform-level JWT validation
 # The only JWT-ON function in this project. The platform validates the
 # caller's JWT before the handler runs; the handler depends on that
