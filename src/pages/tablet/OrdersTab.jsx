@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { printOrder } from '../../utils/epsonPrint'
 import { formatPhone } from '../../utils/format'
-import { formatScheduledLabel } from '../../utils/scheduling'
+import { formatScheduledLabel, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
+
+const DAY_MS = 24 * 60 * 60 * 1000
 
 // ── Format helpers ──
 function formatTime(dateStr) {
@@ -603,6 +605,7 @@ function Row({ label, value, className = '' }) {
 export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, fetchOrders }) {
   const [subTab, setSubTab] = useState('new')
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [showOlder, setShowOlder] = useState(false)
 
   const subTabs = [
     { key: 'new', label: 'New' },
@@ -677,6 +680,24 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     return filtered
   })()
 
+  // Complete tab: cap at last 30 days unless "Load older" expanded, then
+  // bucket by NY-time calendar day for the date-grouped section headers.
+  // Skips work entirely for other tabs via the early return.
+  const groupedComplete = useMemo(() => {
+    if (subTab !== 'complete') return null
+    const completeFiltered = orders.filter(
+      o => o.status === 'complete' || o.status === 'cancelled'
+    )
+    const cutoff = Date.now() - 30 * DAY_MS
+    const visible = showOlder
+      ? completeFiltered
+      : completeFiltered.filter(o => new Date(o.created_at).getTime() >= cutoff)
+    return {
+      groups: groupOrdersByCreatedAtNy(visible),
+      hasMore: !showOlder && completeFiltered.length > visible.length,
+    }
+  }, [orders, subTab, showOlder])
+
   if (selectedOrder) {
     return (
       <OrderDetail
@@ -745,6 +766,49 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {loading ? (
           <p className="text-center text-gray-400 mt-8">Loading orders...</p>
+        ) : subTab === 'complete' ? (
+          <div>
+            {groupedComplete.groups.length === 0 ? (
+              <>
+                <p className="text-center text-gray-400 mt-8">
+                  {groupedComplete.hasMore
+                    ? 'No completed orders in the last 30 days'
+                    : 'No completed orders'}
+                </p>
+                {groupedComplete.hasMore && (
+                  <button
+                    onClick={() => setShowOlder(true)}
+                    className="text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 px-4 py-2 rounded border border-gray-200 mt-6 w-full"
+                  >
+                    Load older
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                {groupedComplete.groups.map((group, i) => (
+                  <div key={group.dateKey}>
+                    <div className={i === 0 ? 'text-sm text-gray-400 text-right mb-2' : 'text-sm text-gray-400 text-right mt-6 mb-2'}>
+                      {group.label}
+                    </div>
+                    <div className="space-y-3">
+                      {group.orders.map(order => (
+                        <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                {groupedComplete.hasMore && (
+                  <button
+                    onClick={() => setShowOlder(true)}
+                    className="text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 px-4 py-2 rounded border border-gray-200 mt-6 w-full"
+                  >
+                    Load older
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         ) : filteredOrders.length === 0 ? (
           <p className="text-center text-gray-400 mt-8">No {subTab === 'in_progress' ? 'in progress' : subTab} orders</p>
         ) : (

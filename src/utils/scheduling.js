@@ -105,3 +105,63 @@ export function getAvailableDates(hours, { daysAhead = 7, leadTimeMinutes = 30, 
   }
   return result
 }
+
+// Returns YYYY-MM-DD as observed in America/New_York. en-CA natively
+// produces ISO-like YYYY-MM-DD so we avoid parsing en-US's M/D/YYYY.
+export function getNyDateKey(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+}
+
+// Formats a YYYY-MM-DD key as a section header label. "Today"/"Yesterday"
+// compared by key; otherwise "Saturday, May 8" for the current year or
+// "Saturday, December 14, 2024" for prior years. The key is rehydrated
+// as UTC noon so the NY-tz formatter always lands on the right calendar
+// day regardless of the device's local timezone.
+export function formatGroupHeader(dateKey, { todayKey, yesterdayKey, currentYear }) {
+  if (dateKey === todayKey) return 'Today'
+  if (dateKey === yesterdayKey) return 'Yesterday'
+  const [y, m, d] = dateKey.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
+  const opts = {
+    timeZone: 'America/New_York',
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }
+  if (y !== currentYear) opts.year = 'numeric'
+  return new Intl.DateTimeFormat('en-US', opts).format(date)
+}
+
+// Groups orders (already sorted by created_at DESC) into NY-time
+// calendar-day buckets. Returns [{ dateKey, label, orders }] preserving
+// newest-first order. todayKey/yesterdayKey/currentYear are recomputed
+// from now() each call, so the post-midnight polling re-render naturally
+// reshuffles "Today" and "Yesterday" labels.
+export function groupOrdersByCreatedAtNy(orders) {
+  const now = new Date()
+  const todayKey = getNyDateKey(now)
+  const yesterdayKey = getNyDateKey(new Date(now.getTime() - DAY_MS))
+  const currentYear = Number(todayKey.slice(0, 4))
+  const groups = []
+  const byKey = new Map()
+  for (const o of orders) {
+    const key = getNyDateKey(new Date(o.created_at))
+    let group = byKey.get(key)
+    if (!group) {
+      group = {
+        dateKey: key,
+        label: formatGroupHeader(key, { todayKey, yesterdayKey, currentYear }),
+        orders: [],
+      }
+      byKey.set(key, group)
+      groups.push(group)
+    }
+    group.orders.push(o)
+  }
+  return groups
+}
