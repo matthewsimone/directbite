@@ -1,0 +1,107 @@
+# ============================================================================
+# Supabase edge function configuration
+# ============================================================================
+#
+# Purpose
+# -------
+# Source-control the per-function JWT verification settings that previously
+# lived only in the Supabase dashboard (project euqhnetswowbfxwwlmry).
+#
+# Created
+# -------
+# 2026-05-25, as Milestone 1 of the Uber Direct integration. The immediate
+# trigger was the need to deploy `uber-webhook` with JWT off — Uber signs
+# its webhooks with HMAC, not a Supabase JWT, so platform-level JWT
+# verification would 401 every event before our handler runs.
+#
+# Why every function is listed
+# ----------------------------
+# Supabase's documentation does not definitively state whether config.toml
+# is additive (entries override defaults for listed functions only) or
+# exhaustive (file presence becomes the baseline for everything). Listing
+# every existing function with its CURRENT setting makes the file safe
+# under either interpretation: no function changes behavior, regardless of
+# how Supabase reads the file.
+#
+# IMPORTANT FOR FUTURE CONTRIBUTORS
+# ---------------------------------
+# - Any new edge function deployed to this project MUST get a
+#   corresponding `[functions.<name>]` entry below. A function not listed
+#   here may silently default to `verify_jwt = true` on the next deploy,
+#   which will break any webhook receiver or service-to-service callee.
+# - Webhook receivers (Stripe, Uber, etc.) and internal callees must keep
+#   `verify_jwt = false`.
+# - The current truth-of-record for JWT settings is THIS FILE. If you
+#   need to change a setting, change it here and redeploy; do not flip it
+#   in the dashboard.
+#
+# Reference: https://supabase.com/docs/guides/functions/auth
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+# Webhook receivers
+# External services sign their own requests; platform-level JWT verification
+# would block them before our handler can verify the signature.
+# ---------------------------------------------------------------------------
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.uber-webhook]
+verify_jwt = false
+
+
+# ---------------------------------------------------------------------------
+# Internal callees
+# Invoked server-to-server (typically from stripe-webhook with a
+# service-role token), not user-facing.
+# ---------------------------------------------------------------------------
+
+[functions.send-confirmation-email]
+verify_jwt = false
+
+[functions.send-order-restaurant-email]
+verify_jwt = false
+
+[functions.send-order-sms]
+verify_jwt = false
+
+
+# ---------------------------------------------------------------------------
+# Other JWT-off functions
+# All currently have JWT off in the dashboard. Preserved here without
+# per-function rationale — see git history or the function's own code for
+# context. If you change any of these, audit the function's auth model
+# first (some handle auth in code, some don't need it).
+# ---------------------------------------------------------------------------
+
+[functions.admin-refund]
+verify_jwt = false
+
+[functions.admin-approve-adjustment]
+verify_jwt = false
+
+[functions.check-failed-prints]
+verify_jwt = false
+
+[functions.create-payment-intent]
+verify_jwt = false
+
+[functions.register-apple-pay-domain]
+verify_jwt = false
+
+[functions.retry-print]
+verify_jwt = false
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints with platform-level JWT validation
+# The only JWT-ON function in this project. The platform validates the
+# caller's JWT before the handler runs; the handler depends on that
+# guarantee. DO NOT change to false without auditing the handler — it may
+# have no manual auth fallback.
+# ---------------------------------------------------------------------------
+
+[functions.admin-create-restaurant]
+verify_jwt = true
