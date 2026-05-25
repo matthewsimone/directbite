@@ -72,7 +72,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [deliveryMinutes, setDeliveryMinutes] = useState(restaurant?.estimated_delivery_minutes || 60)
   const [deliveryAvailable, setDeliveryAvailable] = useState(restaurant?.delivery_available || false)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
-  const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum || 0)
+  const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum_in_house || 0)
   const [tier2Enabled, setTier2Enabled] = useState(!!restaurant?.delivery_tier2_fee_cents)
   // Single tier: singleMaxDist is the outer boundary, singleFee is the fee
   // Two tier: stdZoneDist is tier1 boundary, stdZoneFee is tier1 fee, extZoneDist is outer boundary, extZoneFee is tier2 fee
@@ -189,7 +189,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     const updateData = {
       delivery_available: deliveryAvailable,
       delivery_note: deliveryNote,
-      delivery_minimum: parseFloat(deliveryMinimum) || 0,
+      delivery_minimum_in_house: parseFloat(deliveryMinimum) || 0,
     }
     if (tier2Enabled) {
       updateData.delivery_max_radius_miles = parseFloat(extZoneDist) || null

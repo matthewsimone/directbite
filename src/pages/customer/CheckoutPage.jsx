@@ -534,7 +534,7 @@ export default function CheckoutPage() {
   const [mapsLoaded, setMapsLoaded] = useState(false)
   const autocompleteRef = useRef(null)
   const inputRef = useRef(null)
-  const deliveryMinimum = Number(restaurant?.delivery_minimum || 0)
+  const deliveryMinimum = Number(restaurant?.delivery_minimum_in_house || 0)
   const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
   const [paymentIntentId, setPaymentIntentId] = useState(null)
