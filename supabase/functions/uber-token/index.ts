@@ -7,17 +7,16 @@
 //
 // JWT setting: verify_jwt = false (declared in supabase/config.toml).
 // Handler validates auth manually, matching admin-refund's pattern.
-// Accepts EITHER:
-//   - Tablet user JWT (validated via supabase.auth.getUser; user must own
-//     the requested restaurant by tablet_email match)
-//   - SUPABASE_SERVICE_ROLE_KEY in Authorization header (for future
-//     internal callers — uber-quote etc. though those will primarily
-//     import _shared/uberToken.ts directly)
+// Accepts:
+//   - Tablet user JWT only (validated via supabase.auth.getUser; user must
+//     own the requested restaurant by tablet_email match)
+//   Internal callers in M5+ should import _shared/uberToken.ts directly
+//   rather than calling this HTTP endpoint.
 //
 // Flow:
 //   1. CORS preflight + method check
 //   2. Parse body: { restaurant_id: string }
-//   3. Authorize (service-role match OR tablet-user-owns-restaurant)
+//   3. Authorize (tablet user owns the requested restaurant)
 //   4. Step 1 of D6 verify: getUberToken() — mint or cache
 //   5. Step 2 of D6 verify: GET /v1/customers/{uber_customer_id} — confirm
 //      merchant active (any 200 = active per D3 decision)
@@ -85,40 +84,29 @@ serve(async (req: Request) => {
   }
   const token = authHeader.slice("Bearer ".length).trim();
 
-  // Path A: service-role caller
-  let authorized = false;
-  if (token === SERVICE_ROLE_KEY) {
-    authorized = true;
-  } else {
-    // Path B: tablet user JWT — must own the requested restaurant
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(
-      token
-    );
-    if (authErr || !user || !user.email) {
-      return jsonResponse({ error: "invalid_auth" }, 401);
-    }
-
-    const { data: ownsRow, error: ownsErr } = await supabase
-      .from("restaurants")
-      .select("id")
-      .eq("id", restaurantId)
-      .eq("tablet_email", user.email)
-      .maybeSingle();
-
-    if (ownsErr) {
-      console.error("[uber-token] ownership check failed", ownsErr);
-      return jsonResponse({ error: "auth_check_failed" }, 500);
-    }
-    if (!ownsRow) {
-      return jsonResponse({ error: "forbidden" }, 403);
-    }
-    authorized = true;
+  // Tablet user JWT — must own the requested restaurant
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(
+    token
+  );
+  if (authErr || !user || !user.email) {
+    return jsonResponse({ error: "invalid_auth" }, 401);
   }
 
-  if (!authorized) {
-    // Defensive — should be unreachable
+  const { data: ownsRow, error: ownsErr } = await supabase
+    .from("restaurants")
+    .select("id")
+    .eq("id", restaurantId)
+    .eq("tablet_email", user.email)
+    .maybeSingle();
+
+  if (ownsErr) {
+    console.error("[uber-token] ownership check failed", ownsErr);
+    return jsonResponse({ error: "auth_check_failed" }, 500);
+  }
+  if (!ownsRow) {
     return jsonResponse({ error: "forbidden" }, 403);
   }
+  // Past this point, caller is authorized
 
   // -------- Step 1: mint or cache token --------
   const tokenResult = await getUberToken(supabase, restaurantId);
