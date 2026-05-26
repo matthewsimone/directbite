@@ -91,6 +91,17 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [bulkUpdating, setBulkUpdating] = useState(false)
   const [showReports, setShowReports] = useState(false)
 
+  // Uber Direct setup wizard state
+  const [showWizardLocally, setShowWizardLocally] = useState(false)
+  const [uberCustomerId, setUberCustomerId] = useState('')
+  const [uberClientId, setUberClientId] = useState('')
+  const [uberClientSecret, setUberClientSecret] = useState('')
+  const [showSecret, setShowSecret] = useState(false)
+  const [savingCredentials, setSavingCredentials] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyError, setVerifyError] = useState(null)
+  const [verifySuccess, setVerifySuccess] = useState(null)
+
   useEffect(() => {
     fetchHours()
   }, [restaurant?.id])
@@ -278,9 +289,124 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     setTimeout(() => setSavedTax(false), 2000)
   }
 
+  // ── Uber Direct setup wizard ──
+
+  function uberErrorMessage(code) {
+    switch (code) {
+      case 'credentials_not_set':
+        return 'Credentials are missing. Please re-enter them above.'
+      case 'invalid_credentials':
+        return 'Uber rejected these credentials. Double-check them and try again.'
+      case 'rate_limited':
+        return 'Too many attempts. Please wait a minute and try again.'
+      case 'uber_unavailable':
+        return "Uber's service is having trouble. Please try again shortly."
+      case 'missing_customer_id':
+        return 'Your Uber customer ID is missing. Please re-enter your credentials.'
+      default:
+        return 'Something went wrong verifying. Please try again.'
+    }
+  }
+
+  async function saveCredentials() {
+    if (savingCredentials) return
+    setSavingCredentials(true)
+    try {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .update({
+          uber_customer_id: uberCustomerId.trim(),
+          uber_client_id: uberClientId.trim(),
+          uber_client_secret: uberClientSecret.trim(),
+        })
+        .eq('id', restaurant.id)
+        .select()
+        .single()
+      if (error) {
+        console.error('[Uber] saveCredentials failed', error)
+        toast.error("Couldn't save credentials. Try again.")
+        setSavingCredentials(false)
+        return
+      }
+      setRestaurant(data)
+      setSavingCredentials(false)
+      // Step 2 renders automatically because hasCredentials is now true.
+    } catch (err) {
+      console.error('[Uber] saveCredentials exception', err)
+      toast.error("Couldn't save credentials. Try again.")
+      setSavingCredentials(false)
+    }
+  }
+
+  async function verifyCredentials() {
+    if (verifying) return
+    setVerifying(true)
+    setVerifyError(null)
+    try {
+      const { data: { session }, error: refreshErr } = await supabase.auth.refreshSession()
+      if (refreshErr || !session) {
+        toast.error('Session expired. Please log in again.')
+        setVerifying(false)
+        return
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/uber-token`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ restaurant_id: restaurant.id }),
+        }
+      )
+      const result = await res.json()
+      if (result.success) {
+        setVerifySuccess({
+          verified_at: result.verified_at,
+          organization_name: result.organization_name,
+        })
+        // restaurant prop is updated on Continue click (continueFromVerify)
+        // so the user sees the explicit "Verified!" celebration before
+        // sliding into the State 3 stub.
+      } else {
+        setVerifyError(uberErrorMessage(result.error))
+      }
+    } catch (err) {
+      console.error('[Uber] verifyCredentials network failure', err)
+      toast.error("Couldn't reach verification service. Try again.")
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  function cancelWizard() {
+    setShowWizardLocally(false)
+    setUberCustomerId('')
+    setUberClientId('')
+    setUberClientSecret('')
+    setShowSecret(false)
+    setVerifyError(null)
+    setVerifySuccess(null)
+  }
+
+  function continueFromVerify() {
+    if (!verifySuccess) return
+    setRestaurant({
+      ...restaurant,
+      uber_credentials_verified_at: verifySuccess.verified_at,
+    })
+    cancelWizard()
+  }
+
   if (showReports) {
     return <ReportsView restaurant={restaurant} onBack={() => setShowReports(false)} />
   }
+
+  // Uber Direct render-state determination
+  const isUberVerified = !!restaurant?.uber_credentials_verified_at
+  const hasCredentials = !!restaurant?.uber_customer_id
+  const showWizard = showWizardLocally || (hasCredentials && !isUberVerified)
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -531,6 +657,153 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </>
           )}
         </Section>
+
+        {/* Uber Direct setup card */}
+        {isUberVerified ? (
+          /* State 3 stub — verified, full controls coming in M8 */
+          <Section title="Uber Direct">
+            <div className="flex items-center gap-2 text-green-700">
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="font-medium">Uber Direct connected</span>
+            </div>
+            <p className="text-xs text-gray-500 italic">
+              Verified {new Date(restaurant.uber_credentials_verified_at).toLocaleString()}. Configuration UI coming soon.
+            </p>
+          </Section>
+        ) : showWizard ? (
+          <Section title="Uber Direct">
+            {!hasCredentials ? (
+              /* Step 1 — credentials entry */
+              <>
+                <p className="text-sm text-gray-600">
+                  Enter your Uber Direct credentials. They're stored securely and used only to dispatch deliveries on your behalf.
+                </p>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Customer ID</label>
+                  <input
+                    type="text"
+                    value={uberCustomerId}
+                    onChange={e => setUberCustomerId(e.target.value)}
+                    placeholder="e.g. a1b2c3d4-..."
+                    className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Client ID</label>
+                  <input
+                    type="text"
+                    value={uberClientId}
+                    onChange={e => setUberClientId(e.target.value)}
+                    className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">Client Secret</label>
+                  <div className="relative">
+                    <input
+                      type={showSecret ? 'text' : 'password'}
+                      value={uberClientSecret}
+                      onChange={e => setUberClientSecret(e.target.value)}
+                      className="w-full h-11 px-3 pr-12 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSecret(!showSecret)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      aria-label={showSecret ? 'Hide secret' : 'Show secret'}
+                    >
+                      {showSecret ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={cancelWizard}
+                    disabled={savingCredentials}
+                    className="flex-1 h-12 border border-gray-300 text-gray-700 font-bold rounded-xl hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={saveCredentials}
+                    disabled={savingCredentials || !uberCustomerId.trim() || !uberClientId.trim() || !uberClientSecret.trim()}
+                    className="flex-1 h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] disabled:opacity-50 transition-colors"
+                  >
+                    {savingCredentials ? 'Saving...' : 'Save Credentials'}
+                  </button>
+                </div>
+              </>
+            ) : verifySuccess ? (
+              /* Step 2 success */
+              <>
+                <div className="flex items-center gap-2 text-green-700">
+                  <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="font-medium">
+                    Verified! Connected as {verifySuccess.organization_name || 'your merchant account'}
+                  </span>
+                </div>
+                <button
+                  onClick={continueFromVerify}
+                  className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] transition-colors"
+                >
+                  Continue
+                </button>
+              </>
+            ) : (
+              /* Step 2 — verify */
+              <>
+                <p className="text-sm text-gray-600">
+                  Credentials saved. Click Verify to confirm they work with Uber.
+                </p>
+                <button
+                  onClick={verifyCredentials}
+                  disabled={verifying}
+                  className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] disabled:opacity-50 transition-colors"
+                >
+                  {verifying ? 'Verifying...' : 'Verify Credentials'}
+                </button>
+                {verifyError && (
+                  <p className="text-sm text-red-600 text-center">{verifyError}</p>
+                )}
+                <button
+                  onClick={cancelWizard}
+                  disabled={verifying}
+                  className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors disabled:opacity-50"
+                >
+                  Close (you can verify later)
+                </button>
+              </>
+            )}
+          </Section>
+        ) : (
+          /* State 1 — entry prompt */
+          <Section title="Uber Direct">
+            <p className="text-sm text-gray-600">
+              Want to offer faster delivery without managing drivers?
+            </p>
+            <button
+              onClick={() => setShowWizardLocally(true)}
+              className="text-sm font-medium text-[#16A34A] hover:text-[#15803D] transition-colors"
+            >
+              Set up Uber Direct →
+            </button>
+          </Section>
+        )}
 
         {/* Tax Rate */}
         <Section title="Tax Rate" onSave={saveTax} saving={savingTax} saved={savedTax}>
