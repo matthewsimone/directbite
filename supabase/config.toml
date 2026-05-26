@@ -104,6 +104,14 @@ verify_jwt = false
 [functions.uber-token]
 verify_jwt = false
 
+# uber-quote — anonymous customer-callable, fetches Uber delivery quote
+# and applies passthrough policy. JWT off; uses the Bearer anon-key
+# pattern from create-payment-intent. Service-role used internally for
+# the DB restaurant fetch.
+
+[functions.uber-quote]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Admin endpoints with platform-level JWT validation
