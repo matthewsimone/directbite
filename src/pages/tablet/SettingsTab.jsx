@@ -8,6 +8,20 @@ import ReportsView from './ReportsView'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+// M5b — Fallback Uber Direct schedule used when the restaurant's `hours`
+// table is empty or hasn't loaded yet. In normal operation, schedule
+// defaults are derived from the restaurant's actual Hours via the
+// defaultsFromHours() helper inside the SettingsTab component.
+const DEFAULT_UBER_SCHEDULE = {
+  "0": { enabled: false },
+  "1": { enabled: true, start: "11:00", end: "22:00" },
+  "2": { enabled: true, start: "11:00", end: "22:00" },
+  "3": { enabled: true, start: "11:00", end: "22:00" },
+  "4": { enabled: true, start: "11:00", end: "22:00" },
+  "5": { enabled: true, start: "11:00", end: "23:00" },
+  "6": { enabled: true, start: "11:00", end: "23:00" }
+}
+
 function Section({ title, children, onSave, saving, saved }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
@@ -48,6 +62,31 @@ function Toggle({ value, onChange }) {
 }
 
 export default function SettingsTab({ restaurant, setRestaurant }) {
+  // M5b — Derive an uber_schedule jsonb object from the restaurant's
+  // existing Hours table. If a day is open in hours → enabled with that
+  // day's open_time/close_time (normalized to HH:MM). Otherwise disabled.
+  // Returns `fallback` when hours is empty/unloaded (DEFAULT_UBER_SCHEDULE
+  // is the canonical fallback).
+  function defaultsFromHours(hoursArray, fallback) {
+    if (!hoursArray || hoursArray.length === 0) return fallback
+    const result = {}
+    for (let dow = 0; dow <= 6; dow++) {
+      const dayHours = hoursArray.find(h => h.day_of_week === dow)
+      if (dayHours?.is_open && dayHours.open_time && dayHours.close_time) {
+        // hours.open_time/close_time may be stored as "HH:MM:SS"; truncate
+        // to "HH:MM" to match the uber_schedule jsonb convention.
+        result[String(dow)] = {
+          enabled: true,
+          start: dayHours.open_time.slice(0, 5),
+          end: dayHours.close_time.slice(0, 5),
+        }
+      } else {
+        result[String(dow)] = { enabled: false }
+      }
+    }
+    return result
+  }
+
   const [hours, setHours] = useState([])
   const [loadingHours, setLoadingHours] = useState(true)
 
@@ -102,9 +141,33 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [verifyError, setVerifyError] = useState(null)
   const [verifySuccess, setVerifySuccess] = useState(null)
 
+  // M5b — Uber Direct configuration state (only relevant when verified)
+  const [mode, setMode] = useState(restaurant?.delivery_fulfillment || 'in_house')
+  const [uberActive, setUberActive] = useState(restaurant?.uber_direct_active || false)
+  const [schedule, setSchedule] = useState(
+    restaurant?.uber_schedule && Object.keys(restaurant.uber_schedule).length > 0
+      ? restaurant.uber_schedule
+      : DEFAULT_UBER_SCHEDULE
+  )
+  const [savingUberSettings, setSavingUberSettings] = useState(false)
+  const [savedUberSettings, setSavedUberSettings] = useState(false)
+
   useEffect(() => {
     fetchHours()
   }, [restaurant?.id])
+
+  // M5b — When the hours table loads, if the restaurant has not yet saved a
+  // custom uber_schedule, override the schedule state with hours-derived
+  // defaults. Ensures the first time an operator picks 'both' mode, they
+  // see their actual operating hours pre-populated rather than the
+  // hardcoded fallback. Only runs when uber_schedule is null/empty.
+  useEffect(() => {
+    if (!restaurant?.uber_schedule || Object.keys(restaurant.uber_schedule).length === 0) {
+      if (hours && hours.length > 0) {
+        setSchedule(defaultsFromHours(hours, DEFAULT_UBER_SCHEDULE))
+      }
+    }
+  }, [hours, restaurant?.uber_schedule])
 
   async function fetchHours() {
     if (!restaurant) return
@@ -399,6 +462,74 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     cancelWizard()
   }
 
+  // ── Uber Direct configuration (M5b) ──
+
+  // Immutable update of a single field on a single day in the schedule
+  // jsonb. Mirrors the existing updateHour() pattern but operates on the
+  // jsonb object shape (string keys "0"-"6") rather than an array.
+  //
+  // When toggling a day ON for the first time (no times stored yet),
+  // populates start/end from the restaurant's Hours table for that day if
+  // it's open there; otherwise falls back to 11:00-22:00. Prevents the
+  // subtle bug where a day with {enabled: true} but no times would silently
+  // fall back to in_house in the server-side schedule check
+  // (uberMode.isInTimeWindow treats missing start/end as outside-window).
+  function updateScheduleDay(dayIndex, field, value) {
+    setSchedule(prev => {
+      const key = String(dayIndex)
+      const currentDay = prev[key] || {}
+      const updated = { ...currentDay, [field]: value }
+      if (field === 'enabled' && value === true && !currentDay.enabled) {
+        if (!updated.start || !updated.end) {
+          const dayHours = hours?.find(h => h.day_of_week === dayIndex)
+          if (dayHours?.is_open && dayHours.open_time && dayHours.close_time) {
+            if (!updated.start) updated.start = dayHours.open_time.slice(0, 5)
+            if (!updated.end) updated.end = dayHours.close_time.slice(0, 5)
+          } else {
+            if (!updated.start) updated.start = '11:00'
+            if (!updated.end) updated.end = '22:00'
+          }
+        }
+      }
+      return { ...prev, [key]: updated }
+    })
+  }
+
+  // Atomic save of the 3 M5b config columns. Mirrors saveDelivery's pattern
+  // — single .update().eq().select().single() call, setRestaurant on
+  // success, 2-second "Saved ✓" indicator, toast.error on failure.
+  async function saveUberSettings() {
+    if (savingUberSettings) return
+    setSavingUberSettings(true)
+    setSavedUberSettings(false)
+    try {
+      const { data, error } = await supabase
+        .from('restaurants')
+        .update({
+          delivery_fulfillment: mode,
+          uber_direct_active: uberActive,
+          uber_schedule: schedule,
+        })
+        .eq('id', restaurant.id)
+        .select()
+        .single()
+      if (error) {
+        console.error('[Uber] saveUberSettings failed', error)
+        toast.error("Couldn't save Uber Direct settings. Try again.")
+        setSavingUberSettings(false)
+        return
+      }
+      setRestaurant(data)
+      setSavingUberSettings(false)
+      setSavedUberSettings(true)
+      setTimeout(() => setSavedUberSettings(false), 2000)
+    } catch (err) {
+      console.error('[Uber] saveUberSettings exception', err)
+      toast.error("Couldn't save Uber Direct settings. Try again.")
+      setSavingUberSettings(false)
+    }
+  }
+
   if (showReports) {
     return <ReportsView restaurant={restaurant} onBack={() => setShowReports(false)} />
   }
@@ -660,8 +791,14 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
 
         {/* Uber Direct setup card */}
         {isUberVerified ? (
-          /* State 3 stub — verified, full controls coming in M8 */
-          <Section title="Uber Direct">
+          /* M5b — full Uber Direct configuration UI */
+          <Section
+            title="Uber Direct"
+            onSave={saveUberSettings}
+            saving={savingUberSettings}
+            saved={savedUberSettings}
+          >
+            {/* Status line — verified credentials banner */}
             <div className="flex items-center gap-2 text-green-700">
               <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -669,8 +806,94 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               <span className="font-medium">Uber Direct connected</span>
             </div>
             <p className="text-xs text-gray-500 italic">
-              Verified {new Date(restaurant.uber_credentials_verified_at).toLocaleString()}. Configuration UI coming soon.
+              Verified {new Date(restaurant.uber_credentials_verified_at).toLocaleString()}
             </p>
+
+            {/* Delivery Mode — 3 radio buttons */}
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Delivery Mode</p>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'in_house'}
+                  onChange={() => setMode('in_house')}
+                  className="accent-[#16A34A] w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">In-House Only</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'uber_direct'}
+                  onChange={() => setMode('uber_direct')}
+                  className="accent-[#16A34A] w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">Uber Direct Only</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'both'}
+                  onChange={() => setMode('both')}
+                  className="accent-[#16A34A] w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">Both — Schedule + Real-Time Override</span>
+              </label>
+            </div>
+
+            {/* Real-Time Override + Schedule — only when mode === 'both' */}
+            {mode === 'both' && (
+              <>
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Uber Direct Active</span>
+                    <Toggle value={uberActive} onChange={setUberActive} />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Turn ON when your drivers are unavailable. This overrides the schedule below.
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schedule</p>
+                  {[0, 1, 2, 3, 4, 5, 6].map(dow => {
+                    const day = schedule[String(dow)] || { enabled: false }
+                    return (
+                      <div key={dow} className="flex items-center gap-2">
+                        <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[dow].slice(0, 3)}</span>
+                        <Toggle
+                          value={day.enabled}
+                          onChange={val => updateScheduleDay(dow, 'enabled', val)}
+                        />
+                        {day.enabled ? (
+                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                            <input
+                              type="time"
+                              value={day.start || '11:00'}
+                              onChange={e => updateScheduleDay(dow, 'start', e.target.value)}
+                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                            />
+                            <span className="text-gray-400 text-xs shrink-0">to</span>
+                            <input
+                              type="time"
+                              value={day.end || '22:00'}
+                              onChange={e => updateScheduleDay(dow, 'end', e.target.value)}
+                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">Closed</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
           </Section>
         ) : showWizard ? (
           <Section title="Uber Direct">
