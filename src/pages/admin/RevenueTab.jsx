@@ -52,7 +52,7 @@ export default function RevenueTab() {
 
   async function fetchData() {
     const [ordersRes, restRes] = await Promise.all([
-      supabase.from('orders').select('*').in('status', ['new', 'in_progress', 'complete']).order('created_at', { ascending: false }),
+      supabase.from('orders').select('*').in('status', ['new', 'in_progress', 'scheduled', 'complete']).order('created_at', { ascending: false }),
       supabase.from('restaurants').select('id, name').order('name'),
     ])
     setOrders(ordersRes.data || [])
