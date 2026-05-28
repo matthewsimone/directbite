@@ -220,11 +220,11 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       console.log('[PAYMENTMETHOD] event fired — this means user authenticated in wallet sheet')
       if (submittedRef.current) { ev.complete('fail'); return }
 
-      // Validate delivery address before proceeding
+      // Validate delivery address before proceeding (now async — M5c silent re-quote)
       const validateFn = onValidateDeliveryRef.current
       console.log('[PAYMENTMETHOD] validateFn exists:', !!validateFn)
       if (validateFn) {
-        const isValid = validateFn()
+        const isValid = await validateFn()
         console.log('[PAYMENTMETHOD] validation result:', isValid)
         if (!isValid) {
           console.log('[PAYMENTMETHOD] BLOCKED — delivery validation failed')
@@ -317,9 +317,12 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       return
     }
 
-    if (onValidateDelivery && !onValidateDelivery()) {
-      submittedRef.current = false
-      return
+    if (onValidateDelivery) {
+      const isValid = await onValidateDelivery()
+      if (!isValid) {
+        submittedRef.current = false
+        return
+      }
     }
 
     setLoading(true)
@@ -531,6 +534,15 @@ export default function CheckoutPage() {
   const [deliveryDistance, setDeliveryDistance] = useState(null)
   const [deliveryFeeCents, setDeliveryFeeCents] = useState(null)
   const [addressError, setAddressError] = useState(null)
+  // M5c — Uber Direct quote state (only populated when delivery_fulfillment != 'in_house')
+  const [resolvedMode, setResolvedMode] = useState(null) // null | 'in_house' | 'uber_direct'
+  const [uberQuoteId, setUberQuoteId] = useState(null)
+  const [uberQuotedFeeCents, setUberQuotedFeeCents] = useState(null)
+  const [uberCustomerFeeCents, setUberCustomerFeeCents] = useState(null)
+  const [quoteExpiresAt, setQuoteExpiresAt] = useState(null)
+  const [uberEnvironment, setUberEnvironment] = useState(null)
+  const [quoteLoading, setQuoteLoading] = useState(false)
+  const quoteAbortController = useRef(null)
   const [mapsLoaded, setMapsLoaded] = useState(false)
   const autocompleteRef = useRef(null)
   const inputRef = useRef(null)
@@ -552,8 +564,12 @@ export default function CheckoutPage() {
   const discountAmount = Math.round(fullSubtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = fullSubtotal - discountAmount
   const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
+  // M5c: when resolved as uber_direct, use the server-calculated passthrough fee.
+  // Otherwise (in_house mode or pre-resolution), use the existing haversine path.
   const deliveryFee = orderType === 'delivery'
-    ? (deliveryFeeCents != null ? deliveryFeeCents : defaultFeeCents) / 100
+    ? (resolvedMode === 'uber_direct' && uberCustomerFeeCents != null
+        ? uberCustomerFeeCents / 100
+        : (deliveryFeeCents != null ? deliveryFeeCents : defaultFeeCents) / 100)
     : 0
   const taxRate = Number(restaurant?.tax_rate || 0)
   const serviceFee = 1.50
@@ -608,6 +624,15 @@ export default function CheckoutPage() {
     total_amount: total,
     include_utensils: includeUtensils,
     special_instructions: specialInstructions.trim() || null,
+    // M5c: Uber Direct fields. NULL when in_house — stripe-webhook (M5d)
+    // writes these to orders.delivery_fulfillment_method / uber_quote_id /
+    // uber_quoted_fee / uber_environment on payment success.
+    delivery_fulfillment_method: resolvedMode || 'in_house',
+    uber_quote_id: resolvedMode === 'uber_direct' ? uberQuoteId : null,
+    uber_quoted_fee: resolvedMode === 'uber_direct' && uberQuotedFeeCents != null
+      ? uberQuotedFeeCents / 100 // cents → dollars per D3 (orders.uber_quoted_fee is numeric dollars)
+      : null,
+    uber_environment: resolvedMode === 'uber_direct' ? uberEnvironment : null,
     items: items.map(item => ({
       menu_item_id: item.menuItemId,
       item_size_id: item.itemSizeId || null,
@@ -624,7 +649,7 @@ export default function CheckoutPage() {
         placement_type: t.placementType || 'pizza',
       })),
     })),
-  }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items])
+  }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items, resolvedMode, uberQuoteId, uberQuotedFeeCents, uberEnvironment])
 
   // Load Google Maps JS API when delivery selected
   useEffect(() => {
@@ -674,36 +699,182 @@ export default function CheckoutPage() {
     })
   }, [restaurant?.id])
 
-  // Calculate distance and fee when delivery coordinates change
-  useEffect(() => {
-    if (orderType !== 'delivery' || !deliveryLat || !deliveryLon) {
-      setDeliveryDistance(null)
-      setDeliveryFeeCents(null)
-      setAddressError(null)
-      return
-    }
+  // M5c — Pure haversine calculation extracted from the existing fee-computation
+  // useEffect. Used by both the in_house branch (byte-equivalent behavior) and
+  // the uber-quote fallback path (when uber-quote returns resolved_mode='in_house'
+  // due to credentials_not_verified / schedule_inactive / etc).
+  // Returns the values the useEffect needs to call setters with; does no setState
+  // itself (keeps it pure + reusable).
+  function runHaversineCalc() {
     if (!restaurant?.latitude || !restaurant?.longitude) {
-      setAddressError('This restaurant hasn\'t configured delivery yet. Please choose pickup.')
-      return
+      return {
+        distance: null,
+        feeCents: null,
+        errorMsg: 'This restaurant hasn\'t configured delivery yet. Please choose pickup.',
+      }
     }
     const dist = haversineDistanceMiles(
       Number(restaurant.latitude), Number(restaurant.longitude),
       deliveryLat, deliveryLon
     )
-    setDeliveryDistance(Math.round(dist * 10) / 10)
     const feeCents = calculateDeliveryFeeCents(dist, restaurant)
-    console.log('[FEE] distance:', dist.toFixed(2), 'mi, calculated fee cents:', feeCents, 'from config:', {
-      tier1_fee: restaurant.delivery_tier1_fee_cents,
-      tier1_max: restaurant.delivery_tier1_max_miles,
-      tier2_fee: restaurant.delivery_tier2_fee_cents,
-      max_radius: restaurant.delivery_max_radius_miles,
-    })
     if (feeCents === null) {
-      setAddressError(`Sorry, delivery is not available to your address. Distance: ${dist.toFixed(1)} miles, maximum: ${restaurant.delivery_max_radius_miles} miles.`)
+      return {
+        distance: Math.round(dist * 10) / 10,
+        feeCents: null,
+        errorMsg: `Sorry, delivery is not available to your address. Distance: ${dist.toFixed(1)} miles, maximum: ${restaurant.delivery_max_radius_miles} miles.`,
+      }
+    }
+    return {
+      distance: Math.round(dist * 10) / 10,
+      feeCents,
+      errorMsg: null,
+    }
+  }
+
+  // M5c — POST to the uber-quote edge function. Accepts an AbortSignal for
+  // cancellation when the delivery address changes mid-flight. Returns the
+  // parsed JSON response on success, or a structured { success: false, error }
+  // shape on network/fetch failure. AbortErrors are re-thrown so the caller
+  // can distinguish stale responses from real failures.
+  async function fetchUberQuote(signal) {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+    try {
+      const res = await fetch(`${supabaseUrl}/functions/v1/uber-quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+        },
+        body: JSON.stringify({
+          restaurant_id: restaurant.id,
+          dropoff_lat: deliveryLat,
+          dropoff_lng: deliveryLon,
+          dropoff_address: deliveryAddress,
+          dropoff_phone: customerPhone || null,
+          cart_subtotal_cents: Math.round(fullSubtotal * 100),
+        }),
+        signal,
+      })
+      if (!res.ok) {
+        return { success: false, error: 'network', detail: `HTTP ${res.status}` }
+      }
+      return await res.json()
+    } catch (err) {
+      if (err.name === 'AbortError') throw err
+      console.error('[Uber] quote fetch error', err)
+      return { success: false, error: 'network', detail: String(err) }
+    }
+  }
+
+  // Calculate distance and fee when delivery coordinates change.
+  // M5c: branches on restaurant.delivery_fulfillment. in_house path is
+  // byte-equivalent to the pre-M5c behavior; uber path calls uber-quote
+  // and falls back to haversine when uber returns resolved_mode='in_house'.
+  useEffect(() => {
+    if (orderType !== 'delivery' || !deliveryLat || !deliveryLon) {
+      setDeliveryDistance(null)
       setDeliveryFeeCents(null)
-    } else {
       setAddressError(null)
-      setDeliveryFeeCents(feeCents)
+      setResolvedMode(null)
+      setUberQuoteId(null)
+      setUberQuotedFeeCents(null)
+      setUberCustomerFeeCents(null)
+      setQuoteExpiresAt(null)
+      setUberEnvironment(null)
+      setQuoteLoading(false)
+      return
+    }
+
+    const fulfillment = restaurant?.delivery_fulfillment || 'in_house'
+
+    if (fulfillment === 'in_house') {
+      // In-house path: existing haversine logic, byte-equivalent behavior.
+      // Zero impact on the 8 production restaurants currently in this mode.
+      const result = runHaversineCalc()
+      setDeliveryDistance(result.distance)
+      setDeliveryFeeCents(result.feeCents)
+      setAddressError(result.errorMsg)
+      setResolvedMode('in_house')
+      setUberQuoteId(null)
+      setUberQuotedFeeCents(null)
+      setUberCustomerFeeCents(null)
+      setQuoteExpiresAt(null)
+      setUberEnvironment(null)
+      setQuoteLoading(false)
+      return
+    }
+
+    // Uber path (delivery_fulfillment is 'uber_direct' or 'both').
+    // Cancel any in-flight quote from a previous address change.
+    if (quoteAbortController.current) {
+      quoteAbortController.current.abort()
+    }
+    const controller = new AbortController()
+    quoteAbortController.current = controller
+
+    setQuoteLoading(true)
+    setAddressError(null)
+
+    fetchUberQuote(controller.signal)
+      .then(result => {
+        if (controller.signal.aborted) return // stale response, ignore
+
+        if (!result || !result.success) {
+          // delivery_unavailable, uber_unavailable, network failure, etc.
+          // Per D7: generic customer-facing message; Uber-side detail logged server-side.
+          setAddressError("Delivery isn't available for this address. Please try pickup or a different address.")
+          setResolvedMode(null)
+          setUberQuoteId(null)
+          setUberQuotedFeeCents(null)
+          setUberCustomerFeeCents(null)
+          setQuoteExpiresAt(null)
+          setUberEnvironment(null)
+          setDeliveryFeeCents(null)
+          setDeliveryDistance(null)
+          setQuoteLoading(false)
+          return
+        }
+
+        if (result.resolved_mode === 'uber_direct') {
+          // Use the Uber quote; clear haversine state so the display branch
+          // chooses the uber path cleanly.
+          setResolvedMode('uber_direct')
+          setUberQuoteId(result.uber_quote_id)
+          setUberQuotedFeeCents(result.uber_quoted_fee_cents)
+          setUberCustomerFeeCents(result.customer_delivery_fee_cents)
+          setQuoteExpiresAt(result.expires_at)
+          setUberEnvironment(result.uber_environment)
+          setDeliveryFeeCents(null)
+          setDeliveryDistance(null)
+          setAddressError(null)
+        } else {
+          // resolved_mode === 'in_house' (fallback: credentials_not_verified,
+          // schedule_inactive, etc). Run haversine and use that fee.
+          const hav = runHaversineCalc()
+          setResolvedMode('in_house')
+          setUberQuoteId(null)
+          setUberQuotedFeeCents(null)
+          setUberCustomerFeeCents(null)
+          setQuoteExpiresAt(null)
+          setUberEnvironment(null)
+          setDeliveryDistance(hav.distance)
+          setDeliveryFeeCents(hav.feeCents)
+          setAddressError(hav.errorMsg)
+        }
+        setQuoteLoading(false)
+      })
+      .catch(err => {
+        if (err.name === 'AbortError') return
+        console.error('[Uber] quote fetch unexpected error', err)
+        setAddressError("Couldn't calculate delivery fee. Please try a different address or pickup.")
+        setQuoteLoading(false)
+      })
+
+    // Cleanup: abort the in-flight quote on unmount or dep change
+    return () => {
+      controller.abort()
     }
   }, [orderType, deliveryLat, deliveryLon, restaurant])
 
@@ -825,6 +996,58 @@ export default function CheckoutPage() {
     })
     // Cart is cleared on the confirmation page, not here — clearing here triggers
     // the empty-cart useEffect which redirects back to menu before navigation completes
+  }
+
+  // M5c — Validate the delivery address + (if uber_direct) silently re-quote
+  // if the existing quote has expired. Returns true if the order can proceed
+  // to payment, false if validation failed (caller should bail out).
+  // Async because re-quoting takes a network round-trip. Both PaymentForm
+  // callsites (card path in handleSubmit, wallet path in pr.on('paymentmethod'))
+  // await this.
+  async function onValidateDelivery() {
+    if (orderType === 'delivery' && !deliveryLat) {
+      setAddressError('Please enter a delivery address')
+      return false
+    }
+    if (addressError) return false
+
+    if (resolvedMode === 'uber_direct' && quoteExpiresAt) {
+      const expiresMs = new Date(quoteExpiresAt).getTime()
+      if (expiresMs < Date.now()) {
+        // Silent re-quote, one-shot (no AbortController — this is a terminal action)
+        const fresh = await fetchUberQuote(null)
+        if (!fresh || !fresh.success) {
+          toast.error("Delivery quote expired and couldn't be refreshed. Please try again.")
+          return false
+        }
+        if (fresh.resolved_mode === 'uber_direct') {
+          setResolvedMode('uber_direct')
+          setUberQuoteId(fresh.uber_quote_id)
+          setUberQuotedFeeCents(fresh.uber_quoted_fee_cents)
+          setUberCustomerFeeCents(fresh.customer_delivery_fee_cents)
+          setQuoteExpiresAt(fresh.expires_at)
+          setUberEnvironment(fresh.uber_environment)
+        } else {
+          // Mode transitioned to in_house mid-checkout (schedule lapsed etc).
+          // Fall back to haversine; bail out if haversine produces an error.
+          const hav = runHaversineCalc()
+          setResolvedMode('in_house')
+          setUberQuoteId(null)
+          setUberQuotedFeeCents(null)
+          setUberCustomerFeeCents(null)
+          setQuoteExpiresAt(null)
+          setUberEnvironment(null)
+          setDeliveryDistance(hav.distance)
+          setDeliveryFeeCents(hav.feeCents)
+          if (hav.errorMsg) {
+            setAddressError(hav.errorMsg)
+            return false
+          }
+        }
+      }
+    }
+
+    return true
   }
 
   // Stripe instance scoped to connected account for direct charges
@@ -974,7 +1197,15 @@ export default function CheckoutPage() {
                 className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
             </div>
-            {deliveryDistance != null && !addressError && (
+            {quoteLoading && (
+              <p className="mt-2 text-sm text-gray-500 italic">Calculating delivery fee...</p>
+            )}
+            {!quoteLoading && resolvedMode === 'uber_direct' && uberCustomerFeeCents != null && !addressError && (
+              <p className="mt-2 text-sm text-gray-600">
+                Delivery fee: {formatCurrency(deliveryFee)} (via Uber Direct)
+              </p>
+            )}
+            {!quoteLoading && resolvedMode !== 'uber_direct' && deliveryDistance != null && !addressError && (
               <p className="mt-2 text-sm text-gray-600">
                 Distance: {deliveryDistance} mi — Delivery fee: {formatCurrency(deliveryFee)}
               </p>
@@ -1137,20 +1368,7 @@ export default function CheckoutPage() {
                 slug={slug}
                 restaurant={restaurant}
                 disabled={belowMinimum}
-                onValidateDelivery={() => {
-                  console.log('[VALIDATE] called — orderType:', orderType, 'deliveryLat:', deliveryLat, 'addressError:', addressError)
-                  if (orderType === 'delivery' && !deliveryLat) {
-                    console.log('[VALIDATE] FAIL — no delivery address')
-                    setAddressError('Please enter a delivery address')
-                    return false
-                  }
-                  if (addressError) {
-                    console.log('[VALIDATE] FAIL — existing addressError:', addressError)
-                    return false
-                  }
-                  console.log('[VALIDATE] PASS')
-                  return true
-                }}
+                onValidateDelivery={onValidateDelivery}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}
                 onWalletCustomer={async (name, email, phone) => {

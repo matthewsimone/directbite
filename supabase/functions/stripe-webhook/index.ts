@@ -122,6 +122,11 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     include_utensils,
     scheduled_for: rawScheduledFor,
     items,
+    // M5d — Uber Direct columns. NULL for in_house orders.
+    delivery_fulfillment_method,
+    uber_quote_id,
+    uber_quoted_fee,
+    uber_environment,
   } = orderData;
 
   // Validate scheduled_for. Defense-in-depth — client validates too, but
@@ -135,6 +140,19 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     } else {
       scheduled_for = parsed.toISOString();
     }
+  }
+
+  // M5d defensive check: if order_data says uber_direct but lacks a quote_id,
+  // it's a split-brain state — possibly stale frontend or buggy buildOrderData.
+  // Auto-correct to in_house and log so we can investigate. Forces NULL on all
+  // uber_* columns below.
+  let finalFulfillmentMode = delivery_fulfillment_method || "in_house";
+  if (finalFulfillmentMode === "uber_direct" && !uber_quote_id) {
+    console.warn(
+      "[stripe-webhook] uber_direct mode without uber_quote_id; auto-correcting to in_house",
+      { payment_intent_id: paymentIntentId, restaurant_id }
+    );
+    finalFulfillmentMode = "in_house";
   }
 
   // Idempotency check — prevent duplicate orders from webhook retries
@@ -187,6 +205,13 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
       include_utensils: include_utensils || false,
       scheduled_for,
       accepted_at: null,
+      // M5d — Uber Direct columns. When finalFulfillmentMode is 'in_house'
+      // (either explicitly or via auto-correction above), all uber_* are
+      // forced to NULL — guarantees no orphan Uber data on in_house orders.
+      delivery_fulfillment_method: finalFulfillmentMode,
+      uber_quote_id: finalFulfillmentMode === "uber_direct" ? (uber_quote_id || null) : null,
+      uber_quoted_fee: finalFulfillmentMode === "uber_direct" ? (uber_quoted_fee || null) : null,
+      uber_environment: finalFulfillmentMode === "uber_direct" ? (uber_environment || null) : null,
     })
     .select()
     .single();
