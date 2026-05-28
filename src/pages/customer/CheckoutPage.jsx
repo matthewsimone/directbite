@@ -651,6 +651,20 @@ export default function CheckoutPage() {
     })),
   }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items, resolvedMode, uberQuoteId, uberQuotedFeeCents, uberEnvironment])
 
+  // M6: handle quote_validation_failed errors from create-payment-intent.
+  // Reset uber quote state so the existing fee-computation useEffect re-fires
+  // and fetches a fresh quote. The customer sees the new price and can re-Pay.
+  function handleQuoteValidationFailure(reason) {
+    console.warn('[Checkout] quote validation failed; forcing re-quote', { reason })
+    toast.error('Delivery quote changed. Please try again.')
+    setResolvedMode(null)
+    setUberQuoteId(null)
+    setUberQuotedFeeCents(null)
+    setUberCustomerFeeCents(null)
+    setQuoteExpiresAt(null)
+    setUberEnvironment(null)
+  }
+
   // Load Google Maps JS API when delivery selected
   useEffect(() => {
     if (orderType !== 'delivery' || !restaurant?.delivery_available || mapsLoaded) return
@@ -916,6 +930,15 @@ export default function CheckoutPage() {
 
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}))
+          // M6: server-side quote validation rejection — reset uber state
+          // so the existing useEffect re-quotes. Customer sees the new
+          // price and can re-Pay.
+          if (errData.error === 'quote_validation_failed') {
+            handleQuoteValidationFailure(errData.reason)
+            intentCreated.current = false // allow retry after re-quote
+            setInitError(null)
+            return
+          }
           throw new Error(errData.error || 'Failed to create payment')
         }
 
@@ -944,7 +967,7 @@ export default function CheckoutPage() {
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-        await fetch(
+        const res = await fetch(
           `${supabaseUrl}/functions/v1/create-payment-intent`,
           {
             method: 'POST',
@@ -960,6 +983,16 @@ export default function CheckoutPage() {
             }),
           }
         )
+        // M6: server-side quote validation rejection — surface as a
+        // re-quote prompt. Other failures stay silent (per pre-M6 behavior).
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          if (errData.error === 'quote_validation_failed') {
+            handleQuoteValidationFailure(errData.reason)
+            return
+          }
+          console.warn('Failed to update payment intent metadata:', errData.error || res.status)
+        }
       } catch (err) {
         // Silent fail on metadata update — the initial data is already stored
         console.warn('Failed to update payment intent metadata:', err)

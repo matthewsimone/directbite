@@ -41,6 +41,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "../_shared/uberToken.ts";
 import { getUberApiBase, UberEnvironment } from "../_shared/uberConfig.ts";
 import { resolveMode, RestaurantForMode } from "../_shared/uberMode.ts";
+import { applyPassthrough } from "../_shared/uberPassthrough.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -57,55 +58,6 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-/**
- * Apply passthrough policy to convert Uber's quoted fee into customer-paid
- * and restaurant-absorbed portions. All values in integer cents to avoid
- * float drift; the caller is responsible for cents → dollars conversion.
- *
- * Defensive: unknown mode value falls back to customer_full (customer pays
- * all). Negative passthrough_value clamped to 0.
- */
-function applyPassthrough(
-  uberFeeCents: number,
-  mode: string,
-  value: number
-): { customer_cents: number; restaurant_cents: number } {
-  const v = Math.max(0, Number(value) || 0);
-
-  switch (mode) {
-    case "customer_full":
-      return { customer_cents: uberFeeCents, restaurant_cents: 0 };
-
-    case "split": {
-      // value is percentage 0-100 representing customer's share
-      const customerPct = Math.min(100, v) / 100;
-      const customer = Math.round(uberFeeCents * customerPct);
-      return { customer_cents: customer, restaurant_cents: uberFeeCents - customer };
-    }
-
-    case "restaurant_cap": {
-      // value is dollars cap on what restaurant absorbs
-      const capCents = Math.round(v * 100);
-      const restaurant = Math.min(uberFeeCents, capCents);
-      return { customer_cents: uberFeeCents - restaurant, restaurant_cents: restaurant };
-    }
-
-    case "customer_cap": {
-      // value is dollars cap on what customer pays
-      const capCents = Math.round(v * 100);
-      const customer = Math.min(uberFeeCents, capCents);
-      return { customer_cents: customer, restaurant_cents: uberFeeCents - customer };
-    }
-
-    case "restaurant_full":
-      return { customer_cents: 0, restaurant_cents: uberFeeCents };
-
-    default:
-      console.warn(`[uber-quote] unknown passthrough mode: ${mode}; defaulting to customer_full`);
-      return { customer_cents: uberFeeCents, restaurant_cents: 0 };
-  }
 }
 
 serve(async (req: Request) => {
@@ -313,6 +265,47 @@ serve(async (req: Request) => {
     restaurant.uber_passthrough_mode,
     Number(restaurant.uber_passthrough_value || 0)
   );
+
+  // -------- M6: cache write for create-payment-intent validation --------
+  // Lazy per-restaurant cleanup of expired rows (bounded cost — only this
+  // restaurant's rows). 1-hour grace period after expires_at so we don't
+  // race the lock validation in create-payment-intent.
+  await supabase
+    .from("uber_quotes")
+    .delete()
+    .eq("restaurant_id", restaurant_id)
+    .lt("expires_at", new Date(Date.now() - 60 * 60 * 1000).toISOString());
+
+  const expiresAtIso = expiresAt
+    ? new Date(expiresAt).toISOString()
+    : new Date(Date.now() + 5 * 60 * 1000).toISOString(); // defensive 5-min fallback
+
+  const { error: cacheErr } = await supabase
+    .from("uber_quotes")
+    .insert({
+      quote_id: uberQuoteId,
+      restaurant_id,
+      uber_quoted_fee_cents: uberFeeCents,
+      customer_delivery_fee_cents: customer_cents,
+      restaurant_absorbs_cents: restaurant_cents,
+      uber_environment: env,
+      passthrough_mode: restaurant.uber_passthrough_mode,
+      passthrough_value: Number(restaurant.uber_passthrough_value || 0),
+      expires_at: expiresAtIso,
+    });
+
+  if (cacheErr) {
+    // Per D-E: fail at quote time. Don't let the customer proceed with a
+    // quote we couldn't cache — they'd hit cache_not_found at Pay click
+    // instead, which is worse UX (later in the flow, larger frustration).
+    console.error("[uber-quote] cache write failed", cacheErr);
+    return jsonResponse({
+      success: false,
+      step: "cache",
+      error: "cache_write_failed",
+      detail: cacheErr.message,
+    });
+  }
 
   // -------- Success --------
   return jsonResponse({

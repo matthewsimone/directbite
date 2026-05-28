@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import Stripe from "https://esm.sh/stripe@17.7.0";
+import { resolveMode, RestaurantForMode } from "../_shared/uberMode.ts";
+import { applyPassthrough } from "../_shared/uberPassthrough.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
@@ -30,10 +32,15 @@ serve(async (req: Request) => {
       );
     }
 
-    // Look up restaurant's Stripe Connect account
+    // Look up restaurant's Stripe Connect account + M6 mode-resolution fields
     const { data: restaurant, error: restErr } = await supabase
       .from("restaurants")
-      .select("stripe_account_id, name")
+      .select(
+        `stripe_account_id, name,
+         delivery_fulfillment, uber_credentials_verified_at,
+         uber_direct_active, uber_schedule,
+         uber_passthrough_mode, uber_passthrough_value`
+      )
       .eq("id", restaurant_id)
       .single();
 
@@ -50,6 +57,129 @@ serve(async (req: Request) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    // -------- M6: server-side mode resolution + quote validation --------
+    // Defensive: ignore the client's claim of delivery_fulfillment_method
+    // from order_data. Re-resolve from restaurant config (and current NY
+    // time, in case the 'both' mode schedule lapses mid-checkout).
+    const resolution = resolveMode(restaurant as RestaurantForMode);
+    const serverResolvedMode = resolution.resolved_mode;
+
+    // Helper to return structured validation errors. Customer sees a generic
+    // toast ("Delivery quote changed. Please try again."); the granular
+    // reason is for telemetry / console.error only.
+    function validationError(reason: string, detail?: string): Response {
+      console.error("[create-payment-intent] quote validation failed", {
+        reason,
+        detail,
+        restaurant_id,
+        quote_id: order_data?.uber_quote_id,
+      });
+      return new Response(
+        JSON.stringify({
+          error: "quote_validation_failed",
+          reason,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (serverResolvedMode === "uber_direct") {
+      // Server says uber_direct. Client must have a uber_quote_id; if not, reject.
+      const clientQuoteId: string | undefined = order_data?.uber_quote_id;
+      if (!clientQuoteId || typeof clientQuoteId !== "string") {
+        return validationError("missing_quote_id");
+      }
+
+      // Lookup in cache. uber-quote wrote here at quote time; client cannot
+      // fabricate a quote_id because we'd have no matching row.
+      const { data: cachedQuote, error: cacheReadErr } = await supabase
+        .from("uber_quotes")
+        .select("*")
+        .eq("quote_id", clientQuoteId)
+        .maybeSingle();
+
+      if (cacheReadErr) {
+        return validationError("cache_read_error", cacheReadErr.message);
+      }
+      if (!cachedQuote) {
+        return validationError("quote_not_found");
+      }
+
+      // Cross-restaurant attack defense: claimed quote must belong to the
+      // restaurant the order is being placed at.
+      if (cachedQuote.restaurant_id !== restaurant_id) {
+        return validationError("wrong_restaurant");
+      }
+
+      // Expiry: 60-second buffer so we don't lock a quote that's seconds
+      // away from expiring (M9's create-delivery call would then fail).
+      const expiresAtMs = new Date(cachedQuote.expires_at).getTime();
+      if (expiresAtMs < Date.now() + 60 * 1000) {
+        return validationError("quote_expired");
+      }
+
+      // Recompute the customer-side fee using the cached Uber-side fee +
+      // the restaurant's CURRENT passthrough policy. If the restaurant
+      // changed passthrough between quote and lock, this catches it.
+      const recomputed = applyPassthrough(
+        cachedQuote.uber_quoted_fee_cents,
+        restaurant.uber_passthrough_mode,
+        Number(restaurant.uber_passthrough_value || 0)
+      );
+
+      if (recomputed.customer_cents !== cachedQuote.customer_delivery_fee_cents) {
+        // Passthrough changed mid-checkout. Per Decision C, reject and
+        // force re-quote (no mid-flow re-confirmation).
+        return validationError(
+          "passthrough_changed",
+          `cached=${cachedQuote.customer_delivery_fee_cents} recomputed=${recomputed.customer_cents}`
+        );
+      }
+
+      const serverValidatedFeeCents = cachedQuote.customer_delivery_fee_cents;
+
+      // Total-amount validation: client's `amount` (in cents) must equal
+      // what we'd compute server-side from order_data subtotal/tax/tip/
+      // service + the cached customer delivery fee. ±2-cent tolerance
+      // for float drift (D-1).
+      const od = order_data || {};
+      const expectedAmountCents =
+        Math.round(Number(od.subtotal || 0) * 100) +
+        Math.round(Number(od.tax_amount || 0) * 100) +
+        Math.round(Number(od.tip_amount || 0) * 100) +
+        Math.round(Number(od.service_fee || 1.5) * 100) +
+        serverValidatedFeeCents -
+        Math.round(Number(od.discount_amount || 0) * 100);
+
+      if (Math.abs(Number(amount) - expectedAmountCents) > 2) {
+        return validationError(
+          "amount_mismatch",
+          `client_amount=${amount} expected=${expectedAmountCents}`
+        );
+      }
+    } else {
+      // Server resolves to in_house. If client's order_data claims uber_*
+      // fields, null them out before they hit pending_orders (defensive
+      // against tampering that would otherwise propagate through
+      // stripe-webhook's split-brain check).
+      if (
+        order_data &&
+        (order_data.uber_quote_id ||
+          order_data.uber_quoted_fee ||
+          order_data.uber_environment)
+      ) {
+        console.warn(
+          "[create-payment-intent] in_house mode but order_data claims uber fields; clearing",
+          { restaurant_id, payment_intent_id }
+        );
+        order_data.uber_quote_id = null;
+        order_data.uber_quoted_fee = null;
+        order_data.uber_environment = null;
+        order_data.delivery_fulfillment_method = "in_house";
+      }
+    }
+    // -------- End M6 validation block --------
 
     // Store order data in pending_orders table to avoid Stripe metadata size limits
     let pending_order_id: string;
