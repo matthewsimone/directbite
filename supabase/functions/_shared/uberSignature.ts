@@ -8,7 +8,7 @@
 //
 // Algorithm:
 //   1. Uber signs each webhook POST with HMAC-SHA256 of the raw request
-//      body, using the merchant's uber_client_secret as the key.
+//      body, using the merchant's uber_webhook_signing_secret as the key.
 //   2. The signature is sent as lowercase hex in the X-Uber-Signature
 //      header (or X-Postmates-Signature for legacy delivery_status /
 //      courier_update events).
@@ -75,20 +75,20 @@ export function timingSafeStringEqual(a: string, b: string): boolean {
 }
 
 // Top-level verification: returns true iff signatureHeader matches
-// HMAC-SHA256(clientSecret, rawBody). Returns false defensively for
+// HMAC-SHA256(signingSecret, rawBody). Returns false defensively for
 // any malformed input (null/empty header, bad hex, wrong length,
 // unexpected exception from crypto.subtle).
 export async function verifyUberSignature(
   rawBody: string,
   signatureHeader: string | null,
-  clientSecret: string
+  signingSecret: string
 ): Promise<boolean> {
-  if (!signatureHeader || !clientSecret) return false;
+  if (!signatureHeader || !signingSecret) return false;
   const normalized = signatureHeader.trim().toLowerCase();
   if (normalized.length !== EXPECTED_HEX_LENGTH) return false;
   if (!HEX_REGEX.test(normalized)) return false;
   try {
-    const expected = await computeHmacSha256Hex(clientSecret, rawBody);
+    const expected = await computeHmacSha256Hex(signingSecret, rawBody);
     return timingSafeStringEqual(expected, normalized);
   } catch (err) {
     // crypto.subtle is generally infallible for valid inputs; this

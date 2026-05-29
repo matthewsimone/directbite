@@ -34,8 +34,8 @@
 //      log if delivery_id missing (cannot route; don't trigger Uber
 //      retry storm).
 //   6. Look up orders.uber_delivery_id JOIN restaurants for
-//      uber_client_secret. Return 200 + log if order not found (could
-//      be old test data or a spoofed event — silent drop without
+//      uber_webhook_signing_secret. Return 200 + log if order not found
+//      (could be old test data or a spoofed event — silent drop without
 //      retry).
 //   7. Verify HMAC-SHA256. 401 + log if invalid. NO DB WRITES happen
 //      before this gate.
@@ -82,12 +82,12 @@
 //     write targets for delivery_status
 //   - orders.uber_courier_info (migration 031) — write target for
 //     courier_update (jsonb full replace)
-//   - restaurants.uber_webhook_signing_secret (migration 036) — primary
+//   - restaurants.uber_webhook_signing_secret (migration 036) — the sole
 //     HMAC key (per-restaurant, generated during onboarding and pasted
-//     into Uber's dashboard webhook config)
-//   - restaurants.uber_client_secret (migration 031) — fallback HMAC
-//     key for transitional state; removed in M9b.2 once all uber_direct
-//     restaurants have signing_secret populated
+//     into Uber's dashboard webhook config). No fallback: a restaurant
+//     missing it fails verification loudly (signing_secret_not_configured,
+//     500). The transitional uber_client_secret fallback was removed once
+//     all uber_direct restaurants had signing_secret populated.
 //   - uber_webhook_events table (migration 034) — dedup + audit trail
 // ============================================================================
 
@@ -211,15 +211,18 @@ serve(async (req: Request) => {
   // ONLY read before signature verification; the lookup itself has no
   // side effects.
   //
-  // M9b.1: Webhook signature uses uber_webhook_signing_secret (separate
-  // from OAuth client_secret per Uber's dashboard configuration). Fall
-  // back to client_secret for transitional state — should be removed
-  // once all restaurants have signing_secret populated.
+  // M9b.1: Webhook signature uses uber_webhook_signing_secret — a dedicated
+  // per-merchant HMAC key, separate from the OAuth uber_client_secret so the
+  // two can rotate independently. It is the SINGLE source of truth for
+  // webhook verification; there is no fallback (the transitional
+  // uber_client_secret fallback was removed once all uber_direct restaurants
+  // had signing_secret populated). A restaurant missing it fails loudly at
+  // step 7 rather than silently verifying with the wrong key.
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select(`
       id, uber_status, uber_courier_info, restaurant_id,
-      restaurants:restaurant_id (uber_client_secret, uber_webhook_signing_secret)
+      restaurants:restaurant_id (uber_webhook_signing_secret)
     `)
     .eq("uber_delivery_id", deliveryId)
     .maybeSingle();
@@ -250,22 +253,22 @@ serve(async (req: Request) => {
   // Extract the joined webhook signing secret. Supabase's FK join
   // returns the joined row as a nested object (or null). The TS
   // generics for embedded selects are awkward, so we cast through `any`.
-  // Prefer uber_webhook_signing_secret (M9b.1 dedicated column); fall
-  // back to uber_client_secret for restaurants migrated before the
-  // signing_secret column was populated.
+  // Single source of truth: uber_webhook_signing_secret (M9b.1). No
+  // fallback to uber_client_secret — a missing signing secret is a
+  // configuration error we surface loudly, not silently paper over.
   const restaurantRow = (order as any).restaurants;
   const signingSecret: string | undefined =
-    restaurantRow?.uber_webhook_signing_secret ||
-    restaurantRow?.uber_client_secret;
+    restaurantRow?.uber_webhook_signing_secret;
   if (!signingSecret) {
-    // FK-join produced no row, or restaurant has neither secret set.
-    // The first is impossible (FK is enforced); the second means the
-    // operator deleted credentials between dispatch and now. Either
-    // way: cannot verify. Return 500 — Uber retries; gives the
-    // operator time to fix credentials before the retry budget
-    // exhausts.
+    // The restaurant has no webhook signing secret configured. The FK is
+    // enforced so the join always produces a row; this means onboarding is
+    // incomplete (signing_secret never set) or the secret was cleared.
+    // Either way we cannot verify the signature. Return 500 — Uber retries
+    // with backoff, so once ops sets the secret a later retry succeeds and
+    // the event is recovered. The distinct marker lets ops alert on
+    // misconfiguration specifically vs generic 500s.
     console.error(
-      "[uber-webhook] no signing secret for order's restaurant",
+      "[uber-webhook] signing_secret_not_configured",
       { order_id: order.id, restaurant_id: order.restaurant_id }
     );
     return errorResponse(500);

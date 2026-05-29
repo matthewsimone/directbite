@@ -50,9 +50,9 @@ verify_jwt = false
 
 # uber-webhook (M9b) — Uber Direct webhook receiver. Uber signs each
 # event with HMAC-SHA256 of the raw request body, keyed with the
-# merchant's uber_client_secret. The handler verifies the signature
-# manually; Supabase platform-level JWT verification would 401 every
-# event before our code runs.
+# merchant's uber_webhook_signing_secret. The handler verifies the
+# signature manually; Supabase platform-level JWT verification would 401
+# every event before our code runs.
 
 [functions.uber-webhook]
 verify_jwt = false
