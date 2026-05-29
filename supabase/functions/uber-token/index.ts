@@ -17,11 +17,23 @@
 //   1. CORS preflight + method check
 //   2. Parse body: { restaurant_id: string }
 //   3. Authorize (tablet user owns the requested restaurant)
-//   4. Step 1 of D6 verify: getUberToken() — mint or cache
-//   5. Step 2 of D6 verify: GET /v1/customers/{uber_customer_id} — confirm
-//      merchant active (any 200 = active per D3 decision)
+//   4. Verify by minting an OAuth token via getUberToken(). A successful
+//      mint is treated as proof Uber accepted the credentials.
+//   5. Sanity-check uber_customer_id is set (needed by downstream
+//      uber-quote URL construction; not enforced by getUberToken).
 //   6. Stamp restaurants.uber_credentials_verified_at
-//   7. Return { success: true, verified_at, organization_name? }
+//   7. Return { success: true, verified_at, organization_name: null }
+//
+// Originally M3 included a "Step 2" Get Organization Details call (GET
+// /v1/customers/{uber_customer_id}) to confirm the merchant was active.
+// That URL returned 404 in production — the endpoint doesn't exist in
+// Uber's public API. The original M3 code itself flagged the path as
+// best-guess. Removed; the implicit revocation check via token mint
+// covers the same case (revoked merchant → 401 on the next token mint →
+// getUberToken() auto-clears uber_credentials_verified_at). Downstream
+// uber-quote then falls back to in_house mode silently. TODO: if Uber
+// ever publishes a working merchant-status GET endpoint, re-add the
+// active-merchant check between the customer_id guard and the stamp.
 //
 // All Uber-side failures return HTTP 200 with success=false and a
 // structured error reason, so the tablet UI can show specific messages.
@@ -32,10 +44,6 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "../_shared/uberToken.ts";
-import {
-  getUberApiBase,
-  UberEnvironment,
-} from "../_shared/uberConfig.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -125,14 +133,15 @@ serve(async (req: Request) => {
     });
   }
 
-  // -------- Step 2: D6 two-step verify (Get Organization Details) --------
-  // ALWAYS run this even on cache hit. The cached token might be valid by
-  // Uber's expiry clock but the merchant could have been revoked since
-  // the token was minted — that's exactly the situation the Verify
-  // Credentials button exists to catch.
+  // -------- Credentials sanity check --------
+  // getUberToken() validates uber_client_id + uber_client_secret but does
+  // NOT check uber_customer_id (it's not needed for OAuth, only for
+  // subsequent quote / delivery API calls). Guard here so we don't stamp
+  // verified_at on a half-configured restaurant; downstream uber-quote
+  // would fail at URL construction without it.
   const { data: restaurant, error: restReadErr } = await supabase
     .from("restaurants")
-    .select("uber_customer_id, uber_environment")
+    .select("uber_customer_id")
     .eq("id", restaurantId)
     .single();
 
@@ -144,82 +153,20 @@ serve(async (req: Request) => {
     });
   }
 
-  const apiBase = getUberApiBase(
-    (restaurant.uber_environment as UberEnvironment | null) ?? "production"
-  );
-  // Field name from Uber docs is best-guess; confirm against sandbox during
-  // M4 testing and update if Uber returns a different path / response shape.
-  const orgUrl = `${apiBase}/v1/customers/${restaurant.uber_customer_id}`;
-
-  let orgResp: Response;
-  try {
-    orgResp = await fetch(orgUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${tokenResult.access_token}`,
-        "Content-Type": "application/json",
-      },
-    });
-  } catch (err) {
-    return jsonResponse({
-      success: false,
-      step: "verify_org",
-      error: "uber_unavailable",
-      detail: `network: ${String(err)}`,
-    });
-  }
-
-  if (orgResp.status === 401) {
-    // Token was just minted but Uber rejects it — credentials likely
-    // revoked between mint and use. Clear cache + verified_at.
-    await supabase
-      .from("uber_oauth_tokens")
-      .delete()
-      .eq("restaurant_id", restaurantId);
-    await supabase
-      .from("restaurants")
-      .update({ uber_credentials_verified_at: null })
-      .eq("id", restaurantId);
-    return jsonResponse({
-      success: false,
-      step: "verify_org",
-      error: "invalid_credentials",
-      status: 401,
-    });
-  }
-
-  if (!orgResp.ok) {
-    let bodyText = "";
-    try {
-      bodyText = (await orgResp.text()).slice(0, 200);
-    } catch {
-      /* ignore */
-    }
-    return jsonResponse({
-      success: false,
-      step: "verify_org",
-      error: "uber_unavailable",
-      status: orgResp.status,
-      detail: bodyText,
-    });
-  }
-
-  // Any 200 is "merchant active" per D3. Optionally parse body for
-  // organization_name display; non-JSON or missing field is still success.
-  let orgName: string | null = null;
-  try {
-    const orgBody = await orgResp.json();
-    // Field name guess — refine during M4 sandbox testing.
-    orgName =
-      orgBody?.name ??
-      orgBody?.organization_name ??
-      orgBody?.customer_name ??
-      null;
-  } catch {
-    /* non-JSON 200 still succeeds */
-  }
-
   // -------- Stamp verified_at --------
+  // Successful token mint above is treated as proof Uber accepted the
+  // credentials. The original M3 "Get Organization Details" call was
+  // removed (see file header) because GET /v1/customers/{id} returned
+  // 404 — the endpoint doesn't exist in Uber's public API. Implicit
+  // revocation handling remains: if a merchant is revoked, getUberToken()
+  // gets a 401 on its next mint, clears uber_credentials_verified_at,
+  // and downstream uber-quote falls back to in_house silently.
+  //
+  // TODO: if Uber ever publishes a working merchant-status GET endpoint,
+  // re-add the explicit active-merchant check between the customer_id
+  // guard above and the stamp below. The original M3 implementation
+  // (visible in git history around commit f99facd) shows the previous
+  // structure to copy back in.
   const verifiedAt = new Date().toISOString();
   const { error: stampErr } = await supabase
     .from("restaurants")
@@ -228,13 +175,13 @@ serve(async (req: Request) => {
 
   if (stampErr) {
     console.error("[uber-token] stamp verified_at failed", stampErr);
-    // Verification succeeded; only the DB stamp failed. Surface as
+    // Token mint succeeded; only the DB stamp failed. Surface as
     // success=true but warn so the UI can show "verified, but the
     // timestamp didn't persist — try again."
     return jsonResponse({
       success: true,
       verified_at: null,
-      organization_name: orgName,
+      organization_name: null,
       warning: "verified_at_stamp_failed",
       token_from_cache: tokenResult.from_cache,
     });
@@ -243,7 +190,7 @@ serve(async (req: Request) => {
   return jsonResponse({
     success: true,
     verified_at: verifiedAt,
-    organization_name: orgName,
+    organization_name: null,
     token_from_cache: tokenResult.from_cache,
   });
 });
