@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import Stripe from "https://esm.sh/stripe@17.7.0";
+// M9c: Uber Direct cancel cascade. For uber_direct orders we release the
+// Uber delivery BEFORE refunding Stripe (ordering is load-bearing — see
+// _shared/uberCancel.ts). In-process import, no function-to-function hop.
+import { cancelUberDelivery } from "../_shared/uberCancel.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
@@ -91,6 +95,36 @@ serve(async (req: Request) => {
       );
     }
 
+    // M9c: Terminal-state guards (D4 — applies to ALL orders, in_house and
+    // uber_direct). These run before any refund attempt or Uber cancel.
+    //
+    // 1. Idempotent double-tap: a full cancel already refunded this order.
+    //    The operator tapped "Yes, Cancel" twice, or two tablets raced.
+    //    Short-circuit success so the second request is a no-op rather than
+    //    a Stripe "already refunded" error. Partial refunds also count —
+    //    re-cancelling a partially-refunded order shouldn't double-refund.
+    //    (Note: order.status uses 'cancelled' (two L's); uber_status below
+    //    uses 'canceled' (one L). Distinct fields, distinct spellings.)
+    if (
+      order.status === "cancelled" &&
+      (order.refund_status === "completed" || order.refund_status === "partial")
+    ) {
+      return new Response(
+        JSON.stringify({ success: true, idempotent: true }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // 2. Already delivered / completed: the customer received the order.
+    //    Do not refund. For uber_direct this also means the courier already
+    //    dropped off, so there is no delivery to cancel either.
+    if (order.uber_status === "delivered" || order.status === "complete") {
+      return new Response(
+        JSON.stringify({ error: "already_delivered" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     if (!order.stripe_payment_intent_id) {
       return new Response(
         JSON.stringify({ error: "No payment intent found for this order" }),
@@ -98,10 +132,12 @@ serve(async (req: Request) => {
       );
     }
 
-    // Look up connected account for direct charge refund
+    // Look up connected account for direct charge refund. M9c: also pull the
+    // Uber fields cancelUberDelivery needs (id, customer_id, environment) so
+    // we don't issue a second restaurants query in the uber_direct branch.
     const { data: restaurant } = await supabase
       .from("restaurants")
-      .select("stripe_account_id")
+      .select("id, stripe_account_id, uber_customer_id, uber_environment")
       .eq("id", order.restaurant_id)
       .single();
 
@@ -110,6 +146,31 @@ serve(async (req: Request) => {
         JSON.stringify({ error: "Restaurant has no connected Stripe account" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // M9c: Uber Direct cancel cascade. Release the Uber delivery BEFORE
+    // refunding Stripe. Ordering is load-bearing (see _shared/uberCancel.ts):
+    // if Uber refuses the cancellation (past the window / already picked up)
+    // we must NOT refund — otherwise we pay Uber for the delivery AND refund
+    // a customer who still receives the food. cancelUberDelivery
+    // short-circuits to success for orders that were never dispatched
+    // (no uber_delivery_id) or are already canceled, so those fall straight
+    // through to the Stripe refund below. in_house orders skip this entirely.
+    if (order.delivery_fulfillment_method === "uber_direct") {
+      const cancel = await cancelUberDelivery(supabase, order, restaurant);
+      if (!cancel.success) {
+        // No Stripe refund. Surface the cancel error verbatim so the tablet
+        // can show the operator a window-specific message (uber_cancel_failed
+        // → "past cancellation window / already picked up; NOT refunded").
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: cancel.error,
+            detail: cancel.detail,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     // Process refund on connected account (direct charges)
@@ -164,8 +225,16 @@ serve(async (req: Request) => {
 
     console.log(`Refund processed: ${refund.id} for order #${order.order_number} (${type})`);
 
+    // M9c: when the order was uber_direct, the Uber delivery was already
+    // released above (cancelUberDelivery returned success). Surface that in
+    // the response so callers/audit can see the full cascade fired.
+    const responseBody: any = { success: true, refund_id: refund.id };
+    if (order.delivery_fulfillment_method === "uber_direct") {
+      responseBody.uber_canceled = true;
+    }
+
     return new Response(
-      JSON.stringify({ success: true, refund_id: refund.id }),
+      JSON.stringify(responseBody),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {

@@ -202,14 +202,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     setUpdating(true)
 
     if (newStatus === 'cancelled') {
-      // TODO (M9c): for orders with delivery_fulfillment_method === 'uber_direct'
-      // and order.uber_delivery_id set, call uber-cancel BEFORE admin-refund
-      // to release the Uber delivery slot. Current behavior (admin-refund only)
-      // works correctly for the customer (full refund), but leaves a stranded
-      // Uber delivery — the courier may continue toward the pickup location
-      // until Uber's own dispatch logic times out. M9c adds the uber-cancel
-      // call here, with cancellation-fee absorption per the locked decision.
-      // Trigger Stripe refund via edge function
+      // M9c: admin-refund now runs the full cancel cascade server-side. For
+      // uber_direct orders it releases the Uber delivery BEFORE refunding
+      // Stripe (and refuses to refund if Uber can't cancel — past the window
+      // / already picked up). For in_house orders it's the original
+      // Stripe-only refund. No client-side branching needed; we just route
+      // every cancel through admin-refund and surface its error verbatim.
+      // Trigger cancel + refund via edge function
       try {
         const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
         if (refreshError || !session) {
@@ -231,7 +230,18 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         )
         const result = await res.json()
         if (!result.success) {
-          alert(`Refund failed: ${result.error || 'Unknown error'}`)
+          // M9c: distinguish the cancel-cascade failure modes so the operator
+          // understands whether a refund was issued. uber_cancel_failed and
+          // already_delivered both mean NO refund happened.
+          let message
+          if (result.error === 'uber_cancel_failed') {
+            message = "Couldn't cancel the Uber delivery (it may be past the cancellation window or already picked up). The order was NOT refunded — contact Uber/customer."
+          } else if (result.error === 'already_delivered') {
+            message = 'This order has already been delivered. No refund issued.'
+          } else {
+            message = `Refund failed: ${result.error || 'Unknown error'}`
+          }
+          alert(message)
           setUpdating(false)
           setShowCancelConfirm(false)
           return
