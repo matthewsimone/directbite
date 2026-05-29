@@ -370,12 +370,21 @@ serve(async (req: Request) => {
 
       // Last-write-wins for non-terminal transitions. Out-of-order events
       // among non-terminal states are accepted; next webhook corrects.
+      const statusUpdate: Record<string, unknown> = {
+        uber_status: newStatus,
+        uber_status_updated_at: nowIso,
+      };
+      // Migration 037: capture live dropoff ETA when the payload carries it.
+      // Only write a valid string — never null out a previously-set ETA when
+      // an event omits the field. parsed.data may be absent on some events;
+      // optional chaining keeps the handler from crashing.
+      const deliveryEta = parsed?.data?.dropoff_eta;
+      if (typeof deliveryEta === "string" && deliveryEta) {
+        statusUpdate.uber_dropoff_eta = deliveryEta;
+      }
       const { error: statusErr } = await supabase
         .from("orders")
-        .update({
-          uber_status: newStatus,
-          uber_status_updated_at: nowIso,
-        })
+        .update(statusUpdate)
         .eq("id", order.id);
       if (statusErr) {
         console.error("[uber-webhook] orders update (status) failed", {
@@ -415,12 +424,20 @@ serve(async (req: Request) => {
       // to signal recent activity even though uber_status itself
       // doesn't change here. Writes on every event (~20s cadence) per
       // D#2 default; PG handles the volume trivially.
+      const courierUpdate: Record<string, unknown> = {
+        uber_courier_info: courier,
+        uber_status_updated_at: nowIso,
+      };
+      // Migration 037: courier_update events also carry dropoff_eta alongside
+      // the courier object under data. Capture it when valid; never null out
+      // a previously-set ETA.
+      const courierEta = parsed?.data?.dropoff_eta;
+      if (typeof courierEta === "string" && courierEta) {
+        courierUpdate.uber_dropoff_eta = courierEta;
+      }
       const { error: courierErr } = await supabase
         .from("orders")
-        .update({
-          uber_courier_info: courier,
-          uber_status_updated_at: nowIso,
-        })
+        .update(courierUpdate)
         .eq("id", order.id);
       if (courierErr) {
         console.error(

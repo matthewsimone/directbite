@@ -35,30 +35,57 @@ function formatTimeNY(dateStr) {
   })
 }
 
-// M10: Uber Direct status label + color mapping for tile + detail display.
-// Maps Uber's lifecycle states to operator-friendly phrases. Used by the
-// tile's status line (additive to the order card) and any future detail
-// rendering. Unknown statuses fall through to the raw value.
+// M10 + UI-polish: Uber Direct status label + color mapping for tile + detail
+// display. Maps Uber's lifecycle states to operator-friendly phrases. Used by
+// the tile's status line AND the detail-panel header. Friendlier labels (UI
+// polish) replace the terser M10 set. *_in_progress aliases are kept
+// defensively — Uber has sent both forms. Unknown statuses fall through.
 function getUberStatusDisplay(uber_status) {
   switch (uber_status) {
     case 'pending':
-      return { label: 'awaiting driver', color: 'text-gray-500' }
+      return { label: 'Searching for courier', color: 'text-gray-500' }
     case 'pickup_in_progress':
     case 'pickup':
-      return { label: 'en route to pickup', color: 'text-gray-500' }
+      return { label: 'Courier en route', color: 'text-gray-500' }
     case 'pickup_complete':
+      return { label: 'Picked up', color: 'text-gray-500' }
     case 'dropoff':
     case 'dropoff_in_progress':
-      return { label: 'delivering', color: 'text-gray-500' }
+      return { label: 'Delivering', color: 'text-gray-500' }
     case 'delivered':
-      return { label: 'delivered', color: 'text-green-700' }
+      return { label: 'Delivered', color: 'text-green-700' }
     case 'canceled':
+      return { label: 'Canceled', color: 'text-red-700' }
     case 'failed':
+      return { label: 'Failed', color: 'text-red-700' }
     case 'returned':
-      return { label: 'canceled', color: 'text-red-700' }
+      return { label: 'Returned', color: 'text-red-700' }
     default:
-      return { label: uber_status || '', color: 'text-gray-500' }
+      return { label: 'Status unknown', color: 'text-gray-500' }
   }
+}
+
+// UI-polish (D6): the trailing "· Scheduled X:XX" / "· ETA X:XX" portion of
+// the Uber Direct status line. Live ETA supersedes the scheduled pickup once
+// a courier reports one. Returns '' when there's nothing to append (so no
+// dangling middle-dot appears). All times in Eastern (formatTimeNY), matching
+// the M10 pickup-commitment display.
+//   - uber_dropoff_eta set & in the future  → " · ETA <time>"     (live)
+//   - uber_dropoff_eta set & in the past     → ''                  (stale; hide)
+//   - else pending / no status, pickup time  → " · Scheduled <time>"
+//   - else                                    → ''
+function formatEtaSuffix(order) {
+  if (order.uber_dropoff_eta) {
+    const etaMs = new Date(order.uber_dropoff_eta).getTime()
+    if (!Number.isNaN(etaMs) && etaMs > Date.now()) {
+      return ` · ETA ${formatTimeNY(order.uber_dropoff_eta)}`
+    }
+    return ''
+  }
+  if ((!order.uber_status || order.uber_status === 'pending') && order.uber_pickup_ready_dt) {
+    return ` · Scheduled ${formatTimeNY(order.uber_pickup_ready_dt)}`
+  }
+  return ''
 }
 
 // ── Order Card ──
@@ -107,19 +134,6 @@ function OrderCard({ order, onTap, onRetryPrint }) {
             {customerInfo}
           </div>
         )}
-        {/* M10: Uber Direct status line. Replaces the M9a pill that used to
-            sit in the header. More legible + carries the pickup commitment
-            time. Pre-dispatch (no uber_status yet) shows "awaiting dispatch";
-            dispatched orders show the operator-friendly status label plus
-            the scheduled pickup time when available. Color matches the
-            getUberStatusDisplay() mapping. */}
-        {order.delivery_fulfillment_method === 'uber_direct' && (
-          <div className={`text-xs mb-1 ${order.uber_status === 'delivered' ? 'text-green-700' : (order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned') ? 'text-red-700' : 'text-gray-500'}`}>
-            {order.uber_status
-              ? `🚗 UberDirect: ${getUberStatusDisplay(order.uber_status).label}${order.uber_pickup_ready_dt ? ` • Scheduled ${formatTimeNY(order.uber_pickup_ready_dt)}` : ''}`
-              : '🚗 UberDirect (awaiting dispatch)'}
-          </div>
-        )}
         <div className="flex justify-between items-center text-gray-600 text-sm">
           <div className="flex items-center gap-1.5">
             <span className="font-medium text-gray-900">#{order.order_number}</span>
@@ -129,6 +143,23 @@ function OrderCard({ order, onTap, onRetryPrint }) {
           </div>
           <span>{formatTime(order.created_at)}</span>
         </div>
+        {/* UI-polish: Uber Direct status line, now BELOW the order number and
+            larger/bolder than the old grey text-xs treatment. Single line,
+            middle-dot separated: "UberDirect · <status> · ETA/Scheduled X:XX".
+            Live ETA supersedes the scheduled pickup time (formatEtaSuffix).
+            Color: blue-700 in-flight, green delivered, red canceled/failed/
+            returned. Pre-dispatch shows "awaiting dispatch". */}
+        {order.delivery_fulfillment_method === 'uber_direct' && (
+          <div className={`mt-1 text-sm font-semibold ${
+            order.uber_status === 'delivered' ? 'text-green-700'
+              : (order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned') ? 'text-red-700'
+              : 'text-blue-700'
+          }`}>
+            {order.uber_status
+              ? `UberDirect · ${getUberStatusDisplay(order.uber_status).label}${formatEtaSuffix(order)}`
+              : 'UberDirect · awaiting dispatch'}
+          </div>
+        )}
       </button>
       {showRetry && (
         <div className="px-4 pb-3">
@@ -567,6 +598,19 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             {isDelivery ? 'DELIVERY' : 'PICKUP'} #{order.order_number}
           </h2>
           <p className="text-sm text-gray-500">{formatTime(order.created_at)}</p>
+          {/* UI-polish (D1): UberDirect status line on the detail panel too,
+              below the order number, same format/style as the tile. */}
+          {order.delivery_fulfillment_method === 'uber_direct' && (
+            <div className={`mt-0.5 text-sm font-semibold ${
+              order.uber_status === 'delivered' ? 'text-green-700'
+                : (order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned') ? 'text-red-700'
+                : 'text-blue-700'
+            }`}>
+              {order.uber_status
+                ? `UberDirect · ${getUberStatusDisplay(order.uber_status).label}${formatEtaSuffix(order)}`
+                : 'UberDirect · awaiting dispatch'}
+            </div>
+          )}
         </div>
         <span className={`ml-auto px-3 py-1 rounded-full text-xs font-semibold uppercase ${
           order.status === 'new' ? 'bg-yellow-100 text-yellow-800' :
