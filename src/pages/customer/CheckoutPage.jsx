@@ -568,12 +568,21 @@ export default function CheckoutPage() {
   const discountAmount = Math.round(fullSubtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = fullSubtotal - discountAmount
   const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
-  // M5c: when resolved as uber_direct, use the server-calculated passthrough fee.
-  // Otherwise (in_house mode or pre-resolution), use the existing haversine path.
+  // M6.5b: Restructured to keep uber_direct path exclusive of in_house
+  // fallbacks. Prevents the deliveryFee from flashing the in_house default
+  // (e.g., "Free" or a stale haversine value) during the place_changed →
+  // E5 render gap. Three explicit modes: in_house always uses in_house fee;
+  // uber_direct uses uber fee when resolved; 'both' uses whichever resolved.
+  // During the unresolved window, falls back to 0 (display layer shows "—"
+  // via showPlaceholder).
   const deliveryFee = orderType === 'delivery'
-    ? (resolvedMode === 'uber_direct' && uberCustomerFeeCents != null
-        ? uberCustomerFeeCents / 100
-        : (deliveryFeeCents != null ? deliveryFeeCents : defaultFeeCents) / 100)
+    ? (restaurant?.delivery_fulfillment === 'in_house'
+        ? (deliveryFeeCents != null ? deliveryFeeCents : defaultFeeCents) / 100
+        : (resolvedMode === 'uber_direct' && uberCustomerFeeCents != null
+            ? uberCustomerFeeCents / 100
+            : (resolvedMode === 'in_house' && deliveryFeeCents != null
+                ? deliveryFeeCents / 100
+                : 0)))
     : 0
   // M6.5: Show — during quote loading to prevent showing stale fee during
   // the uber-quote async window. The number above stays a valid Number so
@@ -711,6 +720,12 @@ export default function CheckoutPage() {
     ac.addListener('place_changed', () => {
       const place = ac.getPlace()
       if (place?.geometry?.location) {
+        // M6.5b: Force quoteLoading=true synchronously so feeCalculating
+        // becomes true on the same render as the address change. Without
+        // this, there's a one-render-frame gap where uber state is cleared
+        // but quoteLoading hasn't yet been set by E5, causing the delivery
+        // fee to flash through the in_house fallback.
+        setQuoteLoading(true)
         // M6.5: Clear uber state on address change — prevents fee flip
         // during the uber-quote async window. Without these resets, the
         // ternary at L569 reads stale uber state and shows the prior
@@ -933,6 +948,17 @@ export default function CheckoutPage() {
   // Create payment intent on page load (once restaurant is ready)
   const intentCreated = useRef(false)
   useEffect(() => {
+    // M6.5b: Skip create-payment-intent when server-side resolveMode would
+    // reject this request shape. Avoids the invalid POST that produces a
+    // toast for the customer. Conservatively handles 'both' mode by predicting
+    // uber_direct when client hasn't yet resolved.
+    const wouldRejectOnServer =
+      orderType === 'delivery' &&
+      !uberQuoteId &&
+      (restaurant?.delivery_fulfillment === 'uber_direct' ||
+       (restaurant?.delivery_fulfillment === 'both' &&
+        (resolvedMode === 'uber_direct' || resolvedMode === null)))
+    if (wouldRejectOnServer) return
     if (!restaurant || items.length === 0 || intentCreated.current) return
     intentCreated.current = true
 
@@ -997,6 +1023,17 @@ export default function CheckoutPage() {
   // Update payment intent metadata when order details change
   const updateTimer = useRef(null)
   useEffect(() => {
+    // M6.5b: Skip create-payment-intent when server-side resolveMode would
+    // reject this request shape. Avoids the invalid POST that produces a
+    // toast for the customer. Conservatively handles 'both' mode by predicting
+    // uber_direct when client hasn't yet resolved.
+    const wouldRejectOnServer =
+      orderType === 'delivery' &&
+      !uberQuoteId &&
+      (restaurant?.delivery_fulfillment === 'uber_direct' ||
+       (restaurant?.delivery_fulfillment === 'both' &&
+        (resolvedMode === 'uber_direct' || resolvedMode === null)))
+    if (wouldRejectOnServer) return
     if (!paymentIntentId || !restaurant) return
 
     // Debounce updates
