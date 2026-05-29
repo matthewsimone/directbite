@@ -996,14 +996,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Custom:</span>
+              <span className="text-sm text-blue-900 font-semibold">Custom:</span>
               <input
                 type="number"
                 min="5"
                 max="120"
                 value={selectedPrepMinutes ?? ''}
                 onChange={e => setSelectedPrepMinutes(Number(e.target.value) || null)}
-                className="flex-1 h-12 px-3 border-2 border-blue-300 rounded-lg text-base"
+                className="flex-1 h-12 px-3 border-2 border-blue-600 rounded-lg text-base text-blue-900 font-bold"
                 placeholder="minutes"
               />
             </div>
