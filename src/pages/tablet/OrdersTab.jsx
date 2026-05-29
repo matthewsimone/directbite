@@ -19,6 +19,48 @@ function formatMoney(amount) {
   return `$${Number(amount).toFixed(2)}`
 }
 
+// M10: Format a timestamp as H:MM AM/PM in Eastern Time. Distinct from
+// formatTime() which uses the browser's local timezone — formatTimeNY pins
+// to America/New_York so the displayed pickup commitment matches what was
+// sent to Uber regardless of tablet/browser locale settings.
+// TODO: When expanding beyond Eastern Time markets, replace hardcoded
+// 'America/New_York' with restaurant-level timezone column. See
+// user_memories for context.
+function formatTimeNY(dateStr) {
+  return new Date(dateStr).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'America/New_York',
+  })
+}
+
+// M10: Uber Direct status label + color mapping for tile + detail display.
+// Maps Uber's lifecycle states to operator-friendly phrases. Used by the
+// tile's status line (additive to the order card) and any future detail
+// rendering. Unknown statuses fall through to the raw value.
+function getUberStatusDisplay(uber_status) {
+  switch (uber_status) {
+    case 'pending':
+      return { label: 'awaiting driver', color: 'text-gray-500' }
+    case 'pickup_in_progress':
+    case 'pickup':
+      return { label: 'en route to pickup', color: 'text-gray-500' }
+    case 'pickup_complete':
+    case 'dropoff':
+    case 'dropoff_in_progress':
+      return { label: 'delivering', color: 'text-gray-500' }
+    case 'delivered':
+      return { label: 'delivered', color: 'text-green-700' }
+    case 'canceled':
+    case 'failed':
+    case 'returned':
+      return { label: 'canceled', color: 'text-red-700' }
+    default:
+      return { label: uber_status || '', color: 'text-gray-500' }
+  }
+}
+
 // ── Order Card ──
 function OrderCard({ order, onTap, onRetryPrint }) {
   const isDelivery = order.order_type === 'delivery'
@@ -59,23 +101,23 @@ function OrderCard({ order, onTap, onRetryPrint }) {
               Scheduled {formatScheduledLabel(order.scheduled_for)}
             </span>
           )}
-          {/* M9a: Uber Direct status pill — only renders for uber_direct
-              orders that have been dispatched. Color matches M8 customer
-              confirmation page mapping (delivered → green, canceled/failed
-              → red, in-progress → blue). */}
-          {order.delivery_fulfillment_method === 'uber_direct' && order.uber_status && (
-            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
-              order.uber_status === 'delivered' ? 'bg-green-100 text-green-800'
-              : order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned' ? 'bg-red-100 text-red-800'
-              : 'bg-blue-100 text-blue-800'
-            }`}>
-              Uber: {String(order.uber_status).replace(/_/g, ' ')}
-            </span>
-          )}
         </div>
         {customerInfo && (
           <div className="text-sm text-gray-500 mb-1 truncate">
             {customerInfo}
+          </div>
+        )}
+        {/* M10: Uber Direct status line. Replaces the M9a pill that used to
+            sit in the header. More legible + carries the pickup commitment
+            time. Pre-dispatch (no uber_status yet) shows "awaiting dispatch";
+            dispatched orders show the operator-friendly status label plus
+            the scheduled pickup time when available. Color matches the
+            getUberStatusDisplay() mapping. */}
+        {order.delivery_fulfillment_method === 'uber_direct' && (
+          <div className={`text-xs mb-1 ${order.uber_status === 'delivered' ? 'text-green-700' : (order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned') ? 'text-red-700' : 'text-gray-500'}`}>
+            {order.uber_status
+              ? `🚗 UberDirect: ${getUberStatusDisplay(order.uber_status).label}${order.uber_pickup_ready_dt ? ` • Scheduled ${formatTimeNY(order.uber_pickup_ready_dt)}` : ''}`
+              : '🚗 UberDirect (awaiting dispatch)'}
           </div>
         )}
         <div className="flex justify-between items-center text-gray-600 text-sm">
@@ -758,7 +800,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 disabled={dispatching || !selectedPrepMinutes}
                 className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-50"
               >
-                {dispatching ? 'Dispatching...' : 'Confirm'}
+                {dispatching ? 'Dispatching...' : 'Confirm and Dispatch'}
               </button>
             </div>
           </div>
@@ -799,29 +841,58 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
         {/* Main action buttons */}
         {!showReprint && !showStatusOptions && !showCancelConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
-          <div className="flex gap-3">
-            <button
-              onClick={() => setShowReprint(true)}
-              className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base"
-            >
-              REPRINT
-            </button>
-            {order.status === 'complete' ? (
+          order.delivery_fulfillment_method === 'uber_direct' && order.status === 'new' ? (
+            /* M10: Direct one-tap dispatch flow for new uber_direct orders.
+               Skips the UPDATE STATUS intermediate step — primary CTA opens
+               the prep modal directly. Cancel preserved as a text link below
+               so the operator can still refund without going through Update
+               Status. Existing in_progress / complete / cancelled paths fall
+               into the else branch below. */
+            <div className="space-y-3">
               <button
-                onClick={() => setShowAdjustForm(true)}
-                className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                onClick={() => setShowPrepTimeModal(true)}
+                className="w-full h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
               >
-                ADJUST
+                Set Pickup Time & Mark in Progress
               </button>
-            ) : order.status !== 'cancelled' ? (
               <button
-                onClick={() => setShowStatusOptions(true)}
-                className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                onClick={() => setShowReprint(true)}
+                className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
               >
-                UPDATE STATUS
+                REPRINT
               </button>
-            ) : null}
-          </div>
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                className="w-full text-center text-sm text-red-600 hover:text-red-800 py-1"
+              >
+                Cancel & Refund Order
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowReprint(true)}
+                className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base"
+              >
+                REPRINT
+              </button>
+              {order.status === 'complete' ? (
+                <button
+                  onClick={() => setShowAdjustForm(true)}
+                  className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                >
+                  ADJUST
+                </button>
+              ) : order.status !== 'cancelled' ? (
+                <button
+                  onClick={() => setShowStatusOptions(true)}
+                  className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                >
+                  UPDATE STATUS
+                </button>
+              ) : null}
+            </div>
+          )
         )}
       </div>
     </div>

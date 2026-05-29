@@ -707,6 +707,10 @@ serve(async (req: Request) => {
     uber_status: uberStatusOut,
     uber_status_updated_at: nowIso,
     uber_dispatched_at: nowIso,
+    // M10: Persist the pickup commitment time so the tablet tile can show
+    // "scheduled for X:XX" without re-deriving from pickupReadyMs. Column
+    // added in migration 035.
+    uber_pickup_ready_dt: new Date(pickupReadyMs).toISOString(),
     status: "in_progress",
   };
   if (!order.accepted_at) {
