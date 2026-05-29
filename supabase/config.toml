@@ -126,6 +126,15 @@ verify_jwt = false
 [functions.uber-create-delivery]
 verify_jwt = false
 
+# uber-get-delivery (M9d) — tablet user-callable, read-only fetch of the
+# live Uber Direct delivery state shown in the cancel-confirm modal before
+# an operator cancels & refunds. JWT off; handler validates the tablet user
+# Bearer JWT manually and confirms restaurant ownership via tablet_email
+# match (same pattern as uber-create-delivery). Writes nothing.
+
+[functions.uber-get-delivery]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Admin endpoints with platform-level JWT validation

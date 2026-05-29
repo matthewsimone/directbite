@@ -165,6 +165,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   const [adjustSubmitted, setAdjustSubmitted] = useState(false)
   const [adjustments, setAdjustments] = useState([])
   const [updating, setUpdating] = useState(false)
+  // M9d: live Uber delivery state, fetched the moment the operator taps
+  // "Cancel & Refund Order" so the confirm modal can show policy-derived
+  // cancellation messaging. null until fetched; then an object shaped like
+  // the uber-get-delivery response: { dispatched, uber_status?,
+  // courier_assigned?, dropoff_eta?, fetch_failed? }.
+  const [cancelFeeInfo, setCancelFeeInfo] = useState(null)
+  const [fetchingFee, setFetchingFee] = useState(false)
 
   useEffect(() => {
     fetchOrderDetails()
@@ -195,6 +202,106 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         .order('created_at', { ascending: false })
 
       setAdjustments(adj || [])
+    }
+  }
+
+  // M9d: open the cancel-confirm modal, pre-fetching live Uber delivery
+  // state for uber_direct orders so the modal can warn the operator about a
+  // possible Uber cancellation fee (or that cancellation is no longer
+  // possible). For in_house orders — or uber_direct orders not yet
+  // dispatched — there is nothing to fetch; we open the modal immediately
+  // with dispatched:false (regular refund, no Uber fee). A fetch failure
+  // NEVER blocks the cancel: we set fetch_failed and the modal degrades to
+  // "couldn't fetch state, proceed anyway?".
+  async function openCancelConfirm() {
+    if (order.delivery_fulfillment_method === 'uber_direct' && order.uber_delivery_id) {
+      setFetchingFee(true)
+      try {
+        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+        if (refreshError || !session) {
+          alert('Session expired. Please log in again.')
+          setFetchingFee(false)
+          return
+        }
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/uber-get-delivery`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ order_id: order.id }),
+          }
+        )
+        const result = await res.json()
+        if (result.success) {
+          setCancelFeeInfo(result)
+        } else {
+          // Couldn't read delivery state — degrade gracefully, don't block.
+          setCancelFeeInfo({ dispatched: true, uber_status: null, fetch_failed: true })
+        }
+      } catch (err) {
+        setCancelFeeInfo({ dispatched: true, uber_status: null, fetch_failed: true })
+      }
+      setFetchingFee(false)
+    } else {
+      // in_house, or uber_direct not yet dispatched: plain refund path.
+      setCancelFeeInfo({ dispatched: false })
+    }
+    setShowCancelConfirm(true)
+  }
+
+  // M9d: policy-derived cancellation notice for the confirm modal. Maps the
+  // live Uber delivery state (cancelFeeInfo) to plain-language guidance +
+  // colour cue. No dollar figure is asserted — Uber exposes no reliable
+  // cancellation-fee field; the cost is policy/state-derived (no courier →
+  // free; pickup → a pickup fee; in-delivery → a fee). Returns null when
+  // there's nothing Uber-specific to say (in_house / not dispatched).
+  function uberCancelNotice() {
+    if (!cancelFeeInfo || !cancelFeeInfo.dispatched) return null
+    if (cancelFeeInfo.fetch_failed || !cancelFeeInfo.uber_status) {
+      return {
+        text: "Couldn't fetch the current Uber delivery state. Proceed with cancel & refund anyway?",
+        cls: 'bg-amber-50 border border-amber-300 text-amber-900',
+      }
+    }
+    switch (cancelFeeInfo.uber_status) {
+      case 'pending':
+        return {
+          text: '✅ No courier assigned yet — no Uber cancellation fee.',
+          cls: 'bg-green-50 border border-green-300 text-green-900',
+        }
+      case 'pickup':
+        return {
+          text: '⚠️ Courier en route to your restaurant. Uber may charge a small cancellation fee (typically $5). You absorb this.',
+          cls: 'bg-amber-50 border border-amber-300 text-amber-900',
+        }
+      case 'pickup_complete':
+        return {
+          text: '🚫 Driver has picked up the food. Cancellation likely NOT possible. If you proceed and Uber refuses, no refund will be issued.',
+          cls: 'bg-red-50 border border-red-400 text-red-900',
+        }
+      case 'dropoff':
+        return {
+          text: '🚫 Driver is delivering now. Cancellation NOT possible — keep order intact.',
+          cls: 'bg-red-50 border border-red-400 text-red-900',
+        }
+      case 'delivered':
+        return {
+          text: 'Order already delivered. No refund.',
+          cls: 'bg-red-50 border border-red-400 text-red-900',
+        }
+      case 'canceled':
+        return {
+          text: 'This delivery is already canceled.',
+          cls: 'bg-gray-50 border border-gray-300 text-gray-700',
+        }
+      default:
+        return {
+          text: `Current delivery state: ${cancelFeeInfo.uber_status}. A cancellation fee may apply — you absorb it.`,
+          cls: 'bg-amber-50 border border-amber-300 text-amber-900',
+        }
     }
   }
 
@@ -623,6 +730,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         {showCancelConfirm && (
           <div className="bg-red-50 p-4 rounded-xl space-y-3">
             <p className="text-center font-medium text-red-800">Cancel this order? The customer will be refunded.</p>
+            {/* M9d: policy-derived Uber cancellation notice (uber_direct only). */}
+            {(() => {
+              const notice = uberCancelNotice()
+              return notice ? (
+                <p className={`text-sm text-center rounded-lg p-2.5 ${notice.cls}`}>{notice.text}</p>
+              ) : null
+            })()}
             <div className="flex gap-3">
               <button onClick={() => setShowCancelConfirm(false)} className="flex-1 h-12 rounded-xl border border-gray-300 font-semibold">No</button>
               <button
@@ -688,10 +802,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               </button>
             )}
             <button
-              onClick={() => setShowCancelConfirm(true)}
-              className="w-full h-12 rounded-xl bg-red-600 text-white font-semibold"
+              onClick={openCancelConfirm}
+              disabled={fetchingFee}
+              className="w-full h-12 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50"
             >
-              Cancel Order
+              {fetchingFee ? 'Checking…' : 'Cancel Order'}
             </button>
             <button
               onClick={() => setShowStatusOptions(false)}
@@ -872,10 +987,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 REPRINT
               </button>
               <button
-                onClick={() => setShowCancelConfirm(true)}
-                className="w-full text-center text-sm text-red-600 hover:text-red-800 py-1"
+                onClick={openCancelConfirm}
+                disabled={fetchingFee}
+                className="w-full text-center text-sm text-red-600 hover:text-red-800 py-1 disabled:opacity-50"
               >
-                Cancel & Refund Order
+                {fetchingFee ? 'Checking…' : 'Cancel & Refund Order'}
               </button>
             </div>
           ) : (
