@@ -75,6 +75,12 @@ function getUberStatusDisplay(uber_status) {
 //   - else pending / no status, pickup time  → " · Scheduled <time>"
 //   - else                                    → ''
 function formatEtaSuffix(order) {
+  // Terminal states never show an ETA: the delivery is over (delivered) or
+  // aborted (canceled/failed/returned). A lingering uber_dropoff_eta (kept
+  // per migration 037 — never nulled) would otherwise render a stale,
+  // misleading "ETA X:XX" on a canceled order. delivered shows green; the
+  // rest show red — neither needs a time.
+  if (['delivered', 'canceled', 'failed', 'returned'].includes(order.uber_status)) return ''
   if (order.uber_dropoff_eta) {
     const etaMs = new Date(order.uber_dropoff_eta).getTime()
     if (!Number.isNaN(etaMs) && etaMs > Date.now()) {
@@ -94,6 +100,12 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   const borderColor = isDelivery ? 'border-l-blue-500' : 'border-l-[#16A34A]'
   const isUnacked = order.status === 'new' && !order.acknowledged_at
   const showRetry = (order.print_status === 'failed' || order.print_status === 'pending') && onRetryPrint
+  // Partial-failure cue: a failed refund leaves the order in its pre-cancel
+  // status (e.g. in_progress) so it hides in plain sight among active orders.
+  // Flag it red so the operator knows it needs manual follow-up — the
+  // customer is still charged. Broad signal (any failed refund, in_house or
+  // uber_direct); the detail banner tailors copy by uber_status.
+  const refundFailed = order.refund_status === 'failed'
 
   // Customer info line. Each segment is independently optional so missing
   // phone or address gracefully degrades. delivery_address is only
@@ -105,7 +117,7 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   ].filter(Boolean).join(', ')
 
   return (
-    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${isUnacked ? 'animate-flash-green' : 'bg-white'}`}>
+    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${refundFailed ? 'bg-red-50 ring-1 ring-red-300' : isUnacked ? 'animate-flash-green' : 'bg-white'}`}>
       <button
         onClick={() => onTap(order)}
         className="w-full text-left p-4"
@@ -123,6 +135,11 @@ function OrderCard({ order, onTap, onRetryPrint }) {
           <span className="font-bold text-sm tracking-wide uppercase">
             {isDelivery ? 'DELIVERY' : 'PICKUP'}
           </span>
+          {refundFailed && (
+            <span className="ml-2 px-2 py-0.5 rounded-full bg-red-600 text-white text-xs font-bold whitespace-nowrap">
+              REFUND FAILED
+            </span>
+          )}
           {order.scheduled_for && (
             <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-300 text-black text-xs font-semibold whitespace-nowrap">
               Scheduled {formatScheduledLabel(order.scheduled_for)}
@@ -625,6 +642,21 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-6" style={{ WebkitOverflowScrolling: 'touch' }}>
+        {/* Partial-failure alert: refund failed → customer still charged.
+            Sits at the very top so it's the first thing the operator sees.
+            Copy branches on uber_status (cancel cascade vs in_house). The
+            canonical refund record stays in the purple box lower down. */}
+        {order.refund_status === 'failed' && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-xl px-4 py-3 space-y-1">
+            <p className="text-base font-bold text-red-800">⚠ Refund failed — customer still charged</p>
+            <p className="text-sm text-red-700">
+              {order.uber_status === 'canceled'
+                ? 'The Uber delivery was canceled but the Stripe refund did not go through. The customer is still charged and no delivery is happening. Retry "Cancel & Refund" or process the refund manually.'
+                : 'The Stripe refund did not go through. The customer is still charged. Retry "Cancel & Refund" or process the refund manually.'}
+            </p>
+            {order.refund_reason && <p className="text-xs text-red-600">Reason: {order.refund_reason}</p>}
+          </div>
+        )}
         {order.scheduled_for && (
           <div className="bg-amber-100 border border-amber-300 rounded-xl px-4 py-3">
             <p className="text-base font-semibold text-amber-900">
