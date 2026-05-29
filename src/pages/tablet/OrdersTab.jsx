@@ -35,6 +35,19 @@ function formatTimeNY(dateStr) {
   })
 }
 
+// Estimated Uber cancellation fee range, by minutes since dispatch. This is
+// an ESTIMATE shown pre-cancel — Uber exposes no live fee field, so we bucket
+// by elapsed time. The ACTUAL fee comes back post-cancel via admin-refund and
+// is surfaced in the success alert; the two can differ. Returns null when we
+// have no dispatch timestamp to measure from.
+function estimateUberCancelFee(dispatchedAt) {
+  if (!dispatchedAt) return null
+  const mins = (Date.now() - new Date(dispatchedAt).getTime()) / 60000
+  if (mins < 5) return '$0–$3'
+  if (mins < 10) return '$3–$8'
+  return '$8–$15'
+}
+
 // M10 + UI-polish: Uber Direct status label + color mapping for tile + detail
 // display. Maps Uber's lifecycle states to operator-friendly phrases. Used by
 // the tile's status line AND the detail-panel header. Friendlier labels (UI
@@ -326,11 +339,15 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           text: '✅ No courier assigned yet — no Uber cancellation fee.',
           cls: 'bg-green-50 border-2 border-green-300 text-green-900',
         }
-      case 'pickup':
+      case 'pickup': {
+        const range = estimateUberCancelFee(order.uber_dispatched_at)
         return {
-          text: '⚠️ Courier en route to your restaurant. Uber may charge a small cancellation fee (typically $5). You absorb this.',
+          text: range
+            ? `⚠️ Courier en route. Estimated UberDirect cancellation fee: approximately ${range}. You absorb this.`
+            : '⚠️ Courier en route to your restaurant. Uber may charge a cancellation fee. You absorb this.',
           cls: 'bg-amber-50 border-2 border-amber-300 text-amber-900',
         }
+      }
       case 'pickup_complete':
         return {
           text: '🚫 Driver has picked up the food. Cancellation likely NOT possible. If you proceed and Uber refuses, no refund will be issued.',
@@ -406,6 +423,12 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           setUpdating(false)
           setShowCancelConfirm(false)
           return
+        }
+        // Success: surface the actual Uber cancellation fee (absorbed by the
+        // restaurant) when one was charged. Silent for in_house, $0, or
+        // never-dispatched cancels.
+        if (result.uber_cancellation_fee_cents > 0) {
+          alert(`Order canceled and refunded. Uber charged a $${(result.uber_cancellation_fee_cents / 100).toFixed(2)} cancellation fee, absorbed by the restaurant. The customer received a full refund.`)
         }
       } catch (err) {
         alert('Refund request failed. Please try again.')

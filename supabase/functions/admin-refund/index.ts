@@ -156,17 +156,20 @@ serve(async (req: Request) => {
     // short-circuits to success for orders that were never dispatched
     // (no uber_delivery_id) or are already canceled, so those fall straight
     // through to the Stripe refund below. in_house orders skip this entirely.
+    // Hoisted (D4) so the captured cancellation fee is in scope when we build
+    // the success response below.
+    let cancelResult: Awaited<ReturnType<typeof cancelUberDelivery>> | null = null;
     if (order.delivery_fulfillment_method === "uber_direct") {
-      const cancel = await cancelUberDelivery(supabase, order, restaurant);
-      if (!cancel.success) {
+      cancelResult = await cancelUberDelivery(supabase, order, restaurant);
+      if (!cancelResult.success) {
         // No Stripe refund. Surface the cancel error verbatim so the tablet
         // can show the operator a window-specific message (uber_cancel_failed
         // → "past cancellation window / already picked up; NOT refunded").
         return new Response(
           JSON.stringify({
             success: false,
-            error: cancel.error,
-            detail: cancel.detail,
+            error: cancelResult.error,
+            detail: cancelResult.detail,
           }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
@@ -231,6 +234,16 @@ serve(async (req: Request) => {
     const responseBody: any = { success: true, refund_id: refund.id };
     if (order.delivery_fulfillment_method === "uber_direct") {
       responseBody.uber_canceled = true;
+      // Migration 038: surface the actual Uber cancellation fee (cents) so the
+      // tablet can show it in the post-cancel alert. Only when Uber charged one.
+      if (
+        cancelResult &&
+        cancelResult.success &&
+        typeof cancelResult.uberFee === "number" &&
+        cancelResult.uberFee > 0
+      ) {
+        responseBody.uber_cancellation_fee_cents = cancelResult.uberFee;
+      }
     }
 
     return new Response(

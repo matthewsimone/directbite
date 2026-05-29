@@ -385,6 +385,13 @@ serve(async (req: Request) => {
       if (typeof deliveryEta === "string" && deliveryEta) {
         statusUpdate.uber_dropoff_eta = deliveryEta;
       }
+      // Once the courier has the food, the restaurant can no longer cancel —
+      // transition the order to 'complete' so the tablet swaps Cancel for
+      // Adjust. The L361 terminal guard already prevents a canceled order from
+      // reaching here, so this never overrides an operator cancel.
+      if (newStatus === "pickup_complete") {
+        statusUpdate.status = "complete";
+      }
       const { error: statusErr } = await supabase
         .from("orders")
         .update(statusUpdate)

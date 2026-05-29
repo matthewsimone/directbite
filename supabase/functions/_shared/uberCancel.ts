@@ -240,12 +240,19 @@ export async function cancelUberDelivery(
   // immediately and the double-tap short-circuit above fires on any retry.
   // Uber will also send an event.delivery_status webhook with
   // status='canceled' shortly after; that's last-write-wins and harmless.
+  const cancelUpdate: Record<string, unknown> = {
+    uber_status: "canceled",
+    uber_status_updated_at: new Date().toISOString(),
+  };
+  // Migration 038: persist the cancellation fee Uber assessed (cents) so the
+  // operator alert + audit reflect what the restaurant absorbed. Only write a
+  // real positive fee; leave NULL when Uber charged nothing or reported none.
+  if (typeof uberFee === "number" && uberFee > 0) {
+    cancelUpdate.uber_cancellation_fee_cents = uberFee;
+  }
   const { error: updateErr } = await supabase
     .from("orders")
-    .update({
-      uber_status: "canceled",
-      uber_status_updated_at: new Date().toISOString(),
-    })
+    .update(cancelUpdate)
     .eq("id", order.id);
 
   if (updateErr) {
