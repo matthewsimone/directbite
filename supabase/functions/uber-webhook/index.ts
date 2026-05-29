@@ -110,6 +110,22 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 // raw PG SQLSTATE in PostgrestError.code.
 const PG_UNIQUE_VIOLATION = "23505";
 
+// M9c: terminal Uber delivery states. Once uber_status is one of these,
+// the delivery_status handler stops accepting regressions from out-of-order
+// webhook events. The bug this fixes surfaced in M9c smoke testing: after
+// uberCancel.ts sets uber_status='canceled' during cancel+refund, the still-
+// live Robocourier emitted later events (pickup, pickup_complete, …) that
+// last-write-wins happily overwrote 'canceled' back to a non-terminal state.
+// 'canceled' is set by uberCancel.ts; the others are Uber's natural terminal
+// states. Spelling: Uber uses 'canceled' (one L) — matches uber_status
+// throughout, distinct from orders.status 'cancelled' (two L's).
+const TERMINAL_UBER_STATUSES = new Set([
+  "delivered",
+  "canceled",
+  "failed",
+  "returned",
+]);
+
 // Return 200 + empty body — used for success and silent-drop cases
 // (missing delivery_id, no matching order, unknown event kind, dedup
 // hit). Empty body avoids any information disclosure.
@@ -331,8 +347,29 @@ serve(async (req: Request) => {
         );
         return ackResponse();
       }
-      // Last-write-wins per D#1 default. Out-of-order events accepted;
-      // next webhook corrects any regression.
+      // M9c: terminal-state protection. Once the order reached a terminal
+      // uber_status (delivered / canceled / failed / returned), do NOT let a
+      // later out-of-order event regress it. Notably guards the cancel+refund
+      // cascade: uberCancel.ts sets 'canceled', and we must not un-cancel it
+      // when the released courier's trailing events arrive. order.uber_status
+      // was read at step 6 (the lookup that routed this event), so the check
+      // is in-memory — no extra query. Skip the write, still ack 200 so Uber
+      // stops retrying.
+      if (TERMINAL_UBER_STATUSES.has(order.uber_status ?? "")) {
+        console.log(
+          "[uber-webhook] delivery_status ignored — order in terminal state",
+          {
+            order_id: order.id,
+            current: order.uber_status,
+            incoming: newStatus,
+            event_id: eventId,
+          }
+        );
+        return ackResponse();
+      }
+
+      // Last-write-wins for non-terminal transitions. Out-of-order events
+      // among non-terminal states are accepted; next webhook corrects.
       const { error: statusErr } = await supabase
         .from("orders")
         .update({
@@ -359,6 +396,20 @@ serve(async (req: Request) => {
         );
         return ackResponse();
       }
+      // M9c: once we've actively canceled the delivery (uber_status =
+      // 'canceled'), the courier is no longer ours — stop ingesting its
+      // location/courier updates. This also prevents uber_status_updated_at
+      // from churning on a canceled order. Note: D8 keeps courier updates
+      // flowing for 'delivered' (ops may want the final courier location),
+      // so only 'canceled' is excluded here — not the full terminal set.
+      if (order.uber_status === "canceled") {
+        console.log(
+          "[uber-webhook] courier_update ignored — delivery canceled",
+          { order_id: order.id, event_id: eventId }
+        );
+        return ackResponse();
+      }
+
       // Full jsonb replace (not merge) per D#2. Future fields Uber
       // adds are captured automatically. Touches uber_status_updated_at
       // to signal recent activity even though uber_status itself
