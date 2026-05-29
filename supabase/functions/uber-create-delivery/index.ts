@@ -548,6 +548,8 @@ serve(async (req: Request) => {
   // -------- Construct Uber create-delivery payload --------
   const env =
     (restaurant.uber_environment as UberEnvironment | null) ?? "production";
+  // [diag] M9b smoke test — TEMP: remove after Robocourier activation verified
+  console.log("[diag] env value:", env);
   const apiBase = getUberApiBase(env);
   const deliveryUrl = `${apiBase}/v1/customers/${restaurant.uber_customer_id}/deliveries`;
 
@@ -599,8 +601,12 @@ serve(async (req: Request) => {
       robo_courier_specification: { mode: "auto" },
     };
   }
+  // [diag] M9b smoke test — TEMP: remove after Robocourier activation verified
+  console.log("[diag] test_specifications in payload:", "test_specifications" in deliveryPayload);
 
   // -------- POST to Uber --------
+  // [diag] M9b smoke test — TEMP: remove after Robocourier activation verified
+  console.log("[diag] outgoing payload:", JSON.stringify(deliveryPayload));
   let createResp: Response;
   try {
     createResp = await fetch(deliveryUrl, {
