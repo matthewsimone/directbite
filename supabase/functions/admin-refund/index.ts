@@ -148,6 +148,18 @@ serve(async (req: Request) => {
       );
     }
 
+    // [M9c-diag] TEMPORARY — remove after confirming branching behavior.
+    console.log("[M9c-diag] order branching check", {
+      order_id: order.id,
+      order_number: order.order_number,
+      delivery_fulfillment_method: order.delivery_fulfillment_method,
+      uber_status: order.uber_status,
+      uber_delivery_id: order.uber_delivery_id,
+      restaurant_id: order.restaurant_id,
+      has_restaurant_lookup: !!restaurant,
+      restaurant_uber_customer_id: restaurant?.uber_customer_id,
+    });
+
     // M9c: Uber Direct cancel cascade. Release the Uber delivery BEFORE
     // refunding Stripe. Ordering is load-bearing (see _shared/uberCancel.ts):
     // if Uber refuses the cancellation (past the window / already picked up)
