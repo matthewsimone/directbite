@@ -196,6 +196,9 @@ function OrderCard({ order, onTap, onRetryPrint }) {
 function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   const [items, setItems] = useState([])
   const [printLogs, setPrintLogs] = useState([])
+  // Print log is collapsed by default to avoid spamming the detail panel
+  // with per-attempt rows; the disclosure header summarizes failures.
+  const [printLogExpanded, setPrintLogExpanded] = useState(false)
   const [showReprint, setShowReprint] = useState(false)
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -223,6 +226,9 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
   useEffect(() => {
     fetchOrderDetails()
+    // OrderDetail is reused across orders (no key), so reset the disclosure
+    // so a new order's print log opens collapsed.
+    setPrintLogExpanded(false)
   }, [order.id])
 
   async function fetchOrderDetails() {
@@ -311,44 +317,44 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     if (cancelFeeInfo.fetch_failed || !cancelFeeInfo.uber_status) {
       return {
         text: "Couldn't fetch the current Uber delivery state. Proceed with cancel & refund anyway?",
-        cls: 'bg-amber-50 border border-amber-300 text-amber-900',
+        cls: 'bg-amber-50 border-2 border-amber-300 text-amber-900',
       }
     }
     switch (cancelFeeInfo.uber_status) {
       case 'pending':
         return {
           text: '✅ No courier assigned yet — no Uber cancellation fee.',
-          cls: 'bg-green-50 border border-green-300 text-green-900',
+          cls: 'bg-green-50 border-2 border-green-300 text-green-900',
         }
       case 'pickup':
         return {
           text: '⚠️ Courier en route to your restaurant. Uber may charge a small cancellation fee (typically $5). You absorb this.',
-          cls: 'bg-amber-50 border border-amber-300 text-amber-900',
+          cls: 'bg-amber-50 border-2 border-amber-300 text-amber-900',
         }
       case 'pickup_complete':
         return {
           text: '🚫 Driver has picked up the food. Cancellation likely NOT possible. If you proceed and Uber refuses, no refund will be issued.',
-          cls: 'bg-red-50 border border-red-400 text-red-900',
+          cls: 'bg-red-50 border-2 border-red-400 text-red-900',
         }
       case 'dropoff':
         return {
           text: '🚫 Driver is delivering now. Cancellation NOT possible — keep order intact.',
-          cls: 'bg-red-50 border border-red-400 text-red-900',
+          cls: 'bg-red-50 border-2 border-red-400 text-red-900',
         }
       case 'delivered':
         return {
           text: 'Order already delivered. No refund.',
-          cls: 'bg-red-50 border border-red-400 text-red-900',
+          cls: 'bg-red-50 border-2 border-red-400 text-red-900',
         }
       case 'canceled':
         return {
           text: 'This delivery is already canceled.',
-          cls: 'bg-gray-50 border border-gray-300 text-gray-700',
+          cls: 'bg-gray-50 border-2 border-gray-300 text-gray-700',
         }
       default:
         return {
           text: `Current delivery state: ${cancelFeeInfo.uber_status}. A cancellation fee may apply — you absorb it.`,
-          cls: 'bg-amber-50 border border-amber-300 text-amber-900',
+          cls: 'bg-amber-50 border-2 border-amber-300 text-amber-900',
         }
     }
   }
@@ -744,22 +750,35 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           </div>
         )}
 
-        {/* Print log */}
-        {printLogs.length > 0 && (
-          <div className="space-y-1">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Print Log</h3>
-            {printLogs.map(log => (
-              <div key={log.id} className="flex items-center gap-2 text-sm">
-                <span className={log.status === 'success' ? 'text-green-600' : 'text-red-500'}>
-                  {log.status === 'success' ? '✓' : '✗'}
-                </span>
-                <span className="text-gray-600">
-                  Attempt {log.attempt_number} — {formatTime(log.created_at)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Print log — collapsed by default. The disclosure header summarizes
+            failures (red) or attempt count (grey) without spamming the panel
+            with per-attempt rows; tap to expand the full list. */}
+        {printLogs.length > 0 && (() => {
+          const failed = printLogs.filter(log => log.status !== 'success').length
+          return (
+            <div className="space-y-1">
+              <button
+                onClick={() => setPrintLogExpanded(v => !v)}
+                className={`flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide ${failed > 0 ? 'text-red-600' : 'text-gray-500'}`}
+              >
+                Print log ({failed > 0
+                  ? `${failed} failed attempt${failed > 1 ? 's' : ''}`
+                  : `${printLogs.length} attempt${printLogs.length > 1 ? 's' : ''}`})
+                <span>{printLogExpanded ? '▲' : '▼'}</span>
+              </button>
+              {printLogExpanded && printLogs.map(log => (
+                <div key={log.id} className="flex items-center gap-2 text-sm">
+                  <span className={log.status === 'success' ? 'text-green-600' : 'text-red-500'}>
+                    {log.status === 'success' ? '✓' : '✗'}
+                  </span>
+                  <span className="text-gray-600">
+                    Attempt {log.attempt_number} — {formatTime(log.created_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
 
         {/* Existing adjustments */}
         {adjustments.length > 0 && (
@@ -796,7 +815,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           <div className="bg-gray-50 p-4 rounded-xl space-y-3">
             <p className="text-center font-medium">Reprint this order?</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowReprint(false)} className="flex-1 h-12 rounded-xl border border-gray-300 font-semibold">No</button>
+              <button onClick={() => setShowReprint(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">No</button>
               <button onClick={handleReprint} className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold">Yes</button>
             </div>
           </div>
@@ -810,11 +829,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             {(() => {
               const notice = uberCancelNotice()
               return notice ? (
-                <p className={`text-sm text-center rounded-lg p-2.5 ${notice.cls}`}>{notice.text}</p>
+                <p className={`text-sm text-center rounded-lg px-3 py-3 font-semibold ${notice.cls}`}>{notice.text}</p>
               ) : null
             })()}
             <div className="flex gap-3">
-              <button onClick={() => setShowCancelConfirm(false)} className="flex-1 h-12 rounded-xl border border-gray-300 font-semibold">No</button>
+              <button onClick={() => setShowCancelConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">No</button>
               <button
                 onClick={() => updateStatus('cancelled')}
                 disabled={updating}
@@ -966,10 +985,10 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 <button
                   key={min}
                   onClick={() => setSelectedPrepMinutes(min)}
-                  className={`h-12 rounded-xl border ${
+                  className={`h-12 rounded-xl border-2 text-lg font-bold transition-colors ${
                     selectedPrepMinutes === min
-                      ? 'border-[#16A34A] bg-[#16A34A]/10 text-[#16A34A] font-semibold'
-                      : 'border-gray-300'
+                      ? 'border-blue-700 bg-blue-600 text-white'
+                      : 'border-blue-600 bg-blue-50 text-blue-900 active:bg-blue-100'
                   }`}
                 >
                   {min} min
@@ -984,7 +1003,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 max="120"
                 value={selectedPrepMinutes ?? ''}
                 onChange={e => setSelectedPrepMinutes(Number(e.target.value) || null)}
-                className="flex-1 h-10 px-3 border border-gray-300 rounded-lg"
+                className="flex-1 h-12 px-3 border-2 border-blue-300 rounded-lg text-base"
                 placeholder="minutes"
               />
             </div>
