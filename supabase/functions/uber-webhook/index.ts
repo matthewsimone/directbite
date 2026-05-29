@@ -4,7 +4,9 @@
 //
 // Receives delivery_status, courier_update, refund_request, and
 // shopping_progress events from Uber Direct's webhook stream. Verifies
-// HMAC-SHA256 signature against the per-merchant uber_client_secret,
+// HMAC-SHA256 signature against the per-merchant
+// uber_webhook_signing_secret (M9b.1 — a separately generated key
+// registered in Uber's dashboard, distinct from the OAuth client_secret),
 // dedupes by event_id, and updates the orders row with the new state.
 //
 // Multi-tenant design: a single DirectBite-owned webhook URL serves all
@@ -80,7 +82,12 @@
 //     write targets for delivery_status
 //   - orders.uber_courier_info (migration 031) — write target for
 //     courier_update (jsonb full replace)
-//   - restaurants.uber_client_secret (migration 031) — HMAC key
+//   - restaurants.uber_webhook_signing_secret (migration 036) — primary
+//     HMAC key (per-restaurant, generated during onboarding and pasted
+//     into Uber's dashboard webhook config)
+//   - restaurants.uber_client_secret (migration 031) — fallback HMAC
+//     key for transitional state; removed in M9b.2 once all uber_direct
+//     restaurants have signing_secret populated
 //   - uber_webhook_events table (migration 034) — dedup + audit trail
 // ============================================================================
 
@@ -182,15 +189,21 @@ serve(async (req: Request) => {
   }
 
   // -------- Step 6: look up order + restaurant (FK join) --------
-  // Single Supabase query: order row + joined uber_client_secret.
-  // Service-role bypasses RLS so cross-restaurant access is intentional
-  // and safe. This is the ONLY read before signature verification; the
-  // lookup itself has no side effects.
+  // Single Supabase query: order row + joined webhook signing secret
+  // (with client_secret as a fallback per M9b.1). Service-role bypasses
+  // RLS so cross-restaurant access is intentional and safe. This is the
+  // ONLY read before signature verification; the lookup itself has no
+  // side effects.
+  //
+  // M9b.1: Webhook signature uses uber_webhook_signing_secret (separate
+  // from OAuth client_secret per Uber's dashboard configuration). Fall
+  // back to client_secret for transitional state — should be removed
+  // once all restaurants have signing_secret populated.
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select(`
       id, uber_status, uber_courier_info, restaurant_id,
-      restaurants:restaurant_id (uber_client_secret)
+      restaurants:restaurant_id (uber_client_secret, uber_webhook_signing_secret)
     `)
     .eq("uber_delivery_id", deliveryId)
     .maybeSingle();
@@ -218,20 +231,25 @@ serve(async (req: Request) => {
     return ackResponse();
   }
 
-  // Extract the joined client_secret. Supabase's FK join returns the
-  // joined row as a nested object (or null). The TS generics for
-  // embedded selects are awkward, so we cast through `any`.
+  // Extract the joined webhook signing secret. Supabase's FK join
+  // returns the joined row as a nested object (or null). The TS
+  // generics for embedded selects are awkward, so we cast through `any`.
+  // Prefer uber_webhook_signing_secret (M9b.1 dedicated column); fall
+  // back to uber_client_secret for restaurants migrated before the
+  // signing_secret column was populated.
   const restaurantRow = (order as any).restaurants;
-  const clientSecret: string | undefined = restaurantRow?.uber_client_secret;
-  if (!clientSecret) {
-    // FK-join produced no row, or restaurant has no secret set. The
-    // first is impossible (FK is enforced); the second means the
+  const signingSecret: string | undefined =
+    restaurantRow?.uber_webhook_signing_secret ||
+    restaurantRow?.uber_client_secret;
+  if (!signingSecret) {
+    // FK-join produced no row, or restaurant has neither secret set.
+    // The first is impossible (FK is enforced); the second means the
     // operator deleted credentials between dispatch and now. Either
     // way: cannot verify. Return 500 — Uber retries; gives the
     // operator time to fix credentials before the retry budget
     // exhausts.
     console.error(
-      "[uber-webhook] no uber_client_secret for order's restaurant",
+      "[uber-webhook] no signing secret for order's restaurant",
       { order_id: order.id, restaurant_id: order.restaurant_id }
     );
     return errorResponse(500);
@@ -245,7 +263,7 @@ serve(async (req: Request) => {
   const validSignature = await verifyUberSignature(
     rawBody,
     signatureHeader,
-    clientSecret
+    signingSecret
   );
   if (!validSignature) {
     console.warn("[uber-webhook] rejected: invalid signature", {
