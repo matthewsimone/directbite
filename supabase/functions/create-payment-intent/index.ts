@@ -65,6 +65,15 @@ serve(async (req: Request) => {
     const resolution = resolveMode(restaurant as RestaurantForMode);
     const serverResolvedMode = resolution.resolved_mode;
 
+    // M6.5: Pickup orders never need delivery quote validation regardless
+    // of the restaurant's resolved fulfillment mode. Short-circuit to the
+    // in_house else-branch behavior so payment intent creation isn't
+    // blocked for pickup customers on uber_direct restaurants. Without
+    // this gate, every pickup order on a uber_direct restaurant rejects
+    // with quote_validation_failed/missing_quote_id and the customer
+    // sees the spinner-of-death.
+    const isPickup = order_data?.order_type === "pickup";
+
     // Helper to return structured validation errors. Customer sees a generic
     // toast ("Delivery quote changed. Please try again."); the granular
     // reason is for telemetry / console.error only.
@@ -84,7 +93,7 @@ serve(async (req: Request) => {
       );
     }
 
-    if (serverResolvedMode === "uber_direct") {
+    if (!isPickup && serverResolvedMode === "uber_direct") {
       // Server says uber_direct. Client must have a uber_quote_id; if not, reject.
       const clientQuoteId: string | undefined = order_data?.uber_quote_id;
       if (!clientQuoteId || typeof clientQuoteId !== "string") {

@@ -146,7 +146,7 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -463,10 +463,10 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-5 py-4">
         <div className="max-w-lg mx-auto">
           <div className="text-center mb-3">
-            <span className="text-2xl font-bold text-gray-900">{formatCurrency(total)}</span>
+            <span className="text-2xl font-bold text-gray-900">{showPlaceholder ? '—' : formatCurrency(total)}</span>
           </div>
 
-          {payMethod === 'wallet' && paymentRequest ? (
+          {payMethod === 'wallet' && paymentRequest && !showPlaceholder ? (
             <div
               onClickCapture={() => {
                 console.log('[WRAPPER] click captured on wallet button wrapper (may not fire for iframe)')
@@ -488,7 +488,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           ) : (
             <button
               type="submit"
-              disabled={!stripe || loading || externalDisabled}
+              disabled={!stripe || loading || externalDisabled || showPlaceholder}
               className="w-full bg-[#16A34A] text-white font-bold text-lg py-4 rounded-xl disabled:opacity-50 active:scale-[0.98] transition-transform"
             >
               {loading ? (
@@ -496,6 +496,10 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
                   <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Processing...
                 </span>
+              ) : needsAddress ? (
+                'Enter Address'
+              ) : feeCalculating ? (
+                'Calculating...'
               ) : (
                 `Pay ${formatCurrency(total)}`
               )}
@@ -571,6 +575,19 @@ export default function CheckoutPage() {
         ? uberCustomerFeeCents / 100
         : (deliveryFeeCents != null ? deliveryFeeCents : defaultFeeCents) / 100)
     : 0
+  // M6.5: Show — during quote loading to prevent showing stale fee during
+  // the uber-quote async window. The number above stays a valid Number so
+  // the math and Stripe amounts stay correct underneath; the UI just
+  // renders "—" / "Calculating..." while feeCalculating is true.
+  const feeCalculating = quoteLoading && orderType === 'delivery'
+  // M6.5 refinement: distinguish "no address yet" from "quote in flight".
+  // Without an address, deliveryFee falls to defaultFeeCents/100 — a
+  // wrong-but-non-null number that would silently power a Pay button with
+  // an incorrect amount. Treat both states as "show placeholder" for the
+  // UI, but render distinct button labels ("Enter Address" vs
+  // "Calculating...") so the customer knows what to do next.
+  const needsAddress = orderType === 'delivery' && !deliveryLat
+  const showPlaceholder = needsAddress || feeCalculating
   const taxRate = Number(restaurant?.tax_rate || 0)
   const serviceFee = 1.50
   const taxableAmount = discountedSubtotal + deliveryFee + serviceFee
@@ -694,6 +711,15 @@ export default function CheckoutPage() {
     ac.addListener('place_changed', () => {
       const place = ac.getPlace()
       if (place?.geometry?.location) {
+        // M6.5: Clear uber state on address change — prevents fee flip
+        // during the uber-quote async window. Without these resets, the
+        // ternary at L569 reads stale uber state and shows the prior
+        // address's fee until the new quote response arrives.
+        setUberQuoteId(null)
+        setUberQuotedFeeCents(null)
+        setUberCustomerFeeCents(null)
+        setResolvedMode(null)
+        setQuoteExpiresAt(null)
         setDeliveryAddress(place.formatted_address || '')
         setDeliveryLat(place.geometry.location.lat())
         setDeliveryLon(place.geometry.location.lng())
@@ -939,7 +965,15 @@ export default function CheckoutPage() {
           // so the existing useEffect re-quotes. Customer sees the new
           // price and can re-Pay.
           if (errData.error === 'quote_validation_failed') {
-            handleQuoteValidationFailure(errData.reason)
+            // M6.5: Suppress toast on initial load — paymentIntentId is null
+            // on first attempt, meaning no prior quote existed to "change
+            // from". Only show toast on subsequent failures (e.g., after
+            // the customer had a valid quote that then went stale).
+            if (paymentIntentId) {
+              handleQuoteValidationFailure(errData.reason)
+            } else {
+              console.warn('[Checkout] initial createIntent rejected; suppressing toast', { reason: errData.reason })
+            }
             intentCreated.current = false // allow retry after re-quote
             setInitError(null)
             return
@@ -1224,6 +1258,15 @@ export default function CheckoutPage() {
                 placeholder="Search for your address..."
                 onChange={() => {
                   if (deliveryLat) {
+                    // M6.5: Clear uber state on address change — prevents fee
+                    // flip during the uber-quote async window. Mirrors the
+                    // place_changed callback's cleanup so manual edits and
+                    // dropdown selections behave identically.
+                    setUberQuoteId(null)
+                    setUberQuotedFeeCents(null)
+                    setUberCustomerFeeCents(null)
+                    setResolvedMode(null)
+                    setQuoteExpiresAt(null)
                     setDeliveryLat(null)
                     setDeliveryLon(null)
                     setDeliveryDistance(null)
@@ -1359,7 +1402,7 @@ export default function CheckoutPage() {
             {orderType === 'delivery' && (
               <div className="flex justify-between text-gray-600">
                 <span>Delivery Fee{deliveryDistance ? ` (${deliveryDistance} mi)` : ''}</span>
-                <span>{deliveryFee === 0 ? 'Free' : formatCurrency(deliveryFee)}</span>
+                <span>{showPlaceholder ? '—' : (deliveryFee === 0 ? 'Free' : formatCurrency(deliveryFee))}</span>
               </div>
             )}
             {discountAmount > 0 && (
@@ -1376,7 +1419,7 @@ export default function CheckoutPage() {
             )}
             <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t border-gray-200">
               <span>Total</span>
-              <span>{formatCurrency(total)}</span>
+              <span>{showPlaceholder ? '—' : formatCurrency(total)}</span>
             </div>
           </div>
         </div>
@@ -1416,6 +1459,9 @@ export default function CheckoutPage() {
                 onValidateDelivery={onValidateDelivery}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}
+                feeCalculating={feeCalculating}
+                needsAddress={needsAddress}
+                showPlaceholder={showPlaceholder}
                 onWalletCustomer={async (name, email, phone) => {
                   // Update customer state for confirmation page
                   setCustomerName(name)
