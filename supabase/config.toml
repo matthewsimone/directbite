@@ -112,6 +112,14 @@ verify_jwt = false
 [functions.uber-quote]
 verify_jwt = false
 
+# uber-create-delivery (M9a) — tablet user-callable, dispatches an Uber
+# Direct delivery for a paid order. JWT off; handler validates tablet
+# user Bearer JWT manually and confirms restaurant ownership via
+# tablet_email match (same pattern as uber-token).
+
+[functions.uber-create-delivery]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Admin endpoints with platform-level JWT validation

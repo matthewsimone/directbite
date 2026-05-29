@@ -59,6 +59,19 @@ function OrderCard({ order, onTap, onRetryPrint }) {
               Scheduled {formatScheduledLabel(order.scheduled_for)}
             </span>
           )}
+          {/* M9a: Uber Direct status pill — only renders for uber_direct
+              orders that have been dispatched. Color matches M8 customer
+              confirmation page mapping (delivered → green, canceled/failed
+              → red, in-progress → blue). */}
+          {order.delivery_fulfillment_method === 'uber_direct' && order.uber_status && (
+            <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+              order.uber_status === 'delivered' ? 'bg-green-100 text-green-800'
+              : order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned' ? 'bg-red-100 text-red-800'
+              : 'bg-blue-100 text-blue-800'
+            }`}>
+              Uber: {String(order.uber_status).replace(/_/g, ' ')}
+            </span>
+          )}
         </div>
         {customerInfo && (
           <div className="text-sm text-gray-500 mb-1 truncate">
@@ -97,6 +110,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [showAdjustForm, setShowAdjustForm] = useState(false)
+  // M9a: Uber Direct prep-time + dispatch modal state. Only used when
+  // delivery_fulfillment_method === 'uber_direct'.
+  const [showPrepTimeModal, setShowPrepTimeModal] = useState(false)
+  const [selectedPrepMinutes, setSelectedPrepMinutes] = useState(null)
+  const [dispatching, setDispatching] = useState(false)
+  // null | { new_fee_cents, original_fee_cents, delta_cents, new_quote_id }
+  const [showPriceChangeModal, setShowPriceChangeModal] = useState(null)
   const [adjustType, setAdjustType] = useState('refund')
   const [adjustAmount, setAdjustAmount] = useState('')
   const [adjustNote, setAdjustNote] = useState('')
@@ -140,6 +160,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     setUpdating(true)
 
     if (newStatus === 'cancelled') {
+      // TODO (M9c): for orders with delivery_fulfillment_method === 'uber_direct'
+      // and order.uber_delivery_id set, call uber-cancel BEFORE admin-refund
+      // to release the Uber delivery slot. Current behavior (admin-refund only)
+      // works correctly for the customer (full refund), but leaves a stranded
+      // Uber delivery — the courier may continue toward the pickup location
+      // until Uber's own dispatch logic times out. M9c adds the uber-cancel
+      // call here, with cancellation-fee absorption per the locked decision.
       // Trigger Stripe refund via edge function
       try {
         const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
@@ -258,6 +285,108 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       fetchOrderDetails()
     }
     setUpdating(false)
+  }
+
+  // M9a: derive prep-time bracket options for the dispatch modal.
+  // Decision #4: [estimated_delivery_minutes - 10, base, +10, +15], clamped
+  // 5-120, deduped. Operator falls back to the Custom input for non-standard
+  // cases (e.g., scheduled orders with a longer prep window).
+  function prepBrackets() {
+    const base = Number(restaurant?.estimated_delivery_minutes) || 30
+    const raw = [base - 10, base, base + 10, base + 15]
+    const clamped = raw.map(n => Math.max(5, Math.min(120, n)))
+    return Array.from(new Set(clamped)).sort((a, b) => a - b)
+  }
+
+  // M9a: POST to uber-create-delivery and handle structured response.
+  // quoteIdOverride is passed when the operator taps "Accept Anyway" on
+  // the price-change modal (carries the new_quote_id back to the function
+  // so it can dispatch against the refreshed quote without re-checking).
+  async function dispatchToUber(quoteIdOverride = null) {
+    if (!selectedPrepMinutes) return
+    setDispatching(true)
+    try {
+      const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+      if (refreshError || !session) {
+        alert('Session expired. Please log in again.')
+        return
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/uber-create-delivery`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            order_id: order.id,
+            pickup_ready_minutes: selectedPrepMinutes,
+            ...(quoteIdOverride ? { accepted_quote_id: quoteIdOverride } : {}),
+          }),
+        }
+      )
+      const result = await res.json()
+      if (result.success) {
+        // Successful dispatch (or idempotent re-dispatch). Patch the order
+        // in place so the badge appears immediately; the next poll cycle
+        // reconciles. updateStatus side effects (accepted_at, status
+        // 'in_progress') are persisted server-side; mirror locally so the
+        // tablet UI updates without waiting for the poll.
+        const patchedOrder = {
+          ...order,
+          status: 'in_progress',
+          accepted_at: order.accepted_at || new Date().toISOString(),
+          uber_delivery_id: result.delivery_id,
+          uber_tracking_url: result.tracking_url,
+          uber_status: result.status,
+          uber_dispatched_at: new Date().toISOString(),
+        }
+        setShowPrepTimeModal(false)
+        setShowPriceChangeModal(null)
+        setSelectedPrepMinutes(null)
+        onStatusChange(patchedOrder)
+        return
+      }
+      // Error branches.
+      switch (result.error) {
+        case 'quote_price_changed':
+          // Pop the secondary modal with delta details. Operator decides.
+          setShowPriceChangeModal({
+            new_fee_cents: result.new_fee_cents,
+            original_fee_cents: result.original_fee_cents,
+            delta_cents: result.delta_cents,
+            new_quote_id: result.new_quote_id,
+          })
+          break
+        case 'no_uber_available':
+          alert("Uber can't dispatch to this address right now. You may need to cancel & refund, or contact the customer.")
+          setShowPrepTimeModal(false)
+          break
+        case 'bad_address':
+          alert(`Uber rejected this address. ${result.detail || ''}`.trim())
+          setShowPrepTimeModal(false)
+          break
+        case 'rate_limited':
+          alert(`Uber rate limit. Try again in ${result.retry_after || 60} seconds.`)
+          break
+        case 'quote_not_found':
+        case 'missing_quote_id':
+        case 'quote_expired_no_dropoff_coords':
+        case 'accepted_quote_expired':
+          alert('Quote unavailable. Reload the order and try again.')
+          setShowPrepTimeModal(false)
+          setShowPriceChangeModal(null)
+          break
+        default:
+          alert(`Dispatch failed: ${result.error || 'unknown error'}`)
+      }
+    } catch (err) {
+      console.error('[Tablet] dispatchToUber failed', err)
+      alert('Dispatch request failed. Please try again.')
+    } finally {
+      setDispatching(false)
+    }
   }
 
   const isDelivery = order.order_type === 'delivery'
@@ -460,7 +589,17 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           <div className="bg-gray-50 p-4 rounded-xl space-y-3">
             {order.status === 'new' && !order.scheduled_for && (
               <button
-                onClick={() => updateStatus('in_progress')}
+                onClick={() => {
+                  // M9a: intercept for uber_direct orders — open prep modal
+                  // before dispatching to Uber. in_house orders flow through
+                  // the existing updateStatus path unchanged.
+                  if (order.delivery_fulfillment_method === 'uber_direct') {
+                    setShowStatusOptions(false)
+                    setShowPrepTimeModal(true)
+                  } else {
+                    updateStatus('in_progress')
+                  }
+                }}
                 disabled={updating}
                 className="w-full h-12 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-50"
               >
@@ -469,7 +608,18 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             )}
             {order.status === 'new' && order.scheduled_for && (
               <button
-                onClick={() => updateStatus('scheduled')}
+                onClick={() => {
+                  // M9a: same intercept for scheduled uber_direct orders.
+                  // pickup_ready_minutes will typically be set by the operator
+                  // to roughly minutes-until-scheduled_for using the Custom
+                  // input; the bracket defaults are not scheduled-aware in v1.
+                  if (order.delivery_fulfillment_method === 'uber_direct') {
+                    setShowStatusOptions(false)
+                    setShowPrepTimeModal(true)
+                  } else {
+                    updateStatus('scheduled')
+                  }
+                }}
                 disabled={updating}
                 className="w-full h-12 rounded-xl bg-amber-500 text-white font-semibold disabled:opacity-50"
               >
@@ -560,8 +710,95 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           </div>
         )}
 
+        {/* M9a: Uber Direct prep-time modal — operator picks pickup_ready
+            window before dispatching the delivery to Uber. */}
+        {showPrepTimeModal && (
+          <div className="bg-gray-50 p-4 rounded-xl space-y-3">
+            <p className="font-semibold text-gray-800">Prep time</p>
+            <p className="text-sm text-gray-600">
+              When will the order be ready for Uber pickup?
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {prepBrackets().map(min => (
+                <button
+                  key={min}
+                  onClick={() => setSelectedPrepMinutes(min)}
+                  className={`h-12 rounded-xl border ${
+                    selectedPrepMinutes === min
+                      ? 'border-[#16A34A] bg-[#16A34A]/10 text-[#16A34A] font-semibold'
+                      : 'border-gray-300'
+                  }`}
+                >
+                  {min} min
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Custom:</span>
+              <input
+                type="number"
+                min="5"
+                max="120"
+                value={selectedPrepMinutes ?? ''}
+                onChange={e => setSelectedPrepMinutes(Number(e.target.value) || null)}
+                className="flex-1 h-10 px-3 border border-gray-300 rounded-lg"
+                placeholder="minutes"
+              />
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => { setShowPrepTimeModal(false); setSelectedPrepMinutes(null) }}
+                disabled={dispatching}
+                className="flex-1 h-12 rounded-xl border border-gray-300 font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => dispatchToUber()}
+                disabled={dispatching || !selectedPrepMinutes}
+                className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-50"
+              >
+                {dispatching ? 'Dispatching...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* M9a: Uber price-change modal — surfaced when the refreshed quote
+            differs from the original by >= $2. Operator decides whether to
+            absorb the difference (Accept Anyway) or cancel + refund. */}
+        {showPriceChangeModal && (
+          <div className="bg-amber-50 border border-amber-300 p-4 rounded-xl space-y-3">
+            <p className="font-semibold text-amber-900">
+              Uber price changed by ${(Math.abs(showPriceChangeModal.delta_cents) / 100).toFixed(2)}
+            </p>
+            <p className="text-sm text-amber-800">
+              Original: ${(showPriceChangeModal.original_fee_cents / 100).toFixed(2)} → New: ${(showPriceChangeModal.new_fee_cents / 100).toFixed(2)}
+            </p>
+            <p className="text-xs text-amber-700">
+              The customer was billed the original price. Accepting will dispatch at the new price; the restaurant absorbs any positive delta.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowPriceChangeModal(null); setShowPrepTimeModal(false); setSelectedPrepMinutes(null) }}
+                disabled={dispatching}
+                className="flex-1 h-12 rounded-xl border border-gray-300 font-semibold"
+              >
+                Cancel & Refund
+              </button>
+              <button
+                onClick={() => dispatchToUber(showPriceChangeModal.new_quote_id)}
+                disabled={dispatching}
+                className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-50"
+              >
+                {dispatching ? 'Dispatching...' : 'Accept Anyway'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Main action buttons */}
-        {!showReprint && !showStatusOptions && !showCancelConfirm && !showAdjustForm && (
+        {!showReprint && !showStatusOptions && !showCancelConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
           <div className="flex gap-3">
             <button
               onClick={() => setShowReprint(true)}

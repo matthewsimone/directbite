@@ -614,6 +614,11 @@ export default function CheckoutPage() {
     customer_phone: customerPhone.trim(),
     customer_email: customerEmail.trim(),
     delivery_address: fullDeliveryAddress,
+    // M9a: dropoff coordinates persisted on the orders row so
+    // uber-create-delivery can re-quote if the cached quote has expired
+    // at Accept time. NULL for pickup orders.
+    dropoff_lat: orderType === 'delivery' ? deliveryLat : null,
+    dropoff_lng: orderType === 'delivery' ? deliveryLon : null,
     subtotal: fullSubtotal,
     discount_amount: discountAmount,
     discount_percentage: discountPercentage,
@@ -649,7 +654,7 @@ export default function CheckoutPage() {
         placement_type: t.placementType || 'pizza',
       })),
     })),
-  }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items, resolvedMode, uberQuoteId, uberQuotedFeeCents, uberEnvironment])
+  }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, deliveryLat, deliveryLon, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items, resolvedMode, uberQuoteId, uberQuotedFeeCents, uberEnvironment])
 
   // M6: handle quote_validation_failed errors from create-payment-intent.
   // Reset uber quote state so the existing fee-computation useEffect re-fires
@@ -1028,6 +1033,10 @@ export default function CheckoutPage() {
         // M8: Uber Direct attribution on confirmation page
         deliveryFulfillmentMethod: resolvedMode || 'in_house',
         uberEnvironment: resolvedMode === 'uber_direct' ? uberEnvironment : null,
+        // M9a: forward dropoff coordinates so the confirmation page (or any
+        // future feature there) doesn't need to re-derive them from address.
+        dropoffLat: orderType === 'delivery' ? deliveryLat : null,
+        dropoffLng: orderType === 'delivery' ? deliveryLon : null,
       },
     })
     // Cart is cleared on the confirmation page, not here — clearing here triggers

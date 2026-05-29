@@ -127,6 +127,11 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     uber_quote_id,
     uber_quoted_fee,
     uber_environment,
+    // M9a — dropoff coordinates from Google Places autocomplete. Used by
+    // uber-create-delivery to re-quote if the cached quote has expired at
+    // Accept time. NULL for pickup orders and pre-M9a delivery orders.
+    dropoff_lat,
+    dropoff_lng,
   } = orderData;
 
   // Validate scheduled_for. Defense-in-depth — client validates too, but
@@ -212,6 +217,12 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
       uber_quote_id: finalFulfillmentMode === "uber_direct" ? (uber_quote_id || null) : null,
       uber_quoted_fee: finalFulfillmentMode === "uber_direct" ? (uber_quoted_fee || null) : null,
       uber_environment: finalFulfillmentMode === "uber_direct" ? (uber_environment || null) : null,
+      // M9a — persist dropoff coordinates for all delivery orders (not gated
+      // by fulfillment mode). uber-create-delivery reads them when refreshing
+      // an expired quote; in_house orders may also benefit if delivery_fulfillment
+      // flips to uber_direct mid-order-lifecycle. Defensive null per M5d pattern.
+      dropoff_lat: dropoff_lat || null,
+      dropoff_lng: dropoff_lng || null,
     })
     .select()
     .single();
