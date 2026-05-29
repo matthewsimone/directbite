@@ -73,6 +73,9 @@ function ConfirmationWithState({ state, slug, navigate }) {
     restaurantPhone,
     includeUtensils,
     specialInstructions,
+    // M8: Uber Direct attribution (Path A — SPA navigation from CheckoutPage)
+    deliveryFulfillmentMethod = 'in_house',
+    uberEnvironment = null,
   } = state
 
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
@@ -122,6 +125,11 @@ function ConfirmationWithState({ state, slug, navigate }) {
       specialInstructions={specialInstructions}
       slug={slug}
       navigate={navigate}
+      deliveryFulfillmentMethod={deliveryFulfillmentMethod}
+      uberEnvironment={uberEnvironment}
+      uberStatus={null}
+      uberTrackingUrl={null}
+      uberCourierInfo={null}
     />
   )
 }
@@ -244,6 +252,12 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
       specialInstructions={order.special_instructions}
       slug={slug}
       navigate={navigate}
+      // M8: Uber Direct attribution (Path B — Stripe redirect, fetched from DB)
+      deliveryFulfillmentMethod={order.delivery_fulfillment_method || 'in_house'}
+      uberEnvironment={order.uber_environment || null}
+      uberStatus={order.uber_status || null}
+      uberTrackingUrl={order.uber_tracking_url || null}
+      uberCourierInfo={order.uber_courier_info || null}
     />
   )
 }
@@ -254,9 +268,23 @@ function ConfirmationLayout({
   items, subtotal, discountAmount, discountPercentage,
   deliveryFee, taxAmount, tip, serviceFee, total,
   restaurantName, restaurantPhone, includeUtensils, specialInstructions, slug, navigate,
+  // M8: Uber Direct attribution (gated below by showUberSection)
+  deliveryFulfillmentMethod = 'in_house',
+  uberEnvironment = null,
+  // M9-future fields — all null in M8. The card JSX below uses truthy
+  // gates so each block progressively activates as M9 ships.
+  uberStatus = null,
+  uberTrackingUrl = null,
+  uberCourierInfo = null,
 }) {
   const isScheduled = !!scheduledFor
   const scheduledLabel = isScheduled ? formatScheduledLabel(scheduledFor) : null
+  const [showUberTooltip, setShowUberTooltip] = useState(false)
+  // M8: gate the Uber attribution section. Only renders for delivery
+  // orders dispatched via Uber Direct; pickup and in_house never show this.
+  const showUberSection =
+    orderType === 'delivery' &&
+    deliveryFulfillmentMethod === 'uber_direct'
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-lg mx-auto px-5 py-10">
@@ -299,6 +327,73 @@ function ConfirmationLayout({
             </p>
           )}
         </div>
+
+        {/* M8: Uber Direct attribution. Only renders for delivery orders
+            dispatched via Uber. The "Delivered by Uber Direct" text lives
+            in an isolated span (marked SWAP POINT) so a future swap to an
+            Uber wordmark image is a one-line change. M9-future fields
+            (status pill, tracking URL, courier name) are pre-wired with
+            truthy gates — they hide today and progressively appear as M9
+            populates the corresponding columns. */}
+        {showUberSection && (
+          <div className="mt-6 bg-gray-50 rounded-2xl p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              {/* SWAP POINT: replace this <span> with <img src="/uber-direct-logo.svg" alt="..." /> once brand assets land in M9 */}
+              <span className="text-sm font-semibold text-gray-700">
+                Delivered by Uber Direct
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowUberTooltip(!showUberTooltip)}
+                aria-expanded={showUberTooltip}
+                aria-label="What is Uber Direct?"
+                className="p-2 -m-2 text-gray-400 hover:text-gray-600 transition-colors rounded-full"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+            </div>
+
+            {showUberTooltip && (
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Lower cost than UberEats. This restaurant uses Uber's delivery
+                network directly without paying marketplace fees.
+              </p>
+            )}
+
+            {/* M9-future: status pill (color-coded). Hides in M8 (uber_status NULL). */}
+            {uberStatus && (
+              <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium ${
+                uberStatus === 'delivered' ? 'bg-green-100 text-green-800'
+                : uberStatus === 'canceled' || uberStatus === 'failed' ? 'bg-red-100 text-red-800'
+                : 'bg-blue-100 text-blue-800'
+              }`}>
+                {uberStatus.replace(/_/g, ' ')}
+              </div>
+            )}
+
+            {/* M9-future: tracking link. Hides in M8 (uber_tracking_url NULL). */}
+            {uberTrackingUrl && (
+              <a
+                href={uberTrackingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-sm font-medium text-[#16A34A] hover:underline"
+              >
+                Track delivery →
+              </a>
+            )}
+
+            {/* M9-future: courier name. Hides in M8 (uber_courier_info NULL). */}
+            {uberCourierInfo?.name && (
+              <p className="text-xs text-gray-500">
+                Your courier: {uberCourierInfo.name}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Special Instructions */}
         {specialInstructions && (

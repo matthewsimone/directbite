@@ -1025,6 +1025,9 @@ export default function CheckoutPage() {
         includeUtensils,
         specialInstructions: specialInstructions.trim() || null,
         paymentIntentId: piId,
+        // M8: Uber Direct attribution on confirmation page
+        deliveryFulfillmentMethod: resolvedMode || 'in_house',
+        uberEnvironment: resolvedMode === 'uber_direct' ? uberEnvironment : null,
       },
     })
     // Cart is cleared on the confirmation page, not here — clearing here triggers
