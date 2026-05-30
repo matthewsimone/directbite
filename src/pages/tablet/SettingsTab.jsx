@@ -61,6 +61,60 @@ function Toggle({ value, onChange }) {
   )
 }
 
+// Demo fee for the Cost Sharing live preview — the realistic Uber sandbox
+// delivery fee operators see ($7.99 → 799 cents).
+const PASSTHROUGH_DEMO_FEE_CENTS = 799
+
+// Cost Sharing radio options. `helper` text matches the server semantics in
+// uberPassthrough.ts exactly — note restaurant_cap caps the RESTAURANT's share
+// while customer_cap caps the CUSTOMER's share (asymmetric, easy to misread).
+const PASSTHROUGH_OPTIONS = [
+  { mode: 'customer_full', title: 'Customer pays full fee', helper: 'The customer pays the entire Uber delivery fee. You absorb nothing.' },
+  { mode: 'split', title: 'Split by percentage', helper: 'The customer pays this percent of the fee; you absorb the rest.' },
+  { mode: 'restaurant_cap', title: 'You cap your cost', helper: 'You absorb the fee up to this dollar cap; the customer pays anything above it.' },
+  { mode: 'customer_cap', title: "Cap the customer's cost", helper: 'The customer pays up to this dollar cap; you absorb anything above it.' },
+  { mode: 'restaurant_full', title: 'You cover the full fee', helper: 'You absorb the entire Uber delivery fee. The customer pays nothing for delivery.' },
+]
+
+// Client-side mirror of supabase/functions/_shared/uberPassthrough.ts. Returns
+// { customer, restaurant } in DOLLARS for the demo fee, so the Settings UI can
+// preview the split without a round-trip. Keep this in lockstep with the
+// server math — it is the source of truth at quote/lock/dispatch time.
+function passthroughPreview(mode, value, feeCents = PASSTHROUGH_DEMO_FEE_CENTS) {
+  const v = Math.max(0, Number(value) || 0)
+  let customerCents
+  let restaurantCents
+  switch (mode) {
+    case 'split': {
+      const customerPct = Math.min(100, v) / 100
+      customerCents = Math.round(feeCents * customerPct)
+      restaurantCents = feeCents - customerCents
+      break
+    }
+    case 'restaurant_cap': {
+      const cap = Math.round(v * 100)
+      restaurantCents = Math.min(feeCents, cap)
+      customerCents = feeCents - restaurantCents
+      break
+    }
+    case 'customer_cap': {
+      const cap = Math.round(v * 100)
+      customerCents = Math.min(feeCents, cap)
+      restaurantCents = feeCents - customerCents
+      break
+    }
+    case 'restaurant_full':
+      customerCents = 0
+      restaurantCents = feeCents
+      break
+    case 'customer_full':
+    default:
+      customerCents = feeCents
+      restaurantCents = 0
+  }
+  return { customer: customerCents / 100, restaurant: restaurantCents / 100 }
+}
+
 export default function SettingsTab({ restaurant, setRestaurant }) {
   // M5b — Derive an uber_schedule jsonb object from the restaurant's
   // existing Hours table. If a day is open in hours → enabled with that
@@ -146,6 +200,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   // M5b — Uber Direct configuration state (only relevant when verified)
   const [mode, setMode] = useState(restaurant?.delivery_fulfillment || 'in_house')
   const [uberActive, setUberActive] = useState(restaurant?.uber_direct_active || false)
+  const [passthroughMode, setPassthroughMode] = useState(restaurant?.uber_passthrough_mode || 'customer_full')
+  const [passthroughValue, setPassthroughValue] = useState(restaurant?.uber_passthrough_value ?? 0)
   const [schedule, setSchedule] = useState(
     restaurant?.uber_schedule && Object.keys(restaurant.uber_schedule).length > 0
       ? restaurant.uber_schedule
@@ -512,6 +568,12 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
           delivery_fulfillment: mode,
           uber_direct_active: uberActive,
           uber_schedule: schedule,
+          uber_passthrough_mode: passthroughMode,
+          // *_full modes ignore the value — store 0 so stale cap/percent
+          // amounts don't linger in the DB. Other modes store the entered value.
+          uber_passthrough_value: ['customer_full', 'restaurant_full'].includes(passthroughMode)
+            ? 0
+            : (parseFloat(passthroughValue) || 0),
         })
         .eq('id', restaurant.id)
         .select()
@@ -846,6 +908,67 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                 <span className="text-sm text-gray-700">Both — Schedule + Real-Time Override</span>
               </label>
             </div>
+
+            {/* Cost Sharing — passthrough policy. Only relevant when Uber
+                fulfills (uber_direct / both); irrelevant for in_house. */}
+            {mode !== 'in_house' && (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost Sharing</p>
+                {PASSTHROUGH_OPTIONS.map(opt => (
+                  <label key={opt.mode} className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="passthroughMode"
+                      checked={passthroughMode === opt.mode}
+                      onChange={() => setPassthroughMode(opt.mode)}
+                      className="accent-[#16A34A] w-4 h-4 mt-0.5"
+                    />
+                    <span className="text-sm text-gray-700">
+                      <span className="font-medium">{opt.title}</span>
+                      <span className="block text-xs text-gray-500">{opt.helper}</span>
+                    </span>
+                  </label>
+                ))}
+
+                {/* Mode-dependent value input */}
+                {passthroughMode === 'split' && (
+                  <div className="relative w-32">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={passthroughValue}
+                      onChange={e => setPassthroughValue(e.target.value)}
+                      className="w-full h-10 px-3 pr-8 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                  </div>
+                )}
+                {(passthroughMode === 'restaurant_cap' || passthroughMode === 'customer_cap') && (
+                  <div className="relative w-32">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={passthroughValue}
+                      onChange={e => setPassthroughValue(e.target.value)}
+                      className="w-full h-10 pl-7 pr-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    />
+                  </div>
+                )}
+
+                {/* Live preview against the demo Uber fee */}
+                {(() => {
+                  const p = passthroughPreview(passthroughMode, passthroughValue)
+                  return (
+                    <p className="text-xs text-gray-500 pt-1">
+                      On a <span className="italic">$7.99</span> fee: customer pays ${p.customer.toFixed(2)}, you absorb ${p.restaurant.toFixed(2)}
+                    </p>
+                  )
+                })()}
+              </div>
+            )}
 
             {/* Real-Time Override + Schedule — only when mode === 'both' */}
             {mode === 'both' && (
