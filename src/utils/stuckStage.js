@@ -25,6 +25,11 @@ const FIFTEEN_MIN_MS = 15 * 60 * 1000
 export function getStuckStage(order, now = Date.now()) {
   if (!order || order.delivery_fulfillment_method !== 'uber_direct') return 0
 
+  // A resolved order is never stuck. Must precede the Uber-cancel Stage 3
+  // check — a refund can leave cancelled_by='uber' on a now-cancelled order,
+  // and self_delivering carries uber_status='canceled' too.
+  if (['complete', 'cancelled', 'self_delivering'].includes(order.status)) return 0
+
   // Stage 3 (immediate): Uber initiated the cancellation. Distinct from a
   // restaurant_refund / restaurant_self_deliver cancel (those are ours and
   // are NOT stuck states).
