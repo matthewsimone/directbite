@@ -221,6 +221,10 @@ serve(async (req: Request) => {
 
     if (type === "full") {
       updateData.status = "cancelled";
+      // Migration 042: attribute the cancellation. Set only on a full cancel
+      // (the moment status → cancelled). Distinguishes this restaurant-driven
+      // refund cancel from an Uber-initiated one in the tablet UI.
+      updateData.cancelled_by = "restaurant_refund";
     }
 
     await supabase

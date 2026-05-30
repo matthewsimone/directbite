@@ -8,6 +8,21 @@ import ReportsView from './ReportsView'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+// Default Uber Direct schedule buffer (minutes): stop accepting Uber deliveries
+// this long before the restaurant's posted close, so a courier isn't still
+// inbound at closing. Applied only to the AUTO-DERIVED default end time — the
+// operator can override per day. Clamps at 00:00 (no wrap to the prior day).
+const UBER_SCHEDULE_CLOSE_BUFFER_MIN = 30
+function bufferBeforeClose(hhmm, bufferMin = UBER_SCHEDULE_CLOSE_BUFFER_MIN) {
+  const [h, m] = hhmm.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
+  let total = h * 60 + m - bufferMin
+  if (total < 0) total = 0
+  const bh = String(Math.floor(total / 60)).padStart(2, '0')
+  const bm = String(total % 60).padStart(2, '0')
+  return `${bh}:${bm}`
+}
+
 // M5b — Fallback Uber Direct schedule used when the restaurant's `hours`
 // table is empty or hasn't loaded yet. In normal operation, schedule
 // defaults are derived from the restaurant's actual Hours via the
@@ -128,11 +143,17 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       const dayHours = hoursArray.find(h => h.day_of_week === dow)
       if (dayHours?.is_open && dayHours.open_time && dayHours.close_time) {
         // hours.open_time/close_time may be stored as "HH:MM:SS"; truncate
-        // to "HH:MM" to match the uber_schedule jsonb convention.
+        // to "HH:MM" to match the uber_schedule jsonb convention. Default the
+        // end 30 min before close (buffer) so Uber isn't dispatching right up
+        // to closing — but only if that still leaves a valid window; otherwise
+        // fall back to the raw close time.
+        const start = dayHours.open_time.slice(0, 5)
+        const close = dayHours.close_time.slice(0, 5)
+        const buffered = bufferBeforeClose(close)
         result[String(dow)] = {
           enabled: true,
-          start: dayHours.open_time.slice(0, 5),
-          end: dayHours.close_time.slice(0, 5),
+          start,
+          end: buffered > start ? buffered : close,
         }
       } else {
         result[String(dow)] = { enabled: false }

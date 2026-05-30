@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { printOrder } from '../utils/epsonPrint'
+import { isStuckUnacked } from '../utils/stuckStage'
 
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
@@ -149,7 +150,7 @@ export function useOrderPolling(restaurant, hours) {
         .from('orders')
         .select('*')
         .eq('restaurant_id', restaurant.id)
-        .in('status', ['new', 'in_progress', 'scheduled', 'complete', 'cancelled'])
+        .in('status', ['new', 'in_progress', 'scheduled', 'complete', 'cancelled', 'self_delivering'])
         .order('created_at', { ascending: false })
 
       if (error) {
@@ -188,10 +189,14 @@ export function useOrderPolling(restaurant, hours) {
         }
       }
 
-      // Chime decision: any un-acknowledged new order in the restaurant
-      // → keep audio playing. Reload-safe because acknowledged_at lives
-      // in the DB; reload re-fetches, re-evaluates, re-plays as needed.
-      const hasUnacked = data.some(o => o.status === 'new' && !o.acknowledged_at)
+      // Chime decision: any un-acknowledged new order, OR any stuck-pending
+      // order at stage >= 2 not yet acknowledged → keep audio playing. Both
+      // signals live in the DB (acknowledged_at / stuck_acknowledged_at), so
+      // it's reload-safe: reload re-fetches, re-evaluates, re-plays as needed.
+      const now = Date.now()
+      const hasUnacked =
+        data.some(o => o.status === 'new' && !o.acknowledged_at) ||
+        data.some(o => isStuckUnacked(o, now))
       syncAudioState(hasUnacked)
 
       // Retry failed/pending prints on every poll cycle

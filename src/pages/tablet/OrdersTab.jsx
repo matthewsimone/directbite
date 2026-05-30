@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { printOrder } from '../../utils/epsonPrint'
 import { formatPhone } from '../../utils/format'
 import { formatScheduledLabel, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
+import { getStuckStage } from '../../utils/stuckStage'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -119,6 +120,21 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   // customer is still charged. Broad signal (any failed refund, in_house or
   // uber_direct); the detail banner tailors copy by uber_status.
   const refundFailed = order.refund_status === 'failed'
+  // Stuck-pending escalation (0=none, 1=passive yellow, 2=flashing yellow,
+  // 3=red). Drives tile color so a courier-less order can't hide among
+  // healthy in-progress tiles. Computed at render; the 10s poll re-renders.
+  const stuckStage = getStuckStage(order, Date.now())
+
+  // Card background/ring by priority: stuck stage 3 (red) ≥ refund-failed
+  // (red) ≥ stuck stage 2 (flashing yellow) ≥ stuck stage 1 (yellow) ≥
+  // un-acked new (flashing green) ≥ default white.
+  const cardStateClass =
+    stuckStage === 3 ? 'bg-red-50 ring-2 ring-red-400 animate-pulse'
+      : refundFailed ? 'bg-red-50 ring-1 ring-red-300'
+      : stuckStage === 2 ? 'bg-yellow-50 ring-2 ring-yellow-400 animate-pulse'
+      : stuckStage === 1 ? 'bg-yellow-50'
+      : isUnacked ? 'animate-flash-green'
+      : 'bg-white'
 
   // Customer info line. Each segment is independently optional so missing
   // phone or address gracefully degrades. delivery_address is only
@@ -130,7 +146,7 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   ].filter(Boolean).join(', ')
 
   return (
-    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${refundFailed ? 'bg-red-50 ring-1 ring-red-300' : isUnacked ? 'animate-flash-green' : 'bg-white'}`}>
+    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${cardStateClass}`}>
       <button
         onClick={() => onTap(order)}
         className="w-full text-left p-4"
@@ -179,15 +195,23 @@ function OrderCard({ order, onTap, onRetryPrint }) {
             Live ETA supersedes the scheduled pickup time (formatEtaSuffix).
             Color: blue-700 in-flight, green delivered, red canceled/failed/
             returned. Pre-dispatch shows "awaiting dispatch". */}
-        {order.delivery_fulfillment_method === 'uber_direct' && (
+        {order.status === 'self_delivering' ? (
+          /* D9: self-delivering orders show "Self-delivering" instead of the
+             Uber status line (which would read "Canceled" from the release). */
+          <div className="mt-1 text-sm font-semibold text-[#16A34A]">Self-delivering</div>
+        ) : order.delivery_fulfillment_method === 'uber_direct' && (
           <div className={`mt-1 text-sm font-semibold ${
             order.uber_status === 'delivered' ? 'text-green-700'
+              : stuckStage === 3 ? 'text-red-700'
+              : stuckStage >= 1 ? 'text-yellow-800'
               : (order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned') ? 'text-red-700'
               : 'text-blue-700'
           }`}>
-            {order.uber_status
-              ? `UberDirect · ${getUberStatusDisplay(order.uber_status).label}${formatEtaSuffix(order)}`
-              : 'UberDirect · awaiting dispatch'}
+            {stuckStage === 3 && order.uber_status === 'canceled'
+              ? 'UberDirect · No driver assigned'
+              : order.uber_status
+                ? `UberDirect · ${getUberStatusDisplay(order.uber_status).label}${formatEtaSuffix(order)}`
+                : 'UberDirect · awaiting dispatch'}
           </div>
         )}
       </button>
@@ -460,6 +484,43 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     setShowCancelConfirm(false)
   }
 
+  // Stuck-pending "Deliver Yourself": cancel the Uber dispatch (no refund) via
+  // uber-self-deliver, then the order becomes 'self_delivering'. Customer keeps
+  // their delivery (now from the restaurant); no refund, restaurant keeps the
+  // fee. On cancel failure we abort and surface the error (spec).
+  async function deliverYourself() {
+    setUpdating(true)
+    try {
+      const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+      if (refreshError || !session) {
+        alert('Session expired. Please log in again.')
+        setUpdating(false)
+        return
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/uber-self-deliver`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ order_id: order.id }),
+        }
+      )
+      const result = await res.json()
+      if (!result.success) {
+        alert(`Couldn't switch to self-delivery: ${result.error || 'Unknown error'}. The Uber delivery was not released.`)
+        setUpdating(false)
+        return
+      }
+      onStatusChange({ ...order, status: 'self_delivering', uber_status: 'canceled', cancelled_by: 'restaurant_self_deliver' })
+    } catch (err) {
+      alert('Self-delivery request failed. Please try again.')
+    }
+    setUpdating(false)
+  }
+
   async function handleReprint() {
     if (!restaurant.printer_ip) {
       setShowReprint(false)
@@ -683,6 +744,32 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 : 'The Stripe refund did not go through. The customer is still charged. Retry "Cancel & Refund" or process the refund manually.'}
             </p>
             {order.refund_reason && <p className="text-xs text-red-600">Reason: {order.refund_reason}</p>}
+          </div>
+        )}
+        {/* Stage 3 stuck-pending action banner: no courier found (15+ min) or
+            Uber cancelled the dispatch. Operator must act. Self-delivering and
+            already-refunded orders don't show this. */}
+        {getStuckStage(order, Date.now()) === 3 && order.status !== 'self_delivering' && order.refund_status !== 'failed' && (
+          <div className="bg-red-50 border-2 border-red-400 rounded-xl px-4 py-3 space-y-3">
+            <p className="text-base font-bold text-red-800">No driver assigned. Take action now.</p>
+            {order.customer_phone && (
+              <a
+                href={`tel:${order.customer_phone}`}
+                className="block w-full h-12 leading-[3rem] text-center rounded-xl bg-white border-2 border-red-400 text-red-700 font-bold"
+              >
+                📞 Call {formatPhone(order.customer_phone)}
+              </a>
+            )}
+            <button
+              onClick={deliverYourself}
+              disabled={updating}
+              className="w-full h-12 rounded-xl bg-[#16A34A] text-white font-bold disabled:opacity-50"
+            >
+              {updating ? 'Working…' : 'Deliver Yourself'}
+            </button>
+            <p className="text-xs text-red-700">
+              "Deliver Yourself" releases the Uber delivery (no charge) and you deliver it. The customer is not refunded. To refund instead, use Cancel &amp; Refund below.
+            </p>
           </div>
         )}
         {order.scheduled_for && (
@@ -909,13 +996,13 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 Accept
               </button>
             )}
-            {(order.status === 'in_progress' || order.status === 'scheduled') && (
+            {(order.status === 'in_progress' || order.status === 'scheduled' || order.status === 'self_delivering') && (
               <button
                 onClick={() => updateStatus('complete')}
                 disabled={updating}
                 className="w-full h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-50"
               >
-                Mark Complete
+                {order.status === 'self_delivering' ? 'Mark Delivered' : 'Mark Complete'}
               </button>
             )}
             <button
@@ -1126,6 +1213,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 >
                   ADJUST
                 </button>
+              ) : order.status === 'self_delivering' ? (
+                <button
+                  onClick={() => updateStatus('complete')}
+                  disabled={updating}
+                  className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
+                >
+                  Mark Delivered
+                </button>
               ) : order.status !== 'cancelled' ? (
                 <button
                   onClick={() => setShowStatusOptions(true)}
@@ -1158,6 +1253,19 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [showOlder, setShowOlder] = useState(false)
 
+  // Keep an open detail view in sync with the 10s poll so it auto-escalates
+  // (e.g. stuck stage 2 → 3) without the operator re-opening it. The orders
+  // array gets a fresh row each poll; sync selectedOrder to it by id. Guarded
+  // by reference inequality so this doesn't loop, and we keep the existing
+  // selection if the order temporarily drops out of the fetched set.
+  useEffect(() => {
+    if (!selectedOrder) return
+    const fresh = orders.find(o => o.id === selectedOrder.id)
+    if (fresh && fresh !== selectedOrder) {
+      setSelectedOrder(fresh)
+    }
+  }, [orders, selectedOrder])
+
   const subTabs = [
     { key: 'new', label: 'New' },
     { key: 'scheduled', label: 'Scheduled' },
@@ -1180,6 +1288,19 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
         .update({ acknowledged_at: ackAt })
         .eq('id', order.id)
       if (error) console.error('[Ack] write failed', error)
+    }
+    // Stuck-pending ack: tapping a stage >= 2 tile silences the chime. Stamp
+    // it fresh each tap (re-acking at stage 3 records a post-boundary time, so
+    // isStuckUnacked stays false; a stage-2 ack predates the stage-3 boundary
+    // and will re-fire — D4). DB-backed so it survives a Fully Kiosk reload.
+    if (getStuckStage(order, Date.now()) >= 2) {
+      const stuckAt = new Date().toISOString()
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, stuck_acknowledged_at: stuckAt } : o))
+      const { error } = await supabase
+        .from('orders')
+        .update({ stuck_acknowledged_at: stuckAt })
+        .eq('id', order.id)
+      if (error) console.error('[StuckAck] write failed', error)
     }
   }
 
@@ -1218,6 +1339,8 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
   const filteredOrders = (() => {
     const filtered = orders.filter(o => {
       if (subTab === 'complete') return o.status === 'complete' || o.status === 'cancelled'
+      // D2: self-delivering orders live in the In Progress tab (active work).
+      if (subTab === 'in_progress') return o.status === 'in_progress' || o.status === 'self_delivering'
       return o.status === subTab
     })
     // Scheduled tab: next-up first so the kitchen sees the most urgent
@@ -1309,6 +1432,17 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
                 {orders.filter(o => o.status === 'scheduled').length}
               </span>
             )}
+            {tab.key === 'in_progress' && (() => {
+              const now = Date.now()
+              const stuck = orders.filter(o => getStuckStage(o, now) >= 2)
+              if (stuck.length === 0) return null
+              const anyRed = stuck.some(o => getStuckStage(o, now) === 3)
+              return (
+                <span className={`ml-2 text-xs rounded-full px-2 py-0.5 ${anyRed ? 'bg-red-500 text-white' : 'bg-amber-300 text-black'}`}>
+                  {stuck.length}
+                </span>
+              )
+            })()}
           </button>
         ))}
       </div>

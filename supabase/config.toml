@@ -135,6 +135,15 @@ verify_jwt = false
 [functions.uber-get-delivery]
 verify_jwt = false
 
+# uber-self-deliver — tablet user-callable. Cancels the Uber dispatch (no
+# refund) and sets the order to 'self_delivering' so the restaurant delivers
+# it themselves. JWT off; handler validates the tablet user Bearer JWT and
+# confirms restaurant ownership via tablet_email (same pattern as
+# uber-create-delivery).
+
+[functions.uber-self-deliver]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Admin endpoints with platform-level JWT validation

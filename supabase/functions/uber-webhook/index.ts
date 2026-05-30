@@ -221,7 +221,7 @@ serve(async (req: Request) => {
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select(`
-      id, uber_status, uber_courier_info, restaurant_id,
+      id, uber_status, uber_courier_info, restaurant_id, cancelled_by,
       restaurants:restaurant_id (uber_webhook_signing_secret)
     `)
     .eq("uber_delivery_id", deliveryId)
@@ -399,6 +399,15 @@ serve(async (req: Request) => {
       // reaching here, so this never overrides an operator cancel.
       if (newStatus === "pickup_complete") {
         statusUpdate.status = "complete";
+      }
+      // Migration 042: attribute an Uber-initiated cancellation. Only stamp
+      // 'uber' when cancelled_by is still null — if the restaurant cancelled
+      // first (restaurant_refund / restaurant_self_deliver), that value wins
+      // and the trailing Uber 'canceled' webhook must not overwrite it. This
+      // is what lets the tablet tell "no driver / Uber bailed" apart from a
+      // restaurant-driven cancel (drives the Stage 3 stuck alert).
+      if (newStatus === "canceled" && order.cancelled_by == null) {
+        statusUpdate.cancelled_by = "uber";
       }
       const { error: statusErr } = await supabase
         .from("orders")
