@@ -250,6 +250,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   const [showReprint, setShowReprint] = useState(false)
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [showDeliverConfirm, setShowDeliverConfirm] = useState(false)
   const [showAdjustForm, setShowAdjustForm] = useState(false)
   // M9a: Uber Direct prep-time + dispatch modal state. Only used when
   // delivery_fulfillment_method === 'uber_direct'.
@@ -805,7 +806,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               </div>
             )}
             <button
-              onClick={deliverYourself}
+              onClick={() => setShowDeliverConfirm(true)}
               disabled={updating}
               className="w-full h-12 rounded-xl bg-[#16A34A] text-white font-bold disabled:opacity-50"
             >
@@ -814,6 +815,26 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             <p className="text-xs text-red-700">
               "Deliver Yourself" releases the Uber delivery (no charge) and you deliver it. The customer is not refunded. To refund instead, use Cancel &amp; Refund below.
             </p>
+          </div>
+        )}
+        {/* B2c: Self-deliver confirm. Sits directly under the Stage-3 banner so
+            it appears next to its trigger (the banner's Deliver Yourself button).
+            Amber — self-deliver is a positive action. This confirm is the only
+            caller of deliverYourself(). */}
+        {showDeliverConfirm && (
+          <div className="bg-yellow-50 p-4 rounded-xl space-y-3">
+            <p className="text-center font-bold text-yellow-900">Self-deliver?</p>
+            <p className="text-center text-sm text-yellow-900">Uber will text the customer "delivery canceled."</p>
+            {order.customer_phone && (
+              <div className="text-center">
+                <p className="text-sm text-yellow-900">Call {order.customer_name} first:</p>
+                <p className="text-2xl font-bold text-yellow-900 tracking-wide">{formatPhone(order.customer_phone)}</p>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button onClick={() => setShowDeliverConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">Back</button>
+              <button onClick={() => { setShowDeliverConfirm(false); deliverYourself() }} disabled={updating} className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-50">I've called — Self-deliver</button>
+            </div>
           </div>
         )}
         {order.scheduled_for && (
@@ -985,6 +1006,21 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 <p className={`text-sm text-center rounded-lg px-3 py-3 font-semibold ${notice.cls}`}>{notice.text}</p>
               ) : null
             })()}
+            {/* B2b/Part C: dispatched uber_direct cancel texts the customer
+                "delivery canceled" — warn + show the number to call first.
+                Only when a live Uber delivery is being released; in_house /
+                undispatched cancels render exactly as before. */}
+            {cancelFeeInfo?.dispatched && (
+              <>
+                <p className="text-sm text-center text-red-800">Uber will text the customer "delivery canceled."</p>
+                {order.customer_phone && (
+                  <div className="text-center">
+                    <p className="text-sm text-red-800">Call {order.customer_name} first:</p>
+                    <p className="text-2xl font-bold text-red-900 tracking-wide">{formatPhone(order.customer_phone)}</p>
+                  </div>
+                )}
+              </>
+            )}
             <div className="flex gap-3">
               <button onClick={() => setShowCancelConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">No</button>
               <button
@@ -992,14 +1028,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 disabled={updating}
                 className="flex-1 h-12 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50"
               >
-                Yes, Cancel
+                {cancelFeeInfo?.dispatched ? "I've called — Cancel & Refund" : 'Yes, Cancel'}
               </button>
             </div>
           </div>
         )}
 
         {/* Status options */}
-        {showStatusOptions && !showCancelConfirm && (
+        {showStatusOptions && !showCancelConfirm && !showDeliverConfirm && (
           <div className="bg-gray-50 p-4 rounded-xl space-y-3">
             {order.status === 'new' && !order.scheduled_for && (
               <button
@@ -1213,7 +1249,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         )}
 
         {/* Main action buttons */}
-        {!showReprint && !showStatusOptions && !showCancelConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
+        {!showReprint && !showStatusOptions && !showCancelConfirm && !showDeliverConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
           order.delivery_fulfillment_method === 'uber_direct' && order.status === 'new' ? (
             /* M10: Direct one-tap dispatch flow for new uber_direct orders.
                Skips the UPDATE STATUS intermediate step — primary CTA opens
