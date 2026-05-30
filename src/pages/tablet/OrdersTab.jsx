@@ -201,6 +201,13 @@ function OrderCard({ order, onTap, onRetryPrint }) {
           /* D9: self-delivering orders show "Self-delivering" instead of the
              Uber status line (which would read "Canceled" from the release). */
           <div className="mt-1 text-sm font-semibold text-[#16A34A]">Self-delivering</div>
+        ) : order.cancelled_by === 'restaurant_self_deliver' ? (
+          /* Self-delivered then completed: the Uber leg was canceled but the
+             restaurant delivered it. Neutral near-black, NOT the red "Canceled"
+             used for a true cancel+refund (cancelled_by restaurant_refund / uber).
+             Keyed on cancelled_by so it survives the self_delivering→complete
+             transition (the green branch above only covers the in-progress phase). */
+          <div className="mt-1 text-sm font-semibold text-gray-900">UberDirect · Canceled · Self-delivered</div>
         ) : order.delivery_fulfillment_method === 'uber_direct' && (
           <div className={`mt-1 text-sm ${stuckStage >= 2 ? 'font-bold' : 'font-semibold'} ${
             order.uber_status === 'delivered' ? 'text-green-700'
@@ -710,7 +717,18 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           <p className="text-sm text-gray-500">{formatTime(order.created_at)}</p>
           {/* UI-polish (D1): UberDirect status line on the detail panel too,
               below the order number, same format/style as the tile. */}
-          {order.delivery_fulfillment_method === 'uber_direct' && (
+          {order.cancelled_by === 'restaurant_self_deliver' ? (
+            /* Self-delivered (Uber leg canceled, restaurant delivers). Keyed on
+               cancelled_by, phase-aware (mirrors the tile): green while still
+               in progress, neutral near-black once completed — never the red
+               "Canceled" used for a true cancel+refund (restaurant_refund / uber,
+               which fall through to the generic block below). */
+            order.status === 'self_delivering' ? (
+              <div className="mt-0.5 text-sm font-semibold text-[#16A34A]">Self-delivering</div>
+            ) : (
+              <div className="mt-0.5 text-sm font-semibold text-gray-900">UberDirect · Canceled · Self-delivered</div>
+            )
+          ) : order.delivery_fulfillment_method === 'uber_direct' && (
             <div className={`mt-0.5 text-sm font-semibold ${
               order.uber_status === 'delivered' ? 'text-green-700'
                 : (order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned') ? 'text-red-700'
