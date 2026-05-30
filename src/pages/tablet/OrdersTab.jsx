@@ -424,12 +424,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           setShowCancelConfirm(false)
           return
         }
-        // Success: surface the actual Uber cancellation fee (absorbed by the
-        // restaurant) when one was charged. Silent for in_house, $0, or
-        // never-dispatched cancels.
-        if (result.uber_cancellation_fee_cents > 0) {
-          alert(`Order canceled and refunded. Uber charged a $${(result.uber_cancellation_fee_cents / 100).toFixed(2)} cancellation fee, absorbed by the restaurant. The customer received a full refund.`)
-        }
+        // Success. The operator already saw + accepted any Uber cancellation
+        // fee estimate in the cancel modal, so we don't restate the cost here.
+        // The actual fee is still persisted to orders.uber_cancellation_fee_cents
+        // (migration 038) for reporting.
+        alert('Order cancelled and refunded.')
       } catch (err) {
         alert('Refund request failed. Please try again.')
         setUpdating(false)
