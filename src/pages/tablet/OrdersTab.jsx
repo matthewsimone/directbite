@@ -125,14 +125,16 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   // healthy in-progress tiles. Computed at render; the 10s poll re-renders.
   const stuckStage = getStuckStage(order, Date.now())
 
-  // Card background/ring by priority: stuck stage 3 (red) ≥ refund-failed
-  // (red) ≥ stuck stage 2 (flashing yellow) ≥ stuck stage 1 (yellow) ≥
-  // un-acked new (flashing green) ≥ default white.
+  // Card background/ring by priority: stuck stage 3 (hard red, flashing) ≥
+  // refund-failed (pale red) ≥ stuck stage 2 (hard yellow, flashing) ≥ stuck
+  // stage 1 (hard yellow) ≥ un-acked new (flashing green) ≥ default white.
+  // Stuck stages use saturated bg + thick ring so a courier-less order can't
+  // be mistaken for a normal blue/white in-progress tile.
   const cardStateClass =
-    stuckStage === 3 ? 'bg-red-50 ring-2 ring-red-400 animate-pulse'
+    stuckStage === 3 ? 'bg-red-400 ring-4 ring-red-600 animate-pulse'
       : refundFailed ? 'bg-red-50 ring-1 ring-red-300'
-      : stuckStage === 2 ? 'bg-yellow-50 ring-2 ring-yellow-400 animate-pulse'
-      : stuckStage === 1 ? 'bg-yellow-50'
+      : stuckStage === 2 ? 'bg-yellow-300 ring-4 ring-yellow-500 animate-pulse'
+      : stuckStage === 1 ? 'bg-yellow-300'
       : isUnacked ? 'animate-flash-green'
       : 'bg-white'
 
@@ -200,18 +202,20 @@ function OrderCard({ order, onTap, onRetryPrint }) {
              Uber status line (which would read "Canceled" from the release). */
           <div className="mt-1 text-sm font-semibold text-[#16A34A]">Self-delivering</div>
         ) : order.delivery_fulfillment_method === 'uber_direct' && (
-          <div className={`mt-1 text-sm font-semibold ${
+          <div className={`mt-1 text-sm ${stuckStage >= 2 ? 'font-bold' : 'font-semibold'} ${
             order.uber_status === 'delivered' ? 'text-green-700'
-              : stuckStage === 3 ? 'text-red-700'
-              : stuckStage >= 1 ? 'text-yellow-800'
+              : stuckStage === 3 ? 'text-white'
+              : stuckStage >= 1 ? 'text-yellow-900'
               : (order.uber_status === 'canceled' || order.uber_status === 'failed' || order.uber_status === 'returned') ? 'text-red-700'
               : 'text-blue-700'
           }`}>
-            {stuckStage === 3 && order.uber_status === 'canceled'
-              ? 'UberDirect · No driver assigned'
-              : order.uber_status
-                ? `UberDirect · ${getUberStatusDisplay(order.uber_status).label}${formatEtaSuffix(order)}`
-                : 'UberDirect · awaiting dispatch'}
+            {stuckStage === 3
+              ? 'UberDirect · NO DRIVER ASSIGNED'
+              : stuckStage >= 1
+                ? 'UberDirect · Waiting for Uber Driver — Late'
+                : order.uber_status
+                  ? `UberDirect · ${getUberStatusDisplay(order.uber_status).label}${formatEtaSuffix(order)}`
+                  : 'UberDirect · awaiting dispatch'}
           </div>
         )}
       </button>
