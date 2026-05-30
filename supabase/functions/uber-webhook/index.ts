@@ -385,6 +385,14 @@ serve(async (req: Request) => {
       if (typeof deliveryEta === "string" && deliveryEta) {
         statusUpdate.uber_dropoff_eta = deliveryEta;
       }
+      // Migration 039: capture the pickup ETA (courier arrival at the
+      // restaurant) — sibling of dropoff_eta under data, same write rules.
+      // This is what the tablet tile displays; dropoff_eta is retained above
+      // for a future customer-ETA detail view.
+      const deliveryPickupEta = parsed?.data?.pickup_eta;
+      if (typeof deliveryPickupEta === "string" && deliveryPickupEta) {
+        statusUpdate.uber_pickup_eta = deliveryPickupEta;
+      }
       // Once the courier has the food, the restaurant can no longer cancel —
       // transition the order to 'complete' so the tablet swaps Cancel for
       // Adjust. The L361 terminal guard already prevents a canceled order from
@@ -444,6 +452,12 @@ serve(async (req: Request) => {
       const courierEta = parsed?.data?.dropoff_eta;
       if (typeof courierEta === "string" && courierEta) {
         courierUpdate.uber_dropoff_eta = courierEta;
+      }
+      // Migration 039: capture the pickup ETA alongside dropoff_eta, same
+      // rules. Tablet tile reads pickup ETA; dropoff retained for future use.
+      const courierPickupEta = parsed?.data?.pickup_eta;
+      if (typeof courierPickupEta === "string" && courierPickupEta) {
+        courierUpdate.uber_pickup_eta = courierPickupEta;
       }
       const { error: courierErr } = await supabase
         .from("orders")

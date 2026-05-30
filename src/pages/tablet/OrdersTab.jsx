@@ -79,25 +79,25 @@ function getUberStatusDisplay(uber_status) {
 }
 
 // UI-polish (D6): the trailing "· Scheduled X:XX" / "· ETA X:XX" portion of
-// the Uber Direct status line. Live ETA supersedes the scheduled pickup once
-// a courier reports one. Returns '' when there's nothing to append (so no
-// dangling middle-dot appears). All times in Eastern (formatTimeNY), matching
-// the M10 pickup-commitment display.
-//   - uber_dropoff_eta set & in the future  → " · ETA <time>"     (live)
-//   - uber_dropoff_eta set & in the past     → ''                  (stale; hide)
+// the Uber Direct status line. Shows the live PICKUP ETA (courier arrival at
+// the restaurant) — what the operator cares about — superseding the scheduled
+// pickup time once a courier reports one. Returns '' when there's nothing to
+// append (so no dangling middle-dot appears). All times in Eastern
+// (formatTimeNY), matching the M10 pickup-commitment display.
+//   - uber_pickup_eta set & in the future   → " · ETA <time>"     (live)
+//   - uber_pickup_eta set & in the past      → ''                  (stale; hide)
 //   - else pending / no status, pickup time  → " · Scheduled <time>"
 //   - else                                    → ''
 function formatEtaSuffix(order) {
-  // Terminal states never show an ETA: the delivery is over (delivered) or
-  // aborted (canceled/failed/returned). A lingering uber_dropoff_eta (kept
-  // per migration 037 — never nulled) would otherwise render a stale,
-  // misleading "ETA X:XX" on a canceled order. delivered shows green; the
-  // rest show red — neither needs a time.
-  if (['delivered', 'canceled', 'failed', 'returned'].includes(order.uber_status)) return ''
-  if (order.uber_dropoff_eta) {
-    const etaMs = new Date(order.uber_dropoff_eta).getTime()
+  // No ETA once the courier has the food or the delivery is over/aborted. The
+  // pickup ETA is only meaningful pre-pickup; after pickup_complete it's in
+  // the past and irrelevant (the order also auto-completes). Terminal +
+  // post-pickup states are suppressed so no stale "ETA X:XX" lingers.
+  if (['pickup_complete', 'delivered', 'canceled', 'failed', 'returned'].includes(order.uber_status)) return ''
+  if (order.uber_pickup_eta) {
+    const etaMs = new Date(order.uber_pickup_eta).getTime()
     if (!Number.isNaN(etaMs) && etaMs > Date.now()) {
-      return ` · ETA ${formatTimeNY(order.uber_dropoff_eta)}`
+      return ` · ETA ${formatTimeNY(order.uber_pickup_eta)}`
     }
     return ''
   }
