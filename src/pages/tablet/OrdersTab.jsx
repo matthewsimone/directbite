@@ -768,6 +768,28 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             {order.refund_reason && <p className="text-xs text-red-600">Reason: {order.refund_reason}</p>}
           </div>
         )}
+        {/* Stage 1/2 stuck advisory banner (amber): Uber is late but a courier
+            may still come. Display-only — no Deliver Yourself / Cancel here.
+            Gated s===1||s===2 (never >=1) so it can't co-render with the red
+            Stage-3 banner below. */}
+        {(() => {
+          const s = getStuckStage(order, Date.now())
+          if (!((s === 1 || s === 2) && order.status !== 'self_delivering' && order.refund_status !== 'failed')) return null
+          return (
+            <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl px-4 py-3 space-y-3">
+              <p className="text-base font-bold text-yellow-900">Uber is running late</p>
+              <p className="text-sm text-yellow-900">Courier may still be on the way.</p>
+              {order.customer_phone && (
+                /* Kiosk can't dial — static, readable number for the operator
+                   to call from their own phone (not a tel: link). */
+                <div>
+                  <p className="text-sm text-yellow-900">Call {order.customer_name} for a heads-up:</p>
+                  <p className="text-2xl font-bold text-yellow-900 tracking-wide">{formatPhone(order.customer_phone)}</p>
+                </div>
+              )}
+            </div>
+          )
+        })()}
         {/* Stage 3 stuck-pending action banner: no courier found (15+ min) or
             Uber cancelled the dispatch. Operator must act. Self-delivering and
             already-refunded orders don't show this. */}
@@ -775,12 +797,12 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           <div className="bg-red-50 border-2 border-red-400 rounded-xl px-4 py-3 space-y-3">
             <p className="text-base font-bold text-red-800">No driver assigned. Take action now.</p>
             {order.customer_phone && (
-              <a
-                href={`tel:${order.customer_phone}`}
-                className="block w-full h-12 leading-[3rem] text-center rounded-xl bg-white border-2 border-red-400 text-red-700 font-bold"
-              >
-                📞 Call {formatPhone(order.customer_phone)}
-              </a>
+              /* Kiosk can't dial — show the number as static, readable text for
+                 the operator to call from their own phone (not a tel: link). */
+              <div className="rounded-xl bg-white border-2 border-red-400 px-3 py-2 text-center">
+                <p className="text-sm text-red-700">Call {order.customer_name} before acting:</p>
+                <p className="text-2xl font-bold text-red-900 tracking-wide">{formatPhone(order.customer_phone)}</p>
+              </div>
             )}
             <button
               onClick={deliverYourself}
