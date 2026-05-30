@@ -600,6 +600,21 @@ serve(async (req: Request) => {
     };
   }
 
+  // -------- FIX②: final coord guard before dispatch --------
+  // The expired-quote refresh path guards earlier (it needs coords to
+  // re-quote). This covers the VALID-quote path, which otherwise dispatches
+  // without dropoff coordinates (they're only attached conditionally above) —
+  // letting Uber geocode the address itself, which mismatches the quote's
+  // location and produces a "delivery location changed" rejection (the
+  // #1000436 bug). Refuse to dispatch coordless regardless of quote freshness.
+  if (order.dropoff_lat == null || order.dropoff_lng == null) {
+    return jsonResponse({
+      success: false,
+      error: "missing_dropoff_coords",
+      detail: "order is missing dropoff coordinates; cannot dispatch to Uber",
+    });
+  }
+
   // -------- POST to Uber --------
   let createResp: Response;
   try {

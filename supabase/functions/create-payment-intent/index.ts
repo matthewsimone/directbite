@@ -167,6 +167,38 @@ serve(async (req: Request) => {
           `client_amount=${amount} expected=${expectedAmountCents}`
         );
       }
+
+      // FIX③: backfill dropoff coords from the cached quote when the client's
+      // order_data is missing them. The cached quote (migration 040) was priced
+      // with these exact coords, so dispatching against them guarantees the
+      // Uber delivery location matches the quote. This neutralizes the frontend
+      // race where dropoff_lat/lng and uber_quote_id (independent async state)
+      // could be snapshotted inconsistently into order_data.
+      if (
+        order_data &&
+        (typeof order_data.dropoff_lat !== "number" ||
+          typeof order_data.dropoff_lng !== "number") &&
+        typeof cachedQuote.dropoff_lat === "number" &&
+        typeof cachedQuote.dropoff_lng === "number"
+      ) {
+        console.warn(
+          "[create-payment-intent] backfilling dropoff coords from cached quote",
+          { quote_id: clientQuoteId, restaurant_id }
+        );
+        order_data.dropoff_lat = cachedQuote.dropoff_lat;
+        order_data.dropoff_lng = cachedQuote.dropoff_lng;
+      }
+
+      // FIX①: coords are mandatory for a uber_direct delivery. After the
+      // backfill above this only trips when the cache also lacks them (e.g. a
+      // pre-migration-040 quote) — reject BEFORE charging, so we never create a
+      // coordless order that Uber would later reject with "location changed".
+      if (
+        typeof order_data?.dropoff_lat !== "number" ||
+        typeof order_data?.dropoff_lng !== "number"
+      ) {
+        return validationError("missing_dropoff_coords");
+      }
     } else {
       // Server resolves to in_house. If client's order_data claims uber_*
       // fields, null them out before they hit pending_orders (defensive

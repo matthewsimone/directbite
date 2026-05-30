@@ -292,6 +292,11 @@ serve(async (req: Request) => {
       passthrough_mode: restaurant.uber_passthrough_mode,
       passthrough_value: Number(restaurant.uber_passthrough_value || 0),
       expires_at: expiresAtIso,
+      // Migration 040: persist the exact coords this quote was priced with so
+      // create-payment-intent can backfill order_data if the client snapshot
+      // dropped them (fixes the NULL-dropoff dispatch bug).
+      dropoff_lat,
+      dropoff_lng,
     });
 
   if (cacheErr) {
