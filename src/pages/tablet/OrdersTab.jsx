@@ -767,7 +767,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             <h3 className="text-sm font-semibold text-purple-800 uppercase tracking-wide">Refund</h3>
             <p className="text-base font-medium text-purple-900">
               {order.refund_status === 'completed' ? 'Full Refund' : order.refund_status === 'partial' ? 'Partial Refund' : order.refund_status === 'failed' ? 'Refund Failed' : order.refund_status}
-              {order.refund_amount ? ` — ${formatMoney(order.refund_amount / 100)}` : ''}
+              {order.refund_amount ? ` — ${formatMoney(order.refund_amount)}` : ''}
             </p>
             {order.refund_reason && <p className="text-sm text-purple-700">{order.refund_reason}</p>}
           </div>

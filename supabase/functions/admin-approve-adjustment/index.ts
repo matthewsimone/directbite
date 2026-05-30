@@ -156,7 +156,9 @@ serve(async (req: Request) => {
         const isFullRefund = refund.amount >= totalCents;
         const updateData: any = {
           refund_status: isFullRefund ? "completed" : "partial",
-          refund_amount: refund.amount,
+          // Migration 041: refund_amount is numeric DOLLARS. refund.amount is
+          // cents (still used for the isFullRefund comparison above).
+          refund_amount: refund.amount / 100,
           refunded_at: new Date().toISOString(),
           refund_reason: adjustment.note || null,
         };

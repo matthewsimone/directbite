@@ -384,7 +384,9 @@ serve(async (req: Request) => {
 
           const updateData: any = {
             refund_status: isPartial ? "partial" : "completed",
-            refund_amount: refundedCents,
+            // Migration 041: refund_amount is numeric DOLLARS. refundedCents is
+            // cents (still used for the isPartial comparison + log above/below).
+            refund_amount: refundedCents / 100,
             refunded_at: new Date().toISOString(),
             refund_reason: "Refunded via Stripe dashboard",
           };

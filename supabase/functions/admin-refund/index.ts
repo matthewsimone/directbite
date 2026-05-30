@@ -207,13 +207,15 @@ serve(async (req: Request) => {
       );
     }
 
-    // Update order with refund tracking
-    const refundAmountCents = refund.amount;
+    // Update order with refund tracking. Migration 041: refund_amount is now
+    // numeric DOLLARS (matching total_amount/subtotal). Stripe's refund.amount
+    // is cents, so divide by 100 before storing.
+    const refundAmountDollars = refund.amount / 100;
     const isPartial = type === "partial";
 
     const updateData: any = {
       refund_status: isPartial ? "partial" : "completed",
-      refund_amount: refundAmountCents,
+      refund_amount: refundAmountDollars,
       refunded_at: new Date().toISOString(),
     };
 

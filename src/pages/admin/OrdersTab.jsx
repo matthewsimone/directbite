@@ -230,7 +230,7 @@ function OrderDetailPanel({ order, onClose, onRefresh }) {
           <div className="border rounded-lg p-3 bg-gray-50 space-y-1">
             <p className="text-sm font-semibold text-gray-700">Refund Info</p>
             <p className="text-sm">Status: <span className="font-medium">{order.refund_status}</span></p>
-            {order.refund_amount && <p className="text-sm">Amount: <span className="font-medium">{formatMoney(order.refund_amount / 100)}</span></p>}
+            {order.refund_amount && <p className="text-sm">Amount: <span className="font-medium">{formatMoney(order.refund_amount)}</span></p>}
             {order.refunded_at && <p className="text-sm text-gray-500">Refunded: {formatDate(order.refunded_at)} {formatTime(order.refunded_at)}</p>}
             {order.refund_reason && <p className="text-sm text-gray-500">Reason: {order.refund_reason}</p>}
           </div>
@@ -345,7 +345,7 @@ export default function OrdersTab() {
 
   function refundBadge(order) {
     if (!order.refund_status) return null
-    const amt = order.refund_amount ? formatMoney(order.refund_amount / 100) : ''
+    const amt = order.refund_amount ? formatMoney(order.refund_amount) : ''
     if (order.refund_status === 'completed') return <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">Refunded {amt}</span>
     if (order.refund_status === 'partial') return <span className="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">Partial Refund {amt}</span>
     if (order.refund_status === 'failed') return <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">Refund Failed</span>
