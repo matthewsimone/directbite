@@ -343,8 +343,8 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         const range = estimateUberCancelFee(order.uber_dispatched_at)
         return {
           text: range
-            ? `⚠️ Courier en route. Estimated UberDirect cancellation fee: approximately ${range}. You absorb this.`
-            : '⚠️ Courier en route to your restaurant. Uber may charge a cancellation fee. You absorb this.',
+            ? `⚠️ Courier en route. Estimated UberDirect cancellation fee: ${range}`
+            : '⚠️ Courier en route. UberDirect may charge a cancellation fee.',
           cls: 'bg-amber-50 border-2 border-amber-300 text-amber-900',
         }
       }
