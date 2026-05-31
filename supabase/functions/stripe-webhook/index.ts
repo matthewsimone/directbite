@@ -386,7 +386,8 @@ serve(async (req: Request) => {
             } else {
               const result = await createUberDelivery(supabase, order, restaurant, {
                 pickupReadyDt: order.scheduled_for,
-                postWriteStatus: "scheduled",
+                postWriteStatus: "new",
+                stampAcceptedAt: false,
               });
               if (result.body.success) {
                 console.log(
