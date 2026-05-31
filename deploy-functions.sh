@@ -13,6 +13,7 @@ FUNCTIONS=(
   send-confirmation-email
   create-payment-intent
   register-apple-pay-domain
+  get-order-by-pi
 )
 
 echo "Deploying ${#FUNCTIONS[@]} edge functions..."
