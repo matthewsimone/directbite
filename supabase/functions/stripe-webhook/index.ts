@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import Stripe from "https://esm.sh/stripe@17.7.0";
+import { createUberDelivery } from "../_shared/uberCreateDelivery.ts";
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
 const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
@@ -348,6 +349,65 @@ serve(async (req: Request) => {
         // Write order to database
         const order = await writeOrder(orderData, paymentIntent.id, chargeId);
         console.log(`Order created: ${order.id} (#${order.order_number})`);
+
+        // ---- Scheduled uber_direct: book the Uber delivery now (Step 3) ----
+        // Books at placement so the courier is reserved for the customer's
+        // chosen pickup window (pickup_ready_dt = scheduled_for). On success
+        // createUberDelivery flips status 'new' → 'scheduled' and stamps the
+        // uber_* fields; on any failure the order stays a normal scheduled
+        // order for manual tablet dispatch.
+        //
+        // GUARD: in_house and ASAP orders fail this and skip entirely — the
+        // live in_house restaurants never enter this block (zero change).
+        // ISOLATION: mirrors the email/SMS swallow-and-continue pattern. The
+        // try/catch + the result.success check guarantee that NEITHER a thrown
+        // exception NOR a handled failure result can break order creation,
+        // the cleanup below, the emails/SMS, or the webhook's 200 response.
+        if (
+          order.delivery_fulfillment_method === "uber_direct" &&
+          order.scheduled_for != null &&
+          order.uber_quote_id != null &&
+          order.dropoff_lat != null &&
+          order.dropoff_lng != null
+        ) {
+          try {
+            const { data: restaurant } = await supabase
+              .from("restaurants")
+              .select(
+                "id, name, address, phone, latitude, longitude, uber_customer_id, uber_environment, uber_passthrough_mode, uber_passthrough_value"
+              )
+              .eq("id", order.restaurant_id)
+              .single();
+
+            if (!restaurant) {
+              console.error(
+                `[stripe-webhook] scheduled booking skipped: restaurant ${order.restaurant_id} not found for order #${order.order_number}`
+              );
+            } else {
+              const result = await createUberDelivery(supabase, order, restaurant, {
+                pickupReadyDt: order.scheduled_for,
+                postWriteStatus: "scheduled",
+              });
+              if (result.body.success) {
+                console.log(
+                  `[stripe-webhook] scheduled order #${order.order_number} booked with Uber: ${result.body.delivery_id}`
+                );
+              } else {
+                console.error(
+                  `[stripe-webhook] scheduled booking failed for order #${order.order_number} (left for manual dispatch): ${result.body.error}`
+                );
+              }
+            }
+          } catch (err: any) {
+            // Swallow — a booking failure must never break order creation,
+            // emails/SMS, or the webhook response. Order remains 'new' with
+            // scheduled_for set, dispatchable manually from the tablet.
+            console.error(
+              `[stripe-webhook] scheduled booking threw for order #${order.order_number} (left for manual dispatch):`,
+              err?.message || String(err)
+            );
+          }
+        }
 
         // Clean up pending order
         await supabase.from("pending_orders").delete().eq("id", pendingOrderId);
