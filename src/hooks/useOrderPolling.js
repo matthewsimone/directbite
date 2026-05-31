@@ -216,6 +216,43 @@ export function useOrderPolling(restaurant, hours) {
         }
       }
 
+      // ── Scheduled-order wake-up ────────────────────────────────────────
+      // A scheduled uber_direct order booked at placement (status 'scheduled'
+      // with uber_delivery_id set) is promoted into the active queue as its
+      // pickup time nears, so it surfaces in the In Progress tab with the full
+      // UberDirect status line + getStuckStage escalation, like any dispatched
+      // order. Threshold: now >= scheduled_for − estimated_pickup_minutes (the
+      // prep lead the customer's slot was quoted against; floored to 30 if the
+      // restaurant has no value).
+      //
+      // Direct status write — intentionally does NOT stamp accepted_at (set at
+      // operator accept; left untouched here). NOT updateStatus (that stamps it).
+      // Fire-once via status itself: once 'in_progress' the order no longer
+      // matches the filter, so it promotes exactly once with no extra column.
+      // The .eq('status','scheduled') makes concurrent multi-tablet writes a
+      // race-safe no-op (second tablet matches 0 rows). ASAP orders (no
+      // scheduled_for / not 'scheduled') and in_house orders (not uber_direct)
+      // never match the filter — zero effect on them.
+      const prepLeadMs = (Number(restaurant.estimated_pickup_minutes) || 30) * 60 * 1000
+      const wakeNow = Date.now()
+      const toWake = data.filter(o =>
+        o.status === 'scheduled' &&
+        o.delivery_fulfillment_method === 'uber_direct' &&
+        o.uber_delivery_id != null &&
+        o.scheduled_for != null &&
+        wakeNow >= new Date(o.scheduled_for).getTime() - prepLeadMs
+      )
+      for (const o of toWake) {
+        supabase
+          .from('orders')
+          .update({ status: 'in_progress' })
+          .eq('id', o.id)
+          .eq('status', 'scheduled')
+          .then(({ error }) => {
+            if (error) console.error('[WakeUp] promote failed', o.id, error)
+          })
+      }
+
       knownOrderIds.current = newOrderIds
       setOrders(data)
       setLoading(false)
