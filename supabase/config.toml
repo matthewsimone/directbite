@@ -144,6 +144,15 @@ verify_jwt = false
 [functions.uber-self-deliver]
 verify_jwt = false
 
+# get-order-by-pi — anonymous customer-callable, read-only. Returns a single
+# order (scoped to the supplied stripe_payment_intent_id) with a non-PII
+# whitelist for the confirmation page. JWT off; uses the Bearer anon-key
+# pattern from create-payment-intent. Service-role used internally for the DB
+# reads. Replaces the broad anon_read_order_by_payment_intent RLS policy.
+
+[functions.get-order-by-pi]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Admin endpoints with platform-level JWT validation

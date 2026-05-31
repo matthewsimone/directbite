@@ -5,6 +5,32 @@ import { useCart } from '../../hooks/useCart'
 import { formatCurrency, formatPhone } from '../../utils/format'
 import { formatScheduledLabel } from '../../utils/scheduling'
 
+// Fetch a single order (scoped, non-PII) by Stripe payment intent via the
+// get-order-by-pi edge function. Replaces the former direct anon reads of
+// orders / order_items / restaurants. Returns the parsed { order, items,
+// restaurant } on success, or null when the order isn't found yet (404) or
+// on any error — callers treat null as "keep polling".
+async function fetchOrderByPi(paymentIntentId) {
+  try {
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-order-by-pi`,
+      {
+        method: 'POST',
+        headers: {
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ payment_intent_id: paymentIntentId }),
+      }
+    )
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
 export default function ConfirmationPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
@@ -86,14 +112,10 @@ function ConfirmationWithState({ state, slug, navigate }) {
     let attempts = 0
     const interval = setInterval(async () => {
       attempts++
-      const { data } = await supabase
-        .from('orders')
-        .select('order_number')
-        .eq('stripe_payment_intent_id', state.paymentIntentId)
-        .single()
+      const result = await fetchOrderByPi(state.paymentIntentId)
 
-      if (data?.order_number) {
-        setOrderNumber(data.order_number)
+      if (result?.order?.order_number) {
+        setOrderNumber(result.order.order_number)
         clearInterval(interval)
       }
 
@@ -148,31 +170,14 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
     const interval = setInterval(async () => {
       attempts++
 
-      const { data: orderData } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('stripe_payment_intent_id', paymentIntentId)
-        .single()
+      const result = await fetchOrderByPi(paymentIntentId)
 
-      if (orderData) {
-        setOrder(orderData)
+      if (result?.order) {
+        setOrder(result.order)
         clearInterval(interval)
 
-        // Fetch restaurant
-        const { data: restData } = await supabase
-          .from('restaurants')
-          .select('name, phone, estimated_pickup_minutes, estimated_delivery_minutes')
-          .eq('id', orderData.restaurant_id)
-          .single()
-        setRestaurant(restData)
-
-        // Fetch order items with toppings
-        const { data: itemsData } = await supabase
-          .from('order_items')
-          .select('*, order_item_toppings(*)')
-          .eq('order_id', orderData.id)
-          .order('created_at')
-        setItems(itemsData || [])
+        setRestaurant(result.restaurant)
+        setItems(result.items || [])
 
         setLoading(false)
       }
