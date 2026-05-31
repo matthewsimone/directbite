@@ -814,6 +814,11 @@ export default function CheckoutPage() {
           dropoff_address: deliveryAddress,
           dropoff_phone: customerPhone || null,
           cart_subtotal_cents: Math.round(fullSubtotal * 100),
+          // M-sched: when the customer picked a future slot, send it so
+          // uber-quote prices against the scheduled pickup window. null for
+          // ASAP — the field is harmlessly ignored by the function (and the
+          // ASAP request stays byte-identical aside from this null key).
+          scheduled_for: scheduledFor,
         }),
         signal,
       })
@@ -936,7 +941,7 @@ export default function CheckoutPage() {
     return () => {
       controller.abort()
     }
-  }, [orderType, deliveryLat, deliveryLon, restaurant])
+  }, [orderType, deliveryLat, deliveryLon, restaurant, scheduledFor])
 
   // Redirect to menu if cart is empty
   useEffect(() => {
