@@ -186,7 +186,11 @@ serve(async (req: Request) => {
   }
 
   // -------- Step 5: extract event metadata --------
-  const eventId: string | undefined = parsed?.event_id;
+  // Uber's webhook envelope carries the event id at top-level `id`
+  // (e.g. "evt_..."), NOT `event_id`. Reading the wrong key left eventId
+  // undefined on every event, so dedup never fired and the audit insert
+  // fell to the no-event_id branch. Read parsed.id.
+  const eventId: string | undefined = parsed?.id;
   const kind: string | undefined = parsed?.kind;
   // Uber's docs use 'delivery_id' at top level for delivery_status and
   // courier_update. Some event types may nest it under data.delivery_id;
@@ -222,6 +226,7 @@ serve(async (req: Request) => {
     .from("orders")
     .select(`
       id, uber_status, uber_courier_info, restaurant_id, cancelled_by,
+      uber_quoted_fee,
       restaurants:restaurant_id (uber_webhook_signing_secret)
     `)
     .eq("uber_delivery_id", deliveryId)
@@ -328,13 +333,32 @@ serve(async (req: Request) => {
       return errorResponse(500);
     }
   } else {
-    // No event_id in payload — skip dedup, process anyway. Uber's
-    // docs guarantee event_id presence, but defensive code shouldn't
-    // drop events on a missing-field edge case.
+    // No event_id in payload — we cannot dedup, but we MUST still capture
+    // the raw payload for audit/fee-reconciliation. Omit event_id so the
+    // column default (migration 045: gen_random_uuid()::text) supplies a
+    // synthetic PK. A failure here is non-fatal: log and continue to the
+    // status update so a write error never drops a verified event.
     console.warn(
-      "[uber-webhook] processing event without event_id (no dedup)",
+      "[uber-webhook] event has no event_id — inserting with synthetic id (no dedup)",
       { kind, delivery_id: deliveryId, order_id: order.id }
     );
+    const { error: auditErr } = await supabase
+      .from("uber_webhook_events")
+      .insert({
+        order_id: order.id,
+        event_kind: kind || "unknown",
+        payload: parsed,
+      });
+    if (auditErr) {
+      // Don't 500 — without an event_id there's no dedup to protect, and
+      // we'd rather process the status update than reject the event and
+      // trigger Uber retries. Just log the capture miss.
+      console.error("[uber-webhook] audit insert (no event_id) failed", {
+        error: auditErr,
+        delivery_id: deliveryId,
+        order_id: order.id,
+      });
+    }
   }
 
   // -------- Step 9: process event by kind --------
@@ -392,6 +416,26 @@ serve(async (req: Request) => {
       const deliveryPickupEta = parsed?.data?.pickup_eta;
       if (typeof deliveryPickupEta === "string" && deliveryPickupEta) {
         statusUpdate.uber_pickup_eta = deliveryPickupEta;
+      }
+      // Capture the actual Uber delivery fee. Uber sends data.fee as integer
+      // cents (e.g. 799) on every event; orders.uber_actual_fee is numeric
+      // DOLLARS (matching uber_quoted_fee, M5d convention), so divide by 100.
+      // Guard on a finite number so a missing/garbage field never overwrites
+      // a previously-captured fee with null/NaN.
+      const actualFeeCents = parsed?.data?.fee;
+      if (typeof actualFeeCents === "number" && Number.isFinite(actualFeeCents)) {
+        statusUpdate.uber_actual_fee = actualFeeCents / 100;
+        // Flag a quoted-vs-actual divergence for the reconciliation report.
+        // Both are numeric dollars; compare with a 1-cent tolerance for float
+        // drift. Only stamp when we have a quoted fee to compare against.
+        const quoted = order.uber_quoted_fee;
+        if (
+          typeof quoted === "number" &&
+          Math.abs(actualFeeCents / 100 - quoted) > 0.01
+        ) {
+          statusUpdate.uber_fee_delta_reason =
+            `quoted ${quoted.toFixed(2)} vs actual ${(actualFeeCents / 100).toFixed(2)}`;
+        }
       }
       // Once the courier has the food, the restaurant can no longer cancel —
       // transition the order to 'complete' so the tablet swaps Cancel for
