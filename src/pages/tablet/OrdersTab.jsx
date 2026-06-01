@@ -1558,24 +1558,32 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
             }`}
           >
             {tab.label}
-            {tab.key === 'new' && orders.filter(o => o.status === 'new').length > 0 && (
-              <span className="ml-2 bg-red-500 text-white text-xs rounded-full px-2 py-0.5">
-                {orders.filter(o => o.status === 'new').length}
-              </span>
-            )}
-            {tab.key === 'scheduled' && orders.filter(o => o.status === 'scheduled').length > 0 && (
-              <span className="ml-2 bg-amber-300 text-black text-xs rounded-full px-2 py-0.5">
-                {orders.filter(o => o.status === 'scheduled').length}
-              </span>
-            )}
-            {tab.key === 'in_progress' && (() => {
+            {tab.key !== 'complete' && (() => {
               const now = Date.now()
-              const stuck = orders.filter(o => getStuckStage(o, now) >= 2)
-              if (stuck.length === 0) return null
-              const anyRed = stuck.some(o => getStuckStage(o, now) === 3)
+              // Count predicate = same status→tab mapping as filteredOrders.
+              const tabOrders = orders.filter(o =>
+                tab.key === 'in_progress'
+                  ? (o.status === 'in_progress' || o.status === 'self_delivering')
+                  : o.status === tab.key
+              )
+              if (tabOrders.length === 0) return null
+              // Per-tab urgency → badge color. Default neutral grey.
+              let color = 'bg-gray-200 text-gray-700'
+              if (tab.key === 'new') {
+                if (tabOrders.some(o => o.status === 'new' && !o.acknowledged_at)) {
+                  color = 'bg-red-500 text-white'
+                }
+              } else if (tab.key === 'in_progress') {
+                if (tabOrders.some(o => getStuckStage(o, now) === 3)) {
+                  color = 'bg-red-500 text-white'
+                } else if (tabOrders.some(o => getStuckStage(o, now) === 2)) {
+                  color = 'bg-amber-400 text-black'
+                }
+              }
+              // Scheduled: always grey (no urgency state).
               return (
-                <span className={`ml-2 text-xs rounded-full px-2 py-0.5 ${anyRed ? 'bg-red-500 text-white' : 'bg-amber-300 text-black'}`}>
-                  {stuck.length}
+                <span className={`ml-2 text-xs rounded-full px-2 py-0.5 ${color}`}>
+                  {tabOrders.length}
                 </span>
               )
             })()}
