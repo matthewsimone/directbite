@@ -1084,11 +1084,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             {order.status === 'new' && order.scheduled_for && (
               <button
                 onClick={() => {
-                  // M9a: same intercept for scheduled uber_direct orders.
-                  // pickup_ready_minutes will typically be set by the operator
-                  // to roughly minutes-until-scheduled_for using the Custom
-                  // input; the bracket defaults are not scheduled-aware in v1.
-                  if (order.delivery_fulfillment_method === 'uber_direct') {
+                  // Step 4: an already-booked order (uber_delivery_id set,
+                  // booked at placement) files straight to Scheduled — no
+                  // prep modal, no re-dispatch. Otherwise: uber_direct opens
+                  // the prep modal to dispatch; in_house just moves to
+                  // scheduled (M9a behavior, unchanged).
+                  if (order.uber_delivery_id) {
+                    updateStatus('scheduled')
+                  } else if (order.delivery_fulfillment_method === 'uber_direct') {
                     setShowStatusOptions(false)
                     setShowPrepTimeModal(true)
                   } else {
@@ -1275,7 +1278,35 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
         {/* Main action buttons */}
         {!showReprint && !showStatusOptions && !showCancelConfirm && !showDeliverConfirm && !showRefundConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
-          order.delivery_fulfillment_method === 'uber_direct' && order.status === 'new' ? (
+          order.delivery_fulfillment_method === 'uber_direct' && order.status === 'new' && order.uber_delivery_id ? (
+            /* Step 4: this uber_direct order was already booked with Uber at
+               placement (status kept 'new' so it chimed/printed). Accept must
+               NOT re-open the prep modal or re-dispatch — it just files the
+               order to the Scheduled tab. Idempotency in createUberDelivery is
+               a backstop; this branch avoids the dispatch UI entirely. */
+            <div className="space-y-3">
+              <button
+                onClick={() => updateStatus('scheduled')}
+                disabled={updating}
+                className="w-full h-14 rounded-xl bg-amber-500 text-white font-bold text-base disabled:opacity-50"
+              >
+                Accept (Move to Scheduled)
+              </button>
+              <button
+                onClick={() => setShowReprint(true)}
+                className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
+              >
+                REPRINT
+              </button>
+              <button
+                onClick={openCancelConfirm}
+                disabled={fetchingFee}
+                className="w-full text-center text-sm text-red-600 hover:text-red-800 py-1 disabled:opacity-50"
+              >
+                {fetchingFee ? 'Checking…' : 'Cancel & Refund Order'}
+              </button>
+            </div>
+          ) : order.delivery_fulfillment_method === 'uber_direct' && order.status === 'new' ? (
             /* M10: Direct one-tap dispatch flow for new uber_direct orders.
                Skips the UPDATE STATUS intermediate step — primary CTA opens
                the prep modal directly. Cancel preserved as a text link below

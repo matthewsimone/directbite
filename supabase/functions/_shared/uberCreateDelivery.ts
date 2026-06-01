@@ -90,6 +90,12 @@ export interface CreateDeliveryOptions {
   pickupDeadlineMinutes?: number; // optional override; defaults to 30
   acceptedQuoteId?: string | null;
   postWriteStatus: string; // order status after a successful booking
+  // When false, do NOT stamp accepted_at at booking. Used by the book-at-
+  // placement path (status stays 'new') so accepted_at keeps its meaning
+  // "operator first acted on the order" — set later by the tablet's
+  // updateStatus on real accept. Defaults to true (ASAP/tablet path
+  // stamps accepted_at on first transition, byte-identical to before).
+  stampAcceptedAt?: boolean;
 }
 
 export interface UberCreateDeliveryResult {
@@ -609,7 +615,7 @@ export async function createUberDelivery(
     uber_pickup_ready_dt: new Date(pickupReadyMs).toISOString(),
     status: opts.postWriteStatus,
   };
-  if (!order.accepted_at) {
+  if (opts.stampAcceptedAt !== false && !order.accepted_at) {
     updates.accepted_at = nowIso;
   }
   const refreshed = finalQuoteId !== order.uber_quote_id;

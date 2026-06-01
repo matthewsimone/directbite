@@ -82,6 +82,7 @@ serve(async (req: Request) => {
     dropoff_lat,
     dropoff_lng,
     dropoff_phone,
+    scheduled_for,
     // cart_subtotal_cents accepted but unused in M5a — accepted for forward
     // compat (future: validate against delivery minimum server-side)
   } = body || {};
@@ -151,7 +152,7 @@ serve(async (req: Request) => {
   const apiBase = getUberApiBase(env);
   const quoteUrl = `${apiBase}/v1/customers/${restaurant.uber_customer_id}/delivery_quotes`;
 
-  const quotePayload = {
+  const quotePayload: any = {
     pickup_address: JSON.stringify({
       street_address: [restaurant.address || ""],
       country: "US",
@@ -167,6 +168,15 @@ serve(async (req: Request) => {
     dropoff_longitude: dropoff_lng,
     dropoff_phone_number: dropoff_phone || "",
   };
+
+  // M-sched: for a scheduled order, price against the requested pickup
+  // window by sending pickup_ready_dt (sandbox-confirmed: the quote endpoint
+  // honors it and returns a window-priced fee). Only pickup_ready_dt — no
+  // pickup_deadline_dt (quotes work with just the ready time). When
+  // scheduled_for is absent (ASAP), the payload is byte-identical to today.
+  if (scheduled_for) {
+    quotePayload.pickup_ready_dt = new Date(scheduled_for).toISOString();
+  }
 
   let quoteResp: Response;
   try {
