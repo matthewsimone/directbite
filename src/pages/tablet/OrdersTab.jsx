@@ -1570,9 +1570,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
               // Per-tab urgency → badge color. Default neutral grey.
               let color = 'bg-gray-200 text-gray-700'
               if (tab.key === 'new') {
-                if (tabOrders.some(o => o.status === 'new' && !o.acknowledged_at)) {
-                  color = 'bg-red-500 text-white'
-                }
+                color = 'bg-red-500 text-white'
               } else if (tab.key === 'in_progress') {
                 if (tabOrders.some(o => getStuckStage(o, now) === 3)) {
                   color = 'bg-red-500 text-white'
