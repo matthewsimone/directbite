@@ -221,7 +221,14 @@ export default async function handler(req, res) {
       const options = Array.isArray(group.options) ? group.options : []
       if (options.length === 0) continue
 
-      const isSizeGroup = g === 0 && /^choose\s+an?\s+option$/i.test(groupLabel)
+      // Size detection. The Slice path has no explicit marker, so it relies
+      // on the first group being labeled "Choose an option" (Slice's wording).
+      // Non-Slice importers (e.g. ChowNow) set group.is_size === true
+      // explicitly. Slice captures never include is_size, so the first clause
+      // is always false for them and Slice behavior is unchanged.
+      const isSizeGroup =
+        group.is_size === true ||
+        (g === 0 && /^choose\s+an?\s+option$/i.test(groupLabel))
 
       if (isSizeGroup) {
         // Single-option size: rename the existing item_sizes row so the
