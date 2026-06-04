@@ -236,8 +236,13 @@ export async function cancelUberDelivery(
     const body = await cancelResp.json();
     // Uber has historically surfaced cancellation fees under a few keys
     // depending on the delivery state; read defensively without persisting.
+    // NOTE: body.fee is the DELIVERY fee, not a cancel charge. Uber's
+    // cancel/Delivery response has no reliable cancellation-fee field, and a
+    // pending-state cancel costs $0 — so we do NOT read body.fee here.
+    // uber_cancellation_fee_cents stays NULL (=$0) unless Uber returns a real
+    // cancellation_fee field.
     const feeRaw =
-      body?.fee ?? body?.cancellation_fee ?? body?.dropoff?.cancellation_fee;
+      body?.cancellation_fee ?? body?.dropoff?.cancellation_fee;
     if (typeof feeRaw === "number") {
       uberFee = feeRaw;
     }
