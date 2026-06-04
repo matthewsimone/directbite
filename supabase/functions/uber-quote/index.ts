@@ -42,6 +42,7 @@ import { getUberToken } from "../_shared/uberToken.ts";
 import { getUberApiBase, UberEnvironment } from "../_shared/uberConfig.ts";
 import { resolveMode, RestaurantForMode } from "../_shared/uberMode.ts";
 import { applyPassthrough } from "../_shared/uberPassthrough.ts";
+import { logUber } from "../_shared/uberLog.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -179,6 +180,7 @@ serve(async (req: Request) => {
   }
 
   let quoteResp: Response;
+  const t0 = Date.now();
   try {
     quoteResp = await fetch(quoteUrl, {
       method: "POST",
@@ -197,6 +199,14 @@ serve(async (req: Request) => {
       detail: `network: ${String(err)}`,
     });
   }
+  logUber({
+    fn: "uber-quote",
+    event: "quote",
+    restaurant_id,
+    uber_http_status: quoteResp.status,
+    outcome: quoteResp.ok ? "ok" : "http_error",
+    ms: Date.now() - t0,
+  });
 
   if (quoteResp.status === 429) {
     const retryAfter = Number(quoteResp.headers.get("retry-after")) || 60;

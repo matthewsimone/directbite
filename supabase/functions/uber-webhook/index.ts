@@ -94,6 +94,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { verifyUberSignature } from "../_shared/uberSignature.ts";
+import { logUber } from "../_shared/uberLog.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -324,6 +325,13 @@ serve(async (req: Request) => {
         // Already processed. Return 200 immediately — don't re-run
         // the event handler. (Uber's docs say events may be delivered
         // multiple times.)
+        logUber({
+          fn: "uber-webhook",
+          event: "webhook_dedup_hit",
+          order_id: order.id,
+          uber_delivery_id: deliveryId,
+          outcome: "skipped",
+        });
         return ackResponse();
       }
       console.error("[uber-webhook] dedup insert failed", {
@@ -464,6 +472,13 @@ serve(async (req: Request) => {
         });
         return errorResponse(500);
       }
+      logUber({
+        fn: "uber-webhook",
+        event: "webhook_status",
+        order_id: order.id,
+        uber_delivery_id: deliveryId,
+        outcome: "ok",
+      });
       break;
     }
 
@@ -523,6 +538,13 @@ serve(async (req: Request) => {
         );
         return errorResponse(500);
       }
+      logUber({
+        fn: "uber-webhook",
+        event: "webhook_courier",
+        order_id: order.id,
+        uber_delivery_id: deliveryId,
+        outcome: "ok",
+      });
       break;
     }
 
@@ -557,5 +579,12 @@ serve(async (req: Request) => {
   }
 
   // -------- Step 10: acknowledge --------
+  logUber({
+    fn: "uber-webhook",
+    event: "webhook_ack",
+    order_id: order.id,
+    uber_delivery_id: deliveryId,
+    outcome: "ok",
+  });
   return ackResponse();
 });

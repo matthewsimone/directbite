@@ -28,6 +28,7 @@ import {
   UBER_GRANT_TYPE,
   UberEnvironment,
 } from "./uberConfig.ts";
+import { logUber } from "./uberLog.ts";
 
 const TOKEN_BUFFER_SECONDS = 60;
 
@@ -108,6 +109,7 @@ export async function getUberToken(
   });
 
   let mintResp: Response;
+  const t0 = Date.now();
   try {
     mintResp = await fetch(authUrl, {
       method: "POST",
@@ -115,12 +117,27 @@ export async function getUberToken(
       body: body.toString(),
     });
   } catch (err) {
+    logUber({
+      fn: "getUberToken",
+      event: "token_mint",
+      restaurant_id: restaurantId,
+      outcome: "network_error",
+      ms: Date.now() - t0,
+    });
     return {
       success: false,
       error: "uber_unavailable",
       detail: `network: ${String(err)}`,
     };
   }
+  logUber({
+    fn: "getUberToken",
+    event: "token_mint",
+    restaurant_id: restaurantId,
+    uber_http_status: mintResp.status,
+    outcome: mintResp.ok ? "ok" : "http_error",
+    ms: Date.now() - t0,
+  });
 
   if (mintResp.status === 401) {
     // Credentials revoked or wrong. Clear cache + verified_at so UI

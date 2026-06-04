@@ -32,6 +32,7 @@ import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "./uberToken.ts";
 import { getUberApiBase, UberEnvironment } from "./uberConfig.ts";
 import { applyPassthrough } from "./uberPassthrough.ts";
+import { logUber } from "./uberLog.ts";
 
 // Threshold for surfacing the quote_price_changed modal to the operator
 // (Decision #1). Absolute delta in customer-facing cents. Below this:
@@ -252,6 +253,7 @@ export async function createUberDelivery(
     };
 
     let refreshResp: Response;
+    const tRefresh0 = Date.now();
     try {
       refreshResp = await fetch(refreshUrl, {
         method: "POST",
@@ -270,6 +272,15 @@ export async function createUberDelivery(
         detail: `network: ${String(err)}`,
       });
     }
+    logUber({
+      fn: "createUberDelivery",
+      event: "quote_refresh",
+      order_id: order.id,
+      restaurant_id: restaurant.id,
+      uber_http_status: refreshResp.status,
+      outcome: refreshResp.ok ? "ok" : "http_error",
+      ms: Date.now() - tRefresh0,
+    });
 
     if (refreshResp.status === 400 || refreshResp.status === 404) {
       // Uber rejected the address — surface 'no_uber_available' so the
@@ -504,6 +515,7 @@ export async function createUberDelivery(
 
   // -------- POST to Uber --------
   let createResp: Response;
+  const tCreate0 = Date.now();
   try {
     createResp = await fetch(deliveryUrl, {
       method: "POST",
@@ -522,6 +534,15 @@ export async function createUberDelivery(
       detail: `network: ${String(err)}`,
     });
   }
+  logUber({
+    fn: "createUberDelivery",
+    event: "create_delivery",
+    order_id: order.id,
+    restaurant_id: restaurant.id,
+    uber_http_status: createResp.status,
+    outcome: createResp.ok ? "ok" : "http_error",
+    ms: Date.now() - tCreate0,
+  });
 
   if (createResp.status === 429) {
     const retryAfter = Number(createResp.headers.get("retry-after")) || 60;
@@ -629,6 +650,15 @@ export async function createUberDelivery(
     .from("orders")
     .update(updates)
     .eq("id", order.id);
+
+  logUber({
+    fn: "createUberDelivery",
+    event: "create_persist",
+    order_id: order.id,
+    restaurant_id: restaurant.id,
+    uber_delivery_id: deliveryId,
+    outcome: updateErr ? "db_error" : "ok",
+  });
 
   if (updateErr) {
     console.error("[uber-create-delivery] orders update failed", updateErr);

@@ -50,6 +50,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "./uberToken.ts";
 import { getUberApiBase, UberEnvironment } from "./uberConfig.ts";
+import { logUber } from "./uberLog.ts";
 
 // Minimal shapes — callers pass the already-fetched order + restaurant rows.
 // Only the fields this function reads are declared; both rows carry more.
@@ -155,6 +156,7 @@ export async function cancelUberDelivery(
     `/deliveries/${order.uber_delivery_id}/cancel`;
 
   let cancelResp: Response;
+  const t0 = Date.now();
   try {
     cancelResp = await fetch(cancelUrl, {
       method: "POST",
@@ -176,9 +178,27 @@ export async function cancelUberDelivery(
   }
 
   if (cancelResp.status === 429) {
+    logUber({
+      fn: "cancelUberDelivery",
+      event: "cancel",
+      order_id: order.id,
+      uber_delivery_id: order.uber_delivery_id,
+      uber_http_status: 429,
+      outcome: "rate_limited",
+      ms: Date.now() - t0,
+    });
     const retryAfter = Number(cancelResp.headers.get("retry-after")) || 60;
     return { success: false, error: "rate_limited", retry_after: retryAfter };
   }
+  logUber({
+    fn: "cancelUberDelivery",
+    event: "cancel",
+    order_id: order.id,
+    uber_delivery_id: order.uber_delivery_id,
+    uber_http_status: cancelResp.status,
+    outcome: cancelResp.ok ? "ok" : "http_error",
+    ms: Date.now() - t0,
+  });
 
   // Any non-2xx here is an Uber-side refusal to cancel — most commonly the
   // delivery is past its cancellation window or already picked up. This is
