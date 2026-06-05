@@ -1,4 +1,5 @@
 import { formatCurrency } from '../utils/format'
+import { cdnImage } from '../lib/imageUrl'
 
 export default function MenuItemCard({ item, lowestPrice, promotion, onClick }) {
   const unavailable = !item.is_available
@@ -57,8 +58,10 @@ export default function MenuItemCard({ item, lowestPrice, promotion, onClick }) 
         {item.image_url && (
           <div className="shrink-0 w-[110px]">
             <img
-              src={item.image_url}
+              src={cdnImage(item.image_url, { width: 400 })}
               alt={item.name}
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover"
             />
           </div>
