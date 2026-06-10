@@ -3,6 +3,13 @@ import { supabase } from '../lib/supabase'
 import { printOrder } from '../utils/epsonPrint'
 import { isStuckUnacked } from '../utils/stuckStage'
 
+// Print-settle gate: a new order's row is committed and visible before its
+// order_items finish writing (the webhook inserts items one-at-a-time over
+// ~1s). Auto-printing the instant the row appears can therefore miss trailing
+// items. Only auto-print an order whose created_at is at least this old, so
+// the child rows have settled. Tuned above the observed ~1s item-write window.
+const PRINT_SETTLE_MS = 5000
+
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
 // SSR / non-browser test contexts. Lives at module scope so re-mounts
@@ -176,15 +183,30 @@ export function useOrderPolling(restaurant, hours) {
 
       console.log('[POLL] resp ok', { count: data.length, durationMs: Date.now() - startedAt })
 
-      const newOrderIds = new Set(data.map(o => o.id))
-
       // Auto-print first-seen new orders. knownOrderIds dedups print
       // attempts across the session — independent of chime/ack state.
+      //
+      // Print-settle gate (see PRINT_SETTLE_MS): only print an order once its
+      // created_at is old enough that its items have finished writing. An order
+      // detected as new but still too fresh is DEFERRED — collected in
+      // deferredIds and deliberately left OUT of knownOrderIds below — so it
+      // stays eligible and the next poll prints it once it crosses the
+      // threshold. Marking it seen now would skip it forever.
+      const settleNow = Date.now()
+      const deferredIds = new Set()
       const freshNew = data.filter(
         o => o.status === 'new' && !knownOrderIds.current.has(o.id)
       )
       if (freshNew.length > 0 && knownOrderIds.current.size > 0) {
         for (const newOrder of freshNew) {
+          const ageMs = settleNow - new Date(newOrder.created_at).getTime()
+          console.log('[POLL] settle gate', { id: newOrder.id, ageMs, willPrint: ageMs >= PRINT_SETTLE_MS })
+          if (ageMs < PRINT_SETTLE_MS) {
+            // Too fresh — trailing items may still be writing. Defer to a
+            // later poll; leave unmarked so it remains eligible.
+            deferredIds.add(newOrder.id)
+            continue
+          }
           autoPrint(newOrder)
         }
       }
@@ -253,7 +275,11 @@ export function useOrderPolling(restaurant, hours) {
           })
       }
 
-      knownOrderIds.current = newOrderIds
+      // Mark every fetched order seen EXCEPT ones deferred as too-fresh above —
+      // those stay eligible so a later poll can auto-print them once settled.
+      knownOrderIds.current = new Set(
+        data.filter(o => !deferredIds.has(o.id)).map(o => o.id)
+      )
       setOrders(data)
       setLoading(false)
     } catch (err) {
