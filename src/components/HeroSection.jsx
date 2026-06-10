@@ -1,5 +1,4 @@
 import { formatDisplayAddress } from '../pages/website/utils/address'
-import { cdnImage } from '../lib/imageUrl'
 
 export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
   return (
@@ -29,10 +28,8 @@ export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
         <div className="w-[60%] h-72">
           {restaurant.hero_image_url ? (
             <img
-              src={cdnImage(restaurant.hero_image_url, { width: 1600 })}
+              src={restaurant.hero_image_url}
               alt={restaurant.name}
-              fetchpriority="high"
-              decoding="async"
               className="w-full h-full object-cover"
             />
           ) : (
@@ -46,10 +43,8 @@ export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
         <div className="w-full h-[200px]">
           {restaurant.hero_image_url ? (
             <img
-              src={cdnImage(restaurant.hero_image_url, { width: 800 })}
+              src={restaurant.hero_image_url}
               alt={restaurant.name}
-              fetchpriority="high"
-              decoding="async"
               className="w-full h-full object-cover"
             />
           ) : (
