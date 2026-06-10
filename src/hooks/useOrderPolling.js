@@ -200,7 +200,6 @@ export function useOrderPolling(restaurant, hours) {
       if (freshNew.length > 0 && knownOrderIds.current.size > 0) {
         for (const newOrder of freshNew) {
           const ageMs = settleNow - new Date(newOrder.created_at).getTime()
-          console.log('[POLL] settle gate', { id: newOrder.id, ageMs, willPrint: ageMs >= PRINT_SETTLE_MS })
           if (ageMs < PRINT_SETTLE_MS) {
             // Too fresh — trailing items may still be writing. Defer to a
             // later poll; leave unmarked so it remains eligible.
