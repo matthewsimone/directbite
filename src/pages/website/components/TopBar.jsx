@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { Link } from 'react-router-dom'
 import HoursModal from './HoursModal'
 import OrderLink from './OrderLink'
 import { formatDisplayAddress } from '../utils/address'
+import { isMainDomain } from '../../../lib/customDomain'
 
 const HERO_SHADOW = '[text-shadow:0_1px_2px_rgba(0,0,0,0.5)]'
 
@@ -79,6 +81,17 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
         >
           Order
         </OrderLink>
+        {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&
+          restaurant.website_links.map(link => (
+            <Link
+              key={link.path}
+              to={isMainDomain() ? `/${restaurant.slug}/${link.path}` : `/${link.path}`}
+              onClick={onClose}
+              className="block py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
+            >
+              {link.label}
+            </Link>
+          ))}
         <button
           onClick={() => { onClose(); onOpenHours() }}
           className="block w-full text-left py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
@@ -182,6 +195,16 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
             <OrderLink slug={restaurant.slug} className={linkCls}>
               Menu
             </OrderLink>
+            {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&
+              restaurant.website_links.map(link => (
+                <Link
+                  key={link.path}
+                  to={isMainDomain() ? `/${restaurant.slug}/${link.path}` : `/${link.path}`}
+                  className={linkCls}
+                >
+                  {link.label}
+                </Link>
+              ))}
             <button onClick={openHoursModal} className={linkCls}>
               Hours
             </button>
