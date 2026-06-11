@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { getCustomDomainKey, MAIN_DOMAIN } from './lib/customDomain'
 import HomePage from './pages/website/HomePage'
+
+const LinkViewer = lazy(() => import('./pages/website/LinkViewer'))
 
 function Spinner() {
   return (
@@ -78,10 +80,13 @@ export default function CustomDomainShell() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<HomePage restaurant={restaurant} hours={hours} />} />
-      <Route path="/order" element={<OrderRedirect slug={restaurant.slug} />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={null}>
+      <Routes>
+        <Route path="/" element={<HomePage restaurant={restaurant} hours={hours} />} />
+        <Route path="/order" element={<OrderRedirect slug={restaurant.slug} />} />
+        <Route path="/:linkPath" element={<LinkViewer restaurant={restaurant} hours={hours} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   )
 }

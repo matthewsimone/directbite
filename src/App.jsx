@@ -18,6 +18,7 @@ import CustomDomainShell from './CustomDomainShell'
 // import doesn't ship in the main bundle on website / customer / tablet
 // routes.
 const ApplePayTest = lazy(() => import('./pages/ApplePayTest'))
+const LinkViewer = lazy(() => import('./pages/website/LinkViewer'))
 
 function MainRoutes() {
   return (
@@ -41,6 +42,14 @@ function MainRoutes() {
       <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
       <Route path="/:slug/tablet" element={<TabletPage />} />
       <Route path="/:slug/tablet/login" element={<TabletPage />} />
+      <Route
+        path="/:slug/:linkPath"
+        element={
+          <Suspense fallback={null}>
+            <LinkViewer />
+          </Suspense>
+        }
+      />
     </Routes>
   )
 }
