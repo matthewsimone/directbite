@@ -700,6 +700,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
   const isDelivery = order.order_type === 'delivery'
 
+  // "Deliver In-House" availability — any uber_direct order that hasn't reached
+  // a terminal/self-delivering state. Lets the operator pull a delivery off Uber
+  // and fulfill it themselves, BOTH before dispatch (new) and after (in_progress/
+  // scheduled). Wired to the existing deliverYourself() + showDeliverConfirm flow.
+  const canDeliverInHouse =
+    order.delivery_fulfillment_method === 'uber_direct' &&
+    !['complete', 'cancelled', 'self_delivering'].includes(order.status)
+
   return (
     <div className="fixed inset-0 flex flex-col bg-white overflow-hidden z-20">
       {/* Header */}
@@ -828,8 +836,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             caller of deliverYourself(). */}
         {showDeliverConfirm && (
           <div className="bg-yellow-50 p-4 rounded-xl space-y-3">
-            <p className="text-center font-bold text-yellow-900">Self-deliver?</p>
-            <p className="text-center text-sm text-yellow-900">Uber will text the customer "delivery canceled."</p>
+            <p className="text-center font-bold text-yellow-900">Deliver this order in-house?</p>
+            <p className="text-center text-sm text-yellow-900">This cancels the Uber courier if one was dispatched, and you deliver it yourself — you keep the delivery fee and tip.</p>
+            {order.uber_delivery_id && (
+              <p className="text-center text-sm text-yellow-900">Uber will text the customer "delivery canceled."</p>
+            )}
             {order.customer_phone && (
               <div className="text-center">
                 <p className="text-sm text-yellow-900">Call {order.customer_name} first:</p>
@@ -838,7 +849,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             )}
             <div className="flex gap-3">
               <button onClick={() => setShowDeliverConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">Back</button>
-              <button onClick={() => { setShowDeliverConfirm(false); deliverYourself() }} disabled={updating} className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-50">I've called — Self-deliver</button>
+              <button onClick={() => { setShowDeliverConfirm(false); deliverYourself() }} disabled={updating} className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-50">Deliver In-House</button>
             </div>
           </div>
         )}
@@ -1292,6 +1303,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               >
                 Accept (Move to Scheduled)
               </button>
+              {canDeliverInHouse && (
+                <button
+                  onClick={() => setShowDeliverConfirm(true)}
+                  className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
+                >
+                  Deliver In-House
+                </button>
+              )}
               <button
                 onClick={() => setShowReprint(true)}
                 className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
@@ -1320,6 +1339,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               >
                 Set Pickup Time & Mark in Progress
               </button>
+              {canDeliverInHouse && (
+                <button
+                  onClick={() => setShowDeliverConfirm(true)}
+                  className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
+                >
+                  Deliver In-House
+                </button>
+              )}
               <button
                 onClick={() => setShowReprint(true)}
                 className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
@@ -1335,36 +1362,46 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               </button>
             </div>
           ) : (
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowReprint(true)}
-                className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base"
-              >
-                REPRINT
-              </button>
-              {order.status === 'complete' ? (
+            <div className="space-y-3">
+              <div className="flex gap-3">
                 <button
-                  onClick={() => setShowAdjustForm(true)}
-                  className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                  onClick={() => setShowReprint(true)}
+                  className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base"
                 >
-                  ADJUST
+                  REPRINT
                 </button>
-              ) : order.status === 'self_delivering' ? (
+                {order.status === 'complete' ? (
+                  <button
+                    onClick={() => setShowAdjustForm(true)}
+                    className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                  >
+                    ADJUST
+                  </button>
+                ) : order.status === 'self_delivering' ? (
+                  <button
+                    onClick={() => updateStatus('complete')}
+                    disabled={updating}
+                    className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
+                  >
+                    Mark Delivered
+                  </button>
+                ) : order.status !== 'cancelled' ? (
+                  <button
+                    onClick={() => setShowStatusOptions(true)}
+                    className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                  >
+                    UPDATE STATUS
+                  </button>
+                ) : null}
+              </div>
+              {canDeliverInHouse && (
                 <button
-                  onClick={() => updateStatus('complete')}
-                  disabled={updating}
-                  className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
+                  onClick={() => setShowDeliverConfirm(true)}
+                  className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
                 >
-                  Mark Delivered
+                  Deliver In-House
                 </button>
-              ) : order.status !== 'cancelled' ? (
-                <button
-                  onClick={() => setShowStatusOptions(true)}
-                  className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
-                >
-                  UPDATE STATUS
-                </button>
-              ) : null}
+              )}
             </div>
           )
         )}
