@@ -109,12 +109,13 @@ function formatEtaSuffix(order) {
 }
 
 // ── self_delivering presentation split (Design B) ──
-// A self-delivering order with a still-FUTURE scheduled pickup presents as
-// "Scheduled" (badge + tab); once that time passes — or for an ASAP order with
-// no scheduled_for — it presents as "In Progress". Single source of truth used
-// by the badge, the tab filter, and the tab counts so they never diverge.
-function isSchedFuture(o) {
-  return o.status === 'self_delivering' && o.scheduled_for && new Date(o.scheduled_for) > new Date()
+// A self-delivering order keeps the presentation of the in-house order it now is:
+// if it carries a scheduled_for it stays "Scheduled" (badge + tab) until the operator
+// completes it — matching in-house scheduled orders, which never auto-promote. ASAP
+// self-delivers (no scheduled_for) show as "In Progress". Single source of truth for
+// the badge, tab filter, and tab counts.
+function isScheduledSelfDeliver(o) {
+  return o.status === 'self_delivering' && o.scheduled_for != null
 }
 
 // ── Order Card ──
@@ -761,12 +762,12 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         </div>
         <span className={`ml-auto px-3 py-1 rounded-full text-xs font-semibold uppercase ${
           order.status === 'new' ? 'bg-yellow-100 text-yellow-800' :
-          (order.status === 'scheduled' || isSchedFuture(order)) ? 'bg-amber-200 text-amber-900' :
+          (order.status === 'scheduled' || isScheduledSelfDeliver(order)) ? 'bg-amber-200 text-amber-900' :
           (order.status === 'in_progress' || order.status === 'self_delivering') ? 'bg-blue-100 text-blue-800' :
           order.status === 'complete' ? 'bg-green-100 text-green-800' :
           'bg-red-100 text-red-800'
         }`}>
-          {isSchedFuture(order) ? 'Scheduled'
+          {isScheduledSelfDeliver(order) ? 'Scheduled'
             : (order.status === 'in_progress' || order.status === 'self_delivering') ? 'In Progress'
             : order.status}
         </span>
@@ -1536,8 +1537,8 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
       if (subTab === 'complete') return o.status === 'complete' || o.status === 'cancelled'
       // Design B: a self-delivering order with a future scheduled pickup stays in
       // the Scheduled tab until its time passes; otherwise it's active In Progress.
-      if (subTab === 'scheduled') return o.status === 'scheduled' || isSchedFuture(o)
-      if (subTab === 'in_progress') return o.status === 'in_progress' || (o.status === 'self_delivering' && !isSchedFuture(o))
+      if (subTab === 'scheduled') return o.status === 'scheduled' || isScheduledSelfDeliver(o)
+      if (subTab === 'in_progress') return o.status === 'in_progress' || (o.status === 'self_delivering' && !isScheduledSelfDeliver(o))
       return o.status === subTab
     })
     // Scheduled tab: next-up first so the kitchen sees the most urgent
@@ -1624,9 +1625,9 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
               // Count predicate = same status→tab mapping as filteredOrders.
               const tabOrders = orders.filter(o =>
                 tab.key === 'in_progress'
-                  ? (o.status === 'in_progress' || (o.status === 'self_delivering' && !isSchedFuture(o)))
+                  ? (o.status === 'in_progress' || (o.status === 'self_delivering' && !isScheduledSelfDeliver(o)))
                   : tab.key === 'scheduled'
-                    ? (o.status === 'scheduled' || isSchedFuture(o))
+                    ? (o.status === 'scheduled' || isScheduledSelfDeliver(o))
                     : o.status === tab.key
               )
               if (tabOrders.length === 0) return null
