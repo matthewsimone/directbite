@@ -474,7 +474,7 @@ export async function createUberDelivery(
     dropoff_deadline_dt: new Date(dropoffDeadlineMs).toISOString(),
     manifest_items: manifestItems,
     manifest_total_value: manifestTotalCents,
-    tip: tipCents,
+    tip: Math.min(tipCents, 500),
   };
 
   // Only attach dropoff coordinates when we have them. JSON.stringify
@@ -557,10 +557,11 @@ export async function createUberDelivery(
   if (createResp.status === 400 || createResp.status === 404) {
     let detail = "";
     try {
-      detail = (await createResp.text()).slice(0, 300);
+      detail = (await createResp.text()).slice(0, 1000);
     } catch {
       /* ignore */
     }
+    console.error("[uber-create] non-2xx", createResp.status, detail);
     return make({
       success: false,
       step: "create_delivery",
@@ -573,10 +574,11 @@ export async function createUberDelivery(
   if (!createResp.ok) {
     let detail = "";
     try {
-      detail = (await createResp.text()).slice(0, 300);
+      detail = (await createResp.text()).slice(0, 1000);
     } catch {
       /* ignore */
     }
+    console.error("[uber-create] non-2xx", createResp.status, detail);
     return make({
       success: false,
       step: "create_delivery",
