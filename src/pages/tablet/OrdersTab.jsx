@@ -622,7 +622,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   // the price-change modal (carries the new_quote_id back to the function
   // so it can dispatch against the refreshed quote without re-checking).
   async function dispatchToUber(quoteIdOverride = null) {
-    if (!selectedPrepMinutes) return
+    // Scheduled orders book at the customer's slot (absolute pickup_ready_dt) and
+    // have no prep-minutes selection; ASAP orders book relative minutes from the
+    // prep modal. ASAP behavior is byte-identical to before.
+    const isScheduled = order.scheduled_for != null
+    if (!isScheduled && !selectedPrepMinutes) return
     setDispatching(true)
     try {
       const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
@@ -640,7 +644,9 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           },
           body: JSON.stringify({
             order_id: order.id,
-            pickup_ready_minutes: selectedPrepMinutes,
+            ...(isScheduled
+              ? { pickup_ready_dt: order.scheduled_for }
+              : { pickup_ready_minutes: selectedPrepMinutes }),
             ...(quoteIdOverride ? { accepted_quote_id: quoteIdOverride } : {}),
           }),
         }
@@ -654,7 +660,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         // tablet UI updates without waiting for the poll.
         const patchedOrder = {
           ...order,
-          status: 'in_progress',
+          status: isScheduled ? 'scheduled' : 'in_progress',
           accepted_at: order.accepted_at || new Date().toISOString(),
           uber_delivery_id: result.delivery_id,
           uber_tracking_url: result.tracking_url,
@@ -1118,7 +1124,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                     updateStatus('scheduled')
                   } else if (order.delivery_fulfillment_method === 'uber_direct') {
                     setShowStatusOptions(false)
-                    setShowPrepTimeModal(true)
+                    if (order.scheduled_for) {
+                      dispatchToUber()
+                    } else {
+                      setShowPrepTimeModal(true)
+                    }
                   } else {
                     updateStatus('scheduled')
                   }
@@ -1347,12 +1357,22 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                Status. Existing in_progress / complete / cancelled paths fall
                into the else branch below. */
             <div className="space-y-3">
-              <button
-                onClick={() => setShowPrepTimeModal(true)}
-                className="w-full h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
-              >
-                Set Pickup Time & Mark in Progress
-              </button>
+              {order.scheduled_for ? (
+                <button
+                  onClick={() => dispatchToUber()}
+                  disabled={dispatching}
+                  className="w-full h-14 rounded-xl bg-amber-500 text-white font-bold text-base disabled:opacity-50"
+                >
+                  Accept (Move to Scheduled)
+                </button>
+              ) : (
+                <button
+                  onClick={() => setShowPrepTimeModal(true)}
+                  className="w-full h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base"
+                >
+                  Set Pickup Time & Mark in Progress
+                </button>
+              )}
               {canDeliverInHouse && (
                 <button
                   onClick={() => setShowDeliverConfirm(true)}
