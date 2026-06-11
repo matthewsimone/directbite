@@ -1383,6 +1383,11 @@ export default function CheckoutPage() {
         </div>
 
         <TipSelector subtotal={discountedSubtotal} orderType={orderType} onTipChange={setTip} />
+        {resolvedMode === 'uber_direct' && tip > 5 && (
+          <p className="mt-2 text-sm text-gray-500">
+            Uber caps delivery driver tips at $5.00. Amounts above that support the restaurant.
+          </p>
+        )}
 
         {/* Order Summary */}
         <div>
