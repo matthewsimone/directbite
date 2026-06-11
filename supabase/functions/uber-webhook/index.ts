@@ -425,13 +425,21 @@ serve(async (req: Request) => {
       if (typeof deliveryPickupEta === "string" && deliveryPickupEta) {
         statusUpdate.uber_pickup_eta = deliveryPickupEta;
       }
-      // Capture the actual Uber delivery fee. Uber sends data.fee as integer
-      // cents (e.g. 799) on every event; orders.uber_actual_fee is numeric
-      // DOLLARS (matching uber_quoted_fee, M5d convention), so divide by 100.
+      // Capture the actual Uber delivery fee — ONLY on a completed delivery.
+      // Uber sends data.fee as integer cents (e.g. 799) on every event, but its
+      // meaning differs by status: on a 'canceled' event it's the cancellation
+      // fee, on intermediate events it's provisional. We only want the final
+      // delivery fee, so gate on newStatus === 'delivered'. Canceled/returned/
+      // intermediate events never write a fee here. orders.uber_actual_fee is
+      // numeric DOLLARS (matching uber_quoted_fee, M5d convention), so /100.
       // Guard on a finite number so a missing/garbage field never overwrites
       // a previously-captured fee with null/NaN.
       const actualFeeCents = parsed?.data?.fee;
-      if (typeof actualFeeCents === "number" && Number.isFinite(actualFeeCents)) {
+      if (
+        newStatus === "delivered" &&
+        typeof actualFeeCents === "number" &&
+        Number.isFinite(actualFeeCents)
+      ) {
         statusUpdate.uber_actual_fee = actualFeeCents / 100;
         // Flag a quoted-vs-actual divergence for the reconciliation report.
         // Both are numeric dollars; compare with a 1-cent tolerance for float
