@@ -346,7 +346,6 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       delivery_available: deliveryAvailable,
       delivery_note: deliveryNote,
       delivery_minimum_in_house: parseFloat(deliveryMinimum) || 0,
-      delivery_minimum_uber_direct: parseFloat(deliveryMinimumUD) || 0,
     }
     if (tier2Enabled) {
       updateData.delivery_max_radius_miles = parseFloat(extZoneDist) || null
@@ -592,6 +591,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         .update({
           delivery_fulfillment: mode,
           uber_direct_active: uberActive,
+          delivery_minimum_uber_direct: parseFloat(deliveryMinimumUD) || 0,
           uber_schedule: schedule,
           uber_passthrough_mode: passthroughMode,
           // *_full modes ignore the value — store 0 so stale cap/percent
@@ -873,16 +873,6 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                     className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
                 </div>
               </FieldRow>
-              {(mode === 'uber_direct' || mode === 'both') && (
-                <FieldRow label="Uber Direct Delivery Minimum">
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
-                    <input type="number" min="0" step="0.01" value={deliveryMinimumUD}
-                      onChange={e => setDeliveryMinimumUD(e.target.value)}
-                      className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
-                  </div>
-                </FieldRow>
-              )}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Delivery Note</label>
                 <input
@@ -917,6 +907,19 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             <p className="text-xs text-gray-500 italic">
               Verified {new Date(restaurant.uber_credentials_verified_at).toLocaleString()}
             </p>
+
+            {/* Uber Direct delivery minimum — first option in this section */}
+            {(mode === 'uber_direct' || mode === 'both') && (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Uber Direct Delivery Minimum</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input type="number" min="0" step="0.01" value={deliveryMinimumUD}
+                    onChange={e => setDeliveryMinimumUD(e.target.value)}
+                    className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                </div>
+              </div>
+            )}
 
             {/* Delivery Mode — 3 radio buttons */}
             <div className="space-y-2 pt-2 border-t border-gray-100">
