@@ -550,8 +550,16 @@ export default function CheckoutPage() {
   const [mapsLoaded, setMapsLoaded] = useState(false)
   const autocompleteRef = useRef(null)
   const inputRef = useRef(null)
+  // Key the minimum to the restaurant's CONFIGURED mode (known at page load) so
+  // the "minimum order" message shows the moment Delivery is selected — not after
+  // an address resolves the Uber quote. For 'both', assume Uber Direct until a
+  // quote resolves the order to in-house (resolvedMode === 'in_house').
+  const fulfillment = restaurant?.delivery_fulfillment || 'in_house'
+  const useUberMin =
+    fulfillment === 'uber_direct' ||
+    (fulfillment === 'both' && resolvedMode !== 'in_house')
   const deliveryMinimum = Number(
-    (resolvedMode === 'uber_direct'
+    (useUberMin
       ? restaurant?.delivery_minimum_uber_direct
       : restaurant?.delivery_minimum_in_house) || 0
   )
