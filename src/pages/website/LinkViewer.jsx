@@ -27,7 +27,7 @@ function PdfPages({ url }) {
 
     async function render() {
       try {
-        const pdf = await pdfjsLib.getDocument(url).promise
+        const pdf = await pdfjsLib.getDocument({ url }).promise
         if (cancelled) return
         const maxWidth = Math.min(container.clientWidth || 900, 900)
         const dpr = window.devicePixelRatio || 1
