@@ -698,7 +698,11 @@ export default function CheckoutPage() {
   // Reset uber quote state so the existing fee-computation useEffect re-fires
   // and fetches a fresh quote. The customer sees the new price and can re-Pay.
   function handleQuoteValidationFailure(reason) {
-    console.warn('[Checkout] quote validation failed; forcing re-quote', { reason })
+    console.warn('[Checkout] quote validation failed', { reason })
+    if (reason === 'below_minimum') {
+      toast.error('This order is below the delivery minimum. Add more items or switch to pickup.')
+      return // do NOT reset quote state — re-quoting won't help; the fix is adding items
+    }
     toast.error('Delivery quote changed. Please try again.')
     setResolvedMode(null)
     setUberQuoteId(null)
