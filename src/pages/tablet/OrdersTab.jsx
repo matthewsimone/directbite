@@ -837,15 +837,17 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         {showDeliverConfirm && (
           <div className="bg-yellow-50 p-4 rounded-xl space-y-3">
             <p className="text-center font-bold text-yellow-900">Deliver this order in-house?</p>
-            <p className="text-center text-sm text-yellow-900">This cancels the Uber courier if one was dispatched, and you deliver it yourself — you keep the delivery fee and tip.</p>
+            <p className="text-center text-sm text-yellow-900">You keep the delivery fee and tip.</p>
             {['pickup', 'pickup_complete', 'dropoff'].includes(order.uber_status) && (
-              <p className="text-center text-sm text-yellow-900">Uber may text the customer "delivery canceled."</p>
-            )}
-            {order.customer_phone && (
-              <div className="text-center">
-                <p className="text-sm text-yellow-900">Call {order.customer_name} first:</p>
-                <p className="text-2xl font-bold text-yellow-900 tracking-wide">{formatPhone(order.customer_phone)}</p>
-              </div>
+              <>
+                <p className="text-center text-sm text-yellow-900">A courier is already on the way — Uber may text the customer that the delivery was canceled.</p>
+                {order.customer_phone && (
+                  <div className="text-center">
+                    <p className="text-sm text-yellow-900">Call {order.customer_name} first:</p>
+                    <p className="text-2xl font-bold text-yellow-900 tracking-wide">{formatPhone(order.customer_phone)}</p>
+                  </div>
+                )}
+              </>
             )}
             <div className="flex gap-3">
               <button onClick={() => setShowDeliverConfirm(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">Back</button>
