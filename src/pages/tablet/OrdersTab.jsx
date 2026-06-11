@@ -200,7 +200,7 @@ function OrderCard({ order, onTap, onRetryPrint }) {
         {order.status === 'self_delivering' ? (
           /* D9: self-delivering orders show "Self-delivering" instead of the
              Uber status line (which would read "Canceled" from the release). */
-          <div className="mt-1 text-sm font-semibold text-[#16A34A]">Self-delivering</div>
+          <div className="mt-1 text-sm font-bold text-yellow-600">Delivering In-House</div>
         ) : order.cancelled_by === 'restaurant_self_deliver' ? (
           /* Self-delivered then completed: the Uber leg was canceled but the
              restaurant delivered it. Neutral near-black, NOT the red "Canceled"
@@ -318,7 +318,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   // NEVER blocks the cancel: we set fetch_failed and the modal degrades to
   // "couldn't fetch state, proceed anyway?".
   async function openCancelConfirm() {
-    if (order.delivery_fulfillment_method === 'uber_direct' && order.uber_delivery_id) {
+    if (order.delivery_fulfillment_method === 'uber_direct' && order.uber_delivery_id && order.uber_status !== 'canceled') {
       setFetchingFee(true)
       try {
         const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
@@ -838,8 +838,8 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           <div className="bg-yellow-50 p-4 rounded-xl space-y-3">
             <p className="text-center font-bold text-yellow-900">Deliver this order in-house?</p>
             <p className="text-center text-sm text-yellow-900">This cancels the Uber courier if one was dispatched, and you deliver it yourself — you keep the delivery fee and tip.</p>
-            {order.uber_delivery_id && (
-              <p className="text-center text-sm text-yellow-900">Uber will text the customer "delivery canceled."</p>
+            {['pickup', 'pickup_complete', 'dropoff'].includes(order.uber_status) && (
+              <p className="text-center text-sm text-yellow-900">Uber may text the customer "delivery canceled."</p>
             )}
             {order.customer_phone && (
               <div className="text-center">
@@ -1394,6 +1394,15 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                   </button>
                 ) : null}
               </div>
+              {order.status === 'self_delivering' && (
+                <button
+                  onClick={openCancelConfirm}
+                  disabled={fetchingFee}
+                  className="w-full text-center text-sm text-red-600 hover:text-red-800 py-1 disabled:opacity-50"
+                >
+                  {fetchingFee ? 'Checking…' : 'Cancel & Refund Order'}
+                </button>
+              )}
               {canDeliverInHouse && (
                 <button
                   onClick={() => setShowDeliverConfirm(true)}
