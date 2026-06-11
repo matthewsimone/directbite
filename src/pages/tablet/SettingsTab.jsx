@@ -188,6 +188,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [deliveryAvailable, setDeliveryAvailable] = useState(restaurant?.delivery_available || false)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
   const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum_in_house || 0)
+  const [deliveryMinimumUD, setDeliveryMinimumUD] = useState(restaurant?.delivery_minimum_uber_direct || 0)
   const [tier2Enabled, setTier2Enabled] = useState(!!restaurant?.delivery_tier2_fee_cents)
   // Single tier: singleMaxDist is the outer boundary, singleFee is the fee
   // Two tier: stdZoneDist is tier1 boundary, stdZoneFee is tier1 fee, extZoneDist is outer boundary, extZoneFee is tier2 fee
@@ -345,6 +346,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       delivery_available: deliveryAvailable,
       delivery_note: deliveryNote,
       delivery_minimum_in_house: parseFloat(deliveryMinimum) || 0,
+      delivery_minimum_uber_direct: parseFloat(deliveryMinimumUD) || 0,
     }
     if (tier2Enabled) {
       updateData.delivery_max_radius_miles = parseFloat(extZoneDist) || null
@@ -863,7 +865,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                 </>
               )}
 
-              <FieldRow label="Minimum Order">
+              <FieldRow label="In-House Delivery Minimum">
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
                   <input type="number" min="0" step="0.01" value={deliveryMinimum}
@@ -871,6 +873,16 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                     className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
                 </div>
               </FieldRow>
+              {(mode === 'uber_direct' || mode === 'both') && (
+                <FieldRow label="Uber Direct Delivery Minimum">
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                    <input type="number" min="0" step="0.01" value={deliveryMinimumUD}
+                      onChange={e => setDeliveryMinimumUD(e.target.value)}
+                      className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                  </div>
+                </FieldRow>
+              )}
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-1 block">Delivery Note</label>
                 <input
