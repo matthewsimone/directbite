@@ -112,7 +112,7 @@ export default function LinkViewer({ restaurant: propRestaurant, hours: propHour
 
   return (
     <div className="min-h-dvh bg-white flex flex-col" style={{ '--brand-color': brandColor }}>
-      <TopBar restaurant={restaurant} status={status} hours={hours} />
+      <TopBar restaurant={restaurant} status={status} hours={hours} solid />
 
       {!link ? (
         <main className="flex-1 max-w-[900px] mx-auto w-full px-4 py-16 text-center">
