@@ -39,7 +39,8 @@ serve(async (req: Request) => {
         `stripe_account_id, name,
          delivery_fulfillment, uber_credentials_verified_at,
          uber_direct_active, uber_schedule,
-         uber_passthrough_mode, uber_passthrough_value`
+         uber_passthrough_mode, uber_passthrough_value,
+         delivery_minimum_in_house, delivery_minimum_uber_direct`
       )
       .eq("id", restaurant_id)
       .single();
@@ -91,6 +92,19 @@ serve(async (req: Request) => {
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
+    }
+
+    // Server-side delivery-minimum guard (Step B). Mirrors the client check so a
+    // crafted request can't bypass it. Delivery only; no-op when the minimum is 0.
+    // Mode picked by serverResolvedMode (resolveMode already collapses 'both').
+    if (!isPickup) {
+      const minDollars = serverResolvedMode === 'uber_direct'
+        ? Number(restaurant.delivery_minimum_uber_direct || 0)
+        : Number(restaurant.delivery_minimum_in_house || 0);
+      const foodSubtotal = Number(order_data?.subtotal || 0);
+      if (minDollars > 0 && foodSubtotal < minDollars) {
+        return validationError("below_minimum", `mode=${serverResolvedMode} subtotal=${foodSubtotal} min=${minDollars}`);
+      }
     }
 
     if (!isPickup && serverResolvedMode === "uber_direct") {
