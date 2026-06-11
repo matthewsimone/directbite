@@ -108,6 +108,15 @@ function formatEtaSuffix(order) {
   return ''
 }
 
+// ── self_delivering presentation split (Design B) ──
+// A self-delivering order with a still-FUTURE scheduled pickup presents as
+// "Scheduled" (badge + tab); once that time passes — or for an ASAP order with
+// no scheduled_for — it presents as "In Progress". Single source of truth used
+// by the badge, the tab filter, and the tab counts so they never diverge.
+function isSchedFuture(o) {
+  return o.status === 'self_delivering' && o.scheduled_for && new Date(o.scheduled_for) > new Date()
+}
+
 // ── Order Card ──
 function OrderCard({ order, onTap, onRetryPrint }) {
   const isDelivery = order.order_type === 'delivery'
@@ -734,7 +743,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                "Canceled" used for a true cancel+refund (restaurant_refund / uber,
                which fall through to the generic block below). */
             order.status === 'self_delivering' ? (
-              <div className="mt-0.5 text-sm font-semibold text-[#16A34A]">Self-delivering</div>
+              <div className="mt-0.5 text-sm font-bold text-yellow-600">Delivering In-House</div>
             ) : (
               <div className="mt-0.5 text-sm font-semibold text-gray-900">UberDirect · Canceled · Self-delivered</div>
             )
@@ -752,12 +761,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         </div>
         <span className={`ml-auto px-3 py-1 rounded-full text-xs font-semibold uppercase ${
           order.status === 'new' ? 'bg-yellow-100 text-yellow-800' :
-          order.status === 'scheduled' ? 'bg-amber-200 text-amber-900' :
-          order.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+          (order.status === 'scheduled' || isSchedFuture(order)) ? 'bg-amber-200 text-amber-900' :
+          (order.status === 'in_progress' || order.status === 'self_delivering') ? 'bg-blue-100 text-blue-800' :
           order.status === 'complete' ? 'bg-green-100 text-green-800' :
           'bg-red-100 text-red-800'
         }`}>
-          {order.status === 'in_progress' ? 'In Progress' : order.status}
+          {isSchedFuture(order) ? 'Scheduled'
+            : (order.status === 'in_progress' || order.status === 'self_delivering') ? 'In Progress'
+            : order.status}
         </span>
       </div>
 
@@ -1523,8 +1534,10 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
   const filteredOrders = (() => {
     const filtered = orders.filter(o => {
       if (subTab === 'complete') return o.status === 'complete' || o.status === 'cancelled'
-      // D2: self-delivering orders live in the In Progress tab (active work).
-      if (subTab === 'in_progress') return o.status === 'in_progress' || o.status === 'self_delivering'
+      // Design B: a self-delivering order with a future scheduled pickup stays in
+      // the Scheduled tab until its time passes; otherwise it's active In Progress.
+      if (subTab === 'scheduled') return o.status === 'scheduled' || isSchedFuture(o)
+      if (subTab === 'in_progress') return o.status === 'in_progress' || (o.status === 'self_delivering' && !isSchedFuture(o))
       return o.status === subTab
     })
     // Scheduled tab: next-up first so the kitchen sees the most urgent
@@ -1611,8 +1624,10 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
               // Count predicate = same status→tab mapping as filteredOrders.
               const tabOrders = orders.filter(o =>
                 tab.key === 'in_progress'
-                  ? (o.status === 'in_progress' || o.status === 'self_delivering')
-                  : o.status === tab.key
+                  ? (o.status === 'in_progress' || (o.status === 'self_delivering' && !isSchedFuture(o)))
+                  : tab.key === 'scheduled'
+                    ? (o.status === 'scheduled' || isSchedFuture(o))
+                    : o.status === tab.key
               )
               if (tabOrders.length === 0) return null
               // Per-tab urgency → badge color. Default neutral grey.
