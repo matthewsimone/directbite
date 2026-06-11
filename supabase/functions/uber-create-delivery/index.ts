@@ -134,6 +134,7 @@ serve(async (req: Request) => {
   const {
     order_id,
     pickup_ready_minutes,
+    pickup_ready_dt,
     pickup_deadline_minutes,
     accepted_quote_id,
   } = body || {};
@@ -144,7 +145,42 @@ serve(async (req: Request) => {
       400
     );
   }
-  if (
+
+  // Timing input: require EXACTLY ONE of pickup_ready_dt (absolute ISO —
+  // book-at-accept for scheduled orders) or pickup_ready_minutes (relative —
+  // ASAP). The minutes branch below is unchanged from before; the dt branch is
+  // purely additive.
+  const hasPickupDt =
+    pickup_ready_dt !== undefined && pickup_ready_dt !== null;
+  const hasPickupMinutes =
+    pickup_ready_minutes !== undefined && pickup_ready_minutes !== null;
+
+  if (hasPickupDt === hasPickupMinutes) {
+    // Both supplied, or neither.
+    return jsonResponse(
+      {
+        success: false,
+        error: "invalid_inputs",
+        detail: "exactly_one_pickup_timing",
+      },
+      400
+    );
+  }
+
+  if (hasPickupDt) {
+    const parsedDt =
+      typeof pickup_ready_dt === "string" ? Date.parse(pickup_ready_dt) : NaN;
+    if (Number.isNaN(parsedDt) || parsedDt <= Date.now()) {
+      return jsonResponse(
+        {
+          success: false,
+          error: "invalid_inputs",
+          detail: "pickup_ready_dt_invalid",
+        },
+        400
+      );
+    }
+  } else if (
     typeof pickup_ready_minutes !== "number" ||
     pickup_ready_minutes < 1 ||
     pickup_ready_minutes > 240
@@ -225,11 +261,23 @@ serve(async (req: Request) => {
   // auth, input validation, order/restaurant fetch + ownership. The ASAP/
   // tablet path passes relative minutes and transitions to 'in_progress',
   // exactly as before — the helper's { status, body } is relayed verbatim.
-  const result = await createUberDelivery(supabase, order, restaurant, {
-    pickupReadyMinutes: pickup_ready_minutes,
-    pickupDeadlineMinutes: pickup_deadline_minutes,
-    acceptedQuoteId: accepted_quote_id,
-    postWriteStatus: "in_progress",
-  });
+  const result = await createUberDelivery(
+    supabase,
+    order,
+    restaurant,
+    hasPickupDt
+      ? {
+          pickupReadyDt: pickup_ready_dt,
+          pickupDeadlineMinutes: pickup_deadline_minutes,
+          acceptedQuoteId: accepted_quote_id,
+          postWriteStatus: "scheduled",
+        }
+      : {
+          pickupReadyMinutes: pickup_ready_minutes,
+          pickupDeadlineMinutes: pickup_deadline_minutes,
+          acceptedQuoteId: accepted_quote_id,
+          postWriteStatus: "in_progress",
+        }
+  );
   return jsonResponse(result.body, result.status);
 });
