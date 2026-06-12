@@ -16,12 +16,19 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function ImageUpload({ currentImageUrl, bucketName, storagePath, onUpload, placeholder = 'Upload Photo' }) {
+export default function ImageUpload({ currentImageUrl, bucketName, storagePath, onUpload, placeholder = 'Upload Photo', accept = 'image', maxSizeMB = null }) {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const [preview, setPreview] = useState(currentImageUrl || null)
   const [error, setError] = useState(null)
+  const [fileName, setFileName] = useState('')
   const fileRef = useRef(null)
+
+  const ACCEPT_CONFIG = {
+    image: { exts: ['jpg', 'jpeg', 'png', 'webp'], inputAccept: 'image/jpeg,image/png,image/webp', label: 'JPEG, PNG, or WebP image' },
+    pdf:   { exts: ['pdf'], inputAccept: 'application/pdf', label: 'PDF' },
+  }
+  const cfg = ACCEPT_CONFIG[accept] || ACCEPT_CONFIG.image
 
   async function handleFileChange(e) {
     const file = e.target.files?.[0]
@@ -31,8 +38,13 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
     e.target.value = ''
 
     const ext = file.name.split('.').pop().toLowerCase()
-    if (!['jpg', 'jpeg', 'png', 'webp'].includes(ext)) {
-      setError('Please select a JPEG, PNG, or WebP image')
+    if (!cfg.exts.includes(ext)) {
+      setError(`Please select a ${cfg.label}`)
+      return
+    }
+
+    if (maxSizeMB && file.size > maxSizeMB * 1024 * 1024) {
+      setError(`File must be under ${maxSizeMB} MB`)
       return
     }
 
@@ -40,9 +52,14 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
     setProgress(0)
     setError(null)
 
-    // Show local preview immediately
-    const localUrl = URL.createObjectURL(file)
-    setPreview(localUrl)
+    setFileName(file.name)
+
+    // Show local preview immediately (image mode only; PDFs use the icon + name)
+    let localUrl = null
+    if (accept !== 'pdf') {
+      localUrl = URL.createObjectURL(file)
+      setPreview(localUrl)
+    }
 
     const filePath = storagePath.replace(/\.[^.]+$/, '') + '.' + ext
 
@@ -63,7 +80,7 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
       setUploading(false)
       setProgress(0)
       setError(`Upload failed: ${uploadErr.message}`)
-      URL.revokeObjectURL(localUrl)
+      if (localUrl) URL.revokeObjectURL(localUrl)
       return
     }
 
@@ -77,22 +94,35 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
     setUploading(false)
     onUpload(publicUrl)
 
-    URL.revokeObjectURL(localUrl)
+    if (localUrl) URL.revokeObjectURL(localUrl)
   }
 
   return (
     <div>
       <div className="flex items-center gap-4">
         {/* Preview */}
-        <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0 flex items-center justify-center">
-          {preview ? (
-            <img src={preview} alt="Preview" className="w-full h-full object-cover" />
-          ) : (
-            <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          )}
-        </div>
+        {accept === 'pdf' ? (
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0 flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <span className="text-sm text-gray-600 truncate">
+              {fileName || (currentImageUrl ? 'PDF uploaded' : '')}
+            </span>
+          </div>
+        ) : (
+          <div className="w-20 h-20 rounded-lg overflow-hidden bg-gray-100 shrink-0 flex items-center justify-center">
+            {preview ? (
+              <img src={preview} alt="Preview" className="w-full h-full object-cover" />
+            ) : (
+              <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            )}
+          </div>
+        )}
 
         <div className="flex-1">
           <button
@@ -124,7 +154,7 @@ export default function ImageUpload({ currentImageUrl, bucketName, storagePath, 
       <input
         ref={fileRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={cfg.inputAccept}
         onChange={handleFileChange}
         className="hidden"
       />

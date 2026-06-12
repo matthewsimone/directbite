@@ -5,6 +5,7 @@ import ImageUpload from '../../components/ImageUpload'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
 import ReportsView from './ReportsView'
 import UberDirectReportView from './UberDirectReportView'
+import WebsiteLinksEditor from './WebsiteLinksEditor'
 // ZipCodeManager removed — replaced by radius-based delivery
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -704,6 +705,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </div>
           </div>
         </Section>
+
+        <WebsiteLinksEditor restaurant={restaurant} setRestaurant={setRestaurant} />
 
         {/* Hours */}
         <Section title="Hours" onSave={saveHours} saving={savingHours} saved={savedHours}>

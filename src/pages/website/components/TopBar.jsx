@@ -133,7 +133,7 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
   )
 }
 
-export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }) {
+export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, solid = false }) {
   const [drawerOpen, setDrawerOpenState] = useState(false)
   const [hoursModalOpen, setHoursModalOpen] = useState(false)
   const [scrolled, setScrolled] = useState(() =>
@@ -158,14 +158,15 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
     setHoursModalOpen(true)
   }
 
-  const textCls = scrolled ? 'text-gray-900' : `text-white ${HERO_SHADOW}`
-  const mutedCls = scrolled ? 'text-gray-500' : `text-white/90 ${HERO_SHADOW}`
+  const solidBar = scrolled || solid
+  const textCls = solidBar ? 'text-gray-900' : `text-white ${HERO_SHADOW}`
+  const mutedCls = solidBar ? 'text-gray-500' : `text-white/90 ${HERO_SHADOW}`
   const linkCls = `font-semibold transition-colors duration-300 hover:text-[var(--brand-color)] ${textCls}`
 
   return (
     <header
       className={`sticky top-0 z-30 transition-all duration-300 ${
-        scrolled ? 'bg-white shadow-sm' : 'bg-transparent'
+        solidBar ? 'bg-white shadow-sm' : 'bg-transparent'
       }`}
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
@@ -175,7 +176,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
           <span className={`font-bold text-base md:text-lg truncate transition-colors duration-300 ${textCls}`}>
             {restaurant.name}
           </span>
-          <StatusPill isOpen={status.isOpen} scrolled={scrolled} />
+          <StatusPill isOpen={status.isOpen} scrolled={solidBar} />
           {/* Hours summary — desktop only. Mobile keeps just the name +
               status pill so long restaurant names fit on one line; the
               full hours are reachable via the hamburger drawer. */}
@@ -221,7 +222,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange }
           onClick={() => setDrawerOpen(true)}
           aria-label="Open menu"
           className={`md:hidden w-10 h-10 flex items-center justify-center transition-colors duration-300 ${
-            scrolled ? 'text-gray-900' : 'text-white'
+            solidBar ? 'text-gray-900' : 'text-white'
           }`}
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
