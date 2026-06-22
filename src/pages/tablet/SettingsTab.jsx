@@ -189,6 +189,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [deliveryAvailable, setDeliveryAvailable] = useState(restaurant?.delivery_available || false)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
   const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum_in_house || 0)
+  const [defaultOrderType, setDefaultOrderType] = useState(restaurant?.default_order_type || 'pickup')
   const [deliveryMinimumUD, setDeliveryMinimumUD] = useState(restaurant?.delivery_minimum_uber_direct || 0)
   const [tier2Enabled, setTier2Enabled] = useState(!!restaurant?.delivery_tier2_fee_cents)
   // Single tier: singleMaxDist is the outer boundary, singleFee is the fee
@@ -347,6 +348,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       delivery_available: deliveryAvailable,
       delivery_note: deliveryNote,
       delivery_minimum_in_house: parseFloat(deliveryMinimum) || 0,
+      default_order_type: defaultOrderType,
     }
     if (tier2Enabled) {
       updateData.delivery_max_radius_miles = parseFloat(extZoneDist) || null
@@ -887,6 +889,31 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                 />
               </div>
               <p className="text-xs text-gray-400">Distance is measured as straight-line from restaurant.</p>
+
+              {/* Default order type — what the customer ordering page pre-selects */}
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Default order type (what customers see selected first)</p>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="defaultOrderType"
+                    checked={defaultOrderType === 'pickup'}
+                    onChange={() => setDefaultOrderType('pickup')}
+                    className="accent-[#16A34A] w-4 h-4"
+                  />
+                  <span className="text-sm text-gray-700">Pickup</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="defaultOrderType"
+                    checked={defaultOrderType === 'delivery'}
+                    onChange={() => setDefaultOrderType('delivery')}
+                    className="accent-[#16A34A] w-4 h-4"
+                  />
+                  <span className="text-sm text-gray-700">Delivery</span>
+                </label>
+              </div>
             </>
           )}
         </Section>

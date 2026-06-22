@@ -520,6 +520,21 @@ export default function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart()
 
   const [orderType, setOrderType] = useState('pickup')
+  // Applies the restaurant's default order type exactly once, after the async
+  // restaurant fetch resolves. The ref guards against re-running when
+  // useRestaurant re-fetches on visibilitychange, so a user's manual choice is
+  // never clobbered. The useState('pickup') above stays the safe first-render
+  // fallback while restaurant is still null.
+  const defaultApplied = useRef(false)
+  useEffect(() => {
+    if (defaultApplied.current) return         // already applied once
+    if (restLoading || !restaurant) return      // wait for the async fetch
+    defaultApplied.current = true               // mark applied regardless of outcome
+    if (restaurant.default_order_type === 'delivery' && restaurant.delivery_available === true) {
+      setOrderType('delivery')
+    }
+    // else: leave the 'pickup' useState default untouched
+  }, [restaurant, restLoading])
   // null = ASAP order; ISO timestamp = scheduled future order. The button
   // label reflects this directly; the modal handles its own internal
   // selection state and only writes back on Update.
