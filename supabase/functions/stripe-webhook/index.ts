@@ -370,6 +370,9 @@ serve(async (req: Request) => {
         if (writeCompleteErr) {
           console.error("[stripe-webhook] failed to stamp items_written_at", order.id, writeCompleteErr);
         }
+        else {
+          console.log("[stripe-webhook] items_written_at stamped", order.id, "order#", order.order_number);
+        }
 
         // Printing handled by tablet via Epson ePOS SDK (auto-prints on new order detection)
 
