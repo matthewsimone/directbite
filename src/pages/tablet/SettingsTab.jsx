@@ -202,6 +202,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [extZoneFee, setExtZoneFee] = useState(restaurant?.delivery_tier2_fee_cents != null ? (restaurant.delivery_tier2_fee_cents / 100).toFixed(2) : '')
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
   const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
+  const [autoPrintCopies, setAutoPrintCopies] = useState(restaurant?.auto_print_copies || 1)
   const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
   const [smsPhone, setSmsPhone] = useState(restaurant?.sms_phone || '')
   const [notificationEmail, setNotificationEmail] = useState(restaurant?.notification_email || '')
@@ -1285,7 +1286,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         {/* Printer */}
         <Section title="Printer" onSave={async () => {
           setSavingPrinter(true); setSavedPrinter(false)
-          const { data } = await supabase.from('restaurants').update({ printer_ip: printerIp.trim() || null }).eq('id', restaurant.id).select().single()
+          const { data } = await supabase.from('restaurants').update({ printer_ip: printerIp.trim() || null, auto_print_copies: Math.min(5, Math.max(1, parseInt(autoPrintCopies) || 1)) }).eq('id', restaurant.id).select().single()
           if (data) setRestaurant(data)
           setSavingPrinter(false); setSavedPrinter(true)
           setTimeout(() => setSavedPrinter(false), 2000)
@@ -1299,6 +1300,20 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
             />
           </FieldRow>
+          <FieldRow label="Auto-print copies">
+            <div className="relative">
+              <input
+                type="number"
+                min="1"
+                max="5"
+                value={autoPrintCopies}
+                onChange={e => setAutoPrintCopies(e.target.value)}
+                className="w-full h-11 px-3 pr-20 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">per order</span>
+            </div>
+          </FieldRow>
+          <p className="text-xs text-gray-400">Extra copies print on new orders only — manual reprints always print once.</p>
         </Section>
 
         {/* SMS Alerts */}
