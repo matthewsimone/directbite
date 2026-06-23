@@ -3,12 +3,15 @@ import { supabase } from '../lib/supabase'
 import { printOrder } from '../utils/epsonPrint'
 import { isStuckUnacked } from '../utils/stuckStage'
 
-// Print-settle gate: a new order's row is committed and visible before its
-// order_items finish writing (the webhook inserts items one-at-a-time over
-// ~1s). Auto-printing the instant the row appears can therefore miss trailing
-// items. Only auto-print an order whose created_at is at least this old, so
-// the child rows have settled. Tuned above the observed ~1s item-write window.
-const PRINT_SETTLE_MS = 5000
+// Auto-print gate (B2 write-complete signal).
+// The webhook stamps orders.items_written_at as its FINAL write, after all
+// order_items + order_item_toppings are persisted. Primary gate: print as soon
+// as items_written_at is set — the order is provably complete, no blind wait.
+// Fallback gate: if the stamp never lands (an order predating this feature, or
+// a rare stamp-write failure), still print once the order is older than
+// PRINT_FALLBACK_MS so a print is never permanently blocked. This replaces the
+// old fixed 5s settle delay with a deterministic signal + a safety net.
+const PRINT_FALLBACK_MS = 8000
 
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
@@ -186,12 +189,12 @@ export function useOrderPolling(restaurant, hours) {
       // Auto-print first-seen new orders. knownOrderIds dedups print
       // attempts across the session — independent of chime/ack state.
       //
-      // Print-settle gate (see PRINT_SETTLE_MS): only print an order once its
-      // created_at is old enough that its items have finished writing. An order
-      // detected as new but still too fresh is DEFERRED — collected in
+      // Write-complete gate (see PRINT_FALLBACK_MS): print an order once the
+      // webhook has stamped items_written_at (all items + toppings persisted).
+      // An order detected as new but not yet stamped is DEFERRED — collected in
       // deferredIds and deliberately left OUT of knownOrderIds below — so it
-      // stays eligible and the next poll prints it once it crosses the
-      // threshold. Marking it seen now would skip it forever.
+      // stays eligible and a later poll prints it once the stamp lands (or the
+      // age fallback fires). Marking it seen now would skip it forever.
       const settleNow = Date.now()
       const deferredIds = new Set()
       const freshNew = data.filter(
@@ -199,10 +202,13 @@ export function useOrderPolling(restaurant, hours) {
       )
       if (freshNew.length > 0 && knownOrderIds.current.size > 0) {
         for (const newOrder of freshNew) {
+          const writeComplete = newOrder.items_written_at != null
           const ageMs = settleNow - new Date(newOrder.created_at).getTime()
-          if (ageMs < PRINT_SETTLE_MS) {
-            // Too fresh — trailing items may still be writing. Defer to a
-            // later poll; leave unmarked so it remains eligible.
+          // Primary: print the moment the webhook signals the write is complete.
+          // Fallback: a missing stamp (old order / stamp failure) still prints once
+          // it's older than PRINT_FALLBACK_MS. Otherwise defer to a later poll,
+          // left unmarked so it stays eligible (same defer mechanism as before).
+          if (!writeComplete && ageMs < PRINT_FALLBACK_MS) {
             deferredIds.add(newOrder.id)
             continue
           }

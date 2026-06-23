@@ -360,6 +360,17 @@ serve(async (req: Request) => {
         // Clean up pending order
         await supabase.from("pending_orders").delete().eq("id", pendingOrderId);
 
+        // Print-race fix (B2): mark the order fully written AFTER all items + toppings
+        // are persisted. The tablet auto-print gate keys on this, so a poll can never
+        // print a half-written ticket. Must be the final write to `orders` in this path.
+        const { error: writeCompleteErr } = await supabase
+          .from("orders")
+          .update({ items_written_at: new Date().toISOString() })
+          .eq("id", order.id);
+        if (writeCompleteErr) {
+          console.error("[stripe-webhook] failed to stamp items_written_at", order.id, writeCompleteErr);
+        }
+
         // Printing handled by tablet via Epson ePOS SDK (auto-prints on new order detection)
 
         // Send confirmation email to customer
