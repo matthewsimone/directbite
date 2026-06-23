@@ -151,6 +151,7 @@ export function useOrderPolling(restaurant, hours) {
   }
 
   const retryingIds = useRef(new Set())
+  const recheckTimer = useRef(null)
 
   const fetchOrders = useCallback(async () => {
     if (!restaurant) return
@@ -293,6 +294,17 @@ export function useOrderPolling(restaurant, hours) {
       knownOrderIds.current = new Set(
         data.filter(o => !deferredIds.has(o.id)).map(o => o.id)
       )
+
+      // If any order was deferred (row visible but items_written_at not yet
+      // stamped), re-check shortly instead of waiting the full 10s poll. The
+      // write settles ~1s after the row appears, so a ~1.5s re-check prints it
+      // promptly. Single-timer guard: never stack overlapping re-checks.
+      if (deferredIds.size > 0 && recheckTimer.current === null) {
+        recheckTimer.current = setTimeout(() => {
+          recheckTimer.current = null
+          if (isRestaurantOpen()) fetchOrders()
+        }, 1500)
+      }
       setOrders(data)
       setLoading(false)
     } catch (err) {
@@ -311,6 +323,7 @@ export function useOrderPolling(restaurant, hours) {
     }, 10000)
     return () => {
       clearInterval(interval)
+      if (recheckTimer.current) { clearTimeout(recheckTimer.current); recheckTimer.current = null }
       // Don't tear down the audio element on unmount — it's module-level
       // and will be reused by the next mount. We do pause it so a stale
       // chime doesn't keep playing if the tablet navigates away mid-loop.
