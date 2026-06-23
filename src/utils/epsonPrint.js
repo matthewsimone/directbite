@@ -101,9 +101,10 @@ function fmtScheduledForReceipt(isoString) {
  * @param {object} rest - Restaurant info { name, address, phone }
  * @returns {Promise<{success: boolean, message: string}>}
  */
-export async function printOrder(printerIp, order, rest) {
+export async function printOrder(printerIp, order, rest, copies = 1) {
   if (!printerIp) return { success: false, message: 'No printer IP configured' }
   if (!window.epson) return { success: false, message: 'Epson ePOS SDK not loaded' }
+  const copyCount = Math.min(5, Math.max(1, parseInt(copies) || 1))
 
   return new Promise((resolve) => {
     try {
@@ -139,6 +140,12 @@ export async function printOrder(printerIp, order, rest) {
             const L = printer.ALIGN_LEFT
             const bold = (on) => printer.addTextStyle(false, false, on, printer.COLOR_1)
 
+            // Multi-copy: append [full receipt + feed + cut] once per copy into
+            // the SAME buffer, then a single send() below. copyCount===1 (manual
+            // reprints / retries) → one iteration → buffer byte-identical to the
+            // pre-copies behavior. N>1 → N receipts back-to-back in one
+            // connection, each with its own cut.
+            for (let c = 0; c < copyCount; c++) {
             // ── 1. HEADER ──
             // Restaurant name 2x2 (double-double) for max legibility from
             // across the kitchen. Address split into street + city/state/zip
@@ -389,6 +396,7 @@ export async function printOrder(printerIp, order, rest) {
 
             printer.addFeedLine(4)
             printer.addCut(printer.CUT_FEED)
+            }
 
             // Send
             printer.onreceive = (res) => {

@@ -124,7 +124,8 @@ export function useOrderPolling(restaurant, hours) {
     const result = await printOrder(
       restaurant.printer_ip,
       { ...newOrder, items: orderItems || [] },
-      { name: restaurant.name, address: restaurant.address, phone: restaurant.phone }
+      { name: restaurant.name, address: restaurant.address, phone: restaurant.phone },
+      copies
     )
 
     const { error: logErr } = await supabase.from('print_logs').insert({
@@ -142,23 +143,6 @@ export function useOrderPolling(restaurant, hours) {
       print_attempts: 1,
     }).eq('id', newOrder.id)
     if (statusErr) console.error('[AutoPrint] Failed to update print_status:', statusErr)
-
-    // Extra auto-print copies (best-effort): copies 2..N each get their own
-    // printOrder call + cut. These do NOT touch print_status/print_attempts/
-    // print_logs — copy 1 above already drove those. A failed extra copy is
-    // logged and ignored (operator can manual-reprint). Manual reprint and
-    // auto-retry never reach this — they pass copies=1.
-    for (let i = 1; i < copies; i++) {
-      try {
-        await printOrder(
-          restaurant.printer_ip,
-          { ...newOrder, items: orderItems || [] },
-          { name: restaurant.name, address: restaurant.address, phone: restaurant.phone }
-        )
-      } catch (e) {
-        console.error('[auto-print] extra copy failed', newOrder.order_number, 'copy', i + 1, e)
-      }
-    }
   }
 
   const retryingIds = useRef(new Set())
