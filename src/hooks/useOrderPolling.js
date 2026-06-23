@@ -115,6 +115,11 @@ export function useOrderPolling(restaurant, hours) {
 
   async function autoPrint(newOrder, copies = 1) {
     if (!restaurant?.printer_ip) return
+    // Real attempt count (newOrder.print_attempts comes from the poll's
+    // select('*')): first print 0->1, retry of a once-failed order 1->2, etc.
+    // Used in BOTH writes below so the log row and the order counter agree,
+    // and so the retry filter's (print_attempts < 3) cap actually engages.
+    const attempt = (newOrder.print_attempts || 0) + 1
     const { data: orderItems } = await supabase
       .from('order_items')
       .select('*, order_item_toppings(*)')
@@ -132,7 +137,7 @@ export function useOrderPolling(restaurant, hours) {
       order_id: newOrder.id,
       order_number: newOrder.order_number,
       restaurant_id: restaurant.id,
-      attempt_number: 1,
+      attempt_number: attempt,
       status: result.success ? 'success' : 'failed',
       error_message: result.success ? null : result.message,
     })
@@ -140,7 +145,7 @@ export function useOrderPolling(restaurant, hours) {
 
     const { error: statusErr } = await supabase.from('orders').update({
       print_status: result.success ? 'printed' : 'failed',
-      print_attempts: 1,
+      print_attempts: attempt,
     }).eq('id', newOrder.id)
     if (statusErr) console.error('[AutoPrint] Failed to update print_status:', statusErr)
   }
@@ -213,7 +218,9 @@ export function useOrderPolling(restaurant, hours) {
             deferredIds.add(newOrder.id)
             continue
           }
+          retryingIds.current.add(newOrder.id)
           autoPrint(newOrder, restaurant?.auto_print_copies || 1)
+            .finally(() => retryingIds.current.delete(newOrder.id))
         }
       }
 
