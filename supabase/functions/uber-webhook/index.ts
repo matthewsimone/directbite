@@ -434,23 +434,41 @@ serve(async (req: Request) => {
       // numeric DOLLARS (matching uber_quoted_fee, M5d convention), so /100.
       // Guard on a finite number so a missing/garbage field never overwrites
       // a previously-captured fee with null/NaN.
+      //
+      // data.fee is TIP-INCLUSIVE; the payload also carries data.tip. Proven
+      // against a real delivered payload: fee=828, tip=29, 828-29=799=$7.99,
+      // which matched the quote exactly. So the true delivery fee is
+      // data.fee - data.tip. We subtract Uber's OWN data.tip (not a
+      // reconstructed cap) so uber_actual_fee is fee-only, matching the
+      // already-tip-free uber_quoted_fee — and so the platform-billing model
+      // recoups the correct Uber cost via the Stripe application fee.
       const actualFeeCents = parsed?.data?.fee;
+      const tipCents = parsed?.data?.tip;
       if (
         newStatus === "delivered" &&
         typeof actualFeeCents === "number" &&
         Number.isFinite(actualFeeCents)
       ) {
-        statusUpdate.uber_actual_fee = actualFeeCents / 100;
+        // Treat a missing/garbage tip as 0 so it can't break capture, but
+        // subtract it whenever present.
+        const safeTip =
+          typeof tipCents === "number" && Number.isFinite(tipCents)
+            ? tipCents
+            : 0;
+        const feeOnlyCents = actualFeeCents - safeTip;
+        statusUpdate.uber_actual_fee = feeOnlyCents / 100;
         // Flag a quoted-vs-actual divergence for the reconciliation report.
         // Both are numeric dollars; compare with a 1-cent tolerance for float
         // drift. Only stamp when we have a quoted fee to compare against.
+        // Compare tip-free actual (feeOnlyCents) vs tip-free quoted so the
+        // delta no longer carries a phantom value equal to the tip.
         const quoted = order.uber_quoted_fee;
         if (
           typeof quoted === "number" &&
-          Math.abs(actualFeeCents / 100 - quoted) > 0.01
+          Math.abs(feeOnlyCents / 100 - quoted) > 0.01
         ) {
           statusUpdate.uber_fee_delta_reason =
-            `quoted ${quoted.toFixed(2)} vs actual ${(actualFeeCents / 100).toFixed(2)}`;
+            `quoted ${quoted.toFixed(2)} vs actual ${(feeOnlyCents / 100).toFixed(2)}`;
         }
       }
       // Once the courier has the food, the restaurant can no longer cancel —
