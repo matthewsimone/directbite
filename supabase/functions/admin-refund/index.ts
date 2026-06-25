@@ -137,7 +137,7 @@ serve(async (req: Request) => {
     // we don't issue a second restaurants query in the uber_direct branch.
     const { data: restaurant } = await supabase
       .from("restaurants")
-      .select("id, stripe_account_id, uber_customer_id, uber_environment")
+      .select("id, stripe_account_id, uber_customer_id, uber_environment, uber_billing_mode")
       .eq("id", order.restaurant_id)
       .single();
 

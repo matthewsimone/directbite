@@ -223,7 +223,7 @@ serve(async (req: Request) => {
       subtotal, tip_amount,
       restaurants:restaurant_id (
         id, name, address, phone, latitude, longitude,
-        uber_customer_id, uber_environment,
+        uber_customer_id, uber_environment, uber_billing_mode,
         uber_passthrough_mode, uber_passthrough_value,
         tablet_email
       )

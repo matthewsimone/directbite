@@ -39,7 +39,8 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "../_shared/uberToken.ts";
-import { getUberApiBase, UberEnvironment } from "../_shared/uberConfig.ts";
+import { resolveUberCreds } from "../_shared/uberCreds.ts";
+import { getUberApiBase } from "../_shared/uberConfig.ts";
 import { resolveMode, RestaurantForMode } from "../_shared/uberMode.ts";
 import { applyPassthrough } from "../_shared/uberPassthrough.ts";
 import { logUber } from "../_shared/uberLog.ts";
@@ -100,7 +101,7 @@ serve(async (req: Request) => {
        delivery_fulfillment, uber_credentials_verified_at,
        uber_direct_active, uber_schedule,
        uber_passthrough_mode, uber_passthrough_value,
-       uber_customer_id, uber_environment`
+       uber_customer_id, uber_environment, uber_billing_mode`
     )
     .eq("id", restaurant_id)
     .single();
@@ -149,9 +150,14 @@ serve(async (req: Request) => {
   // Direct API patterns. Field names (pickup_address structure, fee unit,
   // expires field name, id field name) should be verified against sandbox
   // responses during initial smoke testing and adjusted if necessary.
-  const env = (restaurant.uber_environment as UberEnvironment | null) ?? "production";
-  const apiBase = getUberApiBase(env);
-  const quoteUrl = `${apiBase}/v1/customers/${restaurant.uber_customer_id}/delivery_quotes`;
+  // Resolve creds via billing mode so platform restaurants use the DirectBite account customer_id + env.
+  const credsResult = resolveUberCreds(restaurant);
+  if (!credsResult.success) {
+    console.error("[uber-quote] creds resolution failed", credsResult.error, credsResult.detail);
+    return jsonResponse({ success: false, error: credsResult.error });
+  }
+  const apiBase = getUberApiBase(credsResult.creds.environment);
+  const quoteUrl = `${apiBase}/v1/customers/${credsResult.creds.customer_id}/delivery_quotes`;
 
   const quotePayload: any = {
     pickup_address: JSON.stringify({
@@ -308,7 +314,7 @@ serve(async (req: Request) => {
       uber_quoted_fee_cents: uberFeeCents,
       customer_delivery_fee_cents: customer_cents,
       restaurant_absorbs_cents: restaurant_cents,
-      uber_environment: env,
+      uber_environment: credsResult.creds.environment,
       passthrough_mode: restaurant.uber_passthrough_mode,
       passthrough_value: Number(restaurant.uber_passthrough_value || 0),
       expires_at: expiresAtIso,
@@ -344,6 +350,6 @@ serve(async (req: Request) => {
     restaurant_absorbs_cents: restaurant_cents,
     expires_at: expiresAt || null,
     dropoff_eta: dropoffEta || null,
-    uber_environment: env,
+    uber_environment: credsResult.creds.environment,
   });
 });

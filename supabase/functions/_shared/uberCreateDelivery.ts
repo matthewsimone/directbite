@@ -30,7 +30,8 @@
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "./uberToken.ts";
-import { getUberApiBase, UberEnvironment } from "./uberConfig.ts";
+import { getUberApiBase } from "./uberConfig.ts";
+import { resolveUberCreds } from "./uberCreds.ts";
 import { applyPassthrough } from "./uberPassthrough.ts";
 import { logUber } from "./uberLog.ts";
 
@@ -80,6 +81,7 @@ interface CreateDeliveryRestaurant {
   longitude: number | null;
   uber_customer_id: string | null;
   uber_environment: string | null;
+  uber_billing_mode?: string | null;
   uber_passthrough_mode: string | null;
   uber_passthrough_value: number | null;
 }
@@ -150,6 +152,19 @@ export async function createUberDelivery(
       detail: `order status is ${order.status}; expected 'new' or 'scheduled'`,
     });
   }
+
+  // -------- Resolve credentials via billing mode --------
+  // self = restaurant's own row creds; platform = DirectBite account env creds (env forced production).
+  // Used for BOTH the refresh-quote path and the create-delivery path below.
+  const credsResult = resolveUberCreds(restaurant);
+  if (!credsResult.success) {
+    return make({
+      success: false,
+      error: credsResult.error,
+      detail: credsResult.detail,
+    });
+  }
+  const creds = credsResult.creds;
 
   // -------- Load cached quote --------
   // If acceptedQuoteId was passed, the operator has already acknowledged
@@ -228,10 +243,8 @@ export async function createUberDelivery(
       });
     }
 
-    const refreshEnv =
-      (restaurant.uber_environment as UberEnvironment | null) ?? "production";
-    const refreshApiBase = getUberApiBase(refreshEnv);
-    const refreshUrl = `${refreshApiBase}/v1/customers/${restaurant.uber_customer_id}/delivery_quotes`;
+    const refreshApiBase = getUberApiBase(creds.environment);
+    const refreshUrl = `${refreshApiBase}/v1/customers/${creds.customer_id}/delivery_quotes`;
 
     // Mirror uber-quote/index.ts payload structure so behavior at refresh
     // matches behavior at initial quote.
@@ -348,7 +361,7 @@ export async function createUberDelivery(
         uber_quoted_fee_cents: newUberFeeCents,
         customer_delivery_fee_cents: newCustomerFeeCents,
         restaurant_absorbs_cents: newRestaurantCents,
-        uber_environment: refreshEnv,
+        uber_environment: creds.environment,
         passthrough_mode: restaurant.uber_passthrough_mode,
         passthrough_value: Number(restaurant.uber_passthrough_value || 0),
         expires_at: newExpiresIso,
@@ -444,10 +457,8 @@ export async function createUberDelivery(
     pickupReadyMs + DEFAULT_DROPOFF_DEADLINE_AFTER_READY_MINUTES * 60 * 1000;
 
   // -------- Construct Uber create-delivery payload --------
-  const env =
-    (restaurant.uber_environment as UberEnvironment | null) ?? "production";
-  const apiBase = getUberApiBase(env);
-  const deliveryUrl = `${apiBase}/v1/customers/${restaurant.uber_customer_id}/deliveries`;
+  const apiBase = getUberApiBase(creds.environment);
+  const deliveryUrl = `${apiBase}/v1/customers/${creds.customer_id}/deliveries`;
 
   const deliveryPayload: any = {
     quote_id: finalQuoteId,
@@ -492,7 +503,7 @@ export async function createUberDelivery(
   // mode ONLY when uber_environment === 'sandbox'. Production MUST NEVER
   // receive test_specifications — would dispatch a fake courier on a
   // real merchant account.
-  if (env === "sandbox") {
+  if (creds.environment === "sandbox") {
     deliveryPayload.test_specifications = {
       robo_courier_specification: { mode: "auto" },
     };

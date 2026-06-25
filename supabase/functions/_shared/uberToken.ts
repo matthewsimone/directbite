@@ -26,9 +26,9 @@ import {
   getUberAuthUrl,
   UBER_OAUTH_SCOPE,
   UBER_GRANT_TYPE,
-  UberEnvironment,
 } from "./uberConfig.ts";
 import { logUber } from "./uberLog.ts";
+import { resolveUberCreds } from "./uberCreds.ts";
 
 const TOKEN_BUFFER_SECONDS = 60;
 
@@ -43,6 +43,7 @@ export type UberTokenResult =
       success: false;
       error:
         | "credentials_not_set"
+        | "platform_creds_not_configured"
         | "invalid_credentials"
         | "rate_limited"
         | "uber_unavailable"
@@ -84,7 +85,7 @@ export async function getUberToken(
   // 2. Read per-restaurant credentials + environment
   const { data: restaurant, error: restReadErr } = await supabase
     .from("restaurants")
-    .select("uber_client_id, uber_client_secret, uber_environment")
+    .select("uber_client_id, uber_client_secret, uber_environment, uber_billing_mode")
     .eq("id", restaurantId)
     .single();
 
@@ -92,18 +93,19 @@ export async function getUberToken(
     return { success: false, error: "db_error", detail: restReadErr.message };
   }
 
-  if (!restaurant.uber_client_id || !restaurant.uber_client_secret) {
-    return { success: false, error: "credentials_not_set" };
+  // Resolve credentials via billing mode (self = own row creds, platform = DirectBite account env creds).
+  const credsResult = resolveUberCreds(restaurant);
+  if (!credsResult.success) {
+    return { success: false, error: credsResult.error, detail: credsResult.detail };
   }
+  const resolvedCreds = credsResult.creds;
 
-  // 3. Mint from Uber
-  const authUrl = getUberAuthUrl(
-    (restaurant.uber_environment as UberEnvironment | null) ?? "production"
-  );
+  // 3. Mint from Uber. (getUberAuthUrl ignores environment; same endpoint for both.)
+  const authUrl = getUberAuthUrl(resolvedCreds.environment);
 
   const body = new URLSearchParams({
-    client_id: restaurant.uber_client_id,
-    client_secret: restaurant.uber_client_secret,
+    client_id: resolvedCreds.client_id,
+    client_secret: resolvedCreds.client_secret,
     grant_type: UBER_GRANT_TYPE,
     scope: UBER_OAUTH_SCOPE,
   });
