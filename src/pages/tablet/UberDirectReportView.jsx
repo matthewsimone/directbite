@@ -56,6 +56,7 @@ function formatRowDate(createdAt) {
 }
 
 export default function UberDirectReportView({ restaurant, onBack }) {
+  const isPlatform = (restaurant?.uber_billing_mode ?? 'self') === 'platform'
   const initialKey = getNyDateKey(new Date())
   const [preset, setPreset] = useState('today')
   const [customStart, setCustomStart] = useState(initialKey)
@@ -85,7 +86,7 @@ export default function UberDirectReportView({ restaurant, onBack }) {
     supabase
       .from('orders')
       .select(
-        'id, order_number, status, delivery_fulfillment_method, subtotal, total_amount, delivery_fee, uber_quoted_fee, uber_actual_fee, uber_cancellation_fee_cents, created_at'
+        'id, order_number, status, delivery_fulfillment_method, subtotal, total_amount, delivery_fee, tip_amount, uber_quoted_fee, uber_actual_fee, uber_cancellation_fee_cents, created_at'
       )
       .eq('restaurant_id', restaurant.id)
       .gte('created_at', queryStartIso)
@@ -183,6 +184,35 @@ export default function UberDirectReportView({ restaurant, onBack }) {
         cancellationFee: (Number(o.uber_cancellation_fee_cents) || 0) / 100,
       }))
 
+    // -------- Platform-billing figures (additive; self mode ignores these) --------
+    // Mirrors _shared/uberCreateDelivery.ts (tip fronted to Uber, capped at $5)
+    // and create-payment-intent's platform application fee. Spans completed +
+    // cancelled — like totalUberCharges above — so cancellation fees count as a
+    // platform charge. All in integer cents (caller divides by 100 at render).
+    let platformTotalChargesCents = 0
+    let platformCustomerCoveredCents = 0
+    let platformVarianceCount = 0
+    let platformVarianceTotalCents = 0
+    for (const o of uberOrders) {
+      const frontedTipCents = Math.min(Math.round(Number(o.tip_amount || 0) * 100), 500)
+      const quotedCents = Math.round(Number(o.uber_quoted_fee || 0) * 100)
+      const actualCents = o.uber_actual_fee != null
+        ? Math.round(Number(o.uber_actual_fee) * 100)
+        : null
+      const collectedForUberCents = quotedCents + frontedTipCents
+      const paidToUberCents = o.status === 'cancelled'
+        ? (Number(o.uber_cancellation_fee_cents) || 0)
+        : (actualCents != null ? actualCents : quotedCents) + frontedTipCents
+      const variance = paidToUberCents - collectedForUberCents
+      platformTotalChargesCents += paidToUberCents
+      platformCustomerCoveredCents += Math.round(Number(o.delivery_fee || 0) * 100)
+      if (Math.abs(variance) > 1) {
+        platformVarianceCount++
+        platformVarianceTotalCents += variance
+      }
+    }
+    const platformYouCoveredCents = platformTotalChargesCents - platformCustomerCoveredCents
+
     return {
       deliverySales: deliverySalesCents / 100,
       orderCount,
@@ -195,6 +225,12 @@ export default function UberDirectReportView({ restaurant, onBack }) {
       varianceAbs: varianceAbsCents / 100,
       missingActualCount,
       rows,
+      // Platform-mode aggregates (cents). Self mode never reads these.
+      platformTotalCharges: platformTotalChargesCents,
+      platformCustomerCovered: platformCustomerCoveredCents,
+      platformYouCovered: platformYouCoveredCents,
+      platformVarianceCount,
+      platformVarianceTotalCents,
     }
   }, [orders, startKey, endKey])
 
@@ -288,32 +324,55 @@ export default function UberDirectReportView({ restaurant, onBack }) {
           <p className="text-center text-gray-400 mt-8">No UberDirect orders in this range</p>
         ) : (
           <div className="max-w-2xl mx-auto space-y-4">
-            {/* Headline: Total Uber Charges */}
-            <div className="bg-gray-900 text-white rounded-2xl p-5">
-              <p className="text-sm font-medium text-gray-300">Total Uber Charges</p>
-              <p className="text-4xl font-bold mt-1">{formatCurrency(totals.totalUberCharges)}</p>
-              <p className="text-sm text-gray-300 mt-2">
-                ↳ incl. cancellation fees {formatCurrency(totals.cancellationFees)}
-              </p>
-              {totals.missingActualCount > 0 && (
-                <p className="text-xs text-amber-300 mt-2">
-                  ⚠ {totals.missingActualCount} order{totals.missingActualCount === 1 ? '' : 's'} use quoted estimate (no actual fee yet)
+            {/* Headline */}
+            {isPlatform ? (
+              <div className="bg-gray-900 text-white rounded-2xl p-5">
+                <p className="text-sm font-medium text-gray-300">Total Charges</p>
+                <p className="text-4xl font-bold mt-1">{formatCurrency(totals.platformTotalCharges / 100)}</p>
+                {totals.missingActualCount > 0 && (
+                  <p className="text-xs text-amber-300 mt-2">
+                    ⚠ {totals.missingActualCount} order{totals.missingActualCount === 1 ? '' : 's'} use quoted estimate (no actual fee yet)
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-gray-900 text-white rounded-2xl p-5">
+                <p className="text-sm font-medium text-gray-300">Total Uber Charges</p>
+                <p className="text-4xl font-bold mt-1">{formatCurrency(totals.totalUberCharges)}</p>
+                <p className="text-sm text-gray-300 mt-2">
+                  ↳ incl. cancellation fees {formatCurrency(totals.cancellationFees)}
                 </p>
-              )}
-            </div>
+                {totals.missingActualCount > 0 && (
+                  <p className="text-xs text-amber-300 mt-2">
+                    ⚠ {totals.missingActualCount} order{totals.missingActualCount === 1 ? '' : 's'} use quoted estimate (no actual fee yet)
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Secondary cards */}
-            <div className="grid grid-cols-2 gap-3">
-              <Card title="Delivery Sales" value={formatCurrency(totals.deliverySales)} sub={`${totals.orderCount} order${totals.orderCount === 1 ? '' : 's'}`} />
-              <Card title="Customer-Paid Delivery Fees" value={formatCurrency(totals.customerDelivery)} />
-              <Card title="Restaurant Out-of-Pocket" value={formatCurrency(totals.outOfPocket)} />
-              <Card title="Net After Delivery Cost" value={formatCurrency(totals.net)} />
-              <Card
-                title="Quoted ↔ Actual Variance"
-                value={`${totals.varianceCount} order${totals.varianceCount === 1 ? '' : 's'}`}
-                sub={`Σ |Δ| ${formatCurrency(totals.varianceAbs)}`}
-              />
-            </div>
+            {isPlatform ? (
+              <div className="grid grid-cols-2 gap-3">
+                <Card title="UberDirect Orders" value={totals.orderCount} />
+                <Card title="Total Charges" value={formatCurrency(totals.platformTotalCharges / 100)} />
+                <Card title="Covered by Customer" value={formatCurrency(totals.platformCustomerCovered / 100)} />
+                <Card title="You Covered" value={formatCurrency(totals.platformYouCovered / 100)} />
+                <Card title="Variances" value={totals.platformVarianceCount} />
+                <Card title="Variance Total" value={formatCurrency(totals.platformVarianceTotalCents / 100)} />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <Card title="Delivery Sales" value={formatCurrency(totals.deliverySales)} sub={`${totals.orderCount} order${totals.orderCount === 1 ? '' : 's'}`} />
+                <Card title="Customer-Paid Delivery Fees" value={formatCurrency(totals.customerDelivery)} />
+                <Card title="Restaurant Out-of-Pocket" value={formatCurrency(totals.outOfPocket)} />
+                <Card title="Net After Delivery Cost" value={formatCurrency(totals.net)} />
+                <Card
+                  title="Quoted ↔ Actual Variance"
+                  value={`${totals.varianceCount} order${totals.varianceCount === 1 ? '' : 's'}`}
+                  sub={`Σ |Δ| ${formatCurrency(totals.varianceAbs)}`}
+                />
+              </div>
+            )}
 
             {/* Per-order drill-down */}
             <div>
