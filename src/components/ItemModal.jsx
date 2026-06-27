@@ -255,7 +255,7 @@ export default function ItemModal({
 
       {/* Sheet */}
       <div
-        className={`relative w-full max-w-lg bg-white rounded-t-2xl max-h-[90vh] flex flex-col ease-out ${
+        className={`relative w-full max-w-lg bg-white rounded-t-2xl item-sheet flex flex-col ease-out ${
           dragging ? '' : 'transition-transform duration-300'
         } ${visible ? '' : 'translate-y-full'}`}
         style={{ willChange: 'transform', ...(visible && dragY > 0 ? { transform: `translateY(${dragY}px)` } : {}) }}
