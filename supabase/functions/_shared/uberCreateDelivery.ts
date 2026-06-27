@@ -342,7 +342,10 @@ export async function createUberDelivery(
 
     const recomputed = applyPassthrough(
       newUberFeeCents,
-      restaurant.uber_passthrough_mode,
+      // Coerce nullable mode to a string for the (non-null) param. A null mode
+      // hits applyPassthrough's own default → customer_full, so this is
+      // behavior-preserving — it only satisfies the type checker.
+      restaurant.uber_passthrough_mode ?? "customer_full",
       Number(restaurant.uber_passthrough_value || 0)
     );
     const newCustomerFeeCents = recomputed.customer_cents;
