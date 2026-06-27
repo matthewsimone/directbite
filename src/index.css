@@ -61,3 +61,12 @@ input, textarea, select {
   image-rendering: -webkit-optimize-contrast;
   image-rendering: crisp-edges;
 }
+
+/* Item modal bottom-sheet: dynamic-viewport height with vh fallback.
+   dvh tracks the visible viewport as mobile browser chrome shows/hides,
+   so the drag handle and backdrop gap stay on-screen when Chrome's
+   toolbar is up. The vh line is the fallback for browsers without dvh. */
+.item-sheet {
+  max-height: 90vh;
+  max-height: 90dvh;
+}
