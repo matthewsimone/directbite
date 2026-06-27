@@ -1,6 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
+import { fetchWithRetry } from './lib/fetchWithRetry'
 import { getCustomDomainKey, MAIN_DOMAIN } from './lib/customDomain'
 import HomePage from './pages/website/HomePage'
 
@@ -33,29 +34,37 @@ export default function CustomDomainShell() {
   const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
+    // Mount-scoped outer signal; aborts the silent-retry loops on unmount.
+    const controller = new AbortController()
+    const outerSignal = controller.signal
     async function load() {
       const domain = getCustomDomainKey()
       if (!domain) { setNotFound(true); setLoading(false); return }
 
-      const { data: rest } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('custom_domain', domain)
-        .maybeSingle()
+      const restRes = await fetchWithRetry(
+        (signal) => supabase.from('restaurants').select('*').eq('custom_domain', domain).maybeSingle().abortSignal(signal),
+        { signal: outerSignal }
+      )
+      if (restRes.error?.__cancelled) return
+      const rest = restRes.data
 
+      // maybeSingle no-match → { data: null, error: null } (NOT PGRST116). The
+      // helper returns it as success; null data here is a definitive not-found.
       if (!rest) { setNotFound(true); setLoading(false); return }
 
-      const { data: hoursData } = await supabase
-        .from('hours')
-        .select('*')
-        .eq('restaurant_id', rest.id)
-        .order('day_of_week')
+      const hoursRes = await fetchWithRetry(
+        (signal) => supabase.from('hours').select('*').eq('restaurant_id', rest.id).order('day_of_week').abortSignal(signal),
+        { signal: outerSignal }
+      )
+      if (hoursRes.error?.__cancelled) return
+      const hoursData = hoursRes.data
 
       setRestaurant(rest)
       setHours(hoursData || [])
       setLoading(false)
     }
     load()
+    return () => controller.abort()
   }, [])
 
   // Stray ?item= at root on a custom domain: send to ordering flow.
