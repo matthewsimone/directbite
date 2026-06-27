@@ -205,23 +205,19 @@ export default function MenuPage() {
     if (match) setSelectedItem(match)
   }, [menuLoading, items])
 
-  // Not-found check FIRST, so a resolved-but-absent restaurant isn't blocked by
-  // menuLoading staying true (no restaurant id → useMenu never resolves). Guard
-  // with !restLoading so we only declare not-found once the restaurant fetch has
-  // actually resolved — not during the initial load.
-  if (error || (!restLoading && !restaurant)) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Restaurant not found</h1>
-        <p className="text-gray-500">The page you're looking for doesn't exist.</p>
-      </div>
-    )
-  }
-
   if (restLoading || menuLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="w-8 h-8 border-3 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (error || !restaurant) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Restaurant not found</h1>
+        <p className="text-gray-500">The page you're looking for doesn't exist.</p>
       </div>
     )
   }
