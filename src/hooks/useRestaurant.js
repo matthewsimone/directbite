@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchWithRetry } from '../lib/fetchWithRetry'
 
 export function useRestaurant(slug) {
   const [restaurant, setRestaurant] = useState(null)
@@ -13,9 +14,15 @@ export function useRestaurant(slug) {
   // after unmount become no-ops. Set true on every (re)mount to handle
   // React StrictMode's mount→unmount→mount cycle in dev.
   const mountedRef = useRef(true)
+  // Outer abort controller for the current load(); a new load() or unmount
+  // aborts the prior one so its silent-retry loop stops and never strands.
+  const loadAbortRef = useRef(null)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      loadAbortRef.current?.abort()
+    }
   }, [])
 
   const load = useCallback(async () => {
@@ -28,17 +35,25 @@ export function useRestaurant(slug) {
       return
     }
 
+    // Supersede any in-flight load; this one now owns loading/error state.
+    loadAbortRef.current?.abort()
+    const controller = new AbortController()
+    loadAbortRef.current = controller
+    const outerSignal = controller.signal
+
     if (mountedRef.current) {
       setLoading(true)
       setError(null)
     }
 
     try {
-      const { data: rest, error: restErr } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('slug', slug)
-        .single()
+      const restRes = await fetchWithRetry(
+        (signal) => supabase.from('restaurants').select('*').eq('slug', slug).single().abortSignal(signal),
+        { signal: outerSignal }
+      )
+      if (restRes.error?.__cancelled) return
+      const rest = restRes.data
+      const restErr = restRes.error
 
       if (!mountedRef.current) return
       if (restErr || !rest) {
@@ -47,11 +62,13 @@ export function useRestaurant(slug) {
       }
       setRestaurant(rest)
 
-      const { data: hoursData, error: hoursErr } = await supabase
-        .from('hours')
-        .select('*')
-        .eq('restaurant_id', rest.id)
-        .order('day_of_week')
+      const hoursRes = await fetchWithRetry(
+        (signal) => supabase.from('hours').select('*').eq('restaurant_id', rest.id).order('day_of_week').abortSignal(signal),
+        { signal: outerSignal }
+      )
+      if (hoursRes.error?.__cancelled) return
+      const hoursData = hoursRes.data
+      const hoursErr = hoursRes.error
 
       if (!mountedRef.current) return
       if (hoursErr) {
@@ -108,7 +125,10 @@ export function useRestaurant(slug) {
       console.error('useRestaurant: load failed', err)
       setError(err?.message || 'Failed to load restaurant')
     } finally {
-      if (mountedRef.current) setLoading(false)
+      // Only the current (non-superseded) load clears loading. A cancelled or
+      // superseded load must NOT flip loading off — the newer load/unmount owns
+      // it. (The __cancelled early-returns above also pass through here.)
+      if (mountedRef.current && loadAbortRef.current === controller) setLoading(false)
     }
   }, [slug])
 

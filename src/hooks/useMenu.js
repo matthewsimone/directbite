@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchWithRetry } from '../lib/fetchWithRetry'
 
 export function useMenu(restaurantId) {
   const [categories, setCategories] = useState([])
@@ -13,13 +14,35 @@ export function useMenu(restaurantId) {
   // See useRestaurant for rationale — guard async setState against
   // post-unmount + StrictMode double-invocation.
   const mountedRef = useRef(true)
+  // Outer abort controller for the current load(); superseded/unmounted loads
+  // abort so their silent-retry loops stop.
+  const loadAbortRef = useRef(null)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      loadAbortRef.current?.abort()
+    }
   }, [])
 
   const load = useCallback(async () => {
-    if (!restaurantId || !supabase) return
+    // A misconfigured client can NEVER resolve — clear loading so the page
+    // isn't stranded on the spinner. (Strand-bug fix.)
+    if (!supabase) {
+      if (mountedRef.current) setLoading(false)
+      return
+    }
+    // No restaurant id yet → the menu genuinely isn't ready. Keep loading true
+    // (MenuPage's restLoading drives the spinner meanwhile) and wait for a real
+    // id; the effect re-runs load() once restaurantId is set.
+    if (!restaurantId) return
+
+    // Supersede any in-flight load; this one owns loading state.
+    loadAbortRef.current?.abort()
+    const controller = new AbortController()
+    loadAbortRef.current = controller
+    const outerSignal = controller.signal
+
     if (mountedRef.current) setLoading(true)
 
     try {
@@ -28,17 +51,24 @@ export function useMenu(restaurantId) {
       // queries pull globally and hit PostgREST's 1000-row default cap —
       // for restaurants whose links sit past row 1000 in the global table,
       // some rows silently vanish and items render with missing modifiers.
-      const [catRes, itemRes, sizeRes, tgRes, topRes, itgRes] = await Promise.all([
-        supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('menu_items').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('item_sizes').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('topping_groups').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('toppings').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('item_topping_groups').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId),
+      // Each query retries independently; Promise.all resolves only when all
+      // six have a definitive result (or the load is cancelled).
+      const results = await Promise.all([
+        fetchWithRetry((signal) => supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(signal), { signal: outerSignal }),
+        fetchWithRetry((signal) => supabase.from('menu_items').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(signal), { signal: outerSignal }),
+        fetchWithRetry((signal) => supabase.from('item_sizes').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).order('sort_order').abortSignal(signal), { signal: outerSignal }),
+        fetchWithRetry((signal) => supabase.from('topping_groups').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(signal), { signal: outerSignal }),
+        fetchWithRetry((signal) => supabase.from('toppings').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(signal), { signal: outerSignal }),
+        fetchWithRetry((signal) => supabase.from('item_topping_groups').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).abortSignal(signal), { signal: outerSignal }),
       ])
+
+      // If any query was cancelled (supersede/unmount), a newer load/unmount
+      // owns the state — bail without touching it.
+      if (results.some(r => r.error?.__cancelled)) return
 
       if (!mountedRef.current) return
 
+      const [catRes, itemRes, sizeRes, tgRes, topRes, itgRes] = results
       setCategories(catRes.data || [])
       setItems(itemRes.data || [])
       setSizes(sizeRes.data || [])
@@ -50,7 +80,8 @@ export function useMenu(restaurantId) {
         console.error('useMenu: load failed', err)
       }
     } finally {
-      if (mountedRef.current) setLoading(false)
+      // Only the current (non-superseded) load clears loading.
+      if (mountedRef.current && loadAbortRef.current === controller) setLoading(false)
     }
   }, [restaurantId])
 
