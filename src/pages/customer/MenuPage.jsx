@@ -282,6 +282,9 @@ export default function MenuPage() {
               className="mb-8"
             >
               <h2 className="text-xl font-bold text-gray-900 mt-8 mb-3">{cat.name}</h2>
+              {promotion && cat.discount_exempt === true && (
+                <p className="text-xs text-gray-500 -mt-2 mb-3">Discount not eligible on items in this category</p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {catItems.map(item => (
                   <MenuItemCard
