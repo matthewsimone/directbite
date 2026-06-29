@@ -1451,6 +1451,9 @@ export default function CheckoutPage() {
                       {formatCurrency(lineTotal)}
                     </span>
                   </div>
+                  {promotion && item.discount_exempt === true && (
+                    <div className="text-[11px] text-gray-400">*already discounted*</div>
+                  )}
                   {item.toppings?.map((t, i) => (
                     <div key={i} className="flex justify-between text-sm text-gray-500 ml-4 mt-0.5">
                       <span>
