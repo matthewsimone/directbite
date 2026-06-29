@@ -592,7 +592,14 @@ export default function CheckoutPage() {
     const tops = (item.toppings || []).reduce((s, t) => s + (parseFloat(t.fullPrice ?? t.price) || 0), 0)
     return sum + (base + tops) * (item.quantity || 1)
   }, 0)
-  const discountAmount = Math.round(fullSubtotal * (discountPercentage / 100) * 100) / 100
+  // Discount applies to non-exempt items only. Exempt items contribute 0 to the discountable base.
+  const discountableSubtotal = items.reduce((sum, item) => {
+    if (item.discount_exempt === true) return sum
+    const base = parseFloat(item.fullBasePrice ?? item.basePrice) || 0
+    const tops = (item.toppings || []).reduce((s, t) => s + (parseFloat(t.fullPrice ?? t.price) || 0), 0)
+    return sum + (base + tops) * (item.quantity || 1)
+  }, 0)
+  const discountAmount = Math.round(discountableSubtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = fullSubtotal - discountAmount
   const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
   // M6.5b: Restructured to keep uber_direct path exclusive of in_house
@@ -698,6 +705,7 @@ export default function CheckoutPage() {
       size_name: item.sizeName || null,
       base_price: item.fullBasePrice ?? item.basePrice,
       quantity: item.quantity,
+      discount_exempt: item.discount_exempt === true,
       special_instructions: item.specialInstructions || null,
       toppings: (item.toppings || []).map(t => ({
         topping_id: t.toppingId,

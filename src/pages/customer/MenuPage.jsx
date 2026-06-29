@@ -331,6 +331,7 @@ export default function MenuPage() {
         <CartSheet
           onClose={() => setShowCart(false)}
           onCheckout={handleCheckout}
+          promotion={promotion}
         />
       )}
     </div>

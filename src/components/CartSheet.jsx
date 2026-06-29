@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { formatCurrency } from '../utils/format'
 import { useCart } from '../hooks/useCart'
 
-export default function CartSheet({ onClose, onCheckout }) {
+export default function CartSheet({ onClose, onCheckout, promotion }) {
   const { items, removeItem, updateQuantity } = useCart()
   const [visible, setVisible] = useState(false)
 
@@ -61,6 +61,10 @@ export default function CartSheet({ onClose, onCheckout }) {
                         <span className="font-semibold text-gray-900">
                           {item.quantity}x {item.itemName}{item.sizeName ? ` (${item.sizeName})` : ''}
                         </span>
+
+                        {promotion && item.discount_exempt === true && (
+                          <div className="text-[11px] text-gray-400">Discount not eligible</div>
+                        )}
 
                         {/* Toppings */}
                         {item.toppings?.map((t, i) => (

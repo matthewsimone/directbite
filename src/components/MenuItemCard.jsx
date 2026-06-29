@@ -2,7 +2,8 @@ import { formatCurrency } from '../utils/format'
 
 export default function MenuItemCard({ item, lowestPrice, promotion, onClick }) {
   const unavailable = !item.is_available
-  const hasDiscount = promotion && Number(promotion.discount_percentage) > 0
+  const isExempt = item.discount_exempt === true
+  const hasDiscount = promotion && Number(promotion.discount_percentage) > 0 && !isExempt
   const discountedPrice = hasDiscount
     ? lowestPrice * (1 - Number(promotion.discount_percentage) / 100)
     : null

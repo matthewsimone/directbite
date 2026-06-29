@@ -322,6 +322,10 @@ export async function printOrder(printerIp, order, rest, copies = 1) {
                 bold(false)
               }
 
+              if (Number(order.discount_percentage) > 0 && item.discount_exempt === true) {
+                printer.addText('        Discount not eligible\n')
+              }
+
               // Dotted divider between items.
               if (idx < items.length - 1) {
                 printer.addText(dotSep + '\n')

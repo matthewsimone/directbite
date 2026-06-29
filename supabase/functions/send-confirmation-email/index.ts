@@ -48,6 +48,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
         <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
           <strong>${item.quantity}x ${item.item_name}${item.size_name ? ` (${item.size_name})` : ""}</strong>
           <span style="float:right;font-weight:bold;">${formatMoney(lineTotal)}</span>
+          ${Number(order.discount_percentage) > 0 && item.discount_exempt === true ? `<div style="font-size:12px;color:#999;">Discount not eligible</div>` : ""}
     `;
 
     const qty = item.quantity || 1;

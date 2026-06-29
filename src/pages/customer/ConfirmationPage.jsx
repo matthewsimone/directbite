@@ -226,6 +226,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
     sizeName: item.size_name,
     basePrice: item.base_price,
     quantity: item.quantity,
+    discount_exempt: item.discount_exempt === true,
     specialInstructions: item.special_instructions,
     toppings: (item.order_item_toppings || []).map(t => ({
       toppingName: t.topping_name,
@@ -435,6 +436,9 @@ function ConfirmationLayout({
                         {formatCurrency(lineTotal)}
                       </span>
                     </div>
+                    {Number(discountPercentage) > 0 && item.discount_exempt === true && (
+                      <div className="text-[11px] text-gray-400 mt-0.5">Discount not eligible</div>
+                    )}
                     {item.toppings?.map((t, i) => {
                       const tFullPrice = parseFloat(t.fullPrice ?? t.price) || 0
                       return (
