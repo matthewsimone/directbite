@@ -63,7 +63,7 @@ export default function CartSheet({ onClose, onCheckout, promotion }) {
                         </span>
 
                         {promotion && item.discount_exempt === true && (
-                          <div className="text-[11px] text-gray-400">Discount not eligible</div>
+                          <div className="text-[11px] text-gray-400">*already discounted*</div>
                         )}
 
                         {/* Toppings */}

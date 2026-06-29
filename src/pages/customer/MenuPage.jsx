@@ -283,7 +283,9 @@ export default function MenuPage() {
             >
               <h2 className="text-xl font-bold text-gray-900 mt-8 mb-3">{cat.name}</h2>
               {promotion && cat.discount_exempt === true && (
-                <p className="text-xs text-gray-500 -mt-2 mb-3">Discount not eligible on items in this category</p>
+                <div className="-mt-2 mb-3">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 text-[#16A34A] text-xs font-medium px-2 py-0.5">Already discounted</span>
+                </div>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {catItems.map(item => (

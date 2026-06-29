@@ -437,7 +437,7 @@ function ConfirmationLayout({
                       </span>
                     </div>
                     {Number(discountPercentage) > 0 && item.discount_exempt === true && (
-                      <div className="text-[11px] text-gray-400 mt-0.5">Discount not eligible</div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">*already discounted*</div>
                     )}
                     {item.toppings?.map((t, i) => {
                       const tFullPrice = parseFloat(t.fullPrice ?? t.price) || 0
