@@ -103,7 +103,8 @@ export default function ItemModal({
 
   const toppingsTotal = selectedToppings.reduce((sum, t) => sum + (parseFloat(t.price) || 0), 0)
 
-  const hasDiscount = promotion && Number(promotion.discount_percentage) > 0
+  const isExempt = item.discount_exempt === true
+  const hasDiscount = promotion && Number(promotion.discount_percentage) > 0 && !isExempt
   const rawItemPrice = basePrice + toppingsTotal
   const discountMultiplier = hasDiscount ? 1 - Number(promotion.discount_percentage) / 100 : 1
   const itemTotal = rawItemPrice * discountMultiplier * quantity
@@ -219,6 +220,7 @@ export default function ItemModal({
       basePrice: basePrice * discountMultiplier,
       fullBasePrice: basePrice,
       quantity,
+      discount_exempt: isExempt,
       specialInstructions: specialInstructions.trim() || null,
       toppings: selectedToppings.map(t => ({
         toppingId: t.toppingId,

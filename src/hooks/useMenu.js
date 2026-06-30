@@ -30,7 +30,7 @@ export function useMenu(restaurantId) {
       // some rows silently vanish and items render with missing modifiers.
       const [catRes, itemRes, sizeRes, tgRes, topRes, itgRes] = await Promise.all([
         supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
-        supabase.from('menu_items').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
+        supabase.from('menu_items').select('*, menu_categories(discount_exempt)').eq('restaurant_id', restaurantId).order('sort_order'),
         supabase.from('item_sizes').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).order('sort_order'),
         supabase.from('topping_groups').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
         supabase.from('toppings').select('*').eq('restaurant_id', restaurantId).order('sort_order'),
@@ -40,7 +40,13 @@ export function useMenu(restaurantId) {
       if (!mountedRef.current) return
 
       setCategories(catRes.data || [])
-      setItems(itemRes.data || [])
+      // Flatten the joined category flag onto each item so consumers read
+      // item.discount_exempt directly (default false when missing = not exempt).
+      const itemsWithExempt = (itemRes.data || []).map(it => ({
+        ...it,
+        discount_exempt: it.menu_categories?.discount_exempt ?? false,
+      }))
+      setItems(itemsWithExempt)
       setSizes(sizeRes.data || [])
       setToppingGroups(tgRes.data || [])
       setToppings(topRes.data || [])

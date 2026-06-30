@@ -609,6 +609,11 @@ export default function MenuManagementTab() {
     fetchMenu()
   }
 
+  async function toggleCatDiscountExempt(catId, newValue) {
+    await supabase.from('menu_categories').update({ discount_exempt: newValue }).eq('id', catId)
+    fetchMenu()
+  }
+
   async function handleCatDrop(targetCatId) {
     if (!dragCatId || dragCatId === targetCatId) return
     const dragIdx = categories.findIndex(c => c.id === dragCatId)
@@ -780,7 +785,15 @@ export default function MenuManagementTab() {
                           )}
                         </button>
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-1 text-xs text-gray-500">
+                          <input
+                            type="checkbox"
+                            checked={cat.discount_exempt === true}
+                            onChange={e => toggleCatDiscountExempt(cat.id, e.target.checked)}
+                          />
+                          Discount Exempt
+                        </label>
                         <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name) }}
                           className="text-xs text-gray-500 hover:text-gray-700">Edit</button>
                         <button onClick={() => deleteCategory(cat.id)}

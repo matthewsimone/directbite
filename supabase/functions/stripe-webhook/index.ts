@@ -244,6 +244,7 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
         size_name: item.size_name || null,
         base_price: item.base_price,
         quantity: item.quantity || 1,
+        discount_exempt: item.discount_exempt === true,
         special_instructions: item.special_instructions || null,
       })
       .select()
