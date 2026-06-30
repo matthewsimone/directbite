@@ -40,7 +40,8 @@ serve(async (req: Request) => {
          delivery_fulfillment, uber_credentials_verified_at,
          uber_direct_active, uber_schedule,
          uber_passthrough_mode, uber_passthrough_value,
-         delivery_minimum_in_house, delivery_minimum_uber_direct`
+         delivery_minimum_in_house, delivery_minimum_uber_direct,
+         uber_billing_mode`
       )
       .eq("id", restaurant_id)
       .single();
@@ -107,6 +108,15 @@ serve(async (req: Request) => {
       }
     }
 
+    // Platform-billing application fee. Defaults to the flat $1.50 (150¢) for
+    // self mode, pickup, and in-house — byte-identical to pre-Phase-2 behavior.
+    // For a PLATFORM-billed uber_direct order, DirectBite fronts the Uber fee on
+    // its own card and recoups it via the Stripe application fee, so the fee
+    // becomes 150 + the full Uber quoted fee. The customer/restaurant split is
+    // already handled by the passthrough on the customer-facing delivery_fee.
+    const isPlatform = (restaurant.uber_billing_mode ?? "self") === "platform";
+    let applicationFeeCents = 150;
+
     if (!isPickup && serverResolvedMode === "uber_direct") {
       // Server says uber_direct. Client must have a uber_quote_id; if not, reject.
       const clientQuoteId: string | undefined = order_data?.uber_quote_id;
@@ -161,6 +171,22 @@ serve(async (req: Request) => {
       }
 
       const serverValidatedFeeCents = cachedQuote.customer_delivery_fee_cents;
+
+      // Platform billing: recoup the FULL Uber fee AND the tip DirectBite fronts.
+      // (Self mode leaves applicationFeeCents at the default 150.)
+      // The tip recoup must byte-match what dispatch actually fronts to Uber:
+      // _shared/uberCreateDelivery.ts sends `tip: Math.min(tipCents, 500)` (the
+      // $5 upfront cap). We recoup exactly that — no more (the over-$5 tip stays
+      // in the restaurant's balance, never sent to Uber), no less (DirectBite
+      // would otherwise eat the fronted tip).
+      if (isPlatform) {
+        const frontedTipCents = Math.min(
+          Math.round(Number(order_data?.tip_amount || 0) * 100),
+          500
+        );
+        applicationFeeCents =
+          150 + cachedQuote.uber_quoted_fee_cents + frontedTipCents;
+      }
 
       // Total-amount validation: client's `amount` (in cents) must equal
       // what we'd compute server-side from order_data subtotal/tax/tip/
@@ -258,6 +284,9 @@ serve(async (req: Request) => {
         payment_intent_id,
         {
           amount,
+          // Only platform orders re-assert the application fee on update.
+          // Self/pickup/in-house update path stays byte-identical (no app-fee field).
+          ...(isPlatform ? { application_fee_amount: applicationFeeCents } : {}),
           metadata: {
             restaurant_id,
             restaurant_name: restaurant.name,
@@ -296,7 +325,7 @@ serve(async (req: Request) => {
         amount, // already in cents from frontend
         currency: "usd",
         payment_method_types: ["card"],
-        application_fee_amount: 150, // $1.50 DirectBite fee
+        application_fee_amount: applicationFeeCents, // 150 self/pickup/in-house; 150 + Uber fee for platform
         metadata: {
           restaurant_id,
           restaurant_name: restaurant.name,

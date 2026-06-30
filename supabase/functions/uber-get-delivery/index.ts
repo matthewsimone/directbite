@@ -77,7 +77,8 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "../_shared/uberToken.ts";
-import { getUberApiBase, UberEnvironment } from "../_shared/uberConfig.ts";
+import { getUberApiBase } from "../_shared/uberConfig.ts";
+import { resolveUrlCreds } from "../_shared/uberCreds.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -143,7 +144,7 @@ serve(async (req: Request) => {
       id, delivery_fulfillment_method, uber_delivery_id, uber_status,
       restaurant_id,
       restaurants:restaurant_id (
-        id, uber_customer_id, uber_environment, tablet_email
+        id, uber_customer_id, uber_environment, uber_billing_mode, tablet_email
       )
     `)
     .eq("id", order_id)
@@ -208,11 +209,15 @@ serve(async (req: Request) => {
   }
 
   // -------- GET the delivery from Uber --------
-  const env =
-    (restaurant.uber_environment as UberEnvironment | null) ?? "production";
-  const apiBase = getUberApiBase(env);
+  // Resolve creds via billing mode so platform restaurants use the DirectBite account customer_id + env.
+  const credsResult = resolveUrlCreds(restaurant);
+  if (!credsResult.success) {
+    console.error("[uber-get-delivery] creds resolution failed", credsResult.error, credsResult.detail);
+    return jsonResponse({ success: false, error: credsResult.error }, 400);
+  }
+  const apiBase = getUberApiBase(credsResult.creds.environment);
   const getUrl =
-    `${apiBase}/v1/customers/${restaurant.uber_customer_id}` +
+    `${apiBase}/v1/customers/${credsResult.creds.customer_id}` +
     `/deliveries/${order.uber_delivery_id}`;
 
   let getResp: Response;

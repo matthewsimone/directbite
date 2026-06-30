@@ -104,6 +104,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const UBER_PLATFORM_WEBHOOK_SECRET = Deno.env.get("UBER_PLATFORM_WEBHOOK_SECRET");
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 // PG unique_violation error code; raised when INSERT collides with the
@@ -228,7 +229,7 @@ serve(async (req: Request) => {
     .select(`
       id, uber_status, uber_courier_info, restaurant_id, cancelled_by,
       uber_quoted_fee,
-      restaurants:restaurant_id (uber_webhook_signing_secret)
+      restaurants:restaurant_id (uber_webhook_signing_secret, uber_billing_mode)
     `)
     .eq("uber_delivery_id", deliveryId)
     .maybeSingle();
@@ -256,15 +257,22 @@ serve(async (req: Request) => {
     return ackResponse();
   }
 
-  // Extract the joined webhook signing secret. Supabase's FK join
-  // returns the joined row as a nested object (or null). The TS
-  // generics for embedded selects are awkward, so we cast through `any`.
-  // Single source of truth: uber_webhook_signing_secret (M9b.1). No
-  // fallback to uber_client_secret — a missing signing secret is a
-  // configuration error we surface loudly, not silently paper over.
+  // Extract the joined restaurant fields. Supabase's FK join returns the
+  // joined row as a nested object (or null); the TS generics for embedded
+  // selects are awkward, so we cast through `any`.
   const restaurantRow = (order as any).restaurants;
+  const billingMode: string = restaurantRow?.uber_billing_mode ?? "self";
+
+  // Select the signing secret by billing mode:
+  //   platform -> the DirectBite account's webhook secret (env), since
+  //               platform deliveries are signed by the single platform account.
+  //   self     -> the restaurant's own uber_webhook_signing_secret (M9b.1).
+  // No fallback to uber_client_secret — a missing signing secret is a
+  // configuration error we surface loudly, not silently paper over.
   const signingSecret: string | undefined =
-    restaurantRow?.uber_webhook_signing_secret;
+    billingMode === "platform"
+      ? UBER_PLATFORM_WEBHOOK_SECRET
+      : restaurantRow?.uber_webhook_signing_secret;
   if (!signingSecret) {
     // The restaurant has no webhook signing secret configured. The FK is
     // enforced so the join always produces a row; this means onboarding is

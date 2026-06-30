@@ -96,7 +96,7 @@ serve(async (req: Request) => {
       id, status, delivery_fulfillment_method, uber_status, uber_delivery_id,
       restaurant_id,
       restaurants:restaurant_id (
-        id, uber_customer_id, uber_environment, tablet_email
+        id, uber_customer_id, uber_environment, uber_billing_mode, tablet_email
       )
     `)
     .eq("id", order_id)

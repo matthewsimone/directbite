@@ -49,7 +49,8 @@
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "./uberToken.ts";
-import { getUberApiBase, UberEnvironment } from "./uberConfig.ts";
+import { getUberApiBase } from "./uberConfig.ts";
+import { resolveUrlCreds } from "./uberCreds.ts";
 import { logUber } from "./uberLog.ts";
 
 // Minimal shapes — callers pass the already-fetched order + restaurant rows.
@@ -64,6 +65,7 @@ interface CancelRestaurant {
   id: string;
   uber_customer_id?: string | null;
   uber_environment?: string | null;
+  uber_billing_mode?: string | null;
 }
 
 export type UberCancelResult =
@@ -81,6 +83,7 @@ export type UberCancelResult =
       error:
         | "uber_cancel_failed"
         | "credentials_not_set"
+        | "platform_creds_not_configured"
         | "invalid_credentials"
         | "rate_limited"
         | "uber_unavailable"
@@ -116,21 +119,6 @@ export async function cancelUberDelivery(
     return { success: true, alreadyCanceled: true };
   }
 
-  // Guard: a dispatched order must have an Uber customer_id on its
-  // restaurant. Absence means credentials were cleared between dispatch and
-  // now — surface rather than build a malformed URL.
-  if (!restaurant.uber_customer_id) {
-    console.error(
-      "[uberCancel] restaurant has no uber_customer_id",
-      { order_id: order.id, restaurant_id: restaurant.id }
-    );
-    return {
-      success: false,
-      error: "credentials_not_set",
-      detail: "restaurant.uber_customer_id is missing",
-    };
-  }
-
   // -------- Mint or fetch Uber OAuth token --------
   const tokenResult = await getUberToken(supabase, restaurant.id);
   if (!tokenResult.success) {
@@ -148,11 +136,20 @@ export async function cancelUberDelivery(
   }
 
   // -------- POST to Uber's cancel endpoint --------
-  const env =
-    (restaurant.uber_environment as UberEnvironment | null) ?? "production";
-  const apiBase = getUberApiBase(env);
+  // Resolve creds via billing mode so platform restaurants cancel on the DirectBite account.
+  // (Replaces the former restaurant.uber_customer_id null-guard — the resolver returns
+  // credentials_not_set for self mode with missing creds, and uses env creds for platform mode.)
+  const credsResult = resolveUrlCreds(restaurant);
+  if (!credsResult.success) {
+    return {
+      success: false,
+      error: credsResult.error,
+      detail: credsResult.detail,
+    };
+  }
+  const apiBase = getUberApiBase(credsResult.creds.environment);
   const cancelUrl =
-    `${apiBase}/v1/customers/${restaurant.uber_customer_id}` +
+    `${apiBase}/v1/customers/${credsResult.creds.customer_id}` +
     `/deliveries/${order.uber_delivery_id}/cancel`;
 
   let cancelResp: Response;

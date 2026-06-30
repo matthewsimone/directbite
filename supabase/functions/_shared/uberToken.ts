@@ -26,9 +26,9 @@ import {
   getUberAuthUrl,
   UBER_OAUTH_SCOPE,
   UBER_GRANT_TYPE,
-  UberEnvironment,
 } from "./uberConfig.ts";
 import { logUber } from "./uberLog.ts";
+import { resolveTokenCreds } from "./uberCreds.ts";
 
 const TOKEN_BUFFER_SECONDS = 60;
 
@@ -43,6 +43,7 @@ export type UberTokenResult =
       success: false;
       error:
         | "credentials_not_set"
+        | "platform_creds_not_configured"
         | "invalid_credentials"
         | "rate_limited"
         | "uber_unavailable"
@@ -84,7 +85,7 @@ export async function getUberToken(
   // 2. Read per-restaurant credentials + environment
   const { data: restaurant, error: restReadErr } = await supabase
     .from("restaurants")
-    .select("uber_client_id, uber_client_secret, uber_environment")
+    .select("uber_client_id, uber_client_secret, uber_environment, uber_billing_mode")
     .eq("id", restaurantId)
     .single();
 
@@ -92,18 +93,27 @@ export async function getUberToken(
     return { success: false, error: "db_error", detail: restReadErr.message };
   }
 
-  if (!restaurant.uber_client_id || !restaurant.uber_client_secret) {
-    return { success: false, error: "credentials_not_set" };
+  // Resolve token credentials via billing mode (self = own row creds, platform
+  // = DirectBite account env creds). Token mint needs only client_id +
+  // client_secret — NOT customer_id (which this SELECT doesn't fetch).
+  const credsResult = resolveTokenCreds(restaurant);
+  if (!credsResult.success) {
+    return { success: false, error: credsResult.error, detail: credsResult.detail };
   }
+  const resolvedCreds = credsResult.creds;
+  // Billing mode determines whether a credential failure implicates the
+  // RESTAURANT's own creds (self) or the shared platform account (platform).
+  // We always clear the cached token on failure; we only null the restaurant's
+  // verified-at stamp in self mode (a platform failure isn't the restaurant's fault).
+  const isPlatform = (restaurant.uber_billing_mode ?? "self") === "platform";
 
-  // 3. Mint from Uber
-  const authUrl = getUberAuthUrl(
-    (restaurant.uber_environment as UberEnvironment | null) ?? "production"
-  );
+  // 3. Mint from Uber. (getUberAuthUrl ignores environment; same endpoint for
+  // both — and token creds carry no environment field, so call with default.)
+  const authUrl = getUberAuthUrl();
 
   const body = new URLSearchParams({
-    client_id: restaurant.uber_client_id,
-    client_secret: restaurant.uber_client_secret,
+    client_id: resolvedCreds.client_id,
+    client_secret: resolvedCreds.client_secret,
     grant_type: UBER_GRANT_TYPE,
     scope: UBER_OAUTH_SCOPE,
   });
@@ -139,18 +149,26 @@ export async function getUberToken(
     ms: Date.now() - t0,
   });
 
-  if (mintResp.status === 401) {
-    // Credentials revoked or wrong. Clear cache + verified_at so UI
-    // re-prompts the operator to re-verify.
+  if (mintResp.status === 401 || mintResp.status === 403) {
+    // Credentials revoked, wrong, or blocked (401 = invalid, 403 = blocked
+    // e.g. customer_blocked). Either way the cached token is bad — clear it
+    // so the next call re-mints fresh. Without this, a poisoned token persists
+    // for the full ~30-day TTL.
     await supabase
       .from("uber_oauth_tokens")
       .delete()
       .eq("restaurant_id", restaurantId);
-    await supabase
-      .from("restaurants")
-      .update({ uber_credentials_verified_at: null })
-      .eq("id", restaurantId);
-    return { success: false, error: "invalid_credentials", status: 401 };
+    // Only null verified-at in SELF mode. In platform mode the creds are the
+    // shared DirectBite account env creds, NOT the restaurant's own — nulling
+    // the restaurant's verified-at would mis-attribute a platform-account
+    // problem to the restaurant and wrongly re-prompt the operator.
+    if (!isPlatform) {
+      await supabase
+        .from("restaurants")
+        .update({ uber_credentials_verified_at: null })
+        .eq("id", restaurantId);
+    }
+    return { success: false, error: "invalid_credentials", status: mintResp.status };
   }
 
   if (mintResp.status === 429) {
