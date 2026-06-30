@@ -50,7 +50,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "./uberToken.ts";
 import { getUberApiBase } from "./uberConfig.ts";
-import { resolveUberCreds } from "./uberCreds.ts";
+import { resolveUrlCreds } from "./uberCreds.ts";
 import { logUber } from "./uberLog.ts";
 
 // Minimal shapes — callers pass the already-fetched order + restaurant rows.
@@ -139,7 +139,7 @@ export async function cancelUberDelivery(
   // Resolve creds via billing mode so platform restaurants cancel on the DirectBite account.
   // (Replaces the former restaurant.uber_customer_id null-guard — the resolver returns
   // credentials_not_set for self mode with missing creds, and uses env creds for platform mode.)
-  const credsResult = resolveUberCreds(restaurant);
+  const credsResult = resolveUrlCreds(restaurant);
   if (!credsResult.success) {
     return {
       success: false,

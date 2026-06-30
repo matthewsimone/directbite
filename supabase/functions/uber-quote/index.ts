@@ -39,7 +39,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "../_shared/uberToken.ts";
-import { resolveUberCreds } from "../_shared/uberCreds.ts";
+import { resolveUrlCreds } from "../_shared/uberCreds.ts";
 import { getUberApiBase } from "../_shared/uberConfig.ts";
 import { resolveMode, RestaurantForMode } from "../_shared/uberMode.ts";
 import { applyPassthrough } from "../_shared/uberPassthrough.ts";
@@ -151,7 +151,7 @@ serve(async (req: Request) => {
   // expires field name, id field name) should be verified against sandbox
   // responses during initial smoke testing and adjusted if necessary.
   // Resolve creds via billing mode so platform restaurants use the DirectBite account customer_id + env.
-  const credsResult = resolveUberCreds(restaurant);
+  const credsResult = resolveUrlCreds(restaurant);
   if (!credsResult.success) {
     console.error("[uber-quote] creds resolution failed", credsResult.error, credsResult.detail);
     return jsonResponse({ success: false, error: credsResult.error });

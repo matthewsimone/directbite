@@ -31,7 +31,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { getUberToken } from "./uberToken.ts";
 import { getUberApiBase } from "./uberConfig.ts";
-import { resolveUberCreds } from "./uberCreds.ts";
+import { resolveUrlCreds } from "./uberCreds.ts";
 import { applyPassthrough } from "./uberPassthrough.ts";
 import { logUber } from "./uberLog.ts";
 
@@ -156,7 +156,7 @@ export async function createUberDelivery(
   // -------- Resolve credentials via billing mode --------
   // self = restaurant's own row creds; platform = DirectBite account env creds (env forced production).
   // Used for BOTH the refresh-quote path and the create-delivery path below.
-  const credsResult = resolveUberCreds(restaurant);
+  const credsResult = resolveUrlCreds(restaurant);
   if (!credsResult.success) {
     return make({
       success: false,

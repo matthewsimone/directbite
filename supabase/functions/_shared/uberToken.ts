@@ -28,7 +28,7 @@ import {
   UBER_GRANT_TYPE,
 } from "./uberConfig.ts";
 import { logUber } from "./uberLog.ts";
-import { resolveUberCreds } from "./uberCreds.ts";
+import { resolveTokenCreds } from "./uberCreds.ts";
 
 const TOKEN_BUFFER_SECONDS = 60;
 
@@ -93,8 +93,10 @@ export async function getUberToken(
     return { success: false, error: "db_error", detail: restReadErr.message };
   }
 
-  // Resolve credentials via billing mode (self = own row creds, platform = DirectBite account env creds).
-  const credsResult = resolveUberCreds(restaurant);
+  // Resolve token credentials via billing mode (self = own row creds, platform
+  // = DirectBite account env creds). Token mint needs only client_id +
+  // client_secret — NOT customer_id (which this SELECT doesn't fetch).
+  const credsResult = resolveTokenCreds(restaurant);
   if (!credsResult.success) {
     return { success: false, error: credsResult.error, detail: credsResult.detail };
   }
@@ -105,8 +107,9 @@ export async function getUberToken(
   // verified-at stamp in self mode (a platform failure isn't the restaurant's fault).
   const isPlatform = (restaurant.uber_billing_mode ?? "self") === "platform";
 
-  // 3. Mint from Uber. (getUberAuthUrl ignores environment; same endpoint for both.)
-  const authUrl = getUberAuthUrl(resolvedCreds.environment);
+  // 3. Mint from Uber. (getUberAuthUrl ignores environment; same endpoint for
+  // both — and token creds carry no environment field, so call with default.)
+  const authUrl = getUberAuthUrl();
 
   const body = new URLSearchParams({
     client_id: resolvedCreds.client_id,
