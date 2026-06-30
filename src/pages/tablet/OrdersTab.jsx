@@ -929,6 +929,9 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               <p className="font-bold text-base">
                 {item.quantity}x {item.item_name}{item.size_name ? ` (${item.size_name})` : ''}
               </p>
+              {Number(order.discount_percentage) > 0 && item.discount_exempt === true && (
+                <p className="pl-6 text-[11px] text-gray-400">*already discounted*</p>
+              )}
               {item.order_item_toppings?.map(t => (
                 <p key={t.id} className="pl-6 text-sm text-gray-600">
                   {t.placement_type === 'addon'
