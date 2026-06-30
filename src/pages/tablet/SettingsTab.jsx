@@ -635,6 +635,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const isUberVerified = !!restaurant?.uber_credentials_verified_at
   const hasCredentials = !!restaurant?.uber_customer_id
   const showWizard = showWizardLocally || (hasCredentials && !isUberVerified)
+  const isPlatform = (restaurant?.uber_billing_mode ?? 'self') === 'platform'
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -920,7 +921,186 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         </Section>
 
         {/* Uber Direct setup card */}
-        {isUberVerified ? (
+        {isPlatform ? (
+          /* Platform mode — DirectBite account handles dispatch; no per-restaurant credentials */
+          <Section
+            title="Uber Direct"
+            onSave={saveUberSettings}
+            saving={savingUberSettings}
+            saved={savedUberSettings}
+          >
+            {/* Neutral status — no verified-at banner (platform restaurants have no own creds) */}
+            <div className="flex items-center gap-2 text-green-700">
+              <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              <span className="font-medium">Uber Direct available</span>
+            </div>
+            <p className="text-xs text-gray-500 italic">
+              Powered by DirectBite — no setup required. Toggle on, set your minimum and cost sharing, and save.
+            </p>
+
+            {/* Uber Direct delivery minimum — first option in this section */}
+            {(mode === 'uber_direct' || mode === 'both') && (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Uber Direct Delivery Minimum</p>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input type="number" min="0" step="0.01" value={deliveryMinimumUD}
+                    onChange={e => setDeliveryMinimumUD(e.target.value)}
+                    className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                </div>
+              </div>
+            )}
+
+            {/* Delivery Mode — 3 radio buttons */}
+            <div className="space-y-2 pt-2 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Delivery Mode</p>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'in_house'}
+                  onChange={() => setMode('in_house')}
+                  className="accent-[#16A34A] w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">In-House Only</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'uber_direct'}
+                  onChange={() => setMode('uber_direct')}
+                  className="accent-[#16A34A] w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">Uber Direct Only</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'both'}
+                  onChange={() => setMode('both')}
+                  className="accent-[#16A34A] w-4 h-4"
+                />
+                <span className="text-sm text-gray-700">Both — Schedule + Real-Time Override</span>
+              </label>
+            </div>
+
+            {/* Cost Sharing — passthrough policy. Only relevant when Uber
+                fulfills (uber_direct / both); irrelevant for in_house. */}
+            {mode !== 'in_house' && (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost Sharing</p>
+                {PASSTHROUGH_OPTIONS.map(opt => (
+                  <label key={opt.mode} className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="passthroughMode"
+                      checked={passthroughMode === opt.mode}
+                      onChange={() => setPassthroughMode(opt.mode)}
+                      className="accent-[#16A34A] w-4 h-4 mt-0.5"
+                    />
+                    <span className="text-sm text-gray-700">
+                      <span className="font-medium">{opt.title}</span>
+                      <span className="block text-xs text-gray-500">{opt.helper}</span>
+                    </span>
+                  </label>
+                ))}
+
+                {/* Mode-dependent value input */}
+                {passthroughMode === 'split' && (
+                  <div className="relative w-32">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={passthroughValue}
+                      onChange={e => setPassthroughValue(e.target.value)}
+                      className="w-full h-10 px-3 pr-8 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                  </div>
+                )}
+                {(passthroughMode === 'restaurant_cap' || passthroughMode === 'customer_cap') && (
+                  <div className="relative w-32">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={passthroughValue}
+                      onChange={e => setPassthroughValue(e.target.value)}
+                      className="w-full h-10 pl-7 pr-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                    />
+                  </div>
+                )}
+
+                {/* Live preview against the demo Uber fee */}
+                {(() => {
+                  const p = passthroughPreview(passthroughMode, passthroughValue)
+                  return (
+                    <p className="text-xs text-gray-500 pt-1">
+                      On a <span className="italic">$7.99</span> fee: customer pays ${p.customer.toFixed(2)}, you absorb ${p.restaurant.toFixed(2)}
+                    </p>
+                  )
+                })()}
+              </div>
+            )}
+
+            {/* Real-Time Override + Schedule — only when mode === 'both' */}
+            {mode === 'both' && (
+              <>
+                <div className="space-y-2 pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-gray-700">Uber Direct Active</span>
+                    <Toggle value={uberActive} onChange={setUberActive} />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Turn ON when your drivers are unavailable. This overrides the schedule below.
+                  </p>
+                </div>
+
+                <div className="space-y-3 pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schedule</p>
+                  {[0, 1, 2, 3, 4, 5, 6].map(dow => {
+                    const day = schedule[String(dow)] || { enabled: false }
+                    return (
+                      <div key={dow} className="flex items-center gap-2">
+                        <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[dow].slice(0, 3)}</span>
+                        <Toggle
+                          value={day.enabled}
+                          onChange={val => updateScheduleDay(dow, 'enabled', val)}
+                        />
+                        {day.enabled ? (
+                          <div className="flex items-center gap-1 flex-1 min-w-0">
+                            <input
+                              type="time"
+                              value={day.start || '11:00'}
+                              onChange={e => updateScheduleDay(dow, 'start', e.target.value)}
+                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                            />
+                            <span className="text-gray-400 text-xs shrink-0">to</span>
+                            <input
+                              type="time"
+                              value={day.end || '22:00'}
+                              onChange={e => updateScheduleDay(dow, 'end', e.target.value)}
+                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">Closed</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </Section>
+        ) : isUberVerified ? (
           /* M5b — full Uber Direct configuration UI */
           <Section
             title="Uber Direct"
