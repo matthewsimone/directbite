@@ -7,6 +7,7 @@ import RestaurantsTab from './RestaurantsTab'
 import RevenueTab from './RevenueTab'
 import MenuManagementTab from './MenuManagementTab'
 import OnboardingTab from './OnboardingTab'
+import ReconciliationTab from './ReconciliationTab'
 
 const TABS = [
   { key: 'orders', label: 'Orders', short: 'Orders', icon: OrdersIcon },
@@ -14,6 +15,7 @@ const TABS = [
   { key: 'revenue', label: 'Revenue', short: 'Revenue', icon: RevenueIcon },
   { key: 'menu', label: 'Menu Management', short: 'Menu', icon: MenuIcon },
   { key: 'onboarding', label: 'Onboarding', short: 'New', icon: OnboardingIcon },
+  { key: 'reconciliation', label: 'Reconciliation', short: 'Recon', icon: RevenueIcon },
 ]
 
 export default function AdminPage() {
@@ -103,6 +105,7 @@ export default function AdminPage() {
           {activeTab === 'revenue' && <RevenueTab />}
           {activeTab === 'menu' && <MenuManagementTab />}
           {activeTab === 'onboarding' && <OnboardingTab />}
+          {activeTab === 'reconciliation' && <ReconciliationTab />}
         </main>
 
         {/* Mobile bottom nav */}
