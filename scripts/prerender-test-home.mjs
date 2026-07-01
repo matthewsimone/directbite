@@ -211,6 +211,7 @@ async function main() {
         { location: ROUTE_MENU },
         React.createElement(MenuStatic, {
           restaurant,
+          hours: hoursData || [],
           categories: categories || [],
           items: menuItems || [],
           lowestPrices,

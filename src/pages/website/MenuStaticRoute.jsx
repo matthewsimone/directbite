@@ -11,12 +11,13 @@ import MenuStatic from './MenuStatic'
 // feeds the pure, prerender-safe MenuStatic. The prerendered
 // dist/{slug}/menu/index.html stays the crawler / direct-hit path; both render
 // the same MenuStatic component.
-export default function MenuStaticRoute({ restaurant: propRestaurant }) {
-  // Custom-domain context: parent passes restaurant. Main domain: read slug
-  // from the URL and fetch via useRestaurant (same seam as HomePage).
+export default function MenuStaticRoute({ restaurant: propRestaurant, hours: propHours }) {
+  // Custom-domain context: parent passes restaurant/hours. Main domain: read
+  // slug from the URL and fetch via useRestaurant (same seam as HomePage).
   const { slug: paramSlug } = useParams()
   const hook = useRestaurant(propRestaurant ? null : paramSlug)
   const restaurant = propRestaurant || hook.restaurant
+  const hours = propHours || hook.hours
   const loading = propRestaurant ? false : hook.loading
   const error = propRestaurant ? null : hook.error
 
@@ -71,6 +72,7 @@ export default function MenuStaticRoute({ restaurant: propRestaurant }) {
   return (
     <MenuStatic
       restaurant={restaurant}
+      hours={hours}
       categories={categories}
       items={items}
       lowestPrices={lowestPrices}
