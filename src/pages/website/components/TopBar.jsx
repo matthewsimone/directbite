@@ -81,6 +81,14 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
         >
           Order
         </OrderLink>
+        <OrderLink
+          slug={restaurant.slug}
+          suffix="/menu"
+          onClick={onClose}
+          className="block py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
+        >
+          Menu
+        </OrderLink>
         {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&
           restaurant.website_links.map(link => (
             <Link
