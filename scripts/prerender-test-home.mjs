@@ -47,8 +47,10 @@ import { StaticRouter } from 'react-router-dom'
 const TEST_SLUG = 'test'
 const TEST_ID = '00000000-0000-0000-0000-000000000001'
 const ROUTE = `/${TEST_SLUG}/home`
+const ROUTE_MENU = `/${TEST_SLUG}/menu`
 const SHELL = path.resolve('dist/index.html')
 const OUT_DIR = path.resolve('dist', TEST_SLUG, 'home')
+const OUT_DIR_MENU = path.resolve('dist', TEST_SLUG, 'menu')
 const SITE_NAME = 'DirectBite'
 
 // HTML-escape for injected head values — mirrored from api/og-html.js so a
@@ -116,8 +118,10 @@ async function main() {
     // Load ONLY the project files through Vite (JSX + import.meta.env transform).
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
     const { buildSeoHead } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
+    const { parseAddress } = await vite.ssrLoadModule('/src/pages/website/utils/address.js')
     const HomePageMod = await vite.ssrLoadModule('/src/pages/website/HomePage.jsx')
     const HomePage = HomePageMod.default
+    const MenuStatic = (await vite.ssrLoadModule('/src/pages/website/MenuStatic.jsx')).default
 
     // ---- Build-time data fetch (Test Pizza only) ----
     const supabase = getBuildClient()
@@ -159,6 +163,82 @@ async function main() {
     await fs.mkdir(OUT_DIR, { recursive: true })
     await fs.writeFile(path.join(OUT_DIR, 'index.html'), out, 'utf-8')
     console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (${out.length} bytes, root html ${appHtml.length} bytes)`)
+
+    // ======================================================================
+    // /test/menu — static, crawlable full menu (no cart / tabs / search).
+    // ======================================================================
+    const { data: categories, error: cErr } = await supabase
+      .from('menu_categories')
+      .select('id, name, sort_order')
+      .eq('restaurant_id', restaurant.id)
+      .order('sort_order')
+    if (cErr) throw new Error(`menu_categories fetch failed: ${cErr.message}`)
+
+    const { data: menuItems, error: iErr } = await supabase
+      .from('menu_items')
+      .select('*')
+      .eq('restaurant_id', restaurant.id)
+      .order('sort_order')
+    if (iErr) throw new Error(`menu_items fetch failed: ${iErr.message}`)
+
+    // item_sizes has no restaurant_id column — filter via inner-join on
+    // menu_items, exactly like useMenu, so we don't hit PostgREST's 1000-row
+    // default cap and silently drop sizes for high-row-index restaurants.
+    const { data: sizes, error: sErr } = await supabase
+      .from('item_sizes')
+      .select('*, menu_items!inner(restaurant_id)')
+      .eq('menu_items.restaurant_id', restaurant.id)
+      .order('sort_order')
+    if (sErr) throw new Error(`item_sizes fetch failed: ${sErr.message}`)
+
+    // Replicate useMenu.getLowestPrice EXACTLY: sizes for the item (matched by
+    // s.item_id), lowest of Number(price), or null when the item has no sizes.
+    // Promotion is deliberately NOT applied — the static file is cached, so a
+    // time-gated/toggled promo would go stale, and an async client promo fetch
+    // (initial null) would hydration-mismatch baked-in discounted prices.
+    // Static menu shows LIST prices only.
+    const lowestPrices = {}
+    for (const item of (menuItems || [])) {
+      const itemSizes = (sizes || []).filter((s) => s.item_id === item.id)
+      lowestPrices[item.id] = itemSizes.length
+        ? Math.min(...itemSizes.map((s) => Number(s.price)))
+        : null
+    }
+
+    const menuHtml = renderToString(
+      React.createElement(
+        StaticRouter,
+        { location: ROUTE_MENU },
+        React.createElement(MenuStatic, {
+          restaurant,
+          categories: categories || [],
+          items: menuItems || [],
+          lowestPrices,
+        })
+      )
+    )
+
+    // Menu-specific <head>: custom title, reuse home's description/image,
+    // canonical → /{slug}/menu (or custom-domain /menu).
+    const { city, state } = parseAddress(restaurant.address)
+    const cuisine = restaurant.cuisine || 'Pizza'
+    const menuSeo = {
+      title:
+        city && state
+          ? `Menu | ${restaurant.name} — Best ${cuisine} in ${city}, ${state}`
+          : `Menu | ${restaurant.name}`,
+      description: seo.description,
+      canonical: restaurant.custom_domain
+        ? `https://${restaurant.custom_domain}/menu`
+        : `https://directbite.co/${restaurant.slug}/menu`,
+      image: seo.image,
+    }
+
+    let menuOut = shell.replace('<div id="root"></div>', `<div id="root">${menuHtml}</div>`)
+    menuOut = injectHead(menuOut, menuSeo)
+    await fs.mkdir(OUT_DIR_MENU, { recursive: true })
+    await fs.writeFile(path.join(OUT_DIR_MENU, 'index.html'), menuOut, 'utf-8')
+    console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR_MENU, 'index.html'))} (${menuOut.length} bytes, root html ${menuHtml.length} bytes, ${Object.keys(lowestPrices).length} items)`)
   } finally {
     await vite.close()
   }
