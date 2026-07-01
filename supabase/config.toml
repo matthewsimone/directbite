@@ -164,3 +164,6 @@ verify_jwt = false
 
 [functions.admin-create-restaurant]
 verify_jwt = true
+
+[functions.stripe-settlement-report]
+verify_jwt = false
