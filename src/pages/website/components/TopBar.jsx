@@ -193,7 +193,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, 
             </span>
           )}
           <div className="flex items-center gap-5">
-            <OrderLink slug={restaurant.slug} className={linkCls}>
+            <OrderLink slug={restaurant.slug} suffix="/menu" className={linkCls}>
               Menu
             </OrderLink>
             {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useRestaurant } from '../../hooks/useRestaurant'
@@ -13,9 +13,56 @@ import PromotionBanner from '../../components/PromotionBanner'
 import CategoryTabs from '../../components/CategoryTabs'
 import MenuSearch from '../../components/MenuSearch'
 import MenuItemCard from '../../components/MenuItemCard'
-import ItemModal from '../../components/ItemModal'
 import CartButton from '../../components/CartButton'
-import CartSheet from '../../components/CartSheet'
+
+// Interaction-gated — kept out of the initial bundle via React.lazy. ItemModal
+// mounts on item tap (or ?item= deep-link); CartSheet mounts when the cart
+// opens. Neither is first-paint, so a null Suspense fallback is fine.
+const ItemModal = lazy(() => import('../../components/ItemModal'))
+const CartSheet = lazy(() => import('../../components/CartSheet'))
+
+// Progressive-load placeholders — shown so first paint has page structure
+// instead of a full-screen spinner. Mirror the real hero/card/section layout to
+// avoid a layout shift when data arrives.
+function HeroSkeleton() {
+  return <div className="h-56 md:h-64 bg-gray-100 animate-pulse" />
+}
+
+function MenuItemCardSkeleton() {
+  return (
+    <div
+      className="rounded-xl border border-gray-200 bg-white overflow-hidden animate-pulse"
+      style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}
+    >
+      <div className="flex">
+        <div className="flex-1 min-w-0 p-4 space-y-2">
+          <div className="h-4 w-2/3 bg-gray-200 rounded" />
+          <div className="h-3 w-full bg-gray-100 rounded" />
+          <div className="h-3 w-1/2 bg-gray-100 rounded" />
+          <div className="h-4 w-16 bg-gray-200 rounded mt-2" />
+        </div>
+        <div className="shrink-0 w-[110px] bg-gray-100" />
+      </div>
+    </div>
+  )
+}
+
+function MenuSkeleton() {
+  return (
+    <div className="max-w-[1100px] mx-auto px-6 sm:px-8">
+      {[0, 1].map(s => (
+        <section key={s} className="mb-8">
+          <div className="h-6 w-40 bg-gray-200 rounded mt-8 mb-3 animate-pulse" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <MenuItemCardSkeleton key={i} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
 
 export default function MenuPage() {
   const { slug } = useParams()
@@ -205,15 +252,9 @@ export default function MenuPage() {
     if (match) setSelectedItem(match)
   }, [menuLoading, items])
 
-  if (restLoading || menuLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-3 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
-  if (error || !restaurant) {
+  // Show not-found only once the restaurant fetch has settled — during the
+  // initial load we render the progressive skeleton below instead of blocking.
+  if (!restLoading && (error || !restaurant)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Restaurant not found</h1>
@@ -224,9 +265,13 @@ export default function MenuPage() {
 
   return (
     <div className="min-h-screen bg-white pb-24">
-      <PromotionBanner promotion={promotion} />
-      <HeroSection restaurant={restaurant} isOpen={isOpen} nextOpenTime={nextOpenTime} />
-      {!isOpen && nextSlotLabel && (
+      {restaurant && <PromotionBanner promotion={promotion} />}
+      {restaurant ? (
+        <HeroSection restaurant={restaurant} isOpen={isOpen} nextOpenTime={nextOpenTime} />
+      ) : (
+        <HeroSkeleton />
+      )}
+      {restaurant && !isOpen && nextSlotLabel && (
         <div className="bg-amber-50 border-y border-amber-200 px-6 py-4">
           <div className="max-w-[1100px] mx-auto flex items-start gap-3 text-amber-900">
             <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,60 +288,18 @@ export default function MenuPage() {
           </div>
         </div>
       )}
-      {/* Popular Items section */}
-      {!searchQuery && items.some(i => i.is_popular && i.is_available) && (
-        <div className="max-w-[1100px] mx-auto px-6 sm:px-8 pt-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-3">Popular Items</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
-            {items.filter(i => i.is_popular && i.is_available).map(item => (
-              <MenuItemCard
-                key={`popular-${item.id}`}
-                item={item}
-                lowestPrice={getLowestPrice(item.id)}
-                promotion={promotion}
-                onClick={() => handleItemClick(item)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      <CategoryTabs
-        categories={categories}
-        activeId={activeCategory}
-        onSelect={handleCategorySelect}
-      />
-      <MenuSearch value={searchQuery} onChange={setSearchQuery} />
-
-      {/* Menu sections */}
-      <div className="max-w-[1100px] mx-auto px-6 sm:px-8">
-        {categories.map(cat => {
-          const catItems = filterItems(getItemsByCategory(cat.id))
-          if (searchQuery && catItems.length === 0) return null
-
-          return (
-            <section
-              key={cat.id}
-              ref={el => (sectionRefs.current[cat.id] = el)}
-              data-category-id={cat.id}
-              className="mb-8"
-            >
-              <h2 className="text-xl font-bold text-gray-900 mt-8 mb-3">{cat.name}</h2>
-              {promotion && cat.discount_exempt === true && (
-                <div className="-mt-2 mb-3">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 text-[#16A34A] text-xs font-medium px-2 py-0.5">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-                      <line x1="7" y1="7" x2="7.01" y2="7"/>
-                    </svg>
-                    Already discounted
-                  </span>
-                </div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {catItems.map(item => (
+      {menuLoading ? (
+        <MenuSkeleton />
+      ) : (
+        <>
+          {/* Popular Items section */}
+          {!searchQuery && items.some(i => i.is_popular && i.is_available) && (
+            <div className="max-w-[1100px] mx-auto px-6 sm:px-8 pt-6">
+              <h2 className="text-xl font-bold text-gray-900 mb-3">Popular Items</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-2">
+                {items.filter(i => i.is_popular && i.is_available).map(item => (
                   <MenuItemCard
-                    key={item.id}
+                    key={`popular-${item.id}`}
                     item={item}
                     lowestPrice={getLowestPrice(item.id)}
                     promotion={promotion}
@@ -304,46 +307,100 @@ export default function MenuPage() {
                   />
                 ))}
               </div>
-              {catItems.length === 0 && !searchQuery && (
-                <p className="text-gray-400 text-sm py-4">No items in this category yet.</p>
-              )}
-            </section>
-          )
-        })}
+            </div>
+          )}
 
-        {searchQuery && categories.every(cat => filterItems(getItemsByCategory(cat.id)).length === 0) && (
-          <p className="text-center text-gray-400 py-12">No items match "{searchQuery}"</p>
-        )}
-      </div>
+          <CategoryTabs
+            categories={categories}
+            activeId={activeCategory}
+            onSelect={handleCategorySelect}
+          />
+          <MenuSearch value={searchQuery} onChange={setSearchQuery} />
+
+          {/* Menu sections */}
+          <div className="max-w-[1100px] mx-auto px-6 sm:px-8">
+            {categories.map(cat => {
+              const catItems = filterItems(getItemsByCategory(cat.id))
+              if (searchQuery && catItems.length === 0) return null
+
+              return (
+                <section
+                  key={cat.id}
+                  ref={el => (sectionRefs.current[cat.id] = el)}
+                  data-category-id={cat.id}
+                  className="mb-8"
+                >
+                  <h2 className="text-xl font-bold text-gray-900 mt-8 mb-3">{cat.name}</h2>
+                  {promotion && cat.discount_exempt === true && (
+                    <div className="-mt-2 mb-3">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 text-[#16A34A] text-xs font-medium px-2 py-0.5">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                          <line x1="7" y1="7" x2="7.01" y2="7"/>
+                        </svg>
+                        Already discounted
+                      </span>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {catItems.map(item => (
+                      <MenuItemCard
+                        key={item.id}
+                        item={item}
+                        lowestPrice={getLowestPrice(item.id)}
+                        promotion={promotion}
+                        onClick={() => handleItemClick(item)}
+                      />
+                    ))}
+                  </div>
+                  {catItems.length === 0 && !searchQuery && (
+                    <p className="text-gray-400 text-sm py-4">No items in this category yet.</p>
+                  )}
+                </section>
+              )
+            })}
+
+            {searchQuery && categories.every(cat => filterItems(getItemsByCategory(cat.id)).length === 0) && (
+              <p className="text-center text-gray-400 py-12">No items match "{searchQuery}"</p>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Cart button */}
-      <CartButton itemCount={itemCount} total={subtotal} onClick={() => setShowCart(true)} />
+      {restaurant && (
+        <CartButton itemCount={itemCount} total={subtotal} onClick={() => setShowCart(true)} />
+      )}
 
       {/* Item modal */}
       {selectedItem && (
-        <ItemModal
-          item={selectedItem}
-          sizes={getSizesForItem(selectedItem.id)}
-          toppingGroupsForItem={getToppingGroupsForItem(selectedItem.id)}
-          getToppingsForGroup={getToppingsForGroup}
-          promotion={promotion}
-          onAddToCart={handleAddToCart}
-          onClose={() => {
-            setSelectedItem(null)
-            if (new URLSearchParams(window.location.search).has('item')) {
-              window.history.replaceState({}, '', `/${slug}`)
-            }
-          }}
-        />
+        <Suspense fallback={null}>
+          <ItemModal
+            item={selectedItem}
+            sizes={getSizesForItem(selectedItem.id)}
+            toppingGroupsForItem={getToppingGroupsForItem(selectedItem.id)}
+            getToppingsForGroup={getToppingsForGroup}
+            promotion={promotion}
+            onAddToCart={handleAddToCart}
+            onClose={() => {
+              setSelectedItem(null)
+              if (new URLSearchParams(window.location.search).has('item')) {
+                window.history.replaceState({}, '', `/${slug}`)
+              }
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Cart sheet */}
       {showCart && (
-        <CartSheet
-          onClose={() => setShowCart(false)}
-          onCheckout={handleCheckout}
-          promotion={promotion}
-        />
+        <Suspense fallback={null}>
+          <CartSheet
+            onClose={() => setShowCart(false)}
+            onCheckout={handleCheckout}
+            promotion={promotion}
+          />
+        </Suspense>
       )}
     </div>
   )

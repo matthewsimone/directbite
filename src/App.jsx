@@ -12,6 +12,7 @@ import AdminPage from './pages/admin/AdminPage'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import HomePage from './pages/website/HomePage'
+import MenuStaticRoute from './pages/website/MenuStaticRoute'
 import CustomDomainShell from './CustomDomainShell'
 
 // Dev-only diagnostic route. Lazy-loaded so its `@stripe/stripe-js`
@@ -38,6 +39,7 @@ function MainRoutes() {
       <Route path="/admin/login" element={<AdminPage />} />
       <Route path="/:slug" element={<MenuPage />} />
       <Route path="/:slug/home" element={<HomePage />} />
+      <Route path="/:slug/menu" element={<MenuStaticRoute />} />
       <Route path="/:slug/checkout" element={<CheckoutPage />} />
       <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
       <Route path="/:slug/tablet" element={<TabletPage />} />
