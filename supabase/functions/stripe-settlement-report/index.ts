@@ -1,8 +1,8 @@
 // stripe-settlement-report — real settlement data for a restaurant's connected
-// Stripe account over a date range. Read-only (no Stripe/DB writes). Returns
-// BOTH an activity view (by transaction, in the range) and a payout view
-// (grouped by settlement + a pending bucket). All amounts are Stripe-native
-// integer cents — NO conversion.
+// Stripe account over a date range. Read-only (no Stripe/DB writes). Returns an
+// activity view (order breakdown + charge totals for the SELECTED range), an
+// orders breakdown (from the DB), and a payout view (deposits + their sales
+// window). All amounts are Stripe-native / DB integer cents — NO conversion.
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import Stripe from "https://esm.sh/stripe@17.7.0";
@@ -19,6 +19,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Payouts settle ~2 days after each order, so a payout depositing inside the
+// selected range can be composed of charges created up to ~3 weeks earlier.
+// Widen the balance-transaction pull back by 21 days so payout grouping +
+// per-payout sales windows see those earlier charges. Activity totals are
+// still restricted to the SELECTED range below.
+const WIDE_LOOKBACK_SECONDS = 21 * 86400;
+
 // Sum the amounts of a balance transaction's fee_details entries of one type.
 function sumFeeDetails(bt: any, feeType: string): number {
   const arr = bt.fee_details || [];
@@ -27,6 +34,11 @@ function sumFeeDetails(bt: any, feeType: string): number {
     if (fd.type === feeType) cents += fd.amount;
   }
   return cents;
+}
+
+// Dollars (possibly null) → integer cents.
+function dollarsToCents(v: any): number {
+  return Math.round(Number(v || 0) * 100);
 }
 
 serve(async (req: Request) => {
@@ -99,18 +111,20 @@ serve(async (req: Request) => {
     }
     const stripeAccount = restaurant.stripe_account_id;
 
-    // ISO date → unix seconds. endUnix adds a full day so `lte` INCLUDES the
-    // whole final calendar day (without +86400, the entire end date is dropped).
-    const startUnix = Math.floor(new Date(start).getTime() / 1000);
-    const endUnix = Math.floor(new Date(end).getTime() / 1000) + 86400;
+    // --- Two windows. SELECTED is the user's range (end + a full day so `lte`
+    //     includes the whole final calendar day). WIDE reaches 21 days back for
+    //     payout grouping only. ---
+    const selectedStartUnix = Math.floor(new Date(start).getTime() / 1000);
+    const selectedEndUnix = Math.floor(new Date(end).getTime() / 1000) + 86400;
+    const wideStartUnix = selectedStartUnix - WIDE_LOOKBACK_SECONDS;
 
-    // --- Balance transactions (filter on `created`, paginate, cap 10 pages) ---
+    // --- Balance transactions: pull the WIDE set (paginate, cap 10 pages) ---
     const rawBt: any[] = [];
     let startingAfter: string | undefined = undefined;
     for (let page = 0; page < 10; page++) {
       const resp = await stripe.balanceTransactions.list(
         {
-          created: { gte: startUnix, lte: endUnix },
+          created: { gte: wideStartUnix, lte: selectedEndUnix },
           limit: 100,
           expand: ["data.source"],
           ...(startingAfter ? { starting_after: startingAfter } : {}),
@@ -122,20 +136,25 @@ serve(async (req: Request) => {
       startingAfter = resp.data[resp.data.length - 1].id;
     }
 
-    // --- Payouts (single page of 100; report scope) ---
+    // --- Payouts deposited in the SELECTED window ---
     const payoutResp = await stripe.payouts.list(
-      { created: { gte: startUnix, lte: endUnix }, limit: 100 },
+      { created: { gte: selectedStartUnix, lte: selectedEndUnix }, limit: 100 },
       { stripeAccount }
     );
 
-    // --- Classify by type. Payout rows (type==='payout') are the deposit
-    //     itself and are EXCLUDED from activity sums. ---
-    const charges = rawBt.filter((bt: any) => bt.type === "charge");
-    const refunds = rawBt.filter((bt: any) => bt.type === "refund");
-    const activityRows = [...charges, ...refunds];
+    // --- Classify. WIDE rows feed payout grouping; SELECTED rows feed activity
+    //     totals + the per-charge detail (so widened rows can't inflate). ---
+    const wideCharges = rawBt.filter((bt: any) => bt.type === "charge");
+    const wideRefunds = rawBt.filter((bt: any) => bt.type === "refund");
+    const wideActivityRows = [...wideCharges, ...wideRefunds];
 
-    // --- Per-charge detail (frontend drill-down + high-fee/foreign-card flag
-    //     when stripe_fee / gross > 0.04). ---
+    const inSelected = (bt: any) =>
+      bt.created >= selectedStartUnix && bt.created <= selectedEndUnix;
+    const charges = wideCharges.filter(inSelected);
+    const refunds = wideRefunds.filter(inSelected);
+    const selectedActivityRows = [...charges, ...refunds];
+
+    // --- Per-charge detail (SELECTED). Foreign-card flagging is done client-side. ---
     const charge_detail = charges.map((bt: any) => {
       const source = bt.source; // expanded charge object (or null)
       return {
@@ -150,7 +169,7 @@ serve(async (req: Request) => {
       };
     });
 
-    // --- ACTIVITY VIEW (by transaction, in range; integer cents) ---
+    // --- ACTIVITY VIEW (SELECTED; integer cents) ---
     const gross_charged = charges.reduce((s: number, bt: any) => s + bt.amount, 0);
     const stripe_fees_actual = charges.reduce(
       (s: number, bt: any) => s + sumFeeDetails(bt, "stripe_fee"),
@@ -175,7 +194,60 @@ serve(async (req: Request) => {
       net_activity,
     };
 
-    // --- PAYOUT VIEW (grouped by settlement) ---
+    // --- ORDERS BREAKDOWN (DB; SELECTED range, trust created_at). ---
+    const selStartIso = new Date(selectedStartUnix * 1000).toISOString();
+    const selEndIso = new Date(selectedEndUnix * 1000).toISOString();
+    const { data: ordersData, error: ordersErr } = await supabase
+      .from("orders")
+      .select(
+        "status, subtotal, discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee"
+      )
+      .eq("restaurant_id", restaurant_id)
+      .gte("created_at", selStartIso)
+      .lte("created_at", selEndIso);
+    if (ordersErr) throw new Error(`orders fetch failed: ${ordersErr.message}`);
+
+    const orders = ordersData || [];
+    const nonCancelled = orders.filter((o: any) => o.status !== "cancelled");
+    const cancelledOrders = orders.filter((o: any) => o.status === "cancelled");
+    const udOrders = nonCancelled.filter(
+      (o: any) => o.delivery_fulfillment_method === "uber_direct"
+    );
+
+    const food_cents = nonCancelled.reduce(
+      (s: number, o: any) =>
+        s + Math.round((Number(o.subtotal || 0) - Number(o.discount_amount || 0)) * 100),
+      0
+    );
+    const tax_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.tax_amount), 0);
+    const tips_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.tip_amount), 0);
+    const delivery_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.delivery_fee), 0);
+
+    const ud_uber_charged_cents = udOrders.reduce(
+      (s: number, o: any) => s + dollarsToCents(o.uber_actual_fee),
+      0
+    );
+    const ud_customer_paid_cents = udOrders.reduce(
+      (s: number, o: any) => s + dollarsToCents(o.delivery_fee),
+      0
+    );
+
+    const breakdown = {
+      food_cents,
+      tax_cents,
+      tips_cents,
+      delivery_cents,
+      completed_count: nonCancelled.length,
+      cancelled_count: cancelledOrders.length,
+      ud_count: udOrders.length,
+      ud_uber_charged_cents,
+      ud_customer_paid_cents,
+      ud_net_cost_cents: ud_uber_charged_cents - ud_customer_paid_cents,
+    };
+
+    // --- PAYOUT VIEW (grouped by settlement; WIDE rows). Each group also
+    //     reports its deposit date + the sales window (min/max created) of its
+    //     constituent charges. `ties` retained but unused by the UI. ---
     const payouts = (payoutResp.data || []).map((p: any) => ({
       id: p.id,
       amount: p.amount,
@@ -183,31 +255,29 @@ serve(async (req: Request) => {
       status: p.status,
     }));
 
-    // Group activity rows into each payout. Prefer bt.payout when populated;
-    // otherwise fall back to matching SETTLED rows (status==='available') by
-    // available_on === payout.arrival_date (the probe showed bt.payout was null
-    // even for settled rows while available_on was set). grouped_net should tie
-    // to payout.amount — the penny-proof.
     const payout_groups = payouts.map((p: any) => {
-      let rows = activityRows.filter((bt: any) => bt.payout === p.id);
+      let rows = wideActivityRows.filter((bt: any) => bt.payout === p.id);
       if (rows.length === 0) {
-        rows = activityRows.filter(
+        rows = wideActivityRows.filter(
           (bt: any) => bt.status === "available" && bt.available_on === p.arrival_date
         );
       }
       const grouped_net = rows.reduce((s: number, bt: any) => s + bt.net, 0);
+      const createds = rows.map((bt: any) => bt.created);
       return {
         payout_id: p.id,
         payout_amount: p.amount,
         grouped_net,
         count: rows.length,
         ties: grouped_net === p.amount,
+        deposited: p.arrival_date,
+        sales_start: createds.length ? Math.min(...createds) : null,
+        sales_end: createds.length ? Math.max(...createds) : null,
       };
     });
 
-    // Pending bucket: activity rows not yet in any payout (available_on beyond
-    // the last payout → status 'pending').
-    const pendingRows = activityRows.filter((bt: any) => bt.status === "pending");
+    // Pending bucket: SELECTED activity rows not yet settled (status 'pending').
+    const pendingRows = selectedActivityRows.filter((bt: any) => bt.status === "pending");
     const pending = {
       pending_count: pendingRows.length,
       pending_net: pendingRows.reduce((s: number, bt: any) => s + bt.net, 0),
@@ -215,8 +285,9 @@ serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({
-        range: { start, end, startUnix, endUnix },
+        range: { start, end, selectedStartUnix, selectedEndUnix, wideStartUnix },
         activity,
+        breakdown,
         payouts,
         payout_groups,
         pending,

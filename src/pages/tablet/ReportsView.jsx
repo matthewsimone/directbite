@@ -13,6 +13,9 @@ const PRESETS = [
   { key: 'custom', label: 'Custom Range' },
 ]
 
+// cents → "$X.XX"
+const fmt = (cents) => formatCurrency((cents || 0) / 100)
+
 // "May 18 – May 25" for cross-day ranges, "May 25" for single-day. Year
 // included only when start year differs from end year (covers Custom
 // ranges spanning a year boundary).
@@ -26,15 +29,15 @@ function formatRangeLabel(startKey, endKey) {
     day: 'numeric',
     ...(crossYear ? { year: 'numeric' } : {}),
   }
-  const fmt = new Intl.DateTimeFormat('en-US', opts)
+  const fmtr = new Intl.DateTimeFormat('en-US', opts)
   const sDate = new Date(Date.UTC(sy, sm - 1, sd, 12, 0, 0))
   const eDate = new Date(Date.UTC(ey, em - 1, ed, 12, 0, 0))
-  if (startKey === endKey) return fmt.format(sDate)
-  return `${fmt.format(sDate)} – ${fmt.format(eDate)}`
+  if (startKey === endKey) return fmtr.format(sDate)
+  return `${fmtr.format(sDate)} – ${fmtr.format(eDate)}`
 }
 
-// Format a Stripe unix-seconds timestamp as an NY date (payout arrival dates
-// and charge created times both arrive as unix seconds from the function).
+// Format a Stripe unix-seconds timestamp as an NY date (payout arrival dates,
+// per-payout sales windows, and charge created times all arrive as unix secs).
 function formatUnixDay(unixSeconds, withTime = false) {
   if (unixSeconds == null) return '—'
   return new Intl.DateTimeFormat('en-US', {
@@ -59,7 +62,7 @@ export default function ReportsView({ restaurant, onBack }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [retryCount, setRetryCount] = useState(0)
-  const [view, setView] = useState('payouts') // 'payouts' | 'activity'
+  const [view, setView] = useState('activity') // 'activity' | 'payouts'
   const [detailOpen, setDetailOpen] = useState(false)
   const requestIdRef = useRef(0)
 
@@ -122,13 +125,6 @@ export default function ReportsView({ restaurant, onBack }) {
     setAppliedCustomStart(customStart)
     setAppliedCustomEnd(customEnd)
   }
-
-  // Payout id → payout meta (arrival_date, status) for the payout cards.
-  const payoutById = useMemo(() => {
-    const map = {}
-    for (const p of data?.payouts || []) map[p.id] = p
-    return map
-  }, [data])
 
   return (
     <div className="fixed inset-0 flex flex-col bg-white overflow-hidden z-20">
@@ -194,18 +190,10 @@ export default function ReportsView({ restaurant, onBack }) {
         <p className="text-xs text-gray-500">Showing: {formatRangeLabel(startKey, endKey)}</p>
       </div>
 
-      {/* View toggle */}
+      {/* View toggle — Activity first, Payouts second */}
       {!loading && !error && data && (
         <div className="shrink-0 px-4 pt-4">
           <div className="inline-flex p-1 bg-gray-100 rounded-xl">
-            <button
-              onClick={() => setView('payouts')}
-              className={`px-5 h-9 rounded-lg text-sm font-semibold transition-colors ${
-                view === 'payouts' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
-              }`}
-            >
-              Payouts
-            </button>
             <button
               onClick={() => setView('activity')}
               className={`px-5 h-9 rounded-lg text-sm font-semibold transition-colors ${
@@ -213,6 +201,14 @@ export default function ReportsView({ restaurant, onBack }) {
               }`}
             >
               Activity
+            </button>
+            <button
+              onClick={() => setView('payouts')}
+              className={`px-5 h-9 rounded-lg text-sm font-semibold transition-colors ${
+                view === 'payouts' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+              }`}
+            >
+              Payouts
             </button>
           </div>
         </div>
@@ -232,71 +228,12 @@ export default function ReportsView({ restaurant, onBack }) {
               Retry
             </button>
           </div>
-        ) : !data ? null : view === 'payouts' ? (
-          <PayoutsView data={data} payoutById={payoutById} />
-        ) : (
+        ) : !data ? null : view === 'activity' ? (
           <ActivityView data={data} detailOpen={detailOpen} setDetailOpen={setDetailOpen} />
+        ) : (
+          <PayoutsView data={data} />
         )}
       </div>
-    </div>
-  )
-}
-
-// ===== PAYOUTS VIEW — "what hit your bank" =====
-function PayoutsView({ data, payoutById }) {
-  const groups = data.payout_groups || []
-  const pending = data.pending || { pending_count: 0, pending_net: 0 }
-
-  return (
-    <div className="max-w-md mx-auto space-y-3">
-      {groups.length === 0 && (
-        <p className="text-center text-gray-400 py-8">No payouts settled in this range.</p>
-      )}
-
-      {groups.map(g => {
-        const meta = payoutById[g.payout_id]
-        return (
-          <div key={g.payout_id} className="border border-gray-200 rounded-xl p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-2xl font-bold text-gray-900">
-                  {formatCurrency(g.payout_amount / 100)}
-                </p>
-                <p className="mt-1 text-sm text-gray-500">
-                  Arrives {formatUnixDay(meta?.arrival_date)}
-                  {meta?.status && meta.status !== 'paid' ? ` · ${meta.status}` : ''}
-                </p>
-                <p className="text-sm text-gray-500">{g.count} transactions</p>
-              </div>
-              {g.ties ? (
-                <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 px-2 py-1 rounded-full">
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Reconciled
-                </span>
-              ) : (
-                <span className="shrink-0 inline-flex items-center text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-1 rounded-full">
-                  Partial (boundary)
-                </span>
-              )}
-            </div>
-          </div>
-        )
-      })}
-
-      {pending.pending_count > 0 && (
-        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
-          <p className="text-sm font-semibold text-gray-700">Settling into your next payout</p>
-          <p className="mt-1 text-lg font-bold text-gray-900">
-            {pending.pending_count} {pending.pending_count === 1 ? 'order' : 'orders'} ·{' '}
-            {formatCurrency(pending.pending_net / 100)}
-          </p>
-          <p className="mt-1 text-xs text-gray-500">
-            These have been charged but haven't settled to your bank yet.
-          </p>
-        </div>
-      )}
     </div>
   )
 }
@@ -304,41 +241,72 @@ function PayoutsView({ data, payoutById }) {
 // ===== ACTIVITY VIEW — "all charges in this date range" =====
 function ActivityView({ data, detailOpen, setDetailOpen }) {
   const a = data.activity || {}
+  const b = data.breakdown || {}
   const charges = data.charges || []
+  const collected =
+    (b.food_cents || 0) + (b.tax_cents || 0) + (b.tips_cents || 0) + (b.delivery_cents || 0)
 
   return (
-    <div className="max-w-md mx-auto">
-      {/* Statement */}
-      <div className="space-y-1">
-        <StatementRow label="Gross Charged (customers paid)" value={formatCurrency((a.gross_charged || 0) / 100)} />
+    <div className="max-w-md mx-auto space-y-6">
+      {/* SALES */}
+      <section>
+        <SectionLabel>Sales (what customers ordered)</SectionLabel>
+        <StatementRow label="Food" value={fmt(b.food_cents)} />
+        <StatementRow label="Tax" value={fmt(b.tax_cents)} />
+        <StatementRow label="Tips" value={fmt(b.tips_cents)} />
+        <StatementRow label="Delivery Charges" value={fmt(b.delivery_cents)} />
+        <SubtotalRow label="Collected from customers" value={fmt(collected)} />
         <StatementRow
-          label="Stripe Processing Fees (actual)"
-          value={`−${formatCurrency((a.stripe_fees_actual || 0) / 100)}`}
+          label="DirectBite Fee (added at checkout)"
+          value={`+${fmt(a.directbite_fees)}`}
           muted
         />
+        <SubtotalRow label="Gross Charged" value={fmt(a.gross_charged)} />
+      </section>
+
+      {/* FEES & REFUNDS */}
+      <section>
+        <SectionLabel>Fees &amp; Refunds</SectionLabel>
         <StatementRow
-          label="DirectBite Service Fee"
-          value={`−${formatCurrency((a.directbite_fees || 0) / 100)}`}
+          label="Stripe Processing (actual)"
+          value={`−${fmt(a.stripe_fees_actual)}`}
           muted
         />
         <StatementRow
           label={`Refunds (${a.refund_count || 0})`}
-          value={formatCurrency((a.refunds_amount || 0) / 100)}
+          value={fmt(a.refunds_amount)}
           muted
         />
         <div className="border-t border-gray-300 pt-4 mt-4 flex justify-between items-baseline">
           <span className="text-lg font-bold">Net Activity</span>
-          <span className="text-2xl font-bold">{formatCurrency((a.net_activity || 0) / 100)}</span>
+          <span className="text-2xl font-bold">{fmt(a.net_activity)}</span>
         </div>
         <p className="mt-2 text-xs text-gray-500">
-          Net Activity = what will be deposited for charges in this range. Deposits settle
-          ~2 days after each order, so a range's net may span more than one bank payout —
-          see the Payouts tab for exact deposits.
+          Money from orders in this range. Deposits settle later — see Payouts for exact
+          bank deposits.
         </p>
-      </div>
+      </section>
+
+      {/* 3RD-PARTY DELIVERY — only when there were Uber Direct orders */}
+      {b.ud_count > 0 && (
+        <section>
+          <SectionLabel>3rd-Party Delivery (Uber Direct)</SectionLabel>
+          <StatementRow label="Deliveries" value={String(b.ud_count)} />
+          <StatementRow label="Uber Charged" value={`−${fmt(b.ud_uber_charged_cents)}`} muted />
+          <StatementRow label="Covered by customer" value={`+${fmt(b.ud_customer_paid_cents)}`} muted />
+          <SubtotalRow label="Your net delivery cost" value={`−${fmt(b.ud_net_cost_cents)}`} />
+        </section>
+      )}
+
+      {/* ORDERS */}
+      <section>
+        <SectionLabel>Orders</SectionLabel>
+        <StatementRow label="Completed" value={String(b.completed_count || 0)} />
+        <StatementRow label="Cancelled" value={String(b.cancelled_count || 0)} />
+      </section>
 
       {/* Transaction detail (collapsible) */}
-      <div className="mt-6">
+      <div>
         <button
           onClick={() => setDetailOpen(o => !o)}
           className="flex items-center gap-2 text-sm font-semibold text-gray-700"
@@ -368,7 +336,10 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
               </thead>
               <tbody>
                 {charges.map(c => {
-                  const highFee = c.gross > 0 && c.stripe_fee / c.gross > 0.04
+                  // Strip Stripe's 30¢ flat fee, then flag only orders ≥ $15
+                  // whose true rate exceeds ~3.5% (a normal 2.9% card — incl.
+                  // small test orders — must NOT flag).
+                  const highFee = c.gross >= 1500 && (c.stripe_fee - 30) / c.gross > 0.035
                   return (
                     <tr key={c.charge_id} className="border-b border-gray-100">
                       <td className="py-2 pr-2 font-mono text-gray-600">
@@ -379,10 +350,10 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
                           </span>
                         )}
                       </td>
-                      <td className="py-2 px-2 text-right">{formatCurrency(c.gross / 100)}</td>
-                      <td className="py-2 px-2 text-right text-gray-500">−{formatCurrency(c.stripe_fee / 100)}</td>
-                      <td className="py-2 px-2 text-right text-gray-500">−{formatCurrency(c.app_fee / 100)}</td>
-                      <td className="py-2 px-2 text-right font-medium">{formatCurrency(c.net / 100)}</td>
+                      <td className="py-2 px-2 text-right">{fmt(c.gross)}</td>
+                      <td className="py-2 px-2 text-right text-gray-500">−{fmt(c.stripe_fee)}</td>
+                      <td className="py-2 px-2 text-right text-gray-500">−{fmt(c.app_fee)}</td>
+                      <td className="py-2 px-2 text-right font-medium">{fmt(c.net)}</td>
                       <td className="py-2 px-2 whitespace-nowrap text-gray-600">{formatUnixDay(c.created)}</td>
                       <td className="py-2 pl-2 text-gray-600">{c.status}</td>
                     </tr>
@@ -404,11 +375,64 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
   )
 }
 
+// ===== PAYOUTS VIEW — "what hit your bank" =====
+function PayoutsView({ data }) {
+  const groups = data.payout_groups || []
+  const pending = data.pending || { pending_count: 0, pending_net: 0 }
+
+  return (
+    <div className="max-w-md mx-auto space-y-3">
+      {groups.length === 0 && (
+        <p className="text-center text-gray-400 py-8">No payouts settled in this range.</p>
+      )}
+
+      {groups.map(g => (
+        <div key={g.payout_id} className="border border-gray-200 rounded-xl p-4">
+          <p className="text-2xl font-bold text-gray-900">{fmt(g.payout_amount)}</p>
+          <p className="mt-1 text-sm text-gray-500">Deposited {formatUnixDay(g.deposited)}</p>
+          <p className="text-sm text-gray-500">
+            Sales from {formatUnixDay(g.sales_start)} – {formatUnixDay(g.sales_end)}
+          </p>
+          <p className="text-sm text-gray-500">{g.count} orders</p>
+        </div>
+      ))}
+
+      {pending.pending_count > 0 && (
+        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+          <p className="text-sm font-semibold text-gray-700">Not yet deposited</p>
+          <p className="mt-1 text-lg font-bold text-gray-900">
+            {pending.pending_count} {pending.pending_count === 1 ? 'order' : 'orders'} ·{' '}
+            {fmt(pending.pending_net)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Charged in this range but still settling — these land in an upcoming deposit.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SectionLabel({ children }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1">{children}</p>
+  )
+}
+
 function StatementRow({ label, value, muted }) {
   return (
     <div className="flex justify-between text-base py-1">
       <span className="text-gray-600">{label}</span>
       <span className={`font-medium ${muted ? 'text-gray-500' : 'text-gray-900'}`}>{value}</span>
+    </div>
+  )
+}
+
+function SubtotalRow({ label, value }) {
+  return (
+    <div className="flex justify-between text-base py-2 mt-1 border-t border-gray-200">
+      <span className="font-semibold text-gray-900">{label}</span>
+      <span className="font-bold text-gray-900">{value}</span>
     </div>
   )
 }
