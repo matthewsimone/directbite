@@ -49,6 +49,49 @@ const TEST_ID = '00000000-0000-0000-0000-000000000001'
 const ROUTE = `/${TEST_SLUG}/home`
 const SHELL = path.resolve('dist/index.html')
 const OUT_DIR = path.resolve('dist', TEST_SLUG, 'home')
+const SITE_NAME = 'DirectBite'
+
+// HTML-escape for injected head values — mirrored from api/og-html.js so a
+// quote/ampersand in a restaurant name can't break an attribute or the markup.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+// Build the description + canonical + OG/Twitter block from buildSeoHead's
+// (raw) values, escaping at this injection boundary (same split as og-html).
+function buildMetaBlock({ title, description, canonical, image }) {
+  const t = escapeHtml(title)
+  const d = escapeHtml(description)
+  const u = escapeHtml(canonical)
+  const img = escapeHtml(image)
+  return [
+    `<meta name="description" content="${d}" />`,
+    `<link rel="canonical" href="${u}" />`,
+    `<meta property="og:title" content="${t}" />`,
+    `<meta property="og:description" content="${d}" />`,
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:url" content="${u}" />`,
+    `<meta property="og:image" content="${img}" />`,
+    `<meta property="og:site_name" content="${escapeHtml(SITE_NAME)}" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:title" content="${t}" />`,
+    `<meta name="twitter:description" content="${d}" />`,
+    `<meta name="twitter:image" content="${img}" />`,
+  ].join('\n    ')
+}
+
+// Regex title-replace (not a literal "DirectBite") + inject block before
+// </head> — the exact injectMeta mechanics from api/og-html.js.
+function injectHead(html, seo) {
+  return html
+    .replace(/<title>[^<]*<\/title>/, `<title>${escapeHtml(seo.title)}</title>`)
+    .replace('</head>', `    ${buildMetaBlock(seo)}\n  </head>`)
+}
 
 async function main() {
   // dist must exist first — this injects into the built SPA shell.
@@ -72,6 +115,7 @@ async function main() {
   try {
     // Load ONLY the project files through Vite (JSX + import.meta.env transform).
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
+    const { buildSeoHead } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
     const HomePageMod = await vite.ssrLoadModule('/src/pages/website/HomePage.jsx')
     const HomePage = HomePageMod.default
 
@@ -106,7 +150,12 @@ async function main() {
     )
 
     // ---- Inject into a copy of the shell; write ONLY this one path ----
-    const out = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
+    // (1) prerendered app into #root, then (2) per-restaurant <head> (title,
+    // description, canonical, OG/Twitter). useRestaurantBranding stays and
+    // re-writes the same values on hydrate — no conflict.
+    const seo = buildSeoHead(restaurant)
+    let out = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
+    out = injectHead(out, seo)
     await fs.mkdir(OUT_DIR, { recursive: true })
     await fs.writeFile(path.join(OUT_DIR, 'index.html'), out, 'utf-8')
     console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (${out.length} bytes, root html ${appHtml.length} bytes)`)
