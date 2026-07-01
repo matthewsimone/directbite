@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { getCustomDomainKey, MAIN_DOMAIN } from './lib/customDomain'
 import HomePage from './pages/website/HomePage'
+import MenuStaticRoute from './pages/website/MenuStaticRoute'
 
 const LinkViewer = lazy(() => import('./pages/website/LinkViewer'))
 
@@ -84,6 +85,7 @@ export default function CustomDomainShell() {
       <Routes>
         <Route path="/" element={<HomePage restaurant={restaurant} hours={hours} />} />
         <Route path="/order" element={<OrderRedirect slug={restaurant.slug} />} />
+        <Route path="/menu" element={<MenuStaticRoute restaurant={restaurant} hours={hours} />} />
         <Route path="/:linkPath" element={<LinkViewer restaurant={restaurant} hours={hours} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

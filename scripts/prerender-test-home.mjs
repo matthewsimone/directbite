@@ -219,8 +219,11 @@ async function main() {
       )
     )
 
-    // Menu-specific <head>: custom title, reuse home's description/image,
-    // canonical → /{slug}/menu (or custom-domain /menu).
+    // Menu-specific <head>: custom title, reuse home's description/image.
+    // Canonical ALWAYS points at the main-domain path — that's the only URL
+    // with prerendered, crawlable HTML. A custom domain's /menu currently
+    // serves the SPA shell (no prerender), so canonicalizing there would send
+    // crawlers to a page with no content.
     const { city, state } = parseAddress(restaurant.address)
     const cuisine = restaurant.cuisine || 'Pizza'
     const menuSeo = {
@@ -229,9 +232,7 @@ async function main() {
           ? `Menu | ${restaurant.name} — Best ${cuisine} in ${city}, ${state}`
           : `Menu | ${restaurant.name}`,
       description: seo.description,
-      canonical: restaurant.custom_domain
-        ? `https://${restaurant.custom_domain}/menu`
-        : `https://directbite.co/${restaurant.slug}/menu`,
+      canonical: `https://directbite.co/${restaurant.slug}/menu`,
       image: seo.image,
     }
 
