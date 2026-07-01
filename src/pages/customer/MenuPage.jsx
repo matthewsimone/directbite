@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useRestaurant } from '../../hooks/useRestaurant'
@@ -13,9 +13,13 @@ import PromotionBanner from '../../components/PromotionBanner'
 import CategoryTabs from '../../components/CategoryTabs'
 import MenuSearch from '../../components/MenuSearch'
 import MenuItemCard from '../../components/MenuItemCard'
-import ItemModal from '../../components/ItemModal'
 import CartButton from '../../components/CartButton'
-import CartSheet from '../../components/CartSheet'
+
+// Interaction-gated — kept out of the initial bundle via React.lazy. ItemModal
+// mounts on item tap (or ?item= deep-link); CartSheet mounts when the cart
+// opens. Neither is first-paint, so a null Suspense fallback is fine.
+const ItemModal = lazy(() => import('../../components/ItemModal'))
+const CartSheet = lazy(() => import('../../components/CartSheet'))
 
 export default function MenuPage() {
   const { slug } = useParams()
@@ -321,29 +325,33 @@ export default function MenuPage() {
 
       {/* Item modal */}
       {selectedItem && (
-        <ItemModal
-          item={selectedItem}
-          sizes={getSizesForItem(selectedItem.id)}
-          toppingGroupsForItem={getToppingGroupsForItem(selectedItem.id)}
-          getToppingsForGroup={getToppingsForGroup}
-          promotion={promotion}
-          onAddToCart={handleAddToCart}
-          onClose={() => {
-            setSelectedItem(null)
-            if (new URLSearchParams(window.location.search).has('item')) {
-              window.history.replaceState({}, '', `/${slug}`)
-            }
-          }}
-        />
+        <Suspense fallback={null}>
+          <ItemModal
+            item={selectedItem}
+            sizes={getSizesForItem(selectedItem.id)}
+            toppingGroupsForItem={getToppingGroupsForItem(selectedItem.id)}
+            getToppingsForGroup={getToppingsForGroup}
+            promotion={promotion}
+            onAddToCart={handleAddToCart}
+            onClose={() => {
+              setSelectedItem(null)
+              if (new URLSearchParams(window.location.search).has('item')) {
+                window.history.replaceState({}, '', `/${slug}`)
+              }
+            }}
+          />
+        </Suspense>
       )}
 
       {/* Cart sheet */}
       {showCart && (
-        <CartSheet
-          onClose={() => setShowCart(false)}
-          onCheckout={handleCheckout}
-          promotion={promotion}
-        />
+        <Suspense fallback={null}>
+          <CartSheet
+            onClose={() => setShowCart(false)}
+            onCheckout={handleCheckout}
+            promotion={promotion}
+          />
+        </Suspense>
       )}
     </div>
   )
