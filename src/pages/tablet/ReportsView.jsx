@@ -13,16 +13,6 @@ const PRESETS = [
   { key: 'custom', label: 'Custom Range' },
 ]
 
-// Sum a list of dollar-valued items as integer cents to avoid float drift.
-// Returns the integer cents; caller divides by 100 once at the end.
-function sumCentsInt(arr, getDollarsFn) {
-  let cents = 0
-  for (const item of arr) {
-    cents += Math.round(Number(getDollarsFn(item)) * 100)
-  }
-  return cents
-}
-
 // "May 18 – May 25" for cross-day ranges, "May 25" for single-day. Year
 // included only when start year differs from end year (covers Custom
 // ranges spanning a year boundary).
@@ -43,6 +33,19 @@ function formatRangeLabel(startKey, endKey) {
   return `${fmt.format(sDate)} – ${fmt.format(eDate)}`
 }
 
+// Format a Stripe unix-seconds timestamp as an NY date (payout arrival dates
+// and charge created times both arrive as unix seconds from the function).
+function formatUnixDay(unixSeconds, withTime = false) {
+  if (unixSeconds == null) return '—'
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    ...(withTime ? { hour: 'numeric', minute: '2-digit' } : {}),
+  }).format(new Date(unixSeconds * 1000))
+}
+
 export default function ReportsView({ restaurant, onBack }) {
   const initialKey = getNyDateKey(new Date())
   const [preset, setPreset] = useState('today')
@@ -52,14 +55,17 @@ export default function ReportsView({ restaurant, onBack }) {
   // a refetch on every keystroke in the date inputs.
   const [appliedCustomStart, setAppliedCustomStart] = useState(initialKey)
   const [appliedCustomEnd, setAppliedCustomEnd] = useState(initialKey)
-  const [orders, setOrders] = useState([])
-  const [adjustments, setAdjustments] = useState([])
+  const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [retryCount, setRetryCount] = useState(0)
+  const [view, setView] = useState('payouts') // 'payouts' | 'activity'
+  const [detailOpen, setDetailOpen] = useState(false)
   const requestIdRef = useRef(0)
 
-  const { startKey, endKey, queryStartIso, queryEndIso } = useMemo(
+  // Resolve the picker selection to NY date keys (YYYY-MM-DD). These are what
+  // the edge function expects for start/end.
+  const { startKey, endKey } = useMemo(
     () => getRangeForPreset(preset, {
       customStart: appliedCustomStart,
       customEnd: appliedCustomEnd,
@@ -67,77 +73,47 @@ export default function ReportsView({ restaurant, onBack }) {
     [preset, appliedCustomStart, appliedCustomEnd]
   )
 
+  // Fetch settlement data from the edge function whenever the applied range
+  // changes (preset click or custom Apply) or on retry.
   useEffect(() => {
     if (!restaurant?.id) return
     const myId = ++requestIdRef.current
     setLoading(true)
     setError(null)
-    Promise.all([
-      supabase
-        .from('orders')
-        .select('status, subtotal, tax_amount, tip_amount, delivery_fee, created_at')
-        .eq('restaurant_id', restaurant.id)
-        .gte('created_at', queryStartIso)
-        .lte('created_at', queryEndIso),
-      supabase
-        .from('adjustment_requests')
-        .select('type, amount, created_at')
-        .eq('restaurant_id', restaurant.id)
-        .eq('status', 'approved')
-        .gte('created_at', queryStartIso)
-        .lte('created_at', queryEndIso),
-    ])
-      .then(([oRes, aRes]) => {
+    ;(async () => {
+      try {
+        const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+        if (refreshError || !session) {
+          throw new Error('Session expired — please log in again.')
+        }
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-settlement-report`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({
+              restaurant_id: restaurant.id,
+              start: startKey,
+              end: endKey,
+            }),
+          }
+        )
+        const json = await res.json()
         if (requestIdRef.current !== myId) return
-        if (oRes.error) throw oRes.error
-        if (aRes.error) throw aRes.error
-        setOrders(oRes.data || [])
-        setAdjustments(aRes.data || [])
+        if (!res.ok) throw new Error(json.error || 'Failed to load report')
+        setData(json)
         setLoading(false)
-      })
-      .catch(err => {
+      } catch (err) {
         if (requestIdRef.current !== myId) return
-        console.error('[ReportsView] fetch failed', err)
+        console.error('[ReportsView] settlement fetch failed', err)
         setError(err.message || 'Failed to load report')
         setLoading(false)
-      })
-  }, [restaurant?.id, queryStartIso, queryEndIso, retryCount])
-
-  const totals = useMemo(() => {
-    // Post-filter to the precise NY-day window. The query envelope is
-    // intentionally wider (DST safety); getNyDateKey gives us the
-    // trustworthy day membership check.
-    const inRange = (createdAt) => {
-      const key = getNyDateKey(new Date(createdAt))
-      return key >= startKey && key <= endKey
-    }
-    const ordersInRange = orders.filter(o => inRange(o.created_at))
-    const nonCancelled = ordersInRange.filter(o => o.status !== 'cancelled')
-    const cancelled = ordersInRange.filter(o => o.status === 'cancelled')
-    const adjInRange = adjustments.filter(a => inRange(a.created_at))
-    const charges = adjInRange.filter(a => a.type === 'charge')
-    const refunds = adjInRange.filter(a => a.type === 'refund')
-
-    const salesCents = sumCentsInt(nonCancelled, o => o.subtotal)
-    const tipsCents = sumCentsInt(nonCancelled, o => o.tip_amount)
-    const deliveryCents = sumCentsInt(nonCancelled, o => o.delivery_fee)
-    const taxCents = sumCentsInt(nonCancelled, o => o.tax_amount)
-    const plusAdjCents = sumCentsInt(charges, a => a.amount)
-    const minusAdjCents = sumCentsInt(refunds, a => a.amount)
-    const grossCents = salesCents + tipsCents + deliveryCents + taxCents
-
-    return {
-      sales: salesCents / 100,
-      tips: tipsCents / 100,
-      delivery: deliveryCents / 100,
-      tax: taxCents / 100,
-      plusAdj: plusAdjCents / 100,
-      minusAdj: minusAdjCents / 100,
-      cancelCount: cancelled.length,
-      orderCount: nonCancelled.length,
-      gross: grossCents / 100,
-    }
-  }, [orders, adjustments, startKey, endKey])
+      }
+    })()
+  }, [restaurant?.id, startKey, endKey, retryCount])
 
   const customInvalid = preset === 'custom' && customStart > customEnd
 
@@ -146,6 +122,13 @@ export default function ReportsView({ restaurant, onBack }) {
     setAppliedCustomStart(customStart)
     setAppliedCustomEnd(customEnd)
   }
+
+  // Payout id → payout meta (arrival_date, status) for the payout cards.
+  const payoutById = useMemo(() => {
+    const map = {}
+    for (const p of data?.payouts || []) map[p.id] = p
+    return map
+  }, [data])
 
   return (
     <div className="fixed inset-0 flex flex-col bg-white overflow-hidden z-20">
@@ -211,6 +194,30 @@ export default function ReportsView({ restaurant, onBack }) {
         <p className="text-xs text-gray-500">Showing: {formatRangeLabel(startKey, endKey)}</p>
       </div>
 
+      {/* View toggle */}
+      {!loading && !error && data && (
+        <div className="shrink-0 px-4 pt-4">
+          <div className="inline-flex p-1 bg-gray-100 rounded-xl">
+            <button
+              onClick={() => setView('payouts')}
+              className={`px-5 h-9 rounded-lg text-sm font-semibold transition-colors ${
+                view === 'payouts' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+              }`}
+            >
+              Payouts
+            </button>
+            <button
+              onClick={() => setView('activity')}
+              className={`px-5 h-9 rounded-lg text-sm font-semibold transition-colors ${
+                view === 'activity' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500'
+              }`}
+            >
+              Activity
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-4">
         {loading ? (
@@ -225,20 +232,171 @@ export default function ReportsView({ restaurant, onBack }) {
               Retry
             </button>
           </div>
+        ) : !data ? null : view === 'payouts' ? (
+          <PayoutsView data={data} payoutById={payoutById} />
         ) : (
-          <div className="max-w-md mx-auto space-y-1">
-            <Row label="Total Sales" value={formatCurrency(totals.sales)} />
-            <Row label="Total Tips Collected" value={formatCurrency(totals.tips)} />
-            <Row label="Total Delivery Charges Collected" value={formatCurrency(totals.delivery)} />
-            <Row label="Total Tax Collected" value={formatCurrency(totals.tax)} />
-            <Row label="Total + Adjustments" value={formatCurrency(totals.plusAdj)} />
-            <Row label="Total − Adjustments" value={formatCurrency(totals.minusAdj)} />
-            <Row label="Cancel Order Count" value={String(totals.cancelCount)} />
-            <Row label="Total Order Count" value={String(totals.orderCount)} />
-            <div className="border-t border-gray-300 pt-4 mt-4 flex justify-between items-baseline">
-              <span className="text-lg font-bold">Gross Total</span>
-              <span className="text-2xl font-bold">{formatCurrency(totals.gross)}</span>
+          <ActivityView data={data} detailOpen={detailOpen} setDetailOpen={setDetailOpen} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ===== PAYOUTS VIEW — "what hit your bank" =====
+function PayoutsView({ data, payoutById }) {
+  const groups = data.payout_groups || []
+  const pending = data.pending || { pending_count: 0, pending_net: 0 }
+
+  return (
+    <div className="max-w-md mx-auto space-y-3">
+      {groups.length === 0 && (
+        <p className="text-center text-gray-400 py-8">No payouts settled in this range.</p>
+      )}
+
+      {groups.map(g => {
+        const meta = payoutById[g.payout_id]
+        return (
+          <div key={g.payout_id} className="border border-gray-200 rounded-xl p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(g.payout_amount / 100)}
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  Arrives {formatUnixDay(meta?.arrival_date)}
+                  {meta?.status && meta.status !== 'paid' ? ` · ${meta.status}` : ''}
+                </p>
+                <p className="text-sm text-gray-500">{g.count} transactions</p>
+              </div>
+              {g.ties ? (
+                <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-50 px-2 py-1 rounded-full">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Reconciled
+                </span>
+              ) : (
+                <span className="shrink-0 inline-flex items-center text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-1 rounded-full">
+                  Partial (boundary)
+                </span>
+              )}
             </div>
+          </div>
+        )
+      })}
+
+      {pending.pending_count > 0 && (
+        <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+          <p className="text-sm font-semibold text-gray-700">Settling into your next payout</p>
+          <p className="mt-1 text-lg font-bold text-gray-900">
+            {pending.pending_count} {pending.pending_count === 1 ? 'order' : 'orders'} ·{' '}
+            {formatCurrency(pending.pending_net / 100)}
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            These have been charged but haven't settled to your bank yet.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ===== ACTIVITY VIEW — "all charges in this date range" =====
+function ActivityView({ data, detailOpen, setDetailOpen }) {
+  const a = data.activity || {}
+  const charges = data.charges || []
+
+  return (
+    <div className="max-w-md mx-auto">
+      {/* Statement */}
+      <div className="space-y-1">
+        <StatementRow label="Gross Charged (customers paid)" value={formatCurrency((a.gross_charged || 0) / 100)} />
+        <StatementRow
+          label="Stripe Processing Fees (actual)"
+          value={`−${formatCurrency((a.stripe_fees_actual || 0) / 100)}`}
+          muted
+        />
+        <StatementRow
+          label="DirectBite Service Fee"
+          value={`−${formatCurrency((a.directbite_fees || 0) / 100)}`}
+          muted
+        />
+        <StatementRow
+          label={`Refunds (${a.refund_count || 0})`}
+          value={formatCurrency((a.refunds_amount || 0) / 100)}
+          muted
+        />
+        <div className="border-t border-gray-300 pt-4 mt-4 flex justify-between items-baseline">
+          <span className="text-lg font-bold">Net Activity</span>
+          <span className="text-2xl font-bold">{formatCurrency((a.net_activity || 0) / 100)}</span>
+        </div>
+        <p className="mt-2 text-xs text-gray-500">
+          Net Activity = what will be deposited for charges in this range. Deposits settle
+          ~2 days after each order, so a range's net may span more than one bank payout —
+          see the Payouts tab for exact deposits.
+        </p>
+      </div>
+
+      {/* Transaction detail (collapsible) */}
+      <div className="mt-6">
+        <button
+          onClick={() => setDetailOpen(o => !o)}
+          className="flex items-center gap-2 text-sm font-semibold text-gray-700"
+        >
+          <svg
+            className={`w-4 h-4 transition-transform ${detailOpen ? 'rotate-90' : ''}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          Transaction detail ({charges.length})
+        </button>
+
+        {detailOpen && (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-gray-400 border-b border-gray-200">
+                  <th className="py-2 pr-2 font-medium">Charge</th>
+                  <th className="py-2 px-2 font-medium text-right">Gross</th>
+                  <th className="py-2 px-2 font-medium text-right">Stripe</th>
+                  <th className="py-2 px-2 font-medium text-right">Service</th>
+                  <th className="py-2 px-2 font-medium text-right">Net</th>
+                  <th className="py-2 px-2 font-medium">Date</th>
+                  <th className="py-2 pl-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {charges.map(c => {
+                  const highFee = c.gross > 0 && c.stripe_fee / c.gross > 0.04
+                  return (
+                    <tr key={c.charge_id} className="border-b border-gray-100">
+                      <td className="py-2 pr-2 font-mono text-gray-600">
+                        …{String(c.charge_id).slice(-8)}
+                        {highFee && (
+                          <span className="ml-1 inline-block text-[10px] font-semibold text-amber-700 bg-amber-50 px-1 py-0.5 rounded">
+                            foreign/premium card
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-right">{formatCurrency(c.gross / 100)}</td>
+                      <td className="py-2 px-2 text-right text-gray-500">−{formatCurrency(c.stripe_fee / 100)}</td>
+                      <td className="py-2 px-2 text-right text-gray-500">−{formatCurrency(c.app_fee / 100)}</td>
+                      <td className="py-2 px-2 text-right font-medium">{formatCurrency(c.net / 100)}</td>
+                      <td className="py-2 px-2 whitespace-nowrap text-gray-600">{formatUnixDay(c.created)}</td>
+                      <td className="py-2 pl-2 text-gray-600">{c.status}</td>
+                    </tr>
+                  )
+                })}
+                {charges.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-4 text-center text-gray-400">
+                      No charges in this range.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -246,11 +404,11 @@ export default function ReportsView({ restaurant, onBack }) {
   )
 }
 
-function Row({ label, value }) {
+function StatementRow({ label, value, muted }) {
   return (
     <div className="flex justify-between text-base py-1">
       <span className="text-gray-600">{label}</span>
-      <span className="font-medium text-gray-900">{value}</span>
+      <span className={`font-medium ${muted ? 'text-gray-500' : 'text-gray-900'}`}>{value}</span>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import ImageUpload from '../../components/ImageUpload'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
 import ReportsView from './ReportsView'
 import UberDirectReportView from './UberDirectReportView'
+import ErrorBoundary from '../../components/ErrorBoundary'
 import WebsiteLinksEditor from './WebsiteLinksEditor'
 // ZipCodeManager removed — replaced by radius-based delivery
 
@@ -625,7 +626,11 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   }
 
   if (showReports) {
-    return <ReportsView restaurant={restaurant} onBack={() => setShowReports(false)} />
+    return (
+      <ErrorBoundary onReset={() => setShowReports(false)}>
+        <ReportsView restaurant={restaurant} onBack={() => setShowReports(false)} />
+      </ErrorBoundary>
+    )
   }
   if (showUberReport) {
     return <UberDirectReportView restaurant={restaurant} onBack={() => setShowUberReport(false)} />
