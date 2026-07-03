@@ -21,6 +21,12 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
   const slug = restaurant.slug
   const cuisine = restaurant.cuisine || 'Pizza'
 
+  // Honest framing: only claim "delivery to {town}" when the town falls inside
+  // the restaurant's configured in-house delivery radius. Otherwise use "near"
+  // language — which is also the default when no radius is set (boundary = 0).
+  const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
+  const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
+
   // Hydration-safe open/closed status (server + first client render emit the
   // static CLOSED placeholder; the live value settles on the post-hydrate tick).
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
@@ -55,10 +61,10 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
       <section className="bg-gray-50 border-b border-gray-200">
         <div className="max-w-[1100px] mx-auto px-6 sm:px-8 py-12">
           <p className="text-sm font-semibold uppercase tracking-wide text-[#16A34A]">
-            Best {cuisine} around {town.name}, NJ
+            Best {cuisine} {delivers ? 'around' : 'near'} {town.name}, NJ
           </p>
           <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold text-gray-900">
-            {cuisine} Delivery to {town.name}
+            {delivers ? `${cuisine} Delivery to ${town.name}` : `Best ${cuisine} near ${town.name}`}
           </h1>
           <a
             href={`/${slug}`}
@@ -91,16 +97,19 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
       {/* 4. About — town in the first sentence */}
       <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pb-10">
         <p className="text-base text-gray-700 leading-relaxed">
-          Craving {cuisine} in {town.name}? {restaurant.name} delivers to {town.name} and
-          surrounding {town.county} County — hand-made, fresh daily, ready when you are.
+          {delivers
+            ? `Craving ${cuisine} in ${town.name}? ${restaurant.name} delivers to ${town.name} and the surrounding ${town.county} County area — hand-made, fresh daily, ready when you are.`
+            : `Looking for great ${cuisine} near ${town.name}? ${restaurant.name} serves the ${town.name} area — order online for pickup or delivery, made fresh daily.`}
         </p>
       </section>
 
       {/* 5. Map — reuse Location with localized title/subtext */}
       <Location
         restaurant={restaurant}
-        title={`Craving ${cuisine}? Order pickup or delivery now!`}
-        subtext={`We offer pickup and delivery to ${town.name}! Get ${cuisine} delivered in ~30 mins.`}
+        title={delivers ? `Craving ${cuisine}? Order pickup or delivery now!` : `Craving ${cuisine}? Order online now!`}
+        subtext={delivers
+          ? `We deliver to ${town.name}! Order online for pickup or delivery.`
+          : `Serving the ${town.name} area. Order online for pickup, or check if delivery reaches you.`}
       />
 
       {/* 6. Internal link hub — nearby sibling towns (per-restaurant scope) */}

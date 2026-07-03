@@ -288,9 +288,19 @@ async function main() {
         )
       )
 
+      // Honest framing: "delivery" only when the town is inside the in-house
+      // delivery radius; else "near" (also the default when no radius is set).
+      // Mirrors the same branch in PlaceStatic.jsx.
+      const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
+      const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
+
       const placeSeo = {
-        title: `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`,
-        description: `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`,
+        title: delivers
+          ? `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`
+          : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`,
+        description: delivers
+          ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`
+          : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`,
         canonical: `https://directbite.co/${TEST_SLUG}/places/${town.slug}`,
         image: seo.image,
       }
