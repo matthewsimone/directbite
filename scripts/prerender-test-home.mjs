@@ -43,6 +43,8 @@ import path from 'node:path'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom'
+import { findNearestTowns, MAX_RADIUS_MILES } from './lib/findNearestTowns.mjs'
+import NJ_TOWNS from '../src/data/nj-towns.json' with { type: 'json' }
 
 const TEST_SLUG = 'test'
 const TEST_ID = '00000000-0000-0000-0000-000000000001'
@@ -122,6 +124,7 @@ async function main() {
     const HomePageMod = await vite.ssrLoadModule('/src/pages/website/HomePage.jsx')
     const HomePage = HomePageMod.default
     const MenuStatic = (await vite.ssrLoadModule('/src/pages/website/MenuStatic.jsx')).default
+    const PlaceStatic = (await vite.ssrLoadModule('/src/pages/website/PlaceStatic.jsx')).default
 
     // ---- Build-time data fetch (Test Pizza only) ----
     const supabase = getBuildClient()
@@ -241,6 +244,64 @@ async function main() {
     await fs.mkdir(OUT_DIR_MENU, { recursive: true })
     await fs.writeFile(path.join(OUT_DIR_MENU, 'index.html'), menuOut, 'utf-8')
     console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR_MENU, 'index.html'))} (${menuOut.length} bytes, root html ${menuHtml.length} bytes, ${Object.keys(lowestPrices).length} items)`)
+
+    // ======================================================================
+    // /test/places/{town} — location SEO pages within MAX_RADIUS_MILES.
+    // Reuses restaurant / hoursData / categories / menuItems / lowestPrices /
+    // seo / cuisine + the `city` parsed for the menu head above (no refetch).
+    // ======================================================================
+    const ownCitySlug = (city || '').toLowerCase().replace(/\s+/g, '-')
+    // parseAddress yields no county; derive it by matching the parsed city
+    // against the gazetteer (feeds findNearestTowns' same-county tiebreaker).
+    // NOTE: collision cities (Washington, Franklin, …) are ambiguous here — fine
+    // for Test Pizza (Old Tappan → Bergen only); revisit for real restaurants in
+    // collision towns (disambiguate by zip/proximity).
+    const county = NJ_TOWNS.find((t) => t.slug === ownCitySlug)?.county
+    if (!county) {
+      console.warn(`⚠ no county match for own town '${ownCitySlug}' — sibling sort runs without a county tiebreaker`)
+    }
+
+    const places = findNearestTowns(
+      { lat: restaurant.latitude, lng: restaurant.longitude, county },
+      { radiusMiles: MAX_RADIUS_MILES, limit: 20 }
+    )
+    // Drop the restaurant's own town (self, distance ~0).
+    const targetTowns = places.filter((t) => t.slug !== ownCitySlug && t.distanceMiles > 0.1)
+    console.log(`found ${targetTowns.length} nearby towns for /places generation`)
+
+    for (const town of targetTowns) {
+      const siblingTowns = targetTowns.filter((t) => t.slug !== town.slug).slice(0, 12)
+
+      const placeHtml = renderToString(
+        React.createElement(
+          StaticRouter,
+          { location: `/${TEST_SLUG}/places/${town.slug}` },
+          React.createElement(PlaceStatic, {
+            restaurant,
+            hours: hoursData || [],
+            town,
+            siblingTowns,
+            categories: categories || [],
+            items: menuItems || [],
+            lowestPrices,
+          })
+        )
+      )
+
+      const placeSeo = {
+        title: `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`,
+        description: `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`,
+        canonical: `https://directbite.co/${TEST_SLUG}/places/${town.slug}`,
+        image: seo.image,
+      }
+
+      let placeOut = shell.replace('<div id="root"></div>', `<div id="root">${placeHtml}</div>`)
+      placeOut = injectHead(placeOut, placeSeo)
+      const placeOutDir = path.resolve('dist', TEST_SLUG, 'places', town.slug)
+      await fs.mkdir(placeOutDir, { recursive: true })
+      await fs.writeFile(path.join(placeOutDir, 'index.html'), placeOut, 'utf-8')
+    }
+    console.log(`✓ generated ${targetTowns.length} location pages for Test Pizza`)
   } finally {
     await vite.close()
   }
