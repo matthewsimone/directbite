@@ -162,8 +162,9 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
         />
         {title ? (
           <>
-            {/* Centered restaurant name above the keyword block */}
-            <p className="text-2xl md:text-3xl font-bold text-white">{name}</p>
+            {/* Centered restaurant name above the keyword block — dominant line,
+                matches the homepage hero name size. Non-h1 (the keyword is the h1). */}
+            <p className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">{name}</p>
             {/* Left-aligned, inset keyword block: eyebrow + H1 (SEO) + CTAs */}
             <div className="w-full max-w-2xl mt-6 text-left">
               {eyebrow && (
@@ -171,7 +172,9 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
                   {eyebrow}
                 </p>
               )}
-              <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
+              {/* Keyword line — kept as the <h1> for SEO, but visually the
+                  smaller secondary line below the restaurant name. */}
+              <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">
                 {title}
               </h1>
               {ctas}
