@@ -152,7 +152,7 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
 
       {/* Content — pt-16 compensates for the -mt-16 on the section so content
           stays optically centered in the visible area below TopBar. Both modes
-          center the logo + name; keyword mode adds a left-aligned inset block. */}
+          are a single centered column (keyword mode adds name + eyebrow + h1). */}
       <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-[calc(4rem+env(safe-area-inset-top))] pb-[10vh] md:pb-0">
         <LogoFrame
           logoUrl={logo_url}
@@ -162,23 +162,20 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
         />
         {title ? (
           <>
-            {/* Centered restaurant name above the keyword block — dominant line,
-                matches the homepage hero name size. Non-h1 (the keyword is the h1). */}
+            {/* Dominant restaurant name — matches the homepage hero name size.
+                Non-h1 (the keyword below is the h1). */}
             <p className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">{name}</p>
-            {/* Left-aligned, inset keyword block: eyebrow + H1 (SEO) + CTAs */}
-            <div className="w-full max-w-2xl mt-6 text-left">
-              {eyebrow && (
-                <p className="text-sm font-semibold uppercase tracking-wide text-white mb-2">
-                  {eyebrow}
-                </p>
-              )}
-              {/* Keyword line — kept as the <h1> for SEO, but visually the
-                  smaller secondary line below the restaurant name. */}
-              <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">
-                {title}
-              </h1>
-              {ctas}
-            </div>
+            {eyebrow && (
+              <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-white">
+                {eyebrow}
+              </p>
+            )}
+            {/* Keyword line — kept as the <h1> for SEO, but visually the smaller
+                secondary line below the name. Centered like the rest of the stack. */}
+            <h1 className="mt-2 text-2xl md:text-3xl font-bold text-white leading-tight">
+              {title}
+            </h1>
+            {ctas}
           </>
         ) : (
           <>
