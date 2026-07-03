@@ -22,11 +22,11 @@ function truncateAtWord(s, max = 150) {
 export function buildSeoHead(restaurant) {
   const name = restaurant.name
   const cuisine = restaurant.cuisine || 'Pizza'
-  const { city, state } = parseAddress(restaurant.address)
+  const { city, state, street } = parseAddress(restaurant.address)
 
   const title =
     restaurant.seo_title ||
-    (city && state ? `${name} | Best ${cuisine} in ${city}, ${state}` : name)
+    (city && state && street ? `${name}, best ${cuisine} in ${city}, ${street}` : name)
 
   // A manual seo_description override is used verbatim (operator's choice).
   // Only the auto-derived fallback is word-truncated to ~150 chars.
@@ -34,9 +34,9 @@ export function buildSeoHead(restaurant) {
     restaurant.seo_description ||
     truncateAtWord(
       city && state
-        ? `${name}: the best ${cuisine} in ${city}, ${state}. View our menu, hours, and location. Order directly online for pickup or delivery — save money, support local.`
+        ? `View the menu, hours, address, and photos for ${name} in ${city}, ${state}. Order directly online for pickup or delivery — commission-free, supporting local.`
         : (restaurant.tagline || `Order directly online from ${name} for pickup or delivery.`),
-      150
+      160
     )
 
   const canonical = restaurant.custom_domain
