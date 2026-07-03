@@ -120,6 +120,25 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
   const { hero_image_url, logo_url, logo_frame_shape, name, tagline, slug, primary_color } = restaurant
   const brandColor = primary_color || DEFAULT_BRAND_COLOR
 
+  // Same CTA row in both modes — only its parent (centered vs left inset) differs.
+  const ctas = (
+    <div className="hidden md:flex items-center gap-4 mt-8">
+      <OrderLink
+        slug={slug}
+        className="px-7 py-3 rounded-full border-2 border-white text-white font-semibold text-base bg-transparent hover:bg-white/10 transition-colors"
+      >
+        See Menu
+      </OrderLink>
+      <OrderLink
+        slug={slug}
+        className="px-7 py-3 rounded-full text-white font-semibold text-base hover:opacity-90 transition-opacity"
+        style={{ backgroundColor: 'var(--brand-color)' }}
+      >
+        Order Online
+      </OrderLink>
+    </div>
+  )
+
   return (
     <section
       className="relative w-full h-[80vh] md:h-[70vh] bg-gray-100 bg-cover bg-center"
@@ -132,9 +151,9 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
       <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
 
       {/* Content — pt-16 compensates for the -mt-16 on the section so content
-          stays optically centered in the visible area below TopBar. Default is
-          centered (homepage); the keyword layout (title provided) is left-aligned. */}
-      <div className={`relative z-10 h-full flex flex-col justify-center px-6 pt-[calc(4rem+env(safe-area-inset-top))] pb-[10vh] md:pb-0 ${title ? 'items-start text-left' : 'items-center text-center'}`}>
+          stays optically centered in the visible area below TopBar. Both modes
+          center the logo + name; keyword mode adds a left-aligned inset block. */}
+      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-[calc(4rem+env(safe-area-inset-top))] pb-[10vh] md:pb-0">
         <LogoFrame
           logoUrl={logo_url}
           shape={logo_frame_shape}
@@ -143,22 +162,20 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
         />
         {title ? (
           <>
-            {eyebrow && (
-              <p
-                className="text-sm font-semibold uppercase tracking-wide mb-2"
-                style={{ color: 'var(--brand-color)' }}
-              >
-                {eyebrow}
-              </p>
-            )}
-            <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
-              {title}
-            </h1>
-            {subtitle && (
-              <p className="mt-3 text-base md:text-xl text-white/90 max-w-2xl">
-                {subtitle}
-              </p>
-            )}
+            {/* Centered restaurant name above the keyword block */}
+            <p className="text-2xl md:text-3xl font-bold text-white">{name}</p>
+            {/* Left-aligned, inset keyword block: eyebrow + H1 (SEO) + CTAs */}
+            <div className="w-full max-w-2xl mt-6 text-left">
+              {eyebrow && (
+                <p className="text-sm font-semibold uppercase tracking-wide text-white mb-2">
+                  {eyebrow}
+                </p>
+              )}
+              <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
+                {title}
+              </h1>
+              {ctas}
+            </div>
           </>
         ) : (
           <>
@@ -170,25 +187,9 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
                 {tagline}
               </p>
             )}
+            {ctas}
           </>
         )}
-
-        {/* CTAs — desktop only; mobile uses sticky bottom bar (Phase 2C) */}
-        <div className="hidden md:flex items-center gap-4 mt-8">
-          <OrderLink
-            slug={slug}
-            className="px-7 py-3 rounded-full border-2 border-white text-white font-semibold text-base bg-transparent hover:bg-white/10 transition-colors"
-          >
-            See Menu
-          </OrderLink>
-          <OrderLink
-            slug={slug}
-            className="px-7 py-3 rounded-full text-white font-semibold text-base hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: 'var(--brand-color)' }}
-          >
-            Order Online
-          </OrderLink>
-        </div>
       </div>
     </section>
   )
