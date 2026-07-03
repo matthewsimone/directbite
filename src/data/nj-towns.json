@@ -1,0 +1,5642 @@
+[
+  {
+    "name": "Absecon",
+    "slug": "absecon",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.423563,
+    "lng": -74.493025,
+    "geoid": "3400100100"
+  },
+  {
+    "name": "Atlantic City",
+    "slug": "atlantic-city",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.377337,
+    "lng": -74.45107,
+    "geoid": "3400102080"
+  },
+  {
+    "name": "Brigantine",
+    "slug": "brigantine",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.413857,
+    "lng": -74.377902,
+    "geoid": "3400107810"
+  },
+  {
+    "name": "Buena",
+    "slug": "buena",
+    "type": "borough",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.52917,
+    "lng": -74.945204,
+    "geoid": "3400108680"
+  },
+  {
+    "name": "Buena Vista",
+    "slug": "buena-vista",
+    "type": "township",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.513063,
+    "lng": -74.880048,
+    "geoid": "3400108710"
+  },
+  {
+    "name": "Corbin City",
+    "slug": "corbin-city",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.301674,
+    "lng": -74.705578,
+    "geoid": "3400115160"
+  },
+  {
+    "name": "Egg Harbor",
+    "slug": "egg-harbor",
+    "type": "township",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.380407,
+    "lng": -74.612341,
+    "geoid": "3400120290"
+  },
+  {
+    "name": "Egg Harbor City",
+    "slug": "egg-harbor-city",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.563687,
+    "lng": -74.595865,
+    "geoid": "3400120350"
+  },
+  {
+    "name": "Estell Manor",
+    "slug": "estell-manor",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.353933,
+    "lng": -74.775135,
+    "geoid": "3400121870"
+  },
+  {
+    "name": "Folsom",
+    "slug": "folsom",
+    "type": "borough",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.596745,
+    "lng": -74.843163,
+    "geoid": "3400123940"
+  },
+  {
+    "name": "Galloway",
+    "slug": "galloway",
+    "type": "township",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.491453,
+    "lng": -74.473867,
+    "geoid": "3400125560"
+  },
+  {
+    "name": "Hamilton",
+    "slug": "hamilton",
+    "type": "township",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.481603,
+    "lng": -74.737407,
+    "geoid": "3400129280"
+  },
+  {
+    "name": "Hammonton",
+    "slug": "hammonton",
+    "type": "town",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.66078,
+    "lng": -74.767021,
+    "geoid": "3400129430"
+  },
+  {
+    "name": "Linwood",
+    "slug": "linwood",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.343718,
+    "lng": -74.571049,
+    "geoid": "3400140530"
+  },
+  {
+    "name": "Longport",
+    "slug": "longport",
+    "type": "borough",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.311337,
+    "lng": -74.526957,
+    "geoid": "3400141370"
+  },
+  {
+    "name": "Margate City",
+    "slug": "margate-city",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.330913,
+    "lng": -74.506849,
+    "geoid": "3400143890"
+  },
+  {
+    "name": "Mullica",
+    "slug": "mullica",
+    "type": "township",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.598812,
+    "lng": -74.67447,
+    "geoid": "3400149410"
+  },
+  {
+    "name": "Northfield",
+    "slug": "northfield",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.373073,
+    "lng": -74.554128,
+    "geoid": "3400152950"
+  },
+  {
+    "name": "Pleasantville",
+    "slug": "pleasantville",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.388524,
+    "lng": -74.509419,
+    "geoid": "3400159640"
+  },
+  {
+    "name": "Port Republic",
+    "slug": "port-republic",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.534798,
+    "lng": -74.476099,
+    "geoid": "3400160600"
+  },
+  {
+    "name": "Somers Point",
+    "slug": "somers-point",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.317237,
+    "lng": -74.606383,
+    "geoid": "3400168430"
+  },
+  {
+    "name": "Ventnor City",
+    "slug": "ventnor-city",
+    "type": "city",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.342046,
+    "lng": -74.482626,
+    "geoid": "3400175620"
+  },
+  {
+    "name": "Weymouth",
+    "slug": "weymouth",
+    "type": "township",
+    "county": "Atlantic",
+    "county_fips": "001",
+    "lat": 39.396332,
+    "lng": -74.826954,
+    "geoid": "3400180330"
+  },
+  {
+    "name": "Allendale",
+    "slug": "allendale",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.032669,
+    "lng": -74.133826,
+    "geoid": "3400300700"
+  },
+  {
+    "name": "Alpine",
+    "slug": "alpine",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.968782,
+    "lng": -73.916896,
+    "geoid": "3400301090"
+  },
+  {
+    "name": "Bergenfield",
+    "slug": "bergenfield",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.922334,
+    "lng": -73.998001,
+    "geoid": "3400305170"
+  },
+  {
+    "name": "Bogota",
+    "slug": "bogota",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.874293,
+    "lng": -74.029737,
+    "geoid": "3400306490"
+  },
+  {
+    "name": "Carlstadt",
+    "slug": "carlstadt",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.826431,
+    "lng": -74.062335,
+    "geoid": "3400310480"
+  },
+  {
+    "name": "Cliffside Park",
+    "slug": "cliffside-park",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.82205,
+    "lng": -73.987932,
+    "geoid": "3400313570"
+  },
+  {
+    "name": "Closter",
+    "slug": "closter",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.97289,
+    "lng": -73.960315,
+    "geoid": "3400313810"
+  },
+  {
+    "name": "Cresskill",
+    "slug": "cresskill",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.940018,
+    "lng": -73.958313,
+    "geoid": "3400315820"
+  },
+  {
+    "name": "Demarest",
+    "slug": "demarest",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.954103,
+    "lng": -73.954921,
+    "geoid": "3400317530"
+  },
+  {
+    "name": "Dumont",
+    "slug": "dumont",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.945239,
+    "lng": -73.992428,
+    "geoid": "3400318400"
+  },
+  {
+    "name": "East Rutherford",
+    "slug": "east-rutherford",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.817097,
+    "lng": -74.085024,
+    "geoid": "3400319510"
+  },
+  {
+    "name": "Edgewater",
+    "slug": "edgewater",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.82465,
+    "lng": -73.973793,
+    "geoid": "3400320020"
+  },
+  {
+    "name": "Elmwood Park",
+    "slug": "elmwood-park",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.904526,
+    "lng": -74.119514,
+    "geoid": "3400321300"
+  },
+  {
+    "name": "Emerson",
+    "slug": "emerson",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.97499,
+    "lng": -74.023248,
+    "geoid": "3400321450"
+  },
+  {
+    "name": "Englewood",
+    "slug": "englewood",
+    "type": "city",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.891197,
+    "lng": -73.972515,
+    "geoid": "3400321480"
+  },
+  {
+    "name": "Englewood Cliffs",
+    "slug": "englewood-cliffs",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.884634,
+    "lng": -73.944654,
+    "geoid": "3400321510"
+  },
+  {
+    "name": "Fair Lawn",
+    "slug": "fair-lawn",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.93583,
+    "lng": -74.117505,
+    "geoid": "3400322470"
+  },
+  {
+    "name": "Fairview",
+    "slug": "fairview",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.82111,
+    "lng": -74.003032,
+    "geoid": "3400322560"
+  },
+  {
+    "name": "Fort Lee",
+    "slug": "fort-lee",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.85064,
+    "lng": -73.971007,
+    "geoid": "3400324420"
+  },
+  {
+    "name": "Franklin Lakes",
+    "slug": "franklin-lakes",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.007526,
+    "lng": -74.205653,
+    "geoid": "3400324990"
+  },
+  {
+    "name": "Garfield",
+    "slug": "garfield",
+    "type": "city",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.879797,
+    "lng": -74.10825,
+    "geoid": "3400325770"
+  },
+  {
+    "name": "Glen Rock",
+    "slug": "glen-rock",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.959471,
+    "lng": -74.125202,
+    "geoid": "3400326640"
+  },
+  {
+    "name": "Hackensack",
+    "slug": "hackensack",
+    "type": "city",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.889398,
+    "lng": -74.045698,
+    "geoid": "3400328680"
+  },
+  {
+    "name": "Harrington Park",
+    "slug": "harrington-park",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.991681,
+    "lng": -73.980202,
+    "geoid": "3400330150"
+  },
+  {
+    "name": "Hasbrouck Heights",
+    "slug": "hasbrouck-heights",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.862751,
+    "lng": -74.075182,
+    "geoid": "3400330420"
+  },
+  {
+    "name": "Haworth",
+    "slug": "haworth",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.962737,
+    "lng": -73.99747,
+    "geoid": "3400330540"
+  },
+  {
+    "name": "Hillsdale",
+    "slug": "hillsdale",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.007127,
+    "lng": -74.045119,
+    "geoid": "3400331920"
+  },
+  {
+    "name": "Ho-Ho-Kus",
+    "slug": "ho-ho-kus",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.9995,
+    "lng": -74.096583,
+    "geoid": "3400332310"
+  },
+  {
+    "name": "Leonia",
+    "slug": "leonia",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.863391,
+    "lng": -73.988466,
+    "geoid": "3400340020"
+  },
+  {
+    "name": "Little Ferry",
+    "slug": "little-ferry",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.843431,
+    "lng": -74.034239,
+    "geoid": "3400340680"
+  },
+  {
+    "name": "Lodi",
+    "slug": "lodi",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.877915,
+    "lng": -74.0825,
+    "geoid": "3400341100"
+  },
+  {
+    "name": "Lyndhurst",
+    "slug": "lyndhurst",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.797113,
+    "lng": -74.11298,
+    "geoid": "3400342090"
+  },
+  {
+    "name": "Mahwah",
+    "slug": "mahwah",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.082067,
+    "lng": -74.183061,
+    "geoid": "3400342750"
+  },
+  {
+    "name": "Maywood",
+    "slug": "maywood",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.902885,
+    "lng": -74.063457,
+    "geoid": "3400344880"
+  },
+  {
+    "name": "Midland Park",
+    "slug": "midland-park",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.995809,
+    "lng": -74.141262,
+    "geoid": "3400346110"
+  },
+  {
+    "name": "Montvale",
+    "slug": "montvale",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.054594,
+    "lng": -74.047298,
+    "geoid": "3400347610"
+  },
+  {
+    "name": "Moonachie",
+    "slug": "moonachie",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.841334,
+    "lng": -74.057671,
+    "geoid": "3400347700"
+  },
+  {
+    "name": "New Milford",
+    "slug": "new-milford",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.934161,
+    "lng": -74.019453,
+    "geoid": "3400351660"
+  },
+  {
+    "name": "North Arlington",
+    "slug": "north-arlington",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.786256,
+    "lng": -74.12622,
+    "geoid": "3400352320"
+  },
+  {
+    "name": "Northvale",
+    "slug": "northvale",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.012874,
+    "lng": -73.948553,
+    "geoid": "3400353430"
+  },
+  {
+    "name": "Norwood",
+    "slug": "norwood",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.992046,
+    "lng": -73.950551,
+    "geoid": "3400353610"
+  },
+  {
+    "name": "Oakland",
+    "slug": "oakland",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.031022,
+    "lng": -74.240502,
+    "geoid": "3400353850"
+  },
+  {
+    "name": "Old Tappan",
+    "slug": "old-tappan",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.023305,
+    "lng": -73.984223,
+    "geoid": "3400354870"
+  },
+  {
+    "name": "Oradell",
+    "slug": "oradell",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.956653,
+    "lng": -74.032862,
+    "geoid": "3400354990"
+  },
+  {
+    "name": "Palisades Park",
+    "slug": "palisades-park",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.847017,
+    "lng": -73.997061,
+    "geoid": "3400355770"
+  },
+  {
+    "name": "Paramus",
+    "slug": "paramus",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.947299,
+    "lng": -74.070169,
+    "geoid": "3400355950"
+  },
+  {
+    "name": "Park Ridge",
+    "slug": "park-ridge",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.036183,
+    "lng": -74.044293,
+    "geoid": "3400356130"
+  },
+  {
+    "name": "Ramsey",
+    "slug": "ramsey",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.061325,
+    "lng": -74.146996,
+    "geoid": "3400361680"
+  },
+  {
+    "name": "Ridgefield",
+    "slug": "ridgefield",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.832677,
+    "lng": -74.014088,
+    "geoid": "3400362910"
+  },
+  {
+    "name": "Ridgefield Park",
+    "slug": "ridgefield-park",
+    "type": "village",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.854705,
+    "lng": -74.019926,
+    "geoid": "3400362940"
+  },
+  {
+    "name": "Ridgewood",
+    "slug": "ridgewood",
+    "type": "village",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.981591,
+    "lng": -74.113506,
+    "geoid": "3400363000"
+  },
+  {
+    "name": "River Edge",
+    "slug": "river-edge",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.926766,
+    "lng": -74.037468,
+    "geoid": "3400363360"
+  },
+  {
+    "name": "River Vale",
+    "slug": "river-vale",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.014201,
+    "lng": -74.006774,
+    "geoid": "3400363690"
+  },
+  {
+    "name": "Rochelle Park",
+    "slug": "rochelle-park",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.906496,
+    "lng": -74.078005,
+    "geoid": "3400363990"
+  },
+  {
+    "name": "Rockleigh",
+    "slug": "rockleigh",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.000241,
+    "lng": -73.934068,
+    "geoid": "3400364170"
+  },
+  {
+    "name": "Rutherford",
+    "slug": "rutherford",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.820314,
+    "lng": -74.106041,
+    "geoid": "3400365280"
+  },
+  {
+    "name": "Saddle Brook",
+    "slug": "saddle-brook",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.903099,
+    "lng": -74.093591,
+    "geoid": "3400365340"
+  },
+  {
+    "name": "Saddle River",
+    "slug": "saddle-river",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.023696,
+    "lng": -74.092553,
+    "geoid": "3400365400"
+  },
+  {
+    "name": "South Hackensack",
+    "slug": "south-hackensack",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.864801,
+    "lng": -74.048115,
+    "geoid": "3400368970"
+  },
+  {
+    "name": "Teaneck",
+    "slug": "teaneck",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.890317,
+    "lng": -74.011478,
+    "geoid": "3400372360"
+  },
+  {
+    "name": "Tenafly",
+    "slug": "tenafly",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.918309,
+    "lng": -73.950523,
+    "geoid": "3400372420"
+  },
+  {
+    "name": "Teterboro",
+    "slug": "teterboro",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.854573,
+    "lng": -74.059619,
+    "geoid": "3400372480"
+  },
+  {
+    "name": "Upper Saddle River",
+    "slug": "upper-saddle-river",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.063162,
+    "lng": -74.099973,
+    "geoid": "3400375140"
+  },
+  {
+    "name": "Waldwick",
+    "slug": "waldwick",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.013367,
+    "lng": -74.125217,
+    "geoid": "3400376400"
+  },
+  {
+    "name": "Wallington",
+    "slug": "wallington",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.853084,
+    "lng": -74.106323,
+    "geoid": "3400376490"
+  },
+  {
+    "name": "Washington",
+    "slug": "washington",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.988306,
+    "lng": -74.064693,
+    "geoid": "3400377135"
+  },
+  {
+    "name": "Westwood",
+    "slug": "westwood",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.989032,
+    "lng": -74.031872,
+    "geoid": "3400380270"
+  },
+  {
+    "name": "Wood-Ridge",
+    "slug": "wood-ridge",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.850183,
+    "lng": -74.087068,
+    "geoid": "3400382570"
+  },
+  {
+    "name": "Woodcliff Lake",
+    "slug": "woodcliff-lake",
+    "type": "borough",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 41.025977,
+    "lng": -74.061061,
+    "geoid": "3400382300"
+  },
+  {
+    "name": "Wyckoff",
+    "slug": "wyckoff",
+    "type": "township",
+    "county": "Bergen",
+    "county_fips": "003",
+    "lat": 40.999093,
+    "lng": -74.168849,
+    "geoid": "3400383050"
+  },
+  {
+    "name": "Bass River",
+    "slug": "bass-river",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.658362,
+    "lng": -74.448106,
+    "geoid": "3400503370"
+  },
+  {
+    "name": "Beverly",
+    "slug": "beverly",
+    "type": "city",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.064811,
+    "lng": -74.921904,
+    "geoid": "3400505740"
+  },
+  {
+    "name": "Bordentown",
+    "slug": "bordentown",
+    "type": "city",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.149693,
+    "lng": -74.707679,
+    "geoid": "3400506670"
+  },
+  {
+    "name": "Bordentown",
+    "slug": "bordentown",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.130087,
+    "lng": -74.697434,
+    "geoid": "3400506700"
+  },
+  {
+    "name": "Burlington",
+    "slug": "burlington",
+    "type": "city",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.078824,
+    "lng": -74.852483,
+    "geoid": "3400508920"
+  },
+  {
+    "name": "Burlington",
+    "slug": "burlington",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.060631,
+    "lng": -74.835891,
+    "geoid": "3400508950"
+  },
+  {
+    "name": "Chesterfield",
+    "slug": "chesterfield",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.119177,
+    "lng": -74.662894,
+    "geoid": "3400512670"
+  },
+  {
+    "name": "Cinnaminson",
+    "slug": "cinnaminson",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.000162,
+    "lng": -74.991632,
+    "geoid": "3400512940"
+  },
+  {
+    "name": "Delanco",
+    "slug": "delanco",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.049529,
+    "lng": -74.947238,
+    "geoid": "3400517080"
+  },
+  {
+    "name": "Delran",
+    "slug": "delran",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.013024,
+    "lng": -74.947423,
+    "geoid": "3400517440"
+  },
+  {
+    "name": "Eastampton",
+    "slug": "eastampton",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.000279,
+    "lng": -74.756547,
+    "geoid": "3400518790"
+  },
+  {
+    "name": "Edgewater Park",
+    "slug": "edgewater-park",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.053506,
+    "lng": -74.918438,
+    "geoid": "3400520050"
+  },
+  {
+    "name": "Evesham",
+    "slug": "evesham",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.856677,
+    "lng": -74.90081,
+    "geoid": "3400522110"
+  },
+  {
+    "name": "Fieldsboro",
+    "slug": "fieldsboro",
+    "type": "borough",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.135471,
+    "lng": -74.733355,
+    "geoid": "3400523250"
+  },
+  {
+    "name": "Florence",
+    "slug": "florence",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.095142,
+    "lng": -74.786609,
+    "geoid": "3400523850"
+  },
+  {
+    "name": "Hainesport",
+    "slug": "hainesport",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.977956,
+    "lng": -74.836334,
+    "geoid": "3400529010"
+  },
+  {
+    "name": "Lumberton",
+    "slug": "lumberton",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.958855,
+    "lng": -74.802478,
+    "geoid": "3400542060"
+  },
+  {
+    "name": "Mansfield",
+    "slug": "mansfield",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.087416,
+    "lng": -74.712259,
+    "geoid": "3400543290"
+  },
+  {
+    "name": "Maple Shade",
+    "slug": "maple-shade",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.952381,
+    "lng": -74.994896,
+    "geoid": "3400543740"
+  },
+  {
+    "name": "Medford",
+    "slug": "medford",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.864269,
+    "lng": -74.82466,
+    "geoid": "3400545120"
+  },
+  {
+    "name": "Medford Lakes",
+    "slug": "medford-lakes",
+    "type": "borough",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.853649,
+    "lng": -74.811665,
+    "geoid": "3400545210"
+  },
+  {
+    "name": "Moorestown",
+    "slug": "moorestown",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.978716,
+    "lng": -74.942651,
+    "geoid": "3400547880"
+  },
+  {
+    "name": "Mount Holly",
+    "slug": "mount-holly",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.995336,
+    "lng": -74.786473,
+    "geoid": "3400548900"
+  },
+  {
+    "name": "Mount Laurel",
+    "slug": "mount-laurel",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.948992,
+    "lng": -74.900247,
+    "geoid": "3400549020"
+  },
+  {
+    "name": "New Hanover",
+    "slug": "new-hanover",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.013969,
+    "lng": -74.575016,
+    "geoid": "3400551510"
+  },
+  {
+    "name": "North Hanover",
+    "slug": "north-hanover",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.089961,
+    "lng": -74.585444,
+    "geoid": "3400553070"
+  },
+  {
+    "name": "Palmyra",
+    "slug": "palmyra",
+    "type": "borough",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.003099,
+    "lng": -75.035889,
+    "geoid": "3400555800"
+  },
+  {
+    "name": "Pemberton",
+    "slug": "pemberton",
+    "type": "borough",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.97219,
+    "lng": -74.686558,
+    "geoid": "3400557480"
+  },
+  {
+    "name": "Pemberton",
+    "slug": "pemberton",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.958586,
+    "lng": -74.604606,
+    "geoid": "3400557510"
+  },
+  {
+    "name": "Riverside",
+    "slug": "riverside",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.035677,
+    "lng": -74.955801,
+    "geoid": "3400563510"
+  },
+  {
+    "name": "Riverton",
+    "slug": "riverton",
+    "type": "borough",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.011135,
+    "lng": -75.014128,
+    "geoid": "3400563660"
+  },
+  {
+    "name": "Shamong",
+    "slug": "shamong",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.785003,
+    "lng": -74.717178,
+    "geoid": "3400566810"
+  },
+  {
+    "name": "Southampton",
+    "slug": "southampton",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.915935,
+    "lng": -74.717501,
+    "geoid": "3400568610"
+  },
+  {
+    "name": "Springfield",
+    "slug": "springfield",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.039565,
+    "lng": -74.70994,
+    "geoid": "3400569990"
+  },
+  {
+    "name": "Tabernacle",
+    "slug": "tabernacle",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.820569,
+    "lng": -74.652585,
+    "geoid": "3400572060"
+  },
+  {
+    "name": "Washington",
+    "slug": "washington",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.684163,
+    "lng": -74.572639,
+    "geoid": "3400577150"
+  },
+  {
+    "name": "Westampton",
+    "slug": "westampton",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.018422,
+    "lng": -74.816739,
+    "geoid": "3400578200"
+  },
+  {
+    "name": "Willingboro",
+    "slug": "willingboro",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.02795,
+    "lng": -74.886984,
+    "geoid": "3400581440"
+  },
+  {
+    "name": "Woodland",
+    "slug": "woodland",
+    "type": "township",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 39.841289,
+    "lng": -74.51774,
+    "geoid": "3400582420"
+  },
+  {
+    "name": "Wrightstown",
+    "slug": "wrightstown",
+    "type": "borough",
+    "county": "Burlington",
+    "county_fips": "005",
+    "lat": 40.025589,
+    "lng": -74.631908,
+    "geoid": "3400582960"
+  },
+  {
+    "name": "Audubon",
+    "slug": "audubon",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.890128,
+    "lng": -75.072382,
+    "geoid": "3400702200"
+  },
+  {
+    "name": "Audubon Park",
+    "slug": "audubon-park",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.896837,
+    "lng": -75.088819,
+    "geoid": "3400702230"
+  },
+  {
+    "name": "Barrington",
+    "slug": "barrington",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.868935,
+    "lng": -75.051362,
+    "geoid": "3400703250"
+  },
+  {
+    "name": "Bellmawr",
+    "slug": "bellmawr",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.866356,
+    "lng": -75.09467,
+    "geoid": "3400704750"
+  },
+  {
+    "name": "Berlin",
+    "slug": "berlin",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.792059,
+    "lng": -74.936985,
+    "geoid": "3400705440"
+  },
+  {
+    "name": "Berlin",
+    "slug": "berlin",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.807116,
+    "lng": -74.924178,
+    "geoid": "3400705470"
+  },
+  {
+    "name": "Brooklawn",
+    "slug": "brooklawn",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.87935,
+    "lng": -75.120396,
+    "geoid": "3400708170"
+  },
+  {
+    "name": "Camden",
+    "slug": "camden",
+    "type": "city",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.936787,
+    "lng": -75.106644,
+    "geoid": "3400710000"
+  },
+  {
+    "name": "Cherry Hill",
+    "slug": "cherry-hill",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.904611,
+    "lng": -74.997,
+    "geoid": "3400712280"
+  },
+  {
+    "name": "Chesilhurst",
+    "slug": "chesilhurst",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.729795,
+    "lng": -74.880531,
+    "geoid": "3400712550"
+  },
+  {
+    "name": "Clementon",
+    "slug": "clementon",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.802681,
+    "lng": -74.983763,
+    "geoid": "3400713420"
+  },
+  {
+    "name": "Collingswood",
+    "slug": "collingswood",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.915275,
+    "lng": -75.078391,
+    "geoid": "3400714260"
+  },
+  {
+    "name": "Gibbsboro",
+    "slug": "gibbsboro",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.832567,
+    "lng": -74.966907,
+    "geoid": "3400726070"
+  },
+  {
+    "name": "Gloucester",
+    "slug": "gloucester",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.792186,
+    "lng": -75.036059,
+    "geoid": "3400726760"
+  },
+  {
+    "name": "Gloucester City",
+    "slug": "gloucester-city",
+    "type": "city",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.891694,
+    "lng": -75.116692,
+    "geoid": "3400726820"
+  },
+  {
+    "name": "Haddon",
+    "slug": "haddon",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.906216,
+    "lng": -75.062951,
+    "geoid": "3400728740"
+  },
+  {
+    "name": "Haddon Heights",
+    "slug": "haddon-heights",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.879127,
+    "lng": -75.065918,
+    "geoid": "3400728800"
+  },
+  {
+    "name": "Haddonfield",
+    "slug": "haddonfield",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.895416,
+    "lng": -75.034413,
+    "geoid": "3400728770"
+  },
+  {
+    "name": "Hi-Nella",
+    "slug": "hi-nella",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.836516,
+    "lng": -75.021965,
+    "geoid": "3400732220"
+  },
+  {
+    "name": "Laurel Springs",
+    "slug": "laurel-springs",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.820543,
+    "lng": -75.005445,
+    "geoid": "3400739210"
+  },
+  {
+    "name": "Lawnside",
+    "slug": "lawnside",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.867308,
+    "lng": -75.028903,
+    "geoid": "3400739420"
+  },
+  {
+    "name": "Lindenwold",
+    "slug": "lindenwold",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.818832,
+    "lng": -74.989966,
+    "geoid": "3400740440"
+  },
+  {
+    "name": "Magnolia",
+    "slug": "magnolia",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.856195,
+    "lng": -75.036397,
+    "geoid": "3400742630"
+  },
+  {
+    "name": "Merchantville",
+    "slug": "merchantville",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.950222,
+    "lng": -75.050337,
+    "geoid": "3400745510"
+  },
+  {
+    "name": "Mount Ephraim",
+    "slug": "mount-ephraim",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.879524,
+    "lng": -75.091814,
+    "geoid": "3400748750"
+  },
+  {
+    "name": "Oaklyn",
+    "slug": "oaklyn",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.9023,
+    "lng": -75.080573,
+    "geoid": "3400753880"
+  },
+  {
+    "name": "Pennsauken",
+    "slug": "pennsauken",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.968368,
+    "lng": -75.057851,
+    "geoid": "3400757660"
+  },
+  {
+    "name": "Pine Hill",
+    "slug": "pine-hill",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.78572,
+    "lng": -74.980816,
+    "geoid": "3400758770"
+  },
+  {
+    "name": "Runnemede",
+    "slug": "runnemede",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.853411,
+    "lng": -75.075502,
+    "geoid": "3400765160"
+  },
+  {
+    "name": "Somerdale",
+    "slug": "somerdale",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.845416,
+    "lng": -75.021701,
+    "geoid": "3400768340"
+  },
+  {
+    "name": "Stratford",
+    "slug": "stratford",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.82899,
+    "lng": -75.015536,
+    "geoid": "3400771220"
+  },
+  {
+    "name": "Tavistock",
+    "slug": "tavistock",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.876265,
+    "lng": -75.029807,
+    "geoid": "3400772240"
+  },
+  {
+    "name": "Voorhees",
+    "slug": "voorhees",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.84857,
+    "lng": -74.952843,
+    "geoid": "3400776220"
+  },
+  {
+    "name": "Waterford",
+    "slug": "waterford",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.743214,
+    "lng": -74.820861,
+    "geoid": "3400777630"
+  },
+  {
+    "name": "Winslow",
+    "slug": "winslow",
+    "type": "township",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.701722,
+    "lng": -74.908351,
+    "geoid": "3400781740"
+  },
+  {
+    "name": "Woodlynne",
+    "slug": "woodlynne",
+    "type": "borough",
+    "county": "Camden",
+    "county_fips": "007",
+    "lat": 39.916478,
+    "lng": -75.095549,
+    "geoid": "3400782450"
+  },
+  {
+    "name": "Avalon",
+    "slug": "avalon",
+    "type": "borough",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.088349,
+    "lng": -74.738235,
+    "geoid": "3400902320"
+  },
+  {
+    "name": "Cape May",
+    "slug": "cape-may",
+    "type": "city",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 38.941147,
+    "lng": -74.898372,
+    "geoid": "3400910270"
+  },
+  {
+    "name": "Cape May Point",
+    "slug": "cape-may-point",
+    "type": "borough",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 38.936909,
+    "lng": -74.965374,
+    "geoid": "3400910330"
+  },
+  {
+    "name": "Dennis",
+    "slug": "dennis",
+    "type": "township",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.206555,
+    "lng": -74.818386,
+    "geoid": "3400917560"
+  },
+  {
+    "name": "Lower",
+    "slug": "lower",
+    "type": "township",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 38.983768,
+    "lng": -74.911308,
+    "geoid": "3400941610"
+  },
+  {
+    "name": "Middle",
+    "slug": "middle",
+    "type": "township",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.093265,
+    "lng": -74.838922,
+    "geoid": "3400945810"
+  },
+  {
+    "name": "North Wildwood",
+    "slug": "north-wildwood",
+    "type": "city",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.005944,
+    "lng": -74.797505,
+    "geoid": "3400953490"
+  },
+  {
+    "name": "Ocean City",
+    "slug": "ocean-city",
+    "type": "city",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.269504,
+    "lng": -74.599746,
+    "geoid": "3400954360"
+  },
+  {
+    "name": "Sea Isle City",
+    "slug": "sea-isle-city",
+    "type": "city",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.150781,
+    "lng": -74.702732,
+    "geoid": "3400966390"
+  },
+  {
+    "name": "Stone Harbor",
+    "slug": "stone-harbor",
+    "type": "borough",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.041691,
+    "lng": -74.768837,
+    "geoid": "3400971010"
+  },
+  {
+    "name": "Upper",
+    "slug": "upper",
+    "type": "township",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.258112,
+    "lng": -74.726912,
+    "geoid": "3400974810"
+  },
+  {
+    "name": "West Cape May",
+    "slug": "west-cape-may",
+    "type": "borough",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 38.942226,
+    "lng": -74.939033,
+    "geoid": "3400978530"
+  },
+  {
+    "name": "West Wildwood",
+    "slug": "west-wildwood",
+    "type": "borough",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.000598,
+    "lng": -74.823573,
+    "geoid": "3400980210"
+  },
+  {
+    "name": "Wildwood",
+    "slug": "wildwood",
+    "type": "city",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 38.98755,
+    "lng": -74.818188,
+    "geoid": "3400981170"
+  },
+  {
+    "name": "Wildwood Crest",
+    "slug": "wildwood-crest",
+    "type": "borough",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 38.971526,
+    "lng": -74.83733,
+    "geoid": "3400981200"
+  },
+  {
+    "name": "Woodbine",
+    "slug": "woodbine",
+    "type": "borough",
+    "county": "Cape May",
+    "county_fips": "009",
+    "lat": 39.22835,
+    "lng": -74.809621,
+    "geoid": "3400981890"
+  },
+  {
+    "name": "Bridgeton",
+    "slug": "bridgeton",
+    "type": "city",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.429192,
+    "lng": -75.228595,
+    "geoid": "3401107600"
+  },
+  {
+    "name": "Commercial",
+    "slug": "commercial",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.273769,
+    "lng": -75.045343,
+    "geoid": "3401114710"
+  },
+  {
+    "name": "Deerfield",
+    "slug": "deerfield",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.459043,
+    "lng": -75.131987,
+    "geoid": "3401116900"
+  },
+  {
+    "name": "Downe",
+    "slug": "downe",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.269497,
+    "lng": -75.133318,
+    "geoid": "3401118220"
+  },
+  {
+    "name": "Fairfield",
+    "slug": "fairfield",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.372316,
+    "lng": -75.238721,
+    "geoid": "3401122350"
+  },
+  {
+    "name": "Greenwich",
+    "slug": "greenwich",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.395029,
+    "lng": -75.37008,
+    "geoid": "3401128170"
+  },
+  {
+    "name": "Hopewell",
+    "slug": "hopewell",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.438578,
+    "lng": -75.281704,
+    "geoid": "3401133120"
+  },
+  {
+    "name": "Lawrence",
+    "slug": "lawrence",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.334878,
+    "lng": -75.184579,
+    "geoid": "3401139450"
+  },
+  {
+    "name": "Maurice River",
+    "slug": "maurice-river",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.295626,
+    "lng": -74.928882,
+    "geoid": "3401144580"
+  },
+  {
+    "name": "Millville",
+    "slug": "millville",
+    "type": "city",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.390093,
+    "lng": -75.054797,
+    "geoid": "3401146680"
+  },
+  {
+    "name": "Shiloh",
+    "slug": "shiloh",
+    "type": "borough",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.462418,
+    "lng": -75.29244,
+    "geoid": "3401167020"
+  },
+  {
+    "name": "Stow Creek",
+    "slug": "stow-creek",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.449381,
+    "lng": -75.359894,
+    "geoid": "3401171160"
+  },
+  {
+    "name": "Upper Deerfield",
+    "slug": "upper-deerfield",
+    "type": "township",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.49483,
+    "lng": -75.218589,
+    "geoid": "3401174870"
+  },
+  {
+    "name": "Vineland",
+    "slug": "vineland",
+    "type": "city",
+    "county": "Cumberland",
+    "county_fips": "011",
+    "lat": 39.465007,
+    "lng": -74.997115,
+    "geoid": "3401176070"
+  },
+  {
+    "name": "Belleville",
+    "slug": "belleville",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.793481,
+    "lng": -74.161159,
+    "geoid": "3401304695"
+  },
+  {
+    "name": "Bloomfield",
+    "slug": "bloomfield",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.809141,
+    "lng": -74.187142,
+    "geoid": "3401306260"
+  },
+  {
+    "name": "Caldwell",
+    "slug": "caldwell",
+    "type": "borough",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.839235,
+    "lng": -74.277026,
+    "geoid": "3401309250"
+  },
+  {
+    "name": "Cedar Grove",
+    "slug": "cedar-grove",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.858017,
+    "lng": -74.229784,
+    "geoid": "3401311200"
+  },
+  {
+    "name": "City of Orange",
+    "slug": "city-of-orange",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.76804,
+    "lng": -74.235692,
+    "geoid": "3401313045"
+  },
+  {
+    "name": "East Orange",
+    "slug": "east-orange",
+    "type": "city",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.765055,
+    "lng": -74.211655,
+    "geoid": "3401319390"
+  },
+  {
+    "name": "Essex Fells",
+    "slug": "essex-fells",
+    "type": "borough",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.828102,
+    "lng": -74.276226,
+    "geoid": "3401321840"
+  },
+  {
+    "name": "Fairfield",
+    "slug": "fairfield",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.882508,
+    "lng": -74.304593,
+    "geoid": "3401322385"
+  },
+  {
+    "name": "Glen Ridge",
+    "slug": "glen-ridge",
+    "type": "borough",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.804798,
+    "lng": -74.204569,
+    "geoid": "3401326610"
+  },
+  {
+    "name": "Irvington",
+    "slug": "irvington",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.723859,
+    "lng": -74.232522,
+    "geoid": "3401334450"
+  },
+  {
+    "name": "Livingston",
+    "slug": "livingston",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.785828,
+    "lng": -74.3291,
+    "geoid": "3401340890"
+  },
+  {
+    "name": "Maplewood",
+    "slug": "maplewood",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.733607,
+    "lng": -74.271159,
+    "geoid": "3401343800"
+  },
+  {
+    "name": "Millburn",
+    "slug": "millburn",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.741608,
+    "lng": -74.321286,
+    "geoid": "3401346380"
+  },
+  {
+    "name": "Montclair",
+    "slug": "montclair",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.824998,
+    "lng": -74.210856,
+    "geoid": "3401347500"
+  },
+  {
+    "name": "Newark",
+    "slug": "newark",
+    "type": "city",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.72422,
+    "lng": -74.172574,
+    "geoid": "3401351000"
+  },
+  {
+    "name": "North Caldwell",
+    "slug": "north-caldwell",
+    "type": "borough",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.8645,
+    "lng": -74.259996,
+    "geoid": "3401352620"
+  },
+  {
+    "name": "Nutley",
+    "slug": "nutley",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.820616,
+    "lng": -74.15625,
+    "geoid": "3401353680"
+  },
+  {
+    "name": "Roseland",
+    "slug": "roseland",
+    "type": "borough",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.821737,
+    "lng": -74.310147,
+    "geoid": "3401364590"
+  },
+  {
+    "name": "South Orange Village",
+    "slug": "south-orange-village",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.748811,
+    "lng": -74.261512,
+    "geoid": "3401369274"
+  },
+  {
+    "name": "Verona",
+    "slug": "verona",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.832468,
+    "lng": -74.242863,
+    "geoid": "3401375815"
+  },
+  {
+    "name": "West Caldwell",
+    "slug": "west-caldwell",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.847234,
+    "lng": -74.294428,
+    "geoid": "3401378510"
+  },
+  {
+    "name": "West Orange",
+    "slug": "west-orange",
+    "type": "township",
+    "county": "Essex",
+    "county_fips": "013",
+    "lat": 40.785755,
+    "lng": -74.265058,
+    "geoid": "3401379800"
+  },
+  {
+    "name": "Clayton",
+    "slug": "clayton",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.664063,
+    "lng": -75.074397,
+    "geoid": "3401513360"
+  },
+  {
+    "name": "Deptford",
+    "slug": "deptford",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.817092,
+    "lng": -75.116577,
+    "geoid": "3401517710"
+  },
+  {
+    "name": "East Greenwich",
+    "slug": "east-greenwich",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.790519,
+    "lng": -75.240592,
+    "geoid": "3401519180"
+  },
+  {
+    "name": "Elk",
+    "slug": "elk",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.662752,
+    "lng": -75.156972,
+    "geoid": "3401521060"
+  },
+  {
+    "name": "Franklin",
+    "slug": "franklin",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.59884,
+    "lng": -75.020874,
+    "geoid": "3401524840"
+  },
+  {
+    "name": "Glassboro",
+    "slug": "glassboro",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.700096,
+    "lng": -75.111423,
+    "geoid": "3401526340"
+  },
+  {
+    "name": "Greenwich",
+    "slug": "greenwich",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.83473,
+    "lng": -75.288482,
+    "geoid": "3401528185"
+  },
+  {
+    "name": "Harrison",
+    "slug": "harrison",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.726095,
+    "lng": -75.204908,
+    "geoid": "3401530180"
+  },
+  {
+    "name": "Logan",
+    "slug": "logan",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.792079,
+    "lng": -75.355179,
+    "geoid": "3401541160"
+  },
+  {
+    "name": "Mantua",
+    "slug": "mantua",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.762013,
+    "lng": -75.173092,
+    "geoid": "3401543440"
+  },
+  {
+    "name": "Monroe",
+    "slug": "monroe",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.660224,
+    "lng": -74.969195,
+    "geoid": "3401547250"
+  },
+  {
+    "name": "National Park",
+    "slug": "national-park",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.867297,
+    "lng": -75.185621,
+    "geoid": "3401549680"
+  },
+  {
+    "name": "Newfield",
+    "slug": "newfield",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.551041,
+    "lng": -75.010217,
+    "geoid": "3401551390"
+  },
+  {
+    "name": "Paulsboro",
+    "slug": "paulsboro",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.839975,
+    "lng": -75.23996,
+    "geoid": "3401557150"
+  },
+  {
+    "name": "Pitman",
+    "slug": "pitman",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.733094,
+    "lng": -75.129673,
+    "geoid": "3401559070"
+  },
+  {
+    "name": "South Harrison",
+    "slug": "south-harrison",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.693596,
+    "lng": -75.253779,
+    "geoid": "3401569030"
+  },
+  {
+    "name": "Swedesboro",
+    "slug": "swedesboro",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.745884,
+    "lng": -75.310947,
+    "geoid": "3401571850"
+  },
+  {
+    "name": "Washington",
+    "slug": "washington",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.748424,
+    "lng": -75.069092,
+    "geoid": "3401577180"
+  },
+  {
+    "name": "Wenonah",
+    "slug": "wenonah",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.792001,
+    "lng": -75.148216,
+    "geoid": "3401578110"
+  },
+  {
+    "name": "West Deptford",
+    "slug": "west-deptford",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.841967,
+    "lng": -75.185089,
+    "geoid": "3401578800"
+  },
+  {
+    "name": "Westville",
+    "slug": "westville",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.86923,
+    "lng": -75.131335,
+    "geoid": "3401580120"
+  },
+  {
+    "name": "Woodbury",
+    "slug": "woodbury",
+    "type": "city",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.837906,
+    "lng": -75.15153,
+    "geoid": "3401582120"
+  },
+  {
+    "name": "Woodbury Heights",
+    "slug": "woodbury-heights",
+    "type": "borough",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.81329,
+    "lng": -75.15065,
+    "geoid": "3401582180"
+  },
+  {
+    "name": "Woolwich",
+    "slug": "woolwich",
+    "type": "township",
+    "county": "Gloucester",
+    "county_fips": "015",
+    "lat": 39.743351,
+    "lng": -75.326175,
+    "geoid": "3401582840"
+  },
+  {
+    "name": "Bayonne",
+    "slug": "bayonne",
+    "type": "city",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.662495,
+    "lng": -74.110201,
+    "geoid": "3401703580"
+  },
+  {
+    "name": "East Newark",
+    "slug": "east-newark",
+    "type": "borough",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.752011,
+    "lng": -74.162189,
+    "geoid": "3401719360"
+  },
+  {
+    "name": "Guttenberg",
+    "slug": "guttenberg",
+    "type": "town",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.792784,
+    "lng": -74.004572,
+    "geoid": "3401728650"
+  },
+  {
+    "name": "Harrison",
+    "slug": "harrison",
+    "type": "town",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.742978,
+    "lng": -74.152911,
+    "geoid": "3401730210"
+  },
+  {
+    "name": "Hoboken",
+    "slug": "hoboken",
+    "type": "city",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.745251,
+    "lng": -74.027926,
+    "geoid": "3401732250"
+  },
+  {
+    "name": "Jersey City",
+    "slug": "jersey-city",
+    "type": "city",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.711417,
+    "lng": -74.06476,
+    "geoid": "3401736000"
+  },
+  {
+    "name": "Kearny",
+    "slug": "kearny",
+    "type": "town",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.752332,
+    "lng": -74.123093,
+    "geoid": "3401736510"
+  },
+  {
+    "name": "North Bergen",
+    "slug": "north-bergen",
+    "type": "township",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.793644,
+    "lng": -74.025027,
+    "geoid": "3401752470"
+  },
+  {
+    "name": "Secaucus",
+    "slug": "secaucus",
+    "type": "town",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.781958,
+    "lng": -74.067649,
+    "geoid": "3401766570"
+  },
+  {
+    "name": "Union City",
+    "slug": "union-city",
+    "type": "city",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.767425,
+    "lng": -74.032279,
+    "geoid": "3401774630"
+  },
+  {
+    "name": "Weehawken",
+    "slug": "weehawken",
+    "type": "township",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.76801,
+    "lng": -74.017008,
+    "geoid": "3401777930"
+  },
+  {
+    "name": "West New York",
+    "slug": "west-new-york",
+    "type": "town",
+    "county": "Hudson",
+    "county_fips": "017",
+    "lat": 40.786032,
+    "lng": -74.009507,
+    "geoid": "3401779610"
+  },
+  {
+    "name": "Alexandria",
+    "slug": "alexandria",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.594532,
+    "lng": -75.026566,
+    "geoid": "3401900550"
+  },
+  {
+    "name": "Bethlehem",
+    "slug": "bethlehem",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.665036,
+    "lng": -75.011935,
+    "geoid": "3401905650"
+  },
+  {
+    "name": "Bloomsbury",
+    "slug": "bloomsbury",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.656886,
+    "lng": -75.076225,
+    "geoid": "3401906370"
+  },
+  {
+    "name": "Califon",
+    "slug": "califon",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.719471,
+    "lng": -74.836915,
+    "geoid": "3401909280"
+  },
+  {
+    "name": "Clinton",
+    "slug": "clinton",
+    "type": "town",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.636794,
+    "lng": -74.915205,
+    "geoid": "3401913720"
+  },
+  {
+    "name": "Clinton",
+    "slug": "clinton",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.630098,
+    "lng": -74.867202,
+    "geoid": "3401913750"
+  },
+  {
+    "name": "Delaware",
+    "slug": "delaware",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.439762,
+    "lng": -74.956329,
+    "geoid": "3401917170"
+  },
+  {
+    "name": "East Amwell",
+    "slug": "east-amwell",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.434992,
+    "lng": -74.82303,
+    "geoid": "3401918820"
+  },
+  {
+    "name": "Flemington",
+    "slug": "flemington",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.508641,
+    "lng": -74.859869,
+    "geoid": "3401923700"
+  },
+  {
+    "name": "Franklin",
+    "slug": "franklin",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.569033,
+    "lng": -74.931227,
+    "geoid": "3401924870"
+  },
+  {
+    "name": "Frenchtown",
+    "slug": "frenchtown",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.530537,
+    "lng": -75.052846,
+    "geoid": "3401925350"
+  },
+  {
+    "name": "Glen Gardner",
+    "slug": "glen-gardner",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.700385,
+    "lng": -74.939521,
+    "geoid": "3401926550"
+  },
+  {
+    "name": "Hampton",
+    "slug": "hampton",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.70457,
+    "lng": -74.971525,
+    "geoid": "3401929460"
+  },
+  {
+    "name": "High Bridge",
+    "slug": "high-bridge",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.670111,
+    "lng": -74.890212,
+    "geoid": "3401931320"
+  },
+  {
+    "name": "Holland",
+    "slug": "holland",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.598039,
+    "lng": -75.124165,
+    "geoid": "3401932460"
+  },
+  {
+    "name": "Kingwood",
+    "slug": "kingwood",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.494704,
+    "lng": -75.019461,
+    "geoid": "3401937065"
+  },
+  {
+    "name": "Lambertville",
+    "slug": "lambertville",
+    "type": "city",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.368563,
+    "lng": -74.943049,
+    "geoid": "3401938610"
+  },
+  {
+    "name": "Lebanon",
+    "slug": "lebanon",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.641862,
+    "lng": -74.833312,
+    "geoid": "3401939630"
+  },
+  {
+    "name": "Lebanon",
+    "slug": "lebanon",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.726369,
+    "lng": -74.894408,
+    "geoid": "3401939660"
+  },
+  {
+    "name": "Milford",
+    "slug": "milford",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.573483,
+    "lng": -75.089702,
+    "geoid": "3401946260"
+  },
+  {
+    "name": "Raritan",
+    "slug": "raritan",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.547102,
+    "lng": -74.895921,
+    "geoid": "3401961920"
+  },
+  {
+    "name": "Readington",
+    "slug": "readington",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.584111,
+    "lng": -74.769986,
+    "geoid": "3401962250"
+  },
+  {
+    "name": "Stockton",
+    "slug": "stockton",
+    "type": "borough",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.405851,
+    "lng": -74.970627,
+    "geoid": "3401970980"
+  },
+  {
+    "name": "Tewksbury",
+    "slug": "tewksbury",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.692226,
+    "lng": -74.77343,
+    "geoid": "3401972510"
+  },
+  {
+    "name": "Union",
+    "slug": "union",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.632215,
+    "lng": -74.964965,
+    "geoid": "3401974420"
+  },
+  {
+    "name": "West Amwell",
+    "slug": "west-amwell",
+    "type": "township",
+    "county": "Hunterdon",
+    "county_fips": "019",
+    "lat": 40.379051,
+    "lng": -74.887735,
+    "geoid": "3401978230"
+  },
+  {
+    "name": "East Windsor",
+    "slug": "east-windsor",
+    "type": "township",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.259139,
+    "lng": -74.533576,
+    "geoid": "3402119780"
+  },
+  {
+    "name": "Ewing",
+    "slug": "ewing",
+    "type": "township",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.263344,
+    "lng": -74.798704,
+    "geoid": "3402122185"
+  },
+  {
+    "name": "Hamilton",
+    "slug": "hamilton",
+    "type": "township",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.206266,
+    "lng": -74.675274,
+    "geoid": "3402129310"
+  },
+  {
+    "name": "Hightstown",
+    "slug": "hightstown",
+    "type": "borough",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.268457,
+    "lng": -74.525804,
+    "geoid": "3402131620"
+  },
+  {
+    "name": "Hopewell",
+    "slug": "hopewell",
+    "type": "borough",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.389309,
+    "lng": -74.763799,
+    "geoid": "3402133150"
+  },
+  {
+    "name": "Hopewell",
+    "slug": "hopewell",
+    "type": "township",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.356362,
+    "lng": -74.812002,
+    "geoid": "3402133180"
+  },
+  {
+    "name": "Lawrence",
+    "slug": "lawrence",
+    "type": "township",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.295887,
+    "lng": -74.720093,
+    "geoid": "3402139510"
+  },
+  {
+    "name": "Pennington",
+    "slug": "pennington",
+    "type": "borough",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.324923,
+    "lng": -74.78878,
+    "geoid": "3402157600"
+  },
+  {
+    "name": "Princeton",
+    "slug": "princeton",
+    "type": "",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.358244,
+    "lng": -74.666728,
+    "geoid": "3402160900"
+  },
+  {
+    "name": "Robbinsville",
+    "slug": "robbinsville",
+    "type": "township",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.223816,
+    "lng": -74.594991,
+    "geoid": "3402163850"
+  },
+  {
+    "name": "Trenton",
+    "slug": "trenton",
+    "type": "city",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.223841,
+    "lng": -74.763624,
+    "geoid": "3402174000"
+  },
+  {
+    "name": "West Windsor",
+    "slug": "west-windsor",
+    "type": "township",
+    "county": "Mercer",
+    "county_fips": "021",
+    "lat": 40.290253,
+    "lng": -74.627672,
+    "geoid": "3402180240"
+  },
+  {
+    "name": "Carteret",
+    "slug": "carteret",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.58379,
+    "lng": -74.227457,
+    "geoid": "3402310750"
+  },
+  {
+    "name": "Cranbury",
+    "slug": "cranbury",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.31345,
+    "lng": -74.520233,
+    "geoid": "3402315550"
+  },
+  {
+    "name": "Dunellen",
+    "slug": "dunellen",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.590294,
+    "lng": -74.465652,
+    "geoid": "3402318490"
+  },
+  {
+    "name": "East Brunswick",
+    "slug": "east-brunswick",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.426249,
+    "lng": -74.418244,
+    "geoid": "3402319000"
+  },
+  {
+    "name": "Edison",
+    "slug": "edison",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.504396,
+    "lng": -74.348843,
+    "geoid": "3402320230"
+  },
+  {
+    "name": "Helmetta",
+    "slug": "helmetta",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.378417,
+    "lng": -74.423384,
+    "geoid": "3402330840"
+  },
+  {
+    "name": "Highland Park",
+    "slug": "highland-park",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.500795,
+    "lng": -74.427911,
+    "geoid": "3402331470"
+  },
+  {
+    "name": "Jamesburg",
+    "slug": "jamesburg",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.349038,
+    "lng": -74.440202,
+    "geoid": "3402334890"
+  },
+  {
+    "name": "Metuchen",
+    "slug": "metuchen",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.542445,
+    "lng": -74.362767,
+    "geoid": "3402345690"
+  },
+  {
+    "name": "Middlesex",
+    "slug": "middlesex",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.574625,
+    "lng": -74.498259,
+    "geoid": "3402345900"
+  },
+  {
+    "name": "Milltown",
+    "slug": "milltown",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.450223,
+    "lng": -74.434786,
+    "geoid": "3402346620"
+  },
+  {
+    "name": "Monroe",
+    "slug": "monroe",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.319482,
+    "lng": -74.428785,
+    "geoid": "3402347280"
+  },
+  {
+    "name": "New Brunswick",
+    "slug": "new-brunswick",
+    "type": "city",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.486677,
+    "lng": -74.444414,
+    "geoid": "3402351210"
+  },
+  {
+    "name": "North Brunswick",
+    "slug": "north-brunswick",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.450392,
+    "lng": -74.479416,
+    "geoid": "3402352560"
+  },
+  {
+    "name": "Old Bridge",
+    "slug": "old-bridge",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.404632,
+    "lng": -74.308537,
+    "geoid": "3402354705"
+  },
+  {
+    "name": "Perth Amboy",
+    "slug": "perth-amboy",
+    "type": "city",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.52016,
+    "lng": -74.271331,
+    "geoid": "3402358200"
+  },
+  {
+    "name": "Piscataway",
+    "slug": "piscataway",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.545539,
+    "lng": -74.46072,
+    "geoid": "3402359010"
+  },
+  {
+    "name": "Plainsboro",
+    "slug": "plainsboro",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.337806,
+    "lng": -74.580725,
+    "geoid": "3402359280"
+  },
+  {
+    "name": "Sayreville",
+    "slug": "sayreville",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.466945,
+    "lng": -74.320192,
+    "geoid": "3402365790"
+  },
+  {
+    "name": "South Amboy",
+    "slug": "south-amboy",
+    "type": "city",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.488533,
+    "lng": -74.279133,
+    "geoid": "3402368550"
+  },
+  {
+    "name": "South Brunswick",
+    "slug": "south-brunswick",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.384695,
+    "lng": -74.522762,
+    "geoid": "3402368790"
+  },
+  {
+    "name": "South Plainfield",
+    "slug": "south-plainfield",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.574413,
+    "lng": -74.4148,
+    "geoid": "3402369390"
+  },
+  {
+    "name": "South River",
+    "slug": "south-river",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.445652,
+    "lng": -74.378459,
+    "geoid": "3402369420"
+  },
+  {
+    "name": "Spotswood",
+    "slug": "spotswood",
+    "type": "borough",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.393613,
+    "lng": -74.392737,
+    "geoid": "3402369810"
+  },
+  {
+    "name": "Woodbridge",
+    "slug": "woodbridge",
+    "type": "township",
+    "county": "Middlesex",
+    "county_fips": "023",
+    "lat": 40.561262,
+    "lng": -74.292377,
+    "geoid": "3402382000"
+  },
+  {
+    "name": "Aberdeen",
+    "slug": "aberdeen",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.430068,
+    "lng": -74.225075,
+    "geoid": "3402500070"
+  },
+  {
+    "name": "Allenhurst",
+    "slug": "allenhurst",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.235945,
+    "lng": -74.002417,
+    "geoid": "3402500730"
+  },
+  {
+    "name": "Allentown",
+    "slug": "allentown",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.178578,
+    "lng": -74.590056,
+    "geoid": "3402500760"
+  },
+  {
+    "name": "Asbury Park",
+    "slug": "asbury-park",
+    "type": "city",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.222884,
+    "lng": -74.010232,
+    "geoid": "3402501960"
+  },
+  {
+    "name": "Atlantic Highlands",
+    "slug": "atlantic-highlands",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.411771,
+    "lng": -74.019836,
+    "geoid": "3402502110"
+  },
+  {
+    "name": "Avon-by-the-Sea",
+    "slug": "avon-by-the-sea",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.191418,
+    "lng": -74.015105,
+    "geoid": "3402502440"
+  },
+  {
+    "name": "Belmar",
+    "slug": "belmar",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.179663,
+    "lng": -74.02444,
+    "geoid": "3402504930"
+  },
+  {
+    "name": "Bradley Beach",
+    "slug": "bradley-beach",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.201604,
+    "lng": -74.012056,
+    "geoid": "3402506970"
+  },
+  {
+    "name": "Brielle",
+    "slug": "brielle",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.105337,
+    "lng": -74.064408,
+    "geoid": "3402507750"
+  },
+  {
+    "name": "Colts Neck",
+    "slug": "colts-neck",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.293438,
+    "lng": -74.168257,
+    "geoid": "3402514560"
+  },
+  {
+    "name": "Deal",
+    "slug": "deal",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.249701,
+    "lng": -73.997458,
+    "geoid": "3402516660"
+  },
+  {
+    "name": "Eatontown",
+    "slug": "eatontown",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.291624,
+    "lng": -74.054123,
+    "geoid": "3402519840"
+  },
+  {
+    "name": "Englishtown",
+    "slug": "englishtown",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.296141,
+    "lng": -74.359584,
+    "geoid": "3402521570"
+  },
+  {
+    "name": "Fair Haven",
+    "slug": "fair-haven",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.36194,
+    "lng": -74.038775,
+    "geoid": "3402522440"
+  },
+  {
+    "name": "Farmingdale",
+    "slug": "farmingdale",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.198357,
+    "lng": -74.170082,
+    "geoid": "3402522950"
+  },
+  {
+    "name": "Freehold",
+    "slug": "freehold",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.260219,
+    "lng": -74.275884,
+    "geoid": "3402525200"
+  },
+  {
+    "name": "Freehold",
+    "slug": "freehold",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.224382,
+    "lng": -74.299051,
+    "geoid": "3402525230"
+  },
+  {
+    "name": "Hazlet",
+    "slug": "hazlet",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.425627,
+    "lng": -74.16869,
+    "geoid": "3402530690"
+  },
+  {
+    "name": "Highlands",
+    "slug": "highlands",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.404229,
+    "lng": -73.988186,
+    "geoid": "3402531500"
+  },
+  {
+    "name": "Holmdel",
+    "slug": "holmdel",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.374964,
+    "lng": -74.173849,
+    "geoid": "3402532640"
+  },
+  {
+    "name": "Howell",
+    "slug": "howell",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.178108,
+    "lng": -74.206225,
+    "geoid": "3402533300"
+  },
+  {
+    "name": "Interlaken",
+    "slug": "interlaken",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.234313,
+    "lng": -74.015939,
+    "geoid": "3402534200"
+  },
+  {
+    "name": "Keansburg",
+    "slug": "keansburg",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.451869,
+    "lng": -74.155634,
+    "geoid": "3402536480"
+  },
+  {
+    "name": "Keyport",
+    "slug": "keyport",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.432626,
+    "lng": -74.200342,
+    "geoid": "3402536810"
+  },
+  {
+    "name": "Lake Como",
+    "slug": "lake-como",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.170011,
+    "lng": -74.024861,
+    "geoid": "3402537560"
+  },
+  {
+    "name": "Little Silver",
+    "slug": "little-silver",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.336952,
+    "lng": -74.034535,
+    "geoid": "3402540770"
+  },
+  {
+    "name": "Loch Arbour",
+    "slug": "loch-arbour",
+    "type": "village",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.232296,
+    "lng": -74.000008,
+    "geoid": "3402541010"
+  },
+  {
+    "name": "Long Branch",
+    "slug": "long-branch",
+    "type": "city",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.295372,
+    "lng": -73.989899,
+    "geoid": "3402541310"
+  },
+  {
+    "name": "Manalapan",
+    "slug": "manalapan",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.282353,
+    "lng": -74.346564,
+    "geoid": "3402542990"
+  },
+  {
+    "name": "Manasquan",
+    "slug": "manasquan",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.112421,
+    "lng": -74.038159,
+    "geoid": "3402543050"
+  },
+  {
+    "name": "Marlboro",
+    "slug": "marlboro",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.342931,
+    "lng": -74.257197,
+    "geoid": "3402544070"
+  },
+  {
+    "name": "Matawan",
+    "slug": "matawan",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.411042,
+    "lng": -74.236534,
+    "geoid": "3402544520"
+  },
+  {
+    "name": "Middletown",
+    "slug": "middletown",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.404786,
+    "lng": -74.071404,
+    "geoid": "3402545990"
+  },
+  {
+    "name": "Millstone",
+    "slug": "millstone",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.213339,
+    "lng": -74.431681,
+    "geoid": "3402546560"
+  },
+  {
+    "name": "Monmouth Beach",
+    "slug": "monmouth-beach",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.335895,
+    "lng": -73.985608,
+    "geoid": "3402547130"
+  },
+  {
+    "name": "Neptune",
+    "slug": "neptune",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.213816,
+    "lng": -74.053712,
+    "geoid": "3402549890"
+  },
+  {
+    "name": "Neptune City",
+    "slug": "neptune-city",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.20047,
+    "lng": -74.033331,
+    "geoid": "3402549920"
+  },
+  {
+    "name": "Ocean",
+    "slug": "ocean",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.254412,
+    "lng": -74.031937,
+    "geoid": "3402554270"
+  },
+  {
+    "name": "Oceanport",
+    "slug": "oceanport",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.316012,
+    "lng": -74.020479,
+    "geoid": "3402554570"
+  },
+  {
+    "name": "Red Bank",
+    "slug": "red-bank",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.348722,
+    "lng": -74.066528,
+    "geoid": "3402562430"
+  },
+  {
+    "name": "Roosevelt",
+    "slug": "roosevelt",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.220742,
+    "lng": -74.470155,
+    "geoid": "3402564410"
+  },
+  {
+    "name": "Rumson",
+    "slug": "rumson",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.362067,
+    "lng": -74.00451,
+    "geoid": "3402565130"
+  },
+  {
+    "name": "Sea Bright",
+    "slug": "sea-bright",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.359432,
+    "lng": -73.974892,
+    "geoid": "3402566240"
+  },
+  {
+    "name": "Sea Girt",
+    "slug": "sea-girt",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.130499,
+    "lng": -74.033843,
+    "geoid": "3402566330"
+  },
+  {
+    "name": "Shrewsbury",
+    "slug": "shrewsbury",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.32645,
+    "lng": -74.057373,
+    "geoid": "3402567350"
+  },
+  {
+    "name": "Shrewsbury",
+    "slug": "shrewsbury",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.313233,
+    "lng": -74.071543,
+    "geoid": "3402567365"
+  },
+  {
+    "name": "Spring Lake",
+    "slug": "spring-lake",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.153764,
+    "lng": -74.026853,
+    "geoid": "3402570110"
+  },
+  {
+    "name": "Spring Lake Heights",
+    "slug": "spring-lake-heights",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.149483,
+    "lng": -74.046169,
+    "geoid": "3402570140"
+  },
+  {
+    "name": "Tinton Falls",
+    "slug": "tinton-falls",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.266265,
+    "lng": -74.09613,
+    "geoid": "3402573020"
+  },
+  {
+    "name": "Union Beach",
+    "slug": "union-beach",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.44749,
+    "lng": -74.170046,
+    "geoid": "3402574540"
+  },
+  {
+    "name": "Upper Freehold",
+    "slug": "upper-freehold",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.153573,
+    "lng": -74.529315,
+    "geoid": "3402574900"
+  },
+  {
+    "name": "Wall",
+    "slug": "wall",
+    "type": "township",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.165827,
+    "lng": -74.09799,
+    "geoid": "3402576460"
+  },
+  {
+    "name": "West Long Branch",
+    "slug": "west-long-branch",
+    "type": "borough",
+    "county": "Monmouth",
+    "county_fips": "025",
+    "lat": 40.287904,
+    "lng": -74.020019,
+    "geoid": "3402579310"
+  },
+  {
+    "name": "Boonton",
+    "slug": "boonton",
+    "type": "town",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.903818,
+    "lng": -74.406369,
+    "geoid": "3402706610"
+  },
+  {
+    "name": "Boonton",
+    "slug": "boonton",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.931264,
+    "lng": -74.424928,
+    "geoid": "3402706640"
+  },
+  {
+    "name": "Butler",
+    "slug": "butler",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.997768,
+    "lng": -74.347003,
+    "geoid": "3402709040"
+  },
+  {
+    "name": "Chatham",
+    "slug": "chatham",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.740686,
+    "lng": -74.38448,
+    "geoid": "3402712100"
+  },
+  {
+    "name": "Chatham",
+    "slug": "chatham",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.723214,
+    "lng": -74.43639,
+    "geoid": "3402712130"
+  },
+  {
+    "name": "Chester",
+    "slug": "chester",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.790628,
+    "lng": -74.690085,
+    "geoid": "3402712580"
+  },
+  {
+    "name": "Chester",
+    "slug": "chester",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.776758,
+    "lng": -74.686512,
+    "geoid": "3402712610"
+  },
+  {
+    "name": "Denville",
+    "slug": "denville",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.888479,
+    "lng": -74.488377,
+    "geoid": "3402717650"
+  },
+  {
+    "name": "Dover",
+    "slug": "dover",
+    "type": "town",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.8856,
+    "lng": -74.559163,
+    "geoid": "3402718070"
+  },
+  {
+    "name": "East Hanover",
+    "slug": "east-hanover",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.818553,
+    "lng": -74.363742,
+    "geoid": "3402719210"
+  },
+  {
+    "name": "Florham Park",
+    "slug": "florham-park",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.775992,
+    "lng": -74.394315,
+    "geoid": "3402723910"
+  },
+  {
+    "name": "Hanover",
+    "slug": "hanover",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.81995,
+    "lng": -74.427986,
+    "geoid": "3402729550"
+  },
+  {
+    "name": "Harding",
+    "slug": "harding",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.740956,
+    "lng": -74.496814,
+    "geoid": "3402729700"
+  },
+  {
+    "name": "Jefferson",
+    "slug": "jefferson",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 41.001257,
+    "lng": -74.55129,
+    "geoid": "3402734980"
+  },
+  {
+    "name": "Kinnelon",
+    "slug": "kinnelon",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.982036,
+    "lng": -74.385896,
+    "geoid": "3402737110"
+  },
+  {
+    "name": "Lincoln Park",
+    "slug": "lincoln-park",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.923751,
+    "lng": -74.304235,
+    "geoid": "3402740290"
+  },
+  {
+    "name": "Long Hill",
+    "slug": "long-hill",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.682882,
+    "lng": -74.491619,
+    "geoid": "3402741362"
+  },
+  {
+    "name": "Madison",
+    "slug": "madison",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.758044,
+    "lng": -74.417807,
+    "geoid": "3402742510"
+  },
+  {
+    "name": "Mendham",
+    "slug": "mendham",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.76729,
+    "lng": -74.597766,
+    "geoid": "3402745330"
+  },
+  {
+    "name": "Mendham",
+    "slug": "mendham",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.801262,
+    "lng": -74.570122,
+    "geoid": "3402745360"
+  },
+  {
+    "name": "Mine Hill",
+    "slug": "mine-hill",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.878088,
+    "lng": -74.601176,
+    "geoid": "3402746860"
+  },
+  {
+    "name": "Montville",
+    "slug": "montville",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.912832,
+    "lng": -74.358916,
+    "geoid": "3402747670"
+  },
+  {
+    "name": "Morris",
+    "slug": "morris",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.796131,
+    "lng": -74.493803,
+    "geoid": "3402748090"
+  },
+  {
+    "name": "Morris Plains",
+    "slug": "morris-plains",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.838806,
+    "lng": -74.474196,
+    "geoid": "3402748210"
+  },
+  {
+    "name": "Morristown",
+    "slug": "morristown",
+    "type": "town",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.796562,
+    "lng": -74.477318,
+    "geoid": "3402748300"
+  },
+  {
+    "name": "Mount Arlington",
+    "slug": "mount-arlington",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.920751,
+    "lng": -74.640791,
+    "geoid": "3402748690"
+  },
+  {
+    "name": "Mount Olive",
+    "slug": "mount-olive",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.865597,
+    "lng": -74.74193,
+    "geoid": "3402749080"
+  },
+  {
+    "name": "Mountain Lakes",
+    "slug": "mountain-lakes",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.890853,
+    "lng": -74.442032,
+    "geoid": "3402748480"
+  },
+  {
+    "name": "Netcong",
+    "slug": "netcong",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.899232,
+    "lng": -74.700823,
+    "geoid": "3402750130"
+  },
+  {
+    "name": "Parsippany-Troy Hills",
+    "slug": "parsippany-troy-hills",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.859636,
+    "lng": -74.423348,
+    "geoid": "3402756460"
+  },
+  {
+    "name": "Pequannock",
+    "slug": "pequannock",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.96267,
+    "lng": -74.305205,
+    "geoid": "3402758110"
+  },
+  {
+    "name": "Randolph",
+    "slug": "randolph",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.84164,
+    "lng": -74.578522,
+    "geoid": "3402761890"
+  },
+  {
+    "name": "Riverdale",
+    "slug": "riverdale",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.995886,
+    "lng": -74.314532,
+    "geoid": "3402763300"
+  },
+  {
+    "name": "Rockaway",
+    "slug": "rockaway",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.895853,
+    "lng": -74.517323,
+    "geoid": "3402764050"
+  },
+  {
+    "name": "Rockaway",
+    "slug": "rockaway",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.959048,
+    "lng": -74.49889,
+    "geoid": "3402764080"
+  },
+  {
+    "name": "Roxbury",
+    "slug": "roxbury",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.88841,
+    "lng": -74.651497,
+    "geoid": "3402764980"
+  },
+  {
+    "name": "Victory Gardens",
+    "slug": "victory-gardens",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.87613,
+    "lng": -74.54353,
+    "geoid": "3402775890"
+  },
+  {
+    "name": "Washington",
+    "slug": "washington",
+    "type": "township",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.784654,
+    "lng": -74.79769,
+    "geoid": "3402777240"
+  },
+  {
+    "name": "Wharton",
+    "slug": "wharton",
+    "type": "borough",
+    "county": "Morris",
+    "county_fips": "027",
+    "lat": 40.897055,
+    "lng": -74.574512,
+    "geoid": "3402780390"
+  },
+  {
+    "name": "Barnegat",
+    "slug": "barnegat",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.767683,
+    "lng": -74.277396,
+    "geoid": "3402903050"
+  },
+  {
+    "name": "Barnegat Light",
+    "slug": "barnegat-light",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.751289,
+    "lng": -74.10676,
+    "geoid": "3402903130"
+  },
+  {
+    "name": "Bay Head",
+    "slug": "bay-head",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.070315,
+    "lng": -74.048162,
+    "geoid": "3402903520"
+  },
+  {
+    "name": "Beach Haven",
+    "slug": "beach-haven",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.576031,
+    "lng": -74.251791,
+    "geoid": "3402903940"
+  },
+  {
+    "name": "Beachwood",
+    "slug": "beachwood",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.928405,
+    "lng": -74.202189,
+    "geoid": "3402904180"
+  },
+  {
+    "name": "Berkeley",
+    "slug": "berkeley",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.912906,
+    "lng": -74.193095,
+    "geoid": "3402905305"
+  },
+  {
+    "name": "Brick",
+    "slug": "brick",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.061773,
+    "lng": -74.109557,
+    "geoid": "3402907420"
+  },
+  {
+    "name": "Eagleswood",
+    "slug": "eagleswood",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.647182,
+    "lng": -74.284599,
+    "geoid": "3402918670"
+  },
+  {
+    "name": "Harvey Cedars",
+    "slug": "harvey-cedars",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.699578,
+    "lng": -74.141511,
+    "geoid": "3402930390"
+  },
+  {
+    "name": "Island Heights",
+    "slug": "island-heights",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.941804,
+    "lng": -74.143842,
+    "geoid": "3402934530"
+  },
+  {
+    "name": "Jackson",
+    "slug": "jackson",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.090928,
+    "lng": -74.361269,
+    "geoid": "3402934680"
+  },
+  {
+    "name": "Lacey",
+    "slug": "lacey",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.855153,
+    "lng": -74.267152,
+    "geoid": "3402937380"
+  },
+  {
+    "name": "Lakehurst",
+    "slug": "lakehurst",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.013119,
+    "lng": -74.320356,
+    "geoid": "3402937770"
+  },
+  {
+    "name": "Lakewood",
+    "slug": "lakewood",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.077069,
+    "lng": -74.19851,
+    "geoid": "3402938550"
+  },
+  {
+    "name": "Lavallette",
+    "slug": "lavallette",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.969474,
+    "lng": -74.07188,
+    "geoid": "3402939390"
+  },
+  {
+    "name": "Little Egg Harbor",
+    "slug": "little-egg-harbor",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.63297,
+    "lng": -74.331032,
+    "geoid": "3402940560"
+  },
+  {
+    "name": "Long Beach",
+    "slug": "long-beach",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.60155,
+    "lng": -74.226367,
+    "geoid": "3402941250"
+  },
+  {
+    "name": "Manchester",
+    "slug": "manchester",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.961624,
+    "lng": -74.375315,
+    "geoid": "3402943140"
+  },
+  {
+    "name": "Mantoloking",
+    "slug": "mantoloking",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.056688,
+    "lng": -74.04816,
+    "geoid": "3402943380"
+  },
+  {
+    "name": "Ocean",
+    "slug": "ocean",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.790729,
+    "lng": -74.214609,
+    "geoid": "3402954300"
+  },
+  {
+    "name": "Ocean Gate",
+    "slug": "ocean-gate",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.926453,
+    "lng": -74.134759,
+    "geoid": "3402954450"
+  },
+  {
+    "name": "Pine Beach",
+    "slug": "pine-beach",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.936058,
+    "lng": -74.169789,
+    "geoid": "3402958590"
+  },
+  {
+    "name": "Plumsted",
+    "slug": "plumsted",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.045716,
+    "lng": -74.485245,
+    "geoid": "3402959790"
+  },
+  {
+    "name": "Point Pleasant",
+    "slug": "point-pleasant",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.077748,
+    "lng": -74.069921,
+    "geoid": "3402959880"
+  },
+  {
+    "name": "Point Pleasant Beach",
+    "slug": "point-pleasant-beach",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 40.092566,
+    "lng": -74.045173,
+    "geoid": "3402959910"
+  },
+  {
+    "name": "Seaside Heights",
+    "slug": "seaside-heights",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.944912,
+    "lng": -74.07829,
+    "geoid": "3402966450"
+  },
+  {
+    "name": "Seaside Park",
+    "slug": "seaside-park",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.926369,
+    "lng": -74.078711,
+    "geoid": "3402966480"
+  },
+  {
+    "name": "Ship Bottom",
+    "slug": "ship-bottom",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.645354,
+    "lng": -74.183003,
+    "geoid": "3402967110"
+  },
+  {
+    "name": "South Toms River",
+    "slug": "south-toms-river",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.93905,
+    "lng": -74.207013,
+    "geoid": "3402969510"
+  },
+  {
+    "name": "Stafford",
+    "slug": "stafford",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.705726,
+    "lng": -74.264326,
+    "geoid": "3402970320"
+  },
+  {
+    "name": "Surf City",
+    "slug": "surf-city",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.664316,
+    "lng": -74.17162,
+    "geoid": "3402971640"
+  },
+  {
+    "name": "Toms River",
+    "slug": "toms-river",
+    "type": "township",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.994264,
+    "lng": -74.166154,
+    "geoid": "3402973125"
+  },
+  {
+    "name": "Tuckerton",
+    "slug": "tuckerton",
+    "type": "borough",
+    "county": "Ocean",
+    "county_fips": "029",
+    "lat": 39.592197,
+    "lng": -74.333079,
+    "geoid": "3402974210"
+  },
+  {
+    "name": "Bloomingdale",
+    "slug": "bloomingdale",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 41.035471,
+    "lng": -74.335613,
+    "geoid": "3403106340"
+  },
+  {
+    "name": "Clifton",
+    "slug": "clifton",
+    "type": "city",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.862137,
+    "lng": -74.160393,
+    "geoid": "3403113690"
+  },
+  {
+    "name": "Haledon",
+    "slug": "haledon",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.936989,
+    "lng": -74.188867,
+    "geoid": "3403129070"
+  },
+  {
+    "name": "Hawthorne",
+    "slug": "hawthorne",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.956957,
+    "lng": -74.158561,
+    "geoid": "3403130570"
+  },
+  {
+    "name": "Little Falls",
+    "slug": "little-falls",
+    "type": "township",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.87559,
+    "lng": -74.217366,
+    "geoid": "3403140620"
+  },
+  {
+    "name": "North Haledon",
+    "slug": "north-haledon",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.963618,
+    "lng": -74.185281,
+    "geoid": "3403153040"
+  },
+  {
+    "name": "Passaic",
+    "slug": "passaic",
+    "type": "city",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.857552,
+    "lng": -74.129089,
+    "geoid": "3403156550"
+  },
+  {
+    "name": "Paterson",
+    "slug": "paterson",
+    "type": "city",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.914766,
+    "lng": -74.162829,
+    "geoid": "3403157000"
+  },
+  {
+    "name": "Pompton Lakes",
+    "slug": "pompton-lakes",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 41.002734,
+    "lng": -74.286742,
+    "geoid": "3403160090"
+  },
+  {
+    "name": "Prospect Park",
+    "slug": "prospect-park",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.941559,
+    "lng": -74.174088,
+    "geoid": "3403161170"
+  },
+  {
+    "name": "Ringwood",
+    "slug": "ringwood",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 41.103963,
+    "lng": -74.271138,
+    "geoid": "3403163150"
+  },
+  {
+    "name": "Totowa",
+    "slug": "totowa",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.903415,
+    "lng": -74.219779,
+    "geoid": "3403173140"
+  },
+  {
+    "name": "Wanaque",
+    "slug": "wanaque",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 41.042424,
+    "lng": -74.288643,
+    "geoid": "3403176730"
+  },
+  {
+    "name": "Wayne",
+    "slug": "wayne",
+    "type": "township",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.945855,
+    "lng": -74.245077,
+    "geoid": "3403177840"
+  },
+  {
+    "name": "West Milford",
+    "slug": "west-milford",
+    "type": "township",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 41.105185,
+    "lng": -74.390998,
+    "geoid": "3403179460"
+  },
+  {
+    "name": "Woodland Park",
+    "slug": "woodland-park",
+    "type": "borough",
+    "county": "Passaic",
+    "county_fips": "031",
+    "lat": 40.889855,
+    "lng": -74.194356,
+    "geoid": "3403182423"
+  },
+  {
+    "name": "Alloway",
+    "slug": "alloway",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.558365,
+    "lng": -75.317744,
+    "geoid": "3403300880"
+  },
+  {
+    "name": "Carneys Point",
+    "slug": "carneys-point",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.694751,
+    "lng": -75.445164,
+    "geoid": "3403310610"
+  },
+  {
+    "name": "Elmer",
+    "slug": "elmer",
+    "type": "borough",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.592258,
+    "lng": -75.174569,
+    "geoid": "3403321240"
+  },
+  {
+    "name": "Elsinboro",
+    "slug": "elsinboro",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.533317,
+    "lng": -75.498478,
+    "geoid": "3403321330"
+  },
+  {
+    "name": "Lower Alloways Creek",
+    "slug": "lower-alloways-creek",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.450506,
+    "lng": -75.457741,
+    "geoid": "3403341640"
+  },
+  {
+    "name": "Mannington",
+    "slug": "mannington",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.623249,
+    "lng": -75.414662,
+    "geoid": "3403343200"
+  },
+  {
+    "name": "Oldmans",
+    "slug": "oldmans",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.739193,
+    "lng": -75.411406,
+    "geoid": "3403354810"
+  },
+  {
+    "name": "Penns Grove",
+    "slug": "penns-grove",
+    "type": "borough",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.727704,
+    "lng": -75.469035,
+    "geoid": "3403357750"
+  },
+  {
+    "name": "Pennsville",
+    "slug": "pennsville",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.626341,
+    "lng": -75.503451,
+    "geoid": "3403357870"
+  },
+  {
+    "name": "Pilesgrove",
+    "slug": "pilesgrove",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.685814,
+    "lng": -75.376425,
+    "geoid": "3403358530"
+  },
+  {
+    "name": "Pittsgrove",
+    "slug": "pittsgrove",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.54265,
+    "lng": -75.129901,
+    "geoid": "3403359130"
+  },
+  {
+    "name": "Quinton",
+    "slug": "quinton",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.529355,
+    "lng": -75.392243,
+    "geoid": "3403361470"
+  },
+  {
+    "name": "Salem",
+    "slug": "salem",
+    "type": "city",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.568236,
+    "lng": -75.472553,
+    "geoid": "3403365490"
+  },
+  {
+    "name": "Upper Pittsgrove",
+    "slug": "upper-pittsgrove",
+    "type": "township",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.612375,
+    "lng": -75.209549,
+    "geoid": "3403375110"
+  },
+  {
+    "name": "Woodstown",
+    "slug": "woodstown",
+    "type": "borough",
+    "county": "Salem",
+    "county_fips": "033",
+    "lat": 39.650178,
+    "lng": -75.326232,
+    "geoid": "3403382720"
+  },
+  {
+    "name": "Bedminster",
+    "slug": "bedminster",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.673089,
+    "lng": -74.686325,
+    "geoid": "3403504450"
+  },
+  {
+    "name": "Bernards",
+    "slug": "bernards",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.677455,
+    "lng": -74.567277,
+    "geoid": "3403505560"
+  },
+  {
+    "name": "Bernardsville",
+    "slug": "bernardsville",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.730384,
+    "lng": -74.592602,
+    "geoid": "3403505590"
+  },
+  {
+    "name": "Bound Brook",
+    "slug": "bound-brook",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.567749,
+    "lng": -74.53725,
+    "geoid": "3403506790"
+  },
+  {
+    "name": "Branchburg",
+    "slug": "branchburg",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.560024,
+    "lng": -74.716119,
+    "geoid": "3403507180"
+  },
+  {
+    "name": "Bridgewater",
+    "slug": "bridgewater",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.592358,
+    "lng": -74.60401,
+    "geoid": "3403507720"
+  },
+  {
+    "name": "Far Hills",
+    "slug": "far-hills",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.690893,
+    "lng": -74.621537,
+    "geoid": "3403522890"
+  },
+  {
+    "name": "Franklin",
+    "slug": "franklin",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.476872,
+    "lng": -74.550447,
+    "geoid": "3403524900"
+  },
+  {
+    "name": "Green Brook",
+    "slug": "green-brook",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.603832,
+    "lng": -74.483208,
+    "geoid": "3403527510"
+  },
+  {
+    "name": "Hillsborough",
+    "slug": "hillsborough",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.497692,
+    "lng": -74.670505,
+    "geoid": "3403531890"
+  },
+  {
+    "name": "Manville",
+    "slug": "manville",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.541269,
+    "lng": -74.589273,
+    "geoid": "3403543620"
+  },
+  {
+    "name": "Millstone",
+    "slug": "millstone",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.499868,
+    "lng": -74.595529,
+    "geoid": "3403546590"
+  },
+  {
+    "name": "Montgomery",
+    "slug": "montgomery",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.426124,
+    "lng": -74.678446,
+    "geoid": "3403547580"
+  },
+  {
+    "name": "North Plainfield",
+    "slug": "north-plainfield",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.621255,
+    "lng": -74.439466,
+    "geoid": "3403553280"
+  },
+  {
+    "name": "Peapack and Gladstone",
+    "slug": "peapack-and-gladstone",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.715782,
+    "lng": -74.654054,
+    "geoid": "3403557300"
+  },
+  {
+    "name": "Raritan",
+    "slug": "raritan",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.571344,
+    "lng": -74.646026,
+    "geoid": "3403561980"
+  },
+  {
+    "name": "Rocky Hill",
+    "slug": "rocky-hill",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.400347,
+    "lng": -74.638922,
+    "geoid": "3403564320"
+  },
+  {
+    "name": "Somerville",
+    "slug": "somerville",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.569749,
+    "lng": -74.607682,
+    "geoid": "3403568460"
+  },
+  {
+    "name": "South Bound Brook",
+    "slug": "south-bound-brook",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.553947,
+    "lng": -74.527455,
+    "geoid": "3403568730"
+  },
+  {
+    "name": "Warren",
+    "slug": "warren",
+    "type": "township",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.634588,
+    "lng": -74.519044,
+    "geoid": "3403576940"
+  },
+  {
+    "name": "Watchung",
+    "slug": "watchung",
+    "type": "borough",
+    "county": "Somerset",
+    "county_fips": "035",
+    "lat": 40.642845,
+    "lng": -74.436233,
+    "geoid": "3403577600"
+  },
+  {
+    "name": "Andover",
+    "slug": "andover",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 40.985743,
+    "lng": -74.743701,
+    "geoid": "3403701330"
+  },
+  {
+    "name": "Andover",
+    "slug": "andover",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.025516,
+    "lng": -74.726027,
+    "geoid": "3403701360"
+  },
+  {
+    "name": "Branchville",
+    "slug": "branchville",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.147238,
+    "lng": -74.749042,
+    "geoid": "3403707300"
+  },
+  {
+    "name": "Byram",
+    "slug": "byram",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 40.960287,
+    "lng": -74.713333,
+    "geoid": "3403709160"
+  },
+  {
+    "name": "Frankford",
+    "slug": "frankford",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.164296,
+    "lng": -74.737798,
+    "geoid": "3403724810"
+  },
+  {
+    "name": "Franklin",
+    "slug": "franklin",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.108997,
+    "lng": -74.588641,
+    "geoid": "3403724930"
+  },
+  {
+    "name": "Fredon",
+    "slug": "fredon",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.024675,
+    "lng": -74.818224,
+    "geoid": "3403725140"
+  },
+  {
+    "name": "Green",
+    "slug": "green",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 40.974073,
+    "lng": -74.802584,
+    "geoid": "3403727420"
+  },
+  {
+    "name": "Hamburg",
+    "slug": "hamburg",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.148763,
+    "lng": -74.573416,
+    "geoid": "3403729220"
+  },
+  {
+    "name": "Hampton",
+    "slug": "hampton",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.091701,
+    "lng": -74.789608,
+    "geoid": "3403729490"
+  },
+  {
+    "name": "Hardyston",
+    "slug": "hardyston",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.124751,
+    "lng": -74.558783,
+    "geoid": "3403729850"
+  },
+  {
+    "name": "Hopatcong",
+    "slug": "hopatcong",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 40.951648,
+    "lng": -74.662377,
+    "geoid": "3403732910"
+  },
+  {
+    "name": "Lafayette",
+    "slug": "lafayette",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.121235,
+    "lng": -74.670297,
+    "geoid": "3403737440"
+  },
+  {
+    "name": "Montague",
+    "slug": "montague",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.280958,
+    "lng": -74.730511,
+    "geoid": "3403747430"
+  },
+  {
+    "name": "Newton",
+    "slug": "newton",
+    "type": "town",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.051487,
+    "lng": -74.753601,
+    "geoid": "3403751930"
+  },
+  {
+    "name": "Ogdensburg",
+    "slug": "ogdensburg",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.08009,
+    "lng": -74.597626,
+    "geoid": "3403754660"
+  },
+  {
+    "name": "Sandyston",
+    "slug": "sandyston",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.213621,
+    "lng": -74.81353,
+    "geoid": "3403765700"
+  },
+  {
+    "name": "Sparta",
+    "slug": "sparta",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.052283,
+    "lng": -74.627906,
+    "geoid": "3403769690"
+  },
+  {
+    "name": "Stanhope",
+    "slug": "stanhope",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 40.913366,
+    "lng": -74.70363,
+    "geoid": "3403770380"
+  },
+  {
+    "name": "Stillwater",
+    "slug": "stillwater",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.074125,
+    "lng": -74.868878,
+    "geoid": "3403770890"
+  },
+  {
+    "name": "Sussex",
+    "slug": "sussex",
+    "type": "borough",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.208771,
+    "lng": -74.608241,
+    "geoid": "3403771670"
+  },
+  {
+    "name": "Vernon",
+    "slug": "vernon",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.195197,
+    "lng": -74.488757,
+    "geoid": "3403775740"
+  },
+  {
+    "name": "Walpack",
+    "slug": "walpack",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.120816,
+    "lng": -74.890305,
+    "geoid": "3403776640"
+  },
+  {
+    "name": "Wantage",
+    "slug": "wantage",
+    "type": "township",
+    "county": "Sussex",
+    "county_fips": "037",
+    "lat": 41.252204,
+    "lng": -74.632835,
+    "geoid": "3403776790"
+  },
+  {
+    "name": "Berkeley Heights",
+    "slug": "berkeley-heights",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.676119,
+    "lng": -74.422756,
+    "geoid": "3403905320"
+  },
+  {
+    "name": "Clark",
+    "slug": "clark",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.618474,
+    "lng": -74.316,
+    "geoid": "3403913150"
+  },
+  {
+    "name": "Cranford",
+    "slug": "cranford",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.65609,
+    "lng": -74.303563,
+    "geoid": "3403915640"
+  },
+  {
+    "name": "Elizabeth",
+    "slug": "elizabeth",
+    "type": "city",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.666367,
+    "lng": -74.193503,
+    "geoid": "3403921000"
+  },
+  {
+    "name": "Fanwood",
+    "slug": "fanwood",
+    "type": "borough",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.641701,
+    "lng": -74.385692,
+    "geoid": "3403922860"
+  },
+  {
+    "name": "Garwood",
+    "slug": "garwood",
+    "type": "borough",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.651331,
+    "lng": -74.323152,
+    "geoid": "3403925800"
+  },
+  {
+    "name": "Hillside",
+    "slug": "hillside",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.695889,
+    "lng": -74.2288,
+    "geoid": "3403931980"
+  },
+  {
+    "name": "Kenilworth",
+    "slug": "kenilworth",
+    "type": "borough",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.678089,
+    "lng": -74.288114,
+    "geoid": "3403936690"
+  },
+  {
+    "name": "Linden",
+    "slug": "linden",
+    "type": "city",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.627337,
+    "lng": -74.23631,
+    "geoid": "3403940350"
+  },
+  {
+    "name": "Mountainside",
+    "slug": "mountainside",
+    "type": "borough",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.680722,
+    "lng": -74.360292,
+    "geoid": "3403948510"
+  },
+  {
+    "name": "New Providence",
+    "slug": "new-providence",
+    "type": "borough",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.69889,
+    "lng": -74.406623,
+    "geoid": "3403951810"
+  },
+  {
+    "name": "Plainfield",
+    "slug": "plainfield",
+    "type": "city",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.615444,
+    "lng": -74.415775,
+    "geoid": "3403959190"
+  },
+  {
+    "name": "Rahway",
+    "slug": "rahway",
+    "type": "city",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.607152,
+    "lng": -74.280531,
+    "geoid": "3403961530"
+  },
+  {
+    "name": "Roselle",
+    "slug": "roselle",
+    "type": "borough",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.652211,
+    "lng": -74.260158,
+    "geoid": "3403964620"
+  },
+  {
+    "name": "Roselle Park",
+    "slug": "roselle-park",
+    "type": "borough",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.665309,
+    "lng": -74.266558,
+    "geoid": "3403964650"
+  },
+  {
+    "name": "Scotch Plains",
+    "slug": "scotch-plains",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.633029,
+    "lng": -74.372899,
+    "geoid": "3403966060"
+  },
+  {
+    "name": "Springfield",
+    "slug": "springfield",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.697966,
+    "lng": -74.334436,
+    "geoid": "3403970020"
+  },
+  {
+    "name": "Summit",
+    "slug": "summit",
+    "type": "city",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.715622,
+    "lng": -74.364684,
+    "geoid": "3403971430"
+  },
+  {
+    "name": "Union",
+    "slug": "union",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.695266,
+    "lng": -74.269078,
+    "geoid": "3403974480"
+  },
+  {
+    "name": "Westfield",
+    "slug": "westfield",
+    "type": "town",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.651644,
+    "lng": -74.343447,
+    "geoid": "3403979040"
+  },
+  {
+    "name": "Winfield",
+    "slug": "winfield",
+    "type": "township",
+    "county": "Union",
+    "county_fips": "039",
+    "lat": 40.634885,
+    "lng": -74.289847,
+    "geoid": "3403981650"
+  },
+  {
+    "name": "Allamuchy",
+    "slug": "allamuchy",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.918679,
+    "lng": -74.828973,
+    "geoid": "3404100670"
+  },
+  {
+    "name": "Alpha",
+    "slug": "alpha",
+    "type": "borough",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.659447,
+    "lng": -75.157052,
+    "geoid": "3404101030"
+  },
+  {
+    "name": "Belvidere",
+    "slug": "belvidere",
+    "type": "town",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.829802,
+    "lng": -75.073337,
+    "geoid": "3404104990"
+  },
+  {
+    "name": "Blairstown",
+    "slug": "blairstown",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.980156,
+    "lng": -74.996849,
+    "geoid": "3404106160"
+  },
+  {
+    "name": "Franklin",
+    "slug": "franklin",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.712407,
+    "lng": -75.052831,
+    "geoid": "3404124960"
+  },
+  {
+    "name": "Frelinghuysen",
+    "slug": "frelinghuysen",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.959486,
+    "lng": -74.895154,
+    "geoid": "3404125320"
+  },
+  {
+    "name": "Greenwich",
+    "slug": "greenwich",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.680274,
+    "lng": -75.118709,
+    "geoid": "3404128260"
+  },
+  {
+    "name": "Hackettstown",
+    "slug": "hackettstown",
+    "type": "town",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.853704,
+    "lng": -74.824877,
+    "geoid": "3404128710"
+  },
+  {
+    "name": "Hardwick",
+    "slug": "hardwick",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 41.039708,
+    "lng": -75.006656,
+    "geoid": "3404129820"
+  },
+  {
+    "name": "Harmony",
+    "slug": "harmony",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.747701,
+    "lng": -75.122777,
+    "geoid": "3404130090"
+  },
+  {
+    "name": "Hope",
+    "slug": "hope",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.906979,
+    "lng": -74.976675,
+    "geoid": "3404133060"
+  },
+  {
+    "name": "Independence",
+    "slug": "independence",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.880001,
+    "lng": -74.876253,
+    "geoid": "3404133930"
+  },
+  {
+    "name": "Knowlton",
+    "slug": "knowlton",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.929261,
+    "lng": -75.061796,
+    "geoid": "3404137320"
+  },
+  {
+    "name": "Liberty",
+    "slug": "liberty",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.86974,
+    "lng": -74.938072,
+    "geoid": "3404140110"
+  },
+  {
+    "name": "Lopatcong",
+    "slug": "lopatcong",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.714002,
+    "lng": -75.15547,
+    "geoid": "3404141490"
+  },
+  {
+    "name": "Mansfield",
+    "slug": "mansfield",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.808461,
+    "lng": -74.910234,
+    "geoid": "3404143320"
+  },
+  {
+    "name": "Oxford",
+    "slug": "oxford",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.80865,
+    "lng": -74.993421,
+    "geoid": "3404155530"
+  },
+  {
+    "name": "Phillipsburg",
+    "slug": "phillipsburg",
+    "type": "town",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.691974,
+    "lng": -75.179006,
+    "geoid": "3404158350"
+  },
+  {
+    "name": "Pohatcong",
+    "slug": "pohatcong",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.636483,
+    "lng": -75.174906,
+    "geoid": "3404159820"
+  },
+  {
+    "name": "Washington",
+    "slug": "washington",
+    "type": "borough",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.758525,
+    "lng": -74.98319,
+    "geoid": "3404177270"
+  },
+  {
+    "name": "Washington",
+    "slug": "washington",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.729957,
+    "lng": -74.958975,
+    "geoid": "3404177300"
+  },
+  {
+    "name": "White",
+    "slug": "white",
+    "type": "township",
+    "county": "Warren",
+    "county_fips": "041",
+    "lat": 40.821198,
+    "lng": -75.030502,
+    "geoid": "3404180570"
+  }
+]
