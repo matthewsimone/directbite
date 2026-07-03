@@ -6,6 +6,10 @@
 import { fileURLToPath } from 'node:url'
 import NJ_TOWNS from '../../src/data/nj-towns.json' with { type: 'json' }
 
+// Radius cap (miles): the max distance a town can be from a restaurant and
+// still get a /places page. Exported so the prerender shares the same default.
+export const MAX_RADIUS_MILES = 8
+
 // Great-circle distance in miles between two lat/lng points.
 export function haversineMiles(lat1, lng1, lat2, lng2) {
   const R = 3958.8 // Earth radius in miles
@@ -26,7 +30,7 @@ export function haversineMiles(lat1, lng1, lat2, lng2) {
 // equal distance, same-county wins). A closer town in another county still
 // ranks ahead of a farther same-county town.
 export function findNearestTowns(restaurant, options = {}) {
-  const { radiusMiles = 8, limit = 20 } = options
+  const { radiusMiles = MAX_RADIUS_MILES, limit = 20 } = options
   if (!restaurant || typeof restaurant.lat !== 'number' || typeof restaurant.lng !== 'number') {
     return []
   }
@@ -58,8 +62,8 @@ export function findNearestTowns(restaurant, options = {}) {
 // ---- Self-test: only runs when executed directly (node scripts/lib/findNearestTowns.mjs) ----
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const testPizza = { lat: 41.023305, lng: -73.984223, county: 'Bergen' }
-  const nearby = findNearestTowns(testPizza, { radiusMiles: 8, limit: 20 })
-  console.log(`Test Pizza (Old Tappan, Bergen) — top ${nearby.length} within 8 mi:`)
+  const nearby = findNearestTowns(testPizza, { radiusMiles: MAX_RADIUS_MILES, limit: 20 })
+  console.log(`Test Pizza (Old Tappan, Bergen) — top ${nearby.length} within ${MAX_RADIUS_MILES} mi:`)
   for (const t of nearby) {
     console.log(
       `  ${t.distanceMiles.toFixed(2).padStart(5)} mi  ${t.name} ${t.type} (${t.county})`

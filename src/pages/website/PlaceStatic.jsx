@@ -17,7 +17,7 @@ import { getStatus } from './utils/hours'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
-export default function PlacePage({ restaurant, hours, town, siblingTowns, categories, items, lowestPrices }) {
+export default function PlaceStatic({ restaurant, hours, town, siblingTowns, categories, items, lowestPrices }) {
   const slug = restaurant.slug
   const cuisine = restaurant.cuisine || 'Pizza'
 

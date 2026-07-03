@@ -13,6 +13,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import HomePage from './pages/website/HomePage'
 import MenuStaticRoute from './pages/website/MenuStaticRoute'
+import PlaceStaticRoute from './pages/website/PlaceStaticRoute'
 import CustomDomainShell from './CustomDomainShell'
 
 // Dev-only diagnostic route. Lazy-loaded so its `@stripe/stripe-js`
@@ -40,6 +41,7 @@ function MainRoutes() {
       <Route path="/:slug" element={<MenuPage />} />
       <Route path="/:slug/home" element={<HomePage />} />
       <Route path="/:slug/menu" element={<MenuStaticRoute />} />
+      <Route path="/:slug/places/:townSlug" element={<PlaceStaticRoute />} />
       <Route path="/:slug/checkout" element={<CheckoutPage />} />
       <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
       <Route path="/:slug/tablet" element={<TabletPage />} />
