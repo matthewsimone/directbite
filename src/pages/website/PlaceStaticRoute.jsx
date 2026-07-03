@@ -4,44 +4,12 @@ import { useRestaurant } from '../../hooks/useRestaurant'
 import { useMenu } from '../../hooks/useMenu'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
+import { MAX_RADIUS_MILES, haversineMiles, findNearestTowns } from '../../lib/geoTowns'
 import { parseAddress } from './utils/address'
 import PlaceStatic from './PlaceStatic'
 import NJ_TOWNS from '../../data/nj-towns.json'
 
-const RADIUS_MILES = 8
 const SIBLING_LIMIT = 12
-
-// Duplicated pure geo logic. The build-time helper
-// (scripts/lib/findNearestTowns.mjs) imports node:url for its self-test, so it
-// can't be pulled into the browser bundle — keep this in sync with it.
-function haversineMiles(lat1, lng1, lat2, lng2) {
-  const R = 3958.8
-  const toRad = (d) => (d * Math.PI) / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLng = toRad(lng2 - lng1)
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
-  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)))
-}
-
-function nearestTowns(lat, lng, county, radiusMiles = RADIUS_MILES, limit = 20) {
-  const out = []
-  for (const t of NJ_TOWNS) {
-    const d = haversineMiles(lat, lng, t.lat, t.lng)
-    if (d <= radiusMiles) out.push({ ...t, distanceMiles: Math.round(d * 100) / 100 })
-  }
-  out.sort((a, b) => {
-    if (a.distanceMiles !== b.distanceMiles) return a.distanceMiles - b.distanceMiles
-    if (county) {
-      const aS = a.county === county ? 0 : 1
-      const bS = b.county === county ? 0 : 1
-      if (aS !== bS) return aS - bS
-    }
-    return 0
-  })
-  return out.slice(0, limit)
-}
 
 const slugify = (s) => (s || '').toLowerCase().replace(/\s+/g, '-')
 
@@ -104,7 +72,7 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
     : Infinity
 
   // 404: town slug not in the gazetteer, OR (when we have coords) out of radius.
-  if (!town || (hasCoords && townDistance > RADIUS_MILES)) {
+  if (!town || (hasCoords && townDistance > MAX_RADIUS_MILES)) {
     return (
       <div className="min-h-dvh bg-white flex items-center justify-center px-6 text-center">
         <div>
@@ -126,7 +94,7 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
   const ownCounty = NJ_TOWNS.find((t) => t.slug === ownCitySlug)?.county
 
   const siblingTowns = hasCoords
-    ? nearestTowns(restLat, restLng, ownCounty)
+    ? findNearestTowns({ lat: restLat, lng: restLng, county: ownCounty }, NJ_TOWNS, { limit: 20 })
         .filter((t) => t.slug !== townSlug && t.slug !== ownCitySlug)
         .slice(0, SIBLING_LIMIT)
     : []
