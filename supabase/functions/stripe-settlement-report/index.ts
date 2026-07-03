@@ -200,7 +200,7 @@ serve(async (req: Request) => {
     const { data: ordersData, error: ordersErr } = await supabase
       .from("orders")
       .select(
-        "status, subtotal, discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee"
+        "status, subtotal, discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status"
       )
       .eq("restaurant_id", restaurant_id)
       .gte("created_at", selStartIso)
@@ -223,25 +223,38 @@ serve(async (req: Request) => {
     const tips_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.tip_amount), 0);
     const delivery_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.delivery_fee), 0);
 
-    const ud_uber_charged_cents = udOrders.reduce(
-      (s: number, o: any) => s + dollarsToCents(o.uber_actual_fee),
+    // Attribute Uber economics ONLY to orders the courier actually delivered.
+    // uber_status === 'delivered' is the sole positive marker: the switch-to-
+    // in-house / cancel flows leave delivery_fulfillment_method='uber_direct'
+    // and uber_actual_fee=null, so non-deliveries are indistinguishable by
+    // those fields. Positive-match on 'delivered' — canceled / null / failed /
+    // returned / in-flight all fall to non-delivered.
+    const delivered = udOrders.filter((o: any) => o.uber_status === "delivered");
+    const nonDelivered = udOrders.filter((o: any) => o.uber_status !== "delivered");
+
+    const ud_count = delivered.length;
+    // Option A: a delivered order with a null actual fee contributes $0 — no
+    // uber_quoted_fee fallback.
+    const ud_uber_charged_cents = delivered.reduce(
+      (s: number, o: any) => s + dollarsToCents(o.uber_actual_fee || 0),
       0
     );
-    const ud_customer_paid_cents = udOrders.reduce(
+    const ud_customer_paid_cents = delivered.reduce(
       (s: number, o: any) => s + dollarsToCents(o.delivery_fee),
       0
     );
+    const ud_net_cost_cents = ud_uber_charged_cents - ud_customer_paid_cents;
     // Tip split — cap 500 to match what dispatch fronts to Uber
     // (_shared/uberCreateDelivery.ts:491 sends tip: Math.min(tipCents, 500)).
-    // Over-$5 tip is kept in the restaurant's Stripe balance.
-    const ud_tips_to_driver_cents = udOrders.reduce(
+    const ud_tips_to_driver_cents = delivered.reduce(
       (s: number, o: any) => s + Math.min(Math.round(Number(o.tip_amount || 0) * 100), 500),
       0
     );
-    const ud_tip_kept_cents = udOrders.reduce(
-      (s: number, o: any) => s + Math.max(Math.round(Number(o.tip_amount || 0) * 100) - 500, 0),
-      0
-    );
+    // Kept = the over-$5 portion of DELIVERED tips (stays in the restaurant's
+    // balance) PLUS the FULL tip of every non-delivered order (no driver got it).
+    const ud_tip_kept_cents =
+      delivered.reduce((s: number, o: any) => s + Math.max(Math.round(Number(o.tip_amount || 0) * 100) - 500, 0), 0) +
+      nonDelivered.reduce((s: number, o: any) => s + Math.round(Number(o.tip_amount || 0) * 100), 0);
 
     const breakdown = {
       food_cents,
@@ -250,10 +263,10 @@ serve(async (req: Request) => {
       delivery_cents,
       completed_count: nonCancelled.length,
       cancelled_count: cancelledOrders.length,
-      ud_count: udOrders.length,
+      ud_count,
       ud_uber_charged_cents,
       ud_customer_paid_cents,
-      ud_net_cost_cents: ud_uber_charged_cents - ud_customer_paid_cents,
+      ud_net_cost_cents,
       ud_tips_to_driver_cents,
       ud_tip_kept_cents,
     };
