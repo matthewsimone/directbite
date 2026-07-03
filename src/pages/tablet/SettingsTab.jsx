@@ -4,7 +4,6 @@ import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
 import ReportsView from './ReportsView'
-import UberDirectReportView from './UberDirectReportView'
 import ErrorBoundary from '../../components/ErrorBoundary'
 import WebsiteLinksEditor from './WebsiteLinksEditor'
 // ZipCodeManager removed — replaced by radius-based delivery
@@ -210,7 +209,6 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
 
   const [bulkUpdating, setBulkUpdating] = useState(false)
   const [showReports, setShowReports] = useState(false)
-  const [showUberReport, setShowUberReport] = useState(false)
 
   // Uber Direct setup wizard state
   const [showWizardLocally, setShowWizardLocally] = useState(false)
@@ -632,10 +630,6 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       </ErrorBoundary>
     )
   }
-  if (showUberReport) {
-    return <UberDirectReportView restaurant={restaurant} onBack={() => setShowUberReport(false)} />
-  }
-
   // Uber Direct render-state determination
   const isUberVerified = !!restaurant?.uber_credentials_verified_at
   const hasCredentials = !!restaurant?.uber_customer_id
@@ -669,12 +663,6 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] transition-colors"
           >
             Open Sales Report
-          </button>
-          <button
-            onClick={() => setShowUberReport(true)}
-            className="w-full h-12 mt-3 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] transition-colors"
-          >
-            Open UberDirect Report
           </button>
         </Section>
 

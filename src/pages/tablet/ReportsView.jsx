@@ -16,6 +16,13 @@ const PRESETS = [
 // cents → "$X.XX"
 const fmt = (cents) => formatCurrency((cents || 0) / 100)
 
+// Sign-aware cost: a positive cost is money out (−), a negative cost is a gain.
+function signedCost(cents) {
+  if (cents > 0) return `−${fmt(cents)}`
+  if (cents < 0) return `+${fmt(Math.abs(cents))} in your favor`
+  return fmt(0)
+}
+
 // "May 18 – May 25" for cross-day ranges, "May 25" for single-day. Year
 // included only when start year differs from end year (covers Custom
 // ranges spanning a year boundary).
@@ -294,7 +301,11 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
           <StatementRow label="Deliveries" value={String(b.ud_count)} />
           <StatementRow label="Uber Charged" value={`−${fmt(b.ud_uber_charged_cents)}`} muted />
           <StatementRow label="Covered by customer" value={`+${fmt(b.ud_customer_paid_cents)}`} muted />
-          <SubtotalRow label="Your net delivery cost" value={`−${fmt(b.ud_net_cost_cents)}`} />
+          <SubtotalRow label="Your net delivery cost" value={signedCost(b.ud_net_cost_cents)} />
+          <StatementRow label="Tips to drivers (paid through Uber)" value={fmt(b.ud_tips_to_driver_cents)} muted />
+          {b.ud_tip_kept_cents > 0 && (
+            <StatementRow label="Tips kept (over $5 cap)" value={`+${fmt(b.ud_tip_kept_cents)}`} muted />
+          )}
         </section>
       )}
 

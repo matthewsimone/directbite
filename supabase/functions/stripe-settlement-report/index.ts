@@ -231,6 +231,17 @@ serve(async (req: Request) => {
       (s: number, o: any) => s + dollarsToCents(o.delivery_fee),
       0
     );
+    // Tip split — cap 500 to match what dispatch fronts to Uber
+    // (_shared/uberCreateDelivery.ts:491 sends tip: Math.min(tipCents, 500)).
+    // Over-$5 tip is kept in the restaurant's Stripe balance.
+    const ud_tips_to_driver_cents = udOrders.reduce(
+      (s: number, o: any) => s + Math.min(Math.round(Number(o.tip_amount || 0) * 100), 500),
+      0
+    );
+    const ud_tip_kept_cents = udOrders.reduce(
+      (s: number, o: any) => s + Math.max(Math.round(Number(o.tip_amount || 0) * 100) - 500, 0),
+      0
+    );
 
     const breakdown = {
       food_cents,
@@ -243,6 +254,8 @@ serve(async (req: Request) => {
       ud_uber_charged_cents,
       ud_customer_paid_cents,
       ud_net_cost_cents: ud_uber_charged_cents - ud_customer_paid_cents,
+      ud_tips_to_driver_cents,
+      ud_tip_kept_cents,
     };
 
     // --- PAYOUT VIEW (grouped by settlement; WIDE rows). Each group also
