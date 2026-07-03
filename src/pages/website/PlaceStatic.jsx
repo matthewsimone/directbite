@@ -13,6 +13,10 @@ import MenuItemCard from '../../components/MenuItemCard'
 import TopBar from './components/TopBar'
 import Footer from './components/Footer'
 import Location from './components/Location'
+import Hero from './components/Hero'
+import PromoBar from './components/PromoBar'
+import StickyMobileCTA from './components/StickyMobileCTA'
+import { usePromotion } from '../../hooks/usePromotion'
 import { getStatus } from './utils/hours'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
@@ -37,6 +41,13 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
     return () => clearInterval(interval)
   }, [hours])
 
+  // Promo banner — async/effect-based hook (initial null). During renderToString
+  // the effect doesn't run → promotion stays null → PromoBar renders nothing, so
+  // no time-sensitive promo is baked into the static file. The live promo appears
+  // client-side post-hydrate (hydration-safe: server + first client render match).
+  const { promotion } = usePromotion(restaurant?.id)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
 
   // First 6 items, ordered by category sort_order then item sort_order. Sorted
@@ -54,26 +65,17 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
   const siblings = (siblingTowns || []).slice(0, 15)
 
   return (
-    <div className="min-h-dvh bg-white" style={{ '--brand-color': brandColor }}>
-      <TopBar restaurant={restaurant} status={status} hours={hours} solid />
+    <div className="min-h-dvh bg-white pb-32 md:pb-0" style={{ '--brand-color': brandColor }}>
+      <PromoBar promotion={promotion} />
+      <TopBar restaurant={restaurant} status={status} hours={hours} onDrawerOpenChange={setDrawerOpen} />
 
-      {/* 2. Keyword hero — text-only, soft background */}
-      <section className="bg-gray-50 border-b border-gray-200">
-        <div className="max-w-[1100px] mx-auto px-6 sm:px-8 py-12">
-          <p className="text-sm font-semibold uppercase tracking-wide text-[#16A34A]">
-            Best {cuisine} {delivers ? 'around' : 'near'} {town.name}, NJ
-          </p>
-          <h1 className="mt-2 text-3xl sm:text-4xl font-extrabold text-gray-900">
-            {delivers ? `${cuisine} Delivery to ${town.name}` : `Best ${cuisine} near ${town.name}`}
-          </h1>
-          <a
-            href={`/${slug}`}
-            className="mt-5 inline-flex items-center h-11 px-6 rounded-xl bg-[#16A34A] text-white font-semibold hover:bg-[#15803D] transition-colors"
-          >
-            Order Online
-          </a>
-        </div>
-      </section>
+      {/* 2. Branded hero — photo background + keyword copy (matches homepage) */}
+      <Hero
+        restaurant={restaurant}
+        eyebrow={delivers ? `Best ${cuisine} around ${town.name}, NJ` : `Best ${cuisine} near ${town.name}, NJ`}
+        title={delivers ? `${cuisine} Delivery to ${town.name}` : `Best ${cuisine} near ${town.name}`}
+        subtitle={restaurant.tagline || null}
+      />
 
       {/* 3. Featured items — first 6 */}
       {showItems.length > 0 && (
@@ -129,6 +131,8 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
           </div>
         </section>
       )}
+
+      {!drawerOpen && <StickyMobileCTA restaurant={restaurant} />}
 
       <Footer restaurant={restaurant} hours={hours} />
     </div>

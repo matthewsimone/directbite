@@ -116,7 +116,7 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
   )
 }
 
-export default function Hero({ restaurant }) {
+export default function Hero({ restaurant, eyebrow, title, subtitle }) {
   const { hero_image_url, logo_url, logo_frame_shape, name, tagline, slug, primary_color } = restaurant
   const brandColor = primary_color || DEFAULT_BRAND_COLOR
 
@@ -131,22 +131,46 @@ export default function Hero({ restaurant }) {
       {/* Dark gradient overlay — keeps white text legible regardless of image */}
       <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
 
-      {/* Centered content — pt-16 compensates for the -mt-16 on the section
-          so content stays optically centered in the visible area below TopBar. */}
-      <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-6 pt-[calc(4rem+env(safe-area-inset-top))] pb-[10vh] md:pb-0">
+      {/* Content — pt-16 compensates for the -mt-16 on the section so content
+          stays optically centered in the visible area below TopBar. Default is
+          centered (homepage); the keyword layout (title provided) is left-aligned. */}
+      <div className={`relative z-10 h-full flex flex-col justify-center px-6 pt-[calc(4rem+env(safe-area-inset-top))] pb-[10vh] md:pb-0 ${title ? 'items-start text-left' : 'items-center text-center'}`}>
         <LogoFrame
           logoUrl={logo_url}
           shape={logo_frame_shape}
           name={name}
           brandColor={brandColor}
         />
-        <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
-          {name}
-        </h1>
-        {tagline && (
-          <p className="mt-3 text-base md:text-xl text-white/90 max-w-2xl">
-            {tagline}
-          </p>
+        {title ? (
+          <>
+            {eyebrow && (
+              <p
+                className="text-sm font-semibold uppercase tracking-wide mb-2"
+                style={{ color: 'var(--brand-color)' }}
+              >
+                {eyebrow}
+              </p>
+            )}
+            <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="mt-3 text-base md:text-xl text-white/90 max-w-2xl">
+                {subtitle}
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <h1 className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">
+              {name}
+            </h1>
+            {tagline && (
+              <p className="mt-3 text-base md:text-xl text-white/90 max-w-2xl">
+                {tagline}
+              </p>
+            )}
+          </>
         )}
 
         {/* CTAs — desktop only; mobile uses sticky bottom bar (Phase 2C) */}
