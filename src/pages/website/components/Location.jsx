@@ -13,7 +13,7 @@ function formatPhone(raw) {
   return raw
 }
 
-export default function Location({ restaurant }) {
+export default function Location({ restaurant, title = 'Our location', subtext }) {
   const { street, city, state, line2 } = parseAddress(restaurant.address)
   const cityState = city && state ? `${city}, ${state}` : null
   const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
@@ -55,9 +55,12 @@ export default function Location({ restaurant }) {
   return (
     <section className="bg-white py-10 md:py-16">
       <div className="max-w-[1280px] mx-auto px-6 md:px-8">
-        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8">
-          Our location
+        <h2 className={`text-3xl md:text-4xl font-bold text-gray-900 ${subtext ? 'mb-2' : 'mb-6 md:mb-8'}`}>
+          {title}
         </h2>
+        {subtext && (
+          <p className="text-base text-gray-600 mb-6 md:mb-8 max-w-2xl">{subtext}</p>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
           <div
