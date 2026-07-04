@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, Navigate } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { useMenu } from '../../hooks/useMenu'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
@@ -28,6 +29,27 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
   const { categories, items, loading: menuLoading, getLowestPrice } = useMenu(restaurant?.id)
 
   useRestaurantBranding(restaurant, 'website')
+
+  // Featured items for the Featured carousel — a dedicated fetch (useMenu's
+  // items don't carry item_sizes nested, which the card needs for pricing).
+  // Matches the homepage FeaturedMenu query exactly so both render identically.
+  const [featuredItems, setFeaturedItems] = useState([])
+  useEffect(() => {
+    if (!restaurant?.id) return
+    let cancelled = false
+    async function fetchFeatured() {
+      const { data } = await supabase
+        .from('menu_items')
+        .select('*, item_sizes(*)')
+        .eq('restaurant_id', restaurant.id)
+        .eq('featured_on_website', true)
+        .order('featured_order')
+        .limit(8)
+      if (!cancelled) setFeaturedItems((data || []).filter((i) => i.image_url))
+    }
+    fetchFeatured()
+    return () => { cancelled = true }
+  }, [restaurant?.id])
 
   // Website add-on not enabled — bounce to ordering (cross-origin on a custom domain).
   useEffect(() => {
@@ -113,6 +135,7 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
       categories={categories}
       items={items}
       lowestPrices={lowestPrices}
+      featuredItems={featuredItems}
     />
   )
 }

@@ -42,6 +42,35 @@ function ItemCard({ item, slug }) {
   )
 }
 
+// Pure, prop-fed presentation — the featured carousel/grid. Reusable anywhere:
+// the homepage via FeaturedMenu's fetch, /places via the prerender's props.
+// No hooks, no fetch, no window — safe to server-render.
+export function FeaturedGrid({ items, slug }) {
+  if (!items || items.length === 0) return null
+
+  return (
+    <section className="bg-white py-10 md:py-16">
+      <div className="max-w-[1280px] mx-auto px-6 md:px-8">
+        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8">Featured</h2>
+
+        {/* Mobile: horizontal scroll */}
+        <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-6 pb-2 -mx-6 px-6">
+          {items.map(item => (
+            <ItemCard key={item.id} item={item} slug={slug} />
+          ))}
+        </div>
+
+        {/* Desktop: flex-wrap so cards stay 220px without stretching */}
+        <div className="hidden md:flex md:flex-wrap gap-6">
+          {items.map(item => (
+            <ItemCard key={item.id} item={item} slug={slug} />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 export default function FeaturedMenu({ restaurant }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -65,25 +94,5 @@ export default function FeaturedMenu({ restaurant }) {
   if (loading) return null
   if (items.length === 0) return null
 
-  return (
-    <section className="bg-white py-10 md:py-16">
-      <div className="max-w-[1280px] mx-auto px-6 md:px-8">
-        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8">Featured</h2>
-
-        {/* Mobile: horizontal scroll */}
-        <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-6 pb-2 -mx-6 px-6">
-          {items.map(item => (
-            <ItemCard key={item.id} item={item} slug={restaurant.slug} />
-          ))}
-        </div>
-
-        {/* Desktop: flex-wrap so cards stay 220px without stretching */}
-        <div className="hidden md:flex md:flex-wrap gap-6">
-          {items.map(item => (
-            <ItemCard key={item.id} item={item} slug={restaurant.slug} />
-          ))}
-        </div>
-      </div>
-    </section>
-  )
+  return <FeaturedGrid items={items} slug={restaurant.slug} />
 }

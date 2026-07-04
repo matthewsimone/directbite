@@ -1,19 +1,19 @@
 // Prerender-safe static /{slug}/places/{town} SEO landing page.
 //
 // Prop-fed, same discipline as MenuStatic: no cart, no ItemModal, no
-// useMenu/scroll-spy, and no window/document/localStorage AT RENDER TIME (the
-// only window ref is inside a Featured-item click handler, never invoked during
-// renderToString). No JSON-LD here — the prerender script injects it separately.
+// useMenu/scroll-spy, and no window/document/localStorage anywhere — fully
+// window-free (Featured is the shared FeaturedGrid, whose cards are OrderLink
+// <a> tags, not click handlers). No JSON-LD here — the prerender injects it.
 //
 // TopBar's open/closed status uses the identical hydration-safe placeholder +
 // effect-tick pattern as MenuStatic/HomePage.
 
 import { useState, useEffect } from 'react'
-import MenuItemCard from '../../components/MenuItemCard'
 import TopBar from './components/TopBar'
 import Footer from './components/Footer'
 import Location from './components/Location'
 import Hero from './components/Hero'
+import { FeaturedGrid } from './components/FeaturedMenu'
 import PromoBar from './components/PromoBar'
 import StickyMobileCTA from './components/StickyMobileCTA'
 import { usePromotion } from '../../hooks/usePromotion'
@@ -21,7 +21,7 @@ import { getStatus } from './utils/hours'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
-export default function PlaceStatic({ restaurant, hours, town, siblingTowns, categories, items, lowestPrices }) {
+export default function PlaceStatic({ restaurant, hours, town, siblingTowns, categories, items, lowestPrices, featuredItems }) {
   const slug = restaurant.slug
   const cuisine = restaurant.cuisine || 'Pizza'
 
@@ -50,18 +50,6 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
 
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
 
-  // First 6 items, ordered by category sort_order then item sort_order. Sorted
-  // here (not relying on fetch order) so the component stays purely prop-fed.
-  const catOrder = new Map((categories || []).map((c) => [c.id, c.sort_order ?? 0]))
-  const showItems = [...(items || [])]
-    .sort((a, b) => {
-      const ca = catOrder.get(a.category_id) ?? 0
-      const cb = catOrder.get(b.category_id) ?? 0
-      if (ca !== cb) return ca - cb
-      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
-    })
-    .slice(0, 6)
-
   const siblings = (siblingTowns || []).slice(0, 15)
 
   return (
@@ -77,24 +65,8 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
         subtitle={restaurant.tagline || null}
       />
 
-      {/* 3. Featured items — first 6 */}
-      {showItems.length > 0 && (
-        <section className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-3">Featured</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {showItems.map((item) => (
-              <MenuItemCard
-                key={item.id}
-                item={item}
-                lowestPrice={lowestPrices[item.id]}
-                onClick={() => {
-                  window.location.href = `/${slug}?item=${item.id}`
-                }}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* 3. Featured — homepage-style image carousel (shared FeaturedGrid) */}
+      <FeaturedGrid items={featuredItems} slug={restaurant.slug} />
 
       {/* 4. About — town in the first sentence */}
       <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pb-10">

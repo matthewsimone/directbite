@@ -208,6 +208,19 @@ async function main() {
         : null
     }
 
+    // Featured items for the /places Featured carousel — a SEPARATE query with
+    // item_sizes nested (the card reads item.item_sizes for pricing). Matches
+    // the homepage FeaturedMenu fetch exactly: featured_on_website, ordered by
+    // featured_order, capped at 8, image required.
+    const { data: featuredRows } = await supabase
+      .from('menu_items')
+      .select('*, item_sizes(*)')
+      .eq('restaurant_id', restaurant.id)
+      .eq('featured_on_website', true)
+      .order('featured_order')
+      .limit(8)
+    const featuredItems = (featuredRows || []).filter((i) => i.image_url)
+
     const menuHtml = renderToString(
       React.createElement(
         StaticRouter,
@@ -284,6 +297,7 @@ async function main() {
             categories: categories || [],
             items: menuItems || [],
             lowestPrices,
+            featuredItems,
           })
         )
       )
