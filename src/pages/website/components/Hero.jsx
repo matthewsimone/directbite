@@ -166,7 +166,7 @@ export default function Hero({ restaurant, eyebrow, title, subtitle }) {
                 Non-h1 (the keyword below is the h1). */}
             <p className="text-[40px] md:text-[64px] font-bold text-white leading-tight tracking-tight">{name}</p>
             {eyebrow && (
-              <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-white">
+              <p className="mt-3 text-sm font-semibold uppercase tracking-wide text-white">
                 {eyebrow}
               </p>
             )}
