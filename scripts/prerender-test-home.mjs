@@ -46,13 +46,7 @@ import { StaticRouter } from 'react-router-dom'
 import { findNearestTowns, MAX_RADIUS_MILES } from './lib/findNearestTowns.mjs'
 import NJ_TOWNS from '../src/data/nj-towns.json' with { type: 'json' }
 
-const TEST_SLUG = 'test'
-const TEST_ID = '00000000-0000-0000-0000-000000000001'
-const ROUTE = `/${TEST_SLUG}/home`
-const ROUTE_MENU = `/${TEST_SLUG}/menu`
 const SHELL = path.resolve('dist/index.html')
-const OUT_DIR = path.resolve('dist', TEST_SLUG, 'home')
-const OUT_DIR_MENU = path.resolve('dist', TEST_SLUG, 'menu')
 const SITE_NAME = 'DirectBite'
 
 // HTML-escape for injected head values — mirrored from api/og-html.js so a
@@ -126,237 +120,262 @@ async function main() {
     const MenuStatic = (await vite.ssrLoadModule('/src/pages/website/MenuStatic.jsx')).default
     const PlaceStatic = (await vite.ssrLoadModule('/src/pages/website/PlaceStatic.jsx')).default
 
-    // ---- Build-time data fetch (Test Pizza only) ----
+    // ---- Build-time data fetch: full fleet (all website_enabled restaurants) ----
     const supabase = getBuildClient()
-    const { data: restaurant, error: rErr } = await supabase
+    const { data: restaurants, error: rErr } = await supabase
       .from('restaurants')
       .select('*')
-      .eq('slug', TEST_SLUG)
-      .single()
-    if (rErr || !restaurant) {
-      throw new Error(`restaurant fetch failed for slug '${TEST_SLUG}': ${rErr?.message || 'not found'}`)
-    }
-    // Safety: this proof is scoped to Test Pizza's known id only.
-    if (restaurant.id !== TEST_ID) {
-      throw new Error(`slug '${TEST_SLUG}' resolved to id ${restaurant.id}, expected ${TEST_ID} — aborting.`)
-    }
-    const { data: hoursData, error: hErr } = await supabase
-      .from('hours')
-      .select('*')
-      .eq('restaurant_id', restaurant.id)
-      .order('day_of_week')
-    if (hErr) throw new Error(`hours fetch failed: ${hErr.message}`)
+      .eq('website_enabled', true)
+      .order('slug')
+    if (rErr) throw rErr
+    console.log(`\n=== FLEET PRERENDER: ${restaurants.length} website_enabled restaurants ===\n`)
 
-    // ---- Render via the SAME prop seam CustomDomainShell uses ----
-    const appHtml = renderToString(
-      React.createElement(
-        StaticRouter,
-        { location: ROUTE },
-        React.createElement(HomePage, { restaurant, hours: hoursData || [] })
-      )
-    )
+    // Per-restaurant try/catch: one bad restaurant (bad coords, unparseable
+    // address, null fields) must not crash the whole build — it's logged and
+    // recorded in the summary, and the loop moves on.
+    const summary = []
+    for (const restaurant of restaurants) {
+      try {
+        // Per-restaurant routes + output dirs (were module-level TEST_SLUG consts).
+        const ROUTE = `/${restaurant.slug}/home`
+        const ROUTE_MENU = `/${restaurant.slug}/menu`
+        const OUT_DIR = path.resolve('dist', restaurant.slug, 'home')
+        const OUT_DIR_MENU = path.resolve('dist', restaurant.slug, 'menu')
 
-    // ---- Inject into a copy of the shell; write ONLY this one path ----
-    // (1) prerendered app into #root, then (2) per-restaurant <head> (title,
-    // description, canonical, OG/Twitter). useRestaurantBranding stays and
-    // re-writes the same values on hydrate — no conflict.
-    const seo = buildSeoHead(restaurant)
-    let out = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
-    out = injectHead(out, seo)
-    await fs.mkdir(OUT_DIR, { recursive: true })
-    await fs.writeFile(path.join(OUT_DIR, 'index.html'), out, 'utf-8')
-    console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (${out.length} bytes, root html ${appHtml.length} bytes)`)
+        const { data: hoursData, error: hErr } = await supabase
+          .from('hours')
+          .select('*')
+          .eq('restaurant_id', restaurant.id)
+          .order('day_of_week')
+        if (hErr) throw new Error(`hours fetch failed: ${hErr.message}`)
 
-    // ======================================================================
-    // /test/menu — static, crawlable full menu (no cart / tabs / search).
-    // ======================================================================
-    const { data: categories, error: cErr } = await supabase
-      .from('menu_categories')
-      .select('id, name, sort_order')
-      .eq('restaurant_id', restaurant.id)
-      .order('sort_order')
-    if (cErr) throw new Error(`menu_categories fetch failed: ${cErr.message}`)
-
-    const { data: menuItems, error: iErr } = await supabase
-      .from('menu_items')
-      .select('*')
-      .eq('restaurant_id', restaurant.id)
-      .order('sort_order')
-    if (iErr) throw new Error(`menu_items fetch failed: ${iErr.message}`)
-
-    // item_sizes has no restaurant_id column — filter via inner-join on
-    // menu_items, exactly like useMenu, so we don't hit PostgREST's 1000-row
-    // default cap and silently drop sizes for high-row-index restaurants.
-    const { data: sizes, error: sErr } = await supabase
-      .from('item_sizes')
-      .select('*, menu_items!inner(restaurant_id)')
-      .eq('menu_items.restaurant_id', restaurant.id)
-      .order('sort_order')
-    if (sErr) throw new Error(`item_sizes fetch failed: ${sErr.message}`)
-
-    // Replicate useMenu.getLowestPrice EXACTLY: sizes for the item (matched by
-    // s.item_id), lowest of Number(price), or null when the item has no sizes.
-    // Promotion is deliberately NOT applied — the static file is cached, so a
-    // time-gated/toggled promo would go stale, and an async client promo fetch
-    // (initial null) would hydration-mismatch baked-in discounted prices.
-    // Static menu shows LIST prices only.
-    const lowestPrices = {}
-    for (const item of (menuItems || [])) {
-      const itemSizes = (sizes || []).filter((s) => s.item_id === item.id)
-      lowestPrices[item.id] = itemSizes.length
-        ? Math.min(...itemSizes.map((s) => Number(s.price)))
-        : null
-    }
-
-    // Featured items for the /places Featured carousel — a SEPARATE query with
-    // item_sizes nested (the card reads item.item_sizes for pricing). Matches
-    // the homepage FeaturedMenu fetch exactly: featured_on_website, ordered by
-    // featured_order, capped at 8, image required.
-    const { data: featuredRows } = await supabase
-      .from('menu_items')
-      .select('*, item_sizes(*)')
-      .eq('restaurant_id', restaurant.id)
-      .eq('featured_on_website', true)
-      .order('featured_order')
-      .limit(8)
-    const featuredItems = (featuredRows || []).filter((i) => i.image_url)
-
-    const menuHtml = renderToString(
-      React.createElement(
-        StaticRouter,
-        { location: ROUTE_MENU },
-        React.createElement(MenuStatic, {
-          restaurant,
-          hours: hoursData || [],
-          categories: categories || [],
-          items: menuItems || [],
-          lowestPrices,
-        })
-      )
-    )
-
-    // Menu-specific <head>: custom title, reuse home's description/image.
-    // Canonical ALWAYS points at the main-domain path — that's the only URL
-    // with prerendered, crawlable HTML. A custom domain's /menu currently
-    // serves the SPA shell (no prerender), so canonicalizing there would send
-    // crawlers to a page with no content.
-    const { city, state } = parseAddress(restaurant.address)
-    const cuisine = restaurant.cuisine || 'Pizza'
-    const menuSeo = {
-      title:
-        city && state
-          ? `Menu | ${restaurant.name} — Best ${cuisine} in ${city}, ${state}`
-          : `Menu | ${restaurant.name}`,
-      description: seo.description,
-      canonical: `https://directbite.co/${restaurant.slug}/menu`,
-      image: seo.image,
-    }
-
-    let menuOut = shell.replace('<div id="root"></div>', `<div id="root">${menuHtml}</div>`)
-    menuOut = injectHead(menuOut, menuSeo)
-    await fs.mkdir(OUT_DIR_MENU, { recursive: true })
-    await fs.writeFile(path.join(OUT_DIR_MENU, 'index.html'), menuOut, 'utf-8')
-    console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR_MENU, 'index.html'))} (${menuOut.length} bytes, root html ${menuHtml.length} bytes, ${Object.keys(lowestPrices).length} items)`)
-
-    // ======================================================================
-    // /test/places/{town} — location SEO pages within MAX_RADIUS_MILES.
-    // Reuses restaurant / hoursData / categories / menuItems / lowestPrices /
-    // seo / cuisine + the `city` parsed for the menu head above (no refetch).
-    // ======================================================================
-    const ownCitySlug = (city || '').toLowerCase().replace(/\s+/g, '-')
-    // parseAddress yields no county; derive it by matching the parsed city
-    // against the gazetteer (feeds findNearestTowns' same-county tiebreaker).
-    // NOTE: collision cities (Washington, Franklin, …) are ambiguous here — fine
-    // for Test Pizza (Old Tappan → Bergen only); revisit for real restaurants in
-    // collision towns (disambiguate by zip/proximity).
-    const county = NJ_TOWNS.find((t) => t.slug === ownCitySlug)?.county
-    if (!county) {
-      console.warn(`⚠ no county match for own town '${ownCitySlug}' — sibling sort runs without a county tiebreaker`)
-    }
-
-    const places = findNearestTowns(
-      { lat: restaurant.latitude, lng: restaurant.longitude, county },
-      { radiusMiles: MAX_RADIUS_MILES, limit: 20 }
-    )
-    // Keep the home town (it gets its own "in {town}" page) but still shed a
-    // NON-home town that sits coincidentally within 0.5 mi (mis-geocode guard):
-    //   - home town (slug === ownCitySlug): always keep
-    //   - non-home town: drop when < 0.5 mi (physically at/adjacent to the restaurant)
-    const targetTowns = places.filter((t) => {
-      if (t.slug === ownCitySlug) return true          // home town: always keep
-      return t.distanceMiles >= 0.5                     // non-home: drop if coincidentally adjacent
-    })
-    console.log(`found ${targetTowns.length} nearby towns for /places generation`)
-
-    // seo_pages overrides (migration 057). Zero rows => everything auto-generates
-    // (no behavior change). A row can override title/description or disable a page
-    // via the kill-switch (enabled === false). Keyed by town slug.
-    const { data: seoOverrides } = await supabase
-      .from('seo_pages')
-      .select('*')
-      .eq('restaurant_id', restaurant.id)
-      .eq('page_type', 'place')
-    const overrideBySlug = new Map((seoOverrides || []).map((o) => [o.slug, o]))
-
-    // Count pages actually written (kill-switch skips must not inflate the total).
-    let placesWritten = 0
-    for (const town of targetTowns) {
-      // Per-page seo_pages override for this town (undefined when no row exists).
-      const ov = overrideBySlug.get(town.slug)
-      // Kill-switch: an explicitly disabled page is skipped entirely (not rendered).
-      if (ov && ov.enabled === false) continue
-
-      const siblingTowns = targetTowns.filter((t) => t.slug !== town.slug).slice(0, 12)
-
-      const placeHtml = renderToString(
-        React.createElement(
-          StaticRouter,
-          { location: `/${TEST_SLUG}/places/${town.slug}` },
-          React.createElement(PlaceStatic, {
-            restaurant,
-            hours: hoursData || [],
-            town,
-            siblingTowns,
-            featuredItems,
-          })
+        // ---- Render via the SAME prop seam CustomDomainShell uses ----
+        const appHtml = renderToString(
+          React.createElement(
+            StaticRouter,
+            { location: ROUTE },
+            React.createElement(HomePage, { restaurant, hours: hoursData || [] })
+          )
         )
-      )
 
-      // Framing priority: home > delivers > near.
-      //   - home: this IS the restaurant's own town ("in {town}")
-      //   - delivers: inside the in-house delivery radius ("around {town}")
-      //   - near: everything else (also the default when no radius is set)
-      // Mirrors the same branch in PlaceStatic.jsx.
-      const isHome = town.slug === ownCitySlug
-      const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
-      const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
+        // ---- Inject into a copy of the shell; write this restaurant's home ----
+        // (1) prerendered app into #root, then (2) per-restaurant <head> (title,
+        // description, canonical, OG/Twitter). useRestaurantBranding stays and
+        // re-writes the same values on hydrate — no conflict.
+        const seo = buildSeoHead(restaurant)
+        let out = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
+        out = injectHead(out, seo)
+        await fs.mkdir(OUT_DIR, { recursive: true })
+        await fs.writeFile(path.join(OUT_DIR, 'index.html'), out, 'utf-8')
+        console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (${out.length} bytes, root html ${appHtml.length} bytes)`)
 
-      // seo_pages can override title/description; else fall back to the auto-formula.
-      // NOTE: h1_override / body_override are a follow-up — they need PlaceStatic prop
-      // wiring to reach the rendered body, so they are intentionally not applied here.
-      const placeSeo = {
-        title: ov?.title_override || (isHome
-          ? `Best ${cuisine} in ${town.name}, NJ | ${restaurant.name}`
-          : delivers
-          ? `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`
-          : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`),
-        description: ov?.meta_description_override || (isHome
-          ? `${restaurant.name} is your local ${cuisine} spot in ${town.name}, NJ. View the menu, hours, and order directly online for pickup or delivery — commission-free.`
-          : delivers
-          ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`
-          : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`),
-        canonical: `https://directbite.co/${TEST_SLUG}/places/${town.slug}`,
-        image: seo.image,
+        // ======================================================================
+        // /{slug}/menu — static, crawlable full menu (no cart / tabs / search).
+        // ======================================================================
+        const { data: categories, error: cErr } = await supabase
+          .from('menu_categories')
+          .select('id, name, sort_order')
+          .eq('restaurant_id', restaurant.id)
+          .order('sort_order')
+        if (cErr) throw new Error(`menu_categories fetch failed: ${cErr.message}`)
+
+        const { data: menuItems, error: iErr } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('restaurant_id', restaurant.id)
+          .order('sort_order')
+        if (iErr) throw new Error(`menu_items fetch failed: ${iErr.message}`)
+
+        // item_sizes has no restaurant_id column — filter via inner-join on
+        // menu_items, exactly like useMenu, so we don't hit PostgREST's 1000-row
+        // default cap and silently drop sizes for high-row-index restaurants.
+        const { data: sizes, error: sErr } = await supabase
+          .from('item_sizes')
+          .select('*, menu_items!inner(restaurant_id)')
+          .eq('menu_items.restaurant_id', restaurant.id)
+          .order('sort_order')
+        if (sErr) throw new Error(`item_sizes fetch failed: ${sErr.message}`)
+
+        // Replicate useMenu.getLowestPrice EXACTLY: sizes for the item (matched by
+        // s.item_id), lowest of Number(price), or null when the item has no sizes.
+        // Promotion is deliberately NOT applied — the static file is cached, so a
+        // time-gated/toggled promo would go stale, and an async client promo fetch
+        // (initial null) would hydration-mismatch baked-in discounted prices.
+        // Static menu shows LIST prices only.
+        const lowestPrices = {}
+        for (const item of (menuItems || [])) {
+          const itemSizes = (sizes || []).filter((s) => s.item_id === item.id)
+          lowestPrices[item.id] = itemSizes.length
+            ? Math.min(...itemSizes.map((s) => Number(s.price)))
+            : null
+        }
+
+        // Featured items for the /places Featured carousel — a SEPARATE query with
+        // item_sizes nested (the card reads item.item_sizes for pricing). Matches
+        // the homepage FeaturedMenu fetch exactly: featured_on_website, ordered by
+        // featured_order, capped at 8, image required.
+        const { data: featuredRows } = await supabase
+          .from('menu_items')
+          .select('*, item_sizes(*)')
+          .eq('restaurant_id', restaurant.id)
+          .eq('featured_on_website', true)
+          .order('featured_order')
+          .limit(8)
+        const featuredItems = (featuredRows || []).filter((i) => i.image_url)
+
+        const menuHtml = renderToString(
+          React.createElement(
+            StaticRouter,
+            { location: ROUTE_MENU },
+            React.createElement(MenuStatic, {
+              restaurant,
+              hours: hoursData || [],
+              categories: categories || [],
+              items: menuItems || [],
+              lowestPrices,
+            })
+          )
+        )
+
+        // Menu-specific <head>: custom title, reuse home's description/image.
+        // Canonical ALWAYS points at the main-domain path — that's the only URL
+        // with prerendered, crawlable HTML. A custom domain's /menu currently
+        // serves the SPA shell (no prerender), so canonicalizing there would send
+        // crawlers to a page with no content.
+        const { city, state } = parseAddress(restaurant.address)
+        const cuisine = restaurant.cuisine || 'Pizza'
+        const menuSeo = {
+          title:
+            city && state
+              ? `Menu | ${restaurant.name} — Best ${cuisine} in ${city}, ${state}`
+              : `Menu | ${restaurant.name}`,
+          description: seo.description,
+          canonical: `https://directbite.co/${restaurant.slug}/menu`,
+          image: seo.image,
+        }
+
+        let menuOut = shell.replace('<div id="root"></div>', `<div id="root">${menuHtml}</div>`)
+        menuOut = injectHead(menuOut, menuSeo)
+        await fs.mkdir(OUT_DIR_MENU, { recursive: true })
+        await fs.writeFile(path.join(OUT_DIR_MENU, 'index.html'), menuOut, 'utf-8')
+        console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR_MENU, 'index.html'))} (${menuOut.length} bytes, root html ${menuHtml.length} bytes, ${Object.keys(lowestPrices).length} items)`)
+
+        // ======================================================================
+        // /{slug}/places/{town} — location SEO pages within MAX_RADIUS_MILES.
+        // Reuses restaurant / hoursData / featuredItems / seo / cuisine + the
+        // `city` parsed for the menu head above (no refetch).
+        // ======================================================================
+        const ownCitySlug = (city || '').toLowerCase().replace(/\s+/g, '-')
+        // parseAddress yields no county; derive it by matching the parsed city
+        // against the gazetteer (feeds findNearestTowns' same-county tiebreaker).
+        // NOTE: collision cities (Washington, Franklin, …) are ambiguous here —
+        // they resolve to the FIRST gazetteer match regardless of the restaurant's
+        // actual county. Revisit for fleet restaurants in collision towns
+        // (disambiguate by zip/proximity).
+        const county = NJ_TOWNS.find((t) => t.slug === ownCitySlug)?.county
+        if (!county) {
+          console.warn(`⚠ no county match for own town '${ownCitySlug}' (${restaurant.slug}) — sibling sort runs without a county tiebreaker`)
+        }
+
+        const places = findNearestTowns(
+          { lat: restaurant.latitude, lng: restaurant.longitude, county },
+          { radiusMiles: MAX_RADIUS_MILES, limit: 20 }
+        )
+        // Keep the home town (it gets its own "in {town}" page) but still shed a
+        // NON-home town that sits coincidentally within 0.5 mi (mis-geocode guard):
+        //   - home town (slug === ownCitySlug): always keep
+        //   - non-home town: drop when < 0.5 mi (physically at/adjacent to the restaurant)
+        const targetTowns = places.filter((t) => {
+          if (t.slug === ownCitySlug) return true          // home town: always keep
+          return t.distanceMiles >= 0.5                     // non-home: drop if coincidentally adjacent
+        })
+        console.log(`found ${targetTowns.length} nearby towns for /places generation (${restaurant.slug})`)
+
+        // seo_pages overrides (migration 057). Zero rows => everything auto-generates
+        // (no behavior change). A row can override title/description or disable a page
+        // via the kill-switch (enabled === false). Keyed by town slug.
+        const { data: seoOverrides } = await supabase
+          .from('seo_pages')
+          .select('*')
+          .eq('restaurant_id', restaurant.id)
+          .eq('page_type', 'place')
+        const overrideBySlug = new Map((seoOverrides || []).map((o) => [o.slug, o]))
+
+        // Count pages actually written (kill-switch skips must not inflate the total).
+        let placesWritten = 0
+        for (const town of targetTowns) {
+          // Per-page seo_pages override for this town (undefined when no row exists).
+          const ov = overrideBySlug.get(town.slug)
+          // Kill-switch: an explicitly disabled page is skipped entirely (not rendered).
+          if (ov && ov.enabled === false) continue
+
+          const siblingTowns = targetTowns.filter((t) => t.slug !== town.slug).slice(0, 12)
+
+          const placeHtml = renderToString(
+            React.createElement(
+              StaticRouter,
+              { location: `/${restaurant.slug}/places/${town.slug}` },
+              React.createElement(PlaceStatic, {
+                restaurant,
+                hours: hoursData || [],
+                town,
+                siblingTowns,
+                featuredItems,
+              })
+            )
+          )
+
+          // Framing priority: home > delivers > near.
+          //   - home: this IS the restaurant's own town ("in {town}")
+          //   - delivers: inside the in-house delivery radius ("around {town}")
+          //   - near: everything else (also the default when no radius is set)
+          // Mirrors the same branch in PlaceStatic.jsx.
+          const isHome = town.slug === ownCitySlug
+          const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
+          const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
+
+          // seo_pages can override title/description; else fall back to the auto-formula.
+          // NOTE: h1_override / body_override are a follow-up — they need PlaceStatic prop
+          // wiring to reach the rendered body, so they are intentionally not applied here.
+          const placeSeo = {
+            title: ov?.title_override || (isHome
+              ? `Best ${cuisine} in ${town.name}, NJ | ${restaurant.name}`
+              : delivers
+              ? `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`
+              : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`),
+            description: ov?.meta_description_override || (isHome
+              ? `${restaurant.name} is your local ${cuisine} spot in ${town.name}, NJ. View the menu, hours, and order directly online for pickup or delivery — commission-free.`
+              : delivers
+              ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`
+              : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`),
+            canonical: `https://directbite.co/${restaurant.slug}/places/${town.slug}`,
+            image: seo.image,
+          }
+
+          let placeOut = shell.replace('<div id="root"></div>', `<div id="root">${placeHtml}</div>`)
+          placeOut = injectHead(placeOut, placeSeo)
+          const placeOutDir = path.resolve('dist', restaurant.slug, 'places', town.slug)
+          await fs.mkdir(placeOutDir, { recursive: true })
+          await fs.writeFile(path.join(placeOutDir, 'index.html'), placeOut, 'utf-8')
+          placesWritten++
+        }
+        console.log(`✓ generated ${placesWritten} location pages for ${restaurant.name}`)
+
+        summary.push({ slug: restaurant.slug, ok: true, homeTown: ownCitySlug, places: placesWritten })
+      } catch (err) {
+        console.error(`✗ ${restaurant.slug}: ${err.message}`)
+        summary.push({ slug: restaurant.slug, ok: false, error: err.message })
       }
-
-      let placeOut = shell.replace('<div id="root"></div>', `<div id="root">${placeHtml}</div>`)
-      placeOut = injectHead(placeOut, placeSeo)
-      const placeOutDir = path.resolve('dist', TEST_SLUG, 'places', town.slug)
-      await fs.mkdir(placeOutDir, { recursive: true })
-      await fs.writeFile(path.join(placeOutDir, 'index.html'), placeOut, 'utf-8')
-      placesWritten++
     }
-    console.log(`✓ generated ${placesWritten} location pages for Test Pizza`)
+
+    // ---- Dry-run fleet summary (no deploy) ----
+    console.log('\n=== FLEET SUMMARY ===')
+    for (const s of summary) {
+      if (s.ok) console.log(`  ✓ ${s.slug.padEnd(18)} home=${(s.homeTown || '—').padEnd(20)} places=${s.places}`)
+      else      console.log(`  ✗ ${s.slug.padEnd(18)} FAILED: ${s.error}`)
+    }
+    const okCount = summary.filter((s) => s.ok).length
+    console.log(`\n${okCount}/${summary.length} restaurants generated OK\n`)
   } finally {
     await vite.close()
   }
