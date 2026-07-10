@@ -24,6 +24,7 @@ import { useState, useEffect } from 'react'
 import MenuItemCard from '../../components/MenuItemCard'
 import TopBar from './components/TopBar'
 import { getStatus } from './utils/hours'
+import { getOrderUrl } from '../../lib/customDomain'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
@@ -49,7 +50,7 @@ export default function MenuStatic({ restaurant, hours, categories, items, lowes
         <header className="mb-2">
           <h1 className="text-2xl font-bold text-gray-900">{restaurant.name} Menu</h1>
           <a
-            href={`/${slug}`}
+            href={getOrderUrl(slug)}
             className="mt-1 inline-block text-[14px] font-semibold text-[#16A34A] hover:underline"
           >
             Order online →
@@ -70,7 +71,7 @@ export default function MenuStatic({ restaurant, hours, categories, items, lowes
                     item={item}
                     lowestPrice={lowestPrices[item.id]}
                     onClick={() => {
-                      window.location.href = `/${slug}?item=${item.id}`
+                      window.location.href = getOrderUrl(slug, `?item=${item.id}`)
                     }}
                   />
                 ))}

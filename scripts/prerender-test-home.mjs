@@ -119,6 +119,7 @@ async function main() {
     const HomePage = HomePageMod.default
     const MenuStatic = (await vite.ssrLoadModule('/src/pages/website/MenuStatic.jsx')).default
     const PlaceStatic = (await vite.ssrLoadModule('/src/pages/website/PlaceStatic.jsx')).default
+    const { LinkBaseProvider } = await vite.ssrLoadModule('/src/pages/website/LinkBaseContext.jsx')
 
     // ---- Build-time data fetch: full fleet (all website_enabled restaurants) ----
     const supabase = getBuildClient()
@@ -141,6 +142,10 @@ async function main() {
         const ROUTE_MENU = `/${restaurant.slug}/menu`
         const OUT_DIR = path.resolve('dist', restaurant.slug, 'home')
         const OUT_DIR_MENU = path.resolve('dist', restaurant.slug, 'menu')
+        // Link base for same-domain SEO-nav links: bare for custom-domain
+        // restaurants (pages served at the domain root), slug-prefixed otherwise.
+        // Explicit (not isMainDomain()) because prerender has no window.
+        const linkBaseValue = restaurant.custom_domain ? '' : `/${restaurant.slug}`
 
         const { data: hoursData, error: hErr } = await supabase
           .from('hours')
@@ -154,7 +159,11 @@ async function main() {
           React.createElement(
             StaticRouter,
             { location: ROUTE },
-            React.createElement(HomePage, { restaurant, hours: hoursData || [] })
+            React.createElement(
+              LinkBaseProvider,
+              { value: linkBaseValue },
+              React.createElement(HomePage, { restaurant, hours: hoursData || [] })
+            )
           )
         )
 
@@ -227,13 +236,17 @@ async function main() {
           React.createElement(
             StaticRouter,
             { location: ROUTE_MENU },
-            React.createElement(MenuStatic, {
-              restaurant,
-              hours: hoursData || [],
-              categories: categories || [],
-              items: menuItems || [],
-              lowestPrices,
-            })
+            React.createElement(
+              LinkBaseProvider,
+              { value: linkBaseValue },
+              React.createElement(MenuStatic, {
+                restaurant,
+                hours: hoursData || [],
+                categories: categories || [],
+                items: menuItems || [],
+                lowestPrices,
+              })
+            )
           )
         )
 
@@ -317,13 +330,17 @@ async function main() {
             React.createElement(
               StaticRouter,
               { location: `/${restaurant.slug}/places/${town.slug}` },
-              React.createElement(PlaceStatic, {
-                restaurant,
-                hours: hoursData || [],
-                town,
-                siblingTowns,
-                featuredItems,
-              })
+              React.createElement(
+                LinkBaseProvider,
+                { value: linkBaseValue },
+                React.createElement(PlaceStatic, {
+                  restaurant,
+                  hours: hoursData || [],
+                  town,
+                  siblingTowns,
+                  featuredItems,
+                })
+              )
             )
           )
 

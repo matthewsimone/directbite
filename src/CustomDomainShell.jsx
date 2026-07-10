@@ -5,6 +5,7 @@ import { getCustomDomainKey, MAIN_DOMAIN } from './lib/customDomain'
 import HomePage from './pages/website/HomePage'
 import MenuStaticRoute from './pages/website/MenuStaticRoute'
 import PlaceStaticRoute from './pages/website/PlaceStaticRoute'
+import { LinkBaseProvider } from './pages/website/LinkBaseContext'
 
 const LinkViewer = lazy(() => import('./pages/website/LinkViewer'))
 
@@ -83,14 +84,16 @@ export default function CustomDomainShell() {
 
   return (
     <Suspense fallback={null}>
-      <Routes>
-        <Route path="/" element={<HomePage restaurant={restaurant} hours={hours} />} />
-        <Route path="/order" element={<OrderRedirect slug={restaurant.slug} />} />
-        <Route path="/menu" element={<MenuStaticRoute restaurant={restaurant} hours={hours} />} />
-        <Route path="/places/:townSlug" element={<PlaceStaticRoute restaurant={restaurant} hours={hours} />} />
-        <Route path="/:linkPath" element={<LinkViewer restaurant={restaurant} hours={hours} />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <LinkBaseProvider value="">
+        <Routes>
+          <Route path="/" element={<HomePage restaurant={restaurant} hours={hours} />} />
+          <Route path="/order" element={<OrderRedirect slug={restaurant.slug} />} />
+          <Route path="/menu" element={<MenuStaticRoute restaurant={restaurant} hours={hours} />} />
+          <Route path="/places/:townSlug" element={<PlaceStaticRoute restaurant={restaurant} hours={hours} />} />
+          <Route path="/:linkPath" element={<LinkViewer restaurant={restaurant} hours={hours} />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </LinkBaseProvider>
     </Suspense>
   )
 }

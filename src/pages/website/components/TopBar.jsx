@@ -5,6 +5,7 @@ import HoursModal from './HoursModal'
 import OrderLink from './OrderLink'
 import { formatDisplayAddress } from '../utils/address'
 import { isMainDomain } from '../../../lib/customDomain'
+import { useLinkBase } from '../LinkBaseContext'
 
 const HERO_SHADOW = '[text-shadow:0_1px_2px_rgba(0,0,0,0.5)]'
 
@@ -37,6 +38,8 @@ function StatusPill({ isOpen, scrolled }) {
 }
 
 function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
+  const linkBase = useLinkBase()
+  const base = linkBase !== null ? linkBase : (isMainDomain() ? `/${restaurant.slug}` : '')
   // Lock body scroll while drawer is open.
   useEffect(() => {
     if (!open) return
@@ -93,7 +96,7 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
           restaurant.website_links.map(link => (
             <Link
               key={link.path}
-              to={isMainDomain() ? `/${restaurant.slug}/${link.path}` : `/${link.path}`}
+              to={`${base}/${link.path}`}
               onClick={onClose}
               className="block py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
             >
@@ -142,6 +145,8 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
 }
 
 export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, solid = false }) {
+  const linkBase = useLinkBase()
+  const base = linkBase !== null ? linkBase : (isMainDomain() ? `/${restaurant.slug}` : '')
   const [drawerOpen, setDrawerOpenState] = useState(false)
   const [hoursModalOpen, setHoursModalOpen] = useState(false)
   const [scrolled, setScrolled] = useState(() =>
@@ -208,7 +213,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, 
               restaurant.website_links.map(link => (
                 <Link
                   key={link.path}
-                  to={isMainDomain() ? `/${restaurant.slug}/${link.path}` : `/${link.path}`}
+                  to={`${base}/${link.path}`}
                   className={linkCls}
                 >
                   {link.label}

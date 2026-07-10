@@ -19,12 +19,16 @@ import StickyMobileCTA from './components/StickyMobileCTA'
 import { usePromotion } from '../../hooks/usePromotion'
 import { getStatus } from './utils/hours'
 import { parseAddress } from './utils/address'
+import { isMainDomain } from '../../lib/customDomain'
+import { useLinkBase } from './LinkBaseContext'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
 export default function PlaceStatic({ restaurant, hours, town, siblingTowns, featuredItems }) {
   const slug = restaurant.slug
   const cuisine = restaurant.cuisine || 'Pizza'
+  const linkBase = useLinkBase()
+  const base = linkBase !== null ? linkBase : (isMainDomain() ? `/${slug}` : '')
 
   // Honest framing: only claim "delivery to {town}" when the town falls inside
   // the restaurant's configured in-house delivery radius. Otherwise use "near"
@@ -109,7 +113,7 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
             {siblings.map((s) => (
               <a
                 key={s.slug}
-                href={`/${slug}/places/${s.slug}`}
+                href={`${base}/places/${s.slug}`}
                 className="inline-flex items-center px-3 py-1.5 rounded-full bg-gray-100 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
               >
                 {cuisine} in {s.name}

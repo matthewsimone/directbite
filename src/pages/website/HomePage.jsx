@@ -32,7 +32,9 @@ function buildSchemaJsonLd(restaurant, hours) {
     image: restaurant.hero_image_url || undefined,
     telephone: restaurant.phone || undefined,
     url: canonicalUrl,
-    menu: `https://${MAIN_DOMAIN}/${restaurant.slug}`,
+    menu: restaurant.custom_domain
+      ? `https://${restaurant.custom_domain}/menu`
+      : `https://${MAIN_DOMAIN}/${restaurant.slug}`,
     priceRange: '$$',
     servesCuisine: 'Pizza',
   }
