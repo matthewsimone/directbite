@@ -132,9 +132,6 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
       hours={hours}
       town={{ ...town, distanceMiles: Number.isFinite(townDistance) ? Math.round(townDistance * 100) / 100 : null }}
       siblingTowns={siblingTowns}
-      categories={categories}
-      items={items}
-      lowestPrices={lowestPrices}
       featuredItems={featuredItems}
     />
   )

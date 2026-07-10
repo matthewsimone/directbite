@@ -278,8 +278,11 @@ async function main() {
       { lat: restaurant.latitude, lng: restaurant.longitude, county },
       { radiusMiles: MAX_RADIUS_MILES, limit: 20 }
     )
-    // Drop the restaurant's own town (self, distance ~0).
-    const targetTowns = places.filter((t) => t.slug !== ownCitySlug && t.distanceMiles > 0.1)
+    // Drop the restaurant's own town. Exclude on EITHER signal so a
+    // mis-geocoded restaurant still sheds its true-nearest town:
+    //   - address match: slug === ownCitySlug, OR
+    //   - distance guard: < 0.5 mi (physically at/adjacent to the restaurant)
+    const targetTowns = places.filter((t) => t.slug !== ownCitySlug && t.distanceMiles >= 0.5)
     console.log(`found ${targetTowns.length} nearby towns for /places generation`)
 
     for (const town of targetTowns) {
@@ -294,9 +297,6 @@ async function main() {
             hours: hoursData || [],
             town,
             siblingTowns,
-            categories: categories || [],
-            items: menuItems || [],
-            lowestPrices,
             featuredItems,
           })
         )

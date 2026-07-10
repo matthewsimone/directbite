@@ -21,7 +21,7 @@ import { getStatus } from './utils/hours'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
-export default function PlaceStatic({ restaurant, hours, town, siblingTowns, categories, items, lowestPrices, featuredItems }) {
+export default function PlaceStatic({ restaurant, hours, town, siblingTowns, featuredItems }) {
   const slug = restaurant.slug
   const cuisine = restaurant.cuisine || 'Pizza'
 
@@ -62,7 +62,6 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, cat
         restaurant={restaurant}
         eyebrow={delivers ? `Best ${cuisine} around ${town.name}, NJ` : `Best ${cuisine} near ${town.name}, NJ`}
         title={delivers ? `${cuisine} Delivery to ${town.name}` : `Best ${cuisine} near ${town.name}`}
-        subtitle={restaurant.tagline || null}
       />
 
       {/* 3. Featured — homepage-style image carousel (shared FeaturedGrid) */}

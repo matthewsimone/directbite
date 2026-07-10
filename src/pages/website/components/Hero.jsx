@@ -116,7 +116,7 @@ function LogoFrame({ logoUrl, shape, name, brandColor }) {
   )
 }
 
-export default function Hero({ restaurant, eyebrow, title, subtitle }) {
+export default function Hero({ restaurant, eyebrow, title }) {
   const { hero_image_url, logo_url, logo_frame_shape, name, tagline, slug, primary_color } = restaurant
   const brandColor = primary_color || DEFAULT_BRAND_COLOR
 
