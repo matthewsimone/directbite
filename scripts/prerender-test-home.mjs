@@ -135,8 +135,15 @@ async function main() {
     // address, null fields) must not crash the whole build — it's logged and
     // recorded in the summary, and the loop moves on.
     const summary = []
+    // Root directbite.co sitemap: only null-domain restaurants live under
+    // directbite.co/{slug}; the 15 custom-domain restaurants are listed on
+    // their own hosts, not here.
+    const rootUrls = []
     for (const restaurant of restaurants) {
       try {
+        // Sitemap URLs for THIS restaurant — each page's canonical, collected as
+        // it is written, then emitted as the restaurant's own sitemap below.
+        const restaurantUrls = []
         // Per-restaurant routes + output dirs (were module-level TEST_SLUG consts).
         const ROUTE = `/${restaurant.slug}/home`
         const ROUTE_MENU = `/${restaurant.slug}/menu`
@@ -176,6 +183,7 @@ async function main() {
         out = injectHead(out, seo)
         await fs.mkdir(OUT_DIR, { recursive: true })
         await fs.writeFile(path.join(OUT_DIR, 'index.html'), out, 'utf-8')
+        restaurantUrls.push(seo.canonical)
         console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (${out.length} bytes, root html ${appHtml.length} bytes)`)
 
         // ======================================================================
@@ -273,6 +281,7 @@ async function main() {
         menuOut = injectHead(menuOut, menuSeo)
         await fs.mkdir(OUT_DIR_MENU, { recursive: true })
         await fs.writeFile(path.join(OUT_DIR_MENU, 'index.html'), menuOut, 'utf-8')
+        restaurantUrls.push(menuSeo.canonical)
         console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR_MENU, 'index.html'))} (${menuOut.length} bytes, root html ${menuHtml.length} bytes, ${Object.keys(lowestPrices).length} items)`)
 
         // ======================================================================
@@ -378,9 +387,32 @@ async function main() {
           const placeOutDir = path.resolve('dist', restaurant.slug, 'places', town.slug)
           await fs.mkdir(placeOutDir, { recursive: true })
           await fs.writeFile(path.join(placeOutDir, 'index.html'), placeOut, 'utf-8')
+          restaurantUrls.push(placeSeo.canonical)
           placesWritten++
         }
         console.log(`✓ generated ${placesWritten} location pages for ${restaurant.name}`)
+
+        // Per-restaurant sitemap + robots, served on the restaurant's own
+        // domain (custom domain for the 15, directbite.co/{slug} for the rest).
+        // A sitemap may only list URLs on its own host, so each restaurant gets
+        // its own file listing exactly the pages we wrote for it — every entry
+        // in restaurantUrls is already an absolute canonical on the right host.
+        const sitemapUrl = restaurant.custom_domain
+          ? `https://${restaurant.custom_domain}/sitemap.xml`
+          : `https://directbite.co/${restaurant.slug}/sitemap.xml`
+        const sitemapXml =
+          `<?xml version="1.0" encoding="UTF-8"?>\n` +
+          `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+          restaurantUrls.map((u) => `  <url><loc>${escapeHtml(u)}</loc></url>`).join('\n') +
+          `\n</urlset>\n`
+        const robotsTxt = `User-agent: *\nAllow: /\nSitemap: ${sitemapUrl}\n`
+        const restaurantOutDir = path.resolve('dist', restaurant.slug)
+        await fs.mkdir(restaurantOutDir, { recursive: true })
+        await fs.writeFile(path.join(restaurantOutDir, 'sitemap.xml'), sitemapXml, 'utf-8')
+        await fs.writeFile(path.join(restaurantOutDir, 'robots.txt'), robotsTxt, 'utf-8')
+
+        // Null-domain restaurants also feed the root directbite.co sitemap.
+        if (!restaurant.custom_domain) rootUrls.push(...restaurantUrls)
 
         summary.push({ slug: restaurant.slug, ok: true, homeTown: ownCitySlug, places: placesWritten })
       } catch (err) {
@@ -388,6 +420,20 @@ async function main() {
         summary.push({ slug: restaurant.slug, ok: false, error: err.message })
       }
     }
+
+    // Root directbite.co sitemap + robots — lists every page of every
+    // null-domain restaurant (each already an absolute directbite.co/{slug}/…
+    // canonical). Custom-domain restaurants are excluded; they self-serve.
+    const rootSitemapXml =
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+      rootUrls.map((u) => `  <url><loc>${escapeHtml(u)}</loc></url>`).join('\n') +
+      `\n</urlset>\n`
+    const rootRobotsTxt = `User-agent: *\nAllow: /\nSitemap: https://directbite.co/sitemap.xml\n`
+    await fs.mkdir(path.resolve('dist'), { recursive: true })
+    await fs.writeFile(path.resolve('dist', 'sitemap.xml'), rootSitemapXml, 'utf-8')
+    await fs.writeFile(path.resolve('dist', 'robots.txt'), rootRobotsTxt, 'utf-8')
+    console.log(`✓ root directbite.co sitemap: ${rootUrls.length} urls from null-domain restaurants`)
 
     // ---- Dry-run fleet summary (no deploy) ----
     console.log('\n=== FLEET SUMMARY ===')
