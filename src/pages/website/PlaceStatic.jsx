@@ -18,6 +18,7 @@ import PromoBar from './components/PromoBar'
 import StickyMobileCTA from './components/StickyMobileCTA'
 import { usePromotion } from '../../hooks/usePromotion'
 import { getStatus } from './utils/hours'
+import { parseAddress } from './utils/address'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
@@ -30,6 +31,13 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
   // language — which is also the default when no radius is set (boundary = 0).
   const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
   const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
+
+  // Home town: this page IS the restaurant's own town. Derive the home slug the
+  // SAME way the prerender does (parsed address city → slug) and compare to the
+  // page's town. Framing priority: home > delivers > near (mirrors placeSeo).
+  const { city: ownCity } = parseAddress(restaurant.address)
+  const ownCitySlug = (ownCity || '').toLowerCase().replace(/\s+/g, '-')
+  const isHome = town.slug === ownCitySlug
 
   // Hydration-safe open/closed status (server + first client render emit the
   // static CLOSED placeholder; the live value settles on the post-hydrate tick).
@@ -60,8 +68,16 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
       {/* 2. Branded hero — photo background + keyword copy (matches homepage) */}
       <Hero
         restaurant={restaurant}
-        eyebrow={delivers ? `Best ${cuisine} around ${town.name}, NJ` : `Best ${cuisine} near ${town.name}, NJ`}
-        title={delivers ? `${cuisine} Delivery to ${town.name}` : `Best ${cuisine} near ${town.name}`}
+        eyebrow={
+          isHome ? `Your local ${cuisine} in ${town.name}, NJ`
+          : delivers ? `Best ${cuisine} around ${town.name}, NJ`
+          : `Best ${cuisine} near ${town.name}, NJ`
+        }
+        title={
+          isHome ? `${cuisine} in ${town.name}`
+          : delivers ? `${cuisine} Delivery to ${town.name}`
+          : `Best ${cuisine} near ${town.name}`
+        }
       />
 
       {/* 3. Featured — homepage-style image carousel (shared FeaturedGrid) */}

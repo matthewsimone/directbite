@@ -278,11 +278,14 @@ async function main() {
       { lat: restaurant.latitude, lng: restaurant.longitude, county },
       { radiusMiles: MAX_RADIUS_MILES, limit: 20 }
     )
-    // Drop the restaurant's own town. Exclude on EITHER signal so a
-    // mis-geocoded restaurant still sheds its true-nearest town:
-    //   - address match: slug === ownCitySlug, OR
-    //   - distance guard: < 0.5 mi (physically at/adjacent to the restaurant)
-    const targetTowns = places.filter((t) => t.slug !== ownCitySlug && t.distanceMiles >= 0.5)
+    // Keep the home town (it gets its own "in {town}" page) but still shed a
+    // NON-home town that sits coincidentally within 0.5 mi (mis-geocode guard):
+    //   - home town (slug === ownCitySlug): always keep
+    //   - non-home town: drop when < 0.5 mi (physically at/adjacent to the restaurant)
+    const targetTowns = places.filter((t) => {
+      if (t.slug === ownCitySlug) return true          // home town: always keep
+      return t.distanceMiles >= 0.5                     // non-home: drop if coincidentally adjacent
+    })
     console.log(`found ${targetTowns.length} nearby towns for /places generation`)
 
     // seo_pages overrides (migration 057). Zero rows => everything auto-generates
@@ -319,9 +322,12 @@ async function main() {
         )
       )
 
-      // Honest framing: "delivery" only when the town is inside the in-house
-      // delivery radius; else "near" (also the default when no radius is set).
+      // Framing priority: home > delivers > near.
+      //   - home: this IS the restaurant's own town ("in {town}")
+      //   - delivers: inside the in-house delivery radius ("around {town}")
+      //   - near: everything else (also the default when no radius is set)
       // Mirrors the same branch in PlaceStatic.jsx.
+      const isHome = town.slug === ownCitySlug
       const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
       const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
 
@@ -329,10 +335,14 @@ async function main() {
       // NOTE: h1_override / body_override are a follow-up — they need PlaceStatic prop
       // wiring to reach the rendered body, so they are intentionally not applied here.
       const placeSeo = {
-        title: ov?.title_override || (delivers
+        title: ov?.title_override || (isHome
+          ? `Best ${cuisine} in ${town.name}, NJ | ${restaurant.name}`
+          : delivers
           ? `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`
           : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`),
-        description: ov?.meta_description_override || (delivers
+        description: ov?.meta_description_override || (isHome
+          ? `${restaurant.name} is your local ${cuisine} spot in ${town.name}, NJ. View the menu, hours, and order directly online for pickup or delivery — commission-free.`
+          : delivers
           ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`
           : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`),
         canonical: `https://directbite.co/${TEST_SLUG}/places/${town.slug}`,
