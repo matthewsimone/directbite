@@ -250,7 +250,9 @@ async function main() {
               ? `Menu | ${restaurant.name} — Best ${cuisine} in ${city}, ${state}`
               : `Menu | ${restaurant.name}`,
           description: seo.description,
-          canonical: `https://directbite.co/${restaurant.slug}/menu`,
+          canonical: restaurant.custom_domain
+            ? `https://${restaurant.custom_domain}/menu`
+            : `https://directbite.co/${restaurant.slug}/menu`,
           image: seo.image,
         }
 
@@ -348,7 +350,9 @@ async function main() {
               : delivers
               ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`
               : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`),
-            canonical: `https://directbite.co/${restaurant.slug}/places/${town.slug}`,
+            canonical: restaurant.custom_domain
+              ? `https://${restaurant.custom_domain}/places/${town.slug}`
+              : `https://directbite.co/${restaurant.slug}/places/${town.slug}`,
             image: seo.image,
           }
 
