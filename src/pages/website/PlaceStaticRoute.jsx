@@ -26,7 +26,7 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
   const loading = propRestaurant ? false : hook.loading
   const error = propRestaurant ? null : hook.error
 
-  const { categories, items, loading: menuLoading, getLowestPrice } = useMenu(restaurant?.id)
+  const { loading: menuLoading } = useMenu(restaurant?.id)
 
   useRestaurantBranding(restaurant, 'website')
 
@@ -120,11 +120,6 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
         .filter((t) => t.slug !== townSlug && t.slug !== ownCitySlug)
         .slice(0, SIBLING_LIMIT)
     : []
-
-  const lowestPrices = {}
-  for (const item of items) {
-    lowestPrices[item.id] = getLowestPrice(item.id)
-  }
 
   return (
     <PlaceStatic
