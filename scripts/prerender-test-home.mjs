@@ -285,7 +285,24 @@ async function main() {
     const targetTowns = places.filter((t) => t.slug !== ownCitySlug && t.distanceMiles >= 0.5)
     console.log(`found ${targetTowns.length} nearby towns for /places generation`)
 
+    // seo_pages overrides (migration 057). Zero rows => everything auto-generates
+    // (no behavior change). A row can override title/description or disable a page
+    // via the kill-switch (enabled === false). Keyed by town slug.
+    const { data: seoOverrides } = await supabase
+      .from('seo_pages')
+      .select('*')
+      .eq('restaurant_id', restaurant.id)
+      .eq('page_type', 'place')
+    const overrideBySlug = new Map((seoOverrides || []).map((o) => [o.slug, o]))
+
+    // Count pages actually written (kill-switch skips must not inflate the total).
+    let placesWritten = 0
     for (const town of targetTowns) {
+      // Per-page seo_pages override for this town (undefined when no row exists).
+      const ov = overrideBySlug.get(town.slug)
+      // Kill-switch: an explicitly disabled page is skipped entirely (not rendered).
+      if (ov && ov.enabled === false) continue
+
       const siblingTowns = targetTowns.filter((t) => t.slug !== town.slug).slice(0, 12)
 
       const placeHtml = renderToString(
@@ -308,13 +325,16 @@ async function main() {
       const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
       const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
 
+      // seo_pages can override title/description; else fall back to the auto-formula.
+      // NOTE: h1_override / body_override are a follow-up — they need PlaceStatic prop
+      // wiring to reach the rendered body, so they are intentionally not applied here.
       const placeSeo = {
-        title: delivers
+        title: ov?.title_override || (delivers
           ? `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`
-          : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`,
-        description: delivers
+          : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`),
+        description: ov?.meta_description_override || (delivers
           ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`
-          : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`,
+          : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`),
         canonical: `https://directbite.co/${TEST_SLUG}/places/${town.slug}`,
         image: seo.image,
       }
@@ -324,8 +344,9 @@ async function main() {
       const placeOutDir = path.resolve('dist', TEST_SLUG, 'places', town.slug)
       await fs.mkdir(placeOutDir, { recursive: true })
       await fs.writeFile(path.join(placeOutDir, 'index.html'), placeOut, 'utf-8')
+      placesWritten++
     }
-    console.log(`✓ generated ${targetTowns.length} location pages for Test Pizza`)
+    console.log(`✓ generated ${placesWritten} location pages for Test Pizza`)
   } finally {
     await vite.close()
   }
