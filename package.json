@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "vercel-build": "vite build && node scripts/prerender-test-home.mjs",
+    "gen-domain-map": "node scripts/gen-domain-map.mjs",
+    "vercel-build": "node scripts/gen-domain-map.mjs && vite build && node scripts/prerender-test-home.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
