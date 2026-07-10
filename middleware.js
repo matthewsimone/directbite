@@ -1,7 +1,8 @@
 import { rewrite, waitUntil } from '@vercel/functions'
+import domainMap from './src/lib/domainMap.js'
 
 export const config = {
-  matcher: ['/', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
+  matcher: ['/', '/menu', '/places/:town', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
 }
 
 export default async function middleware(request) {
@@ -13,16 +14,32 @@ export default async function middleware(request) {
     normalized.endsWith('.vercel.app') ||
     normalized.startsWith('localhost')
 
-  // Custom domain root — inject per-restaurant OG/Twitter meta tags via
-  // /api/og-html. Vercel's vercel.json `has` rewrites silently fail to
-  // fire on this project; middleware runs at a different layer that
-  // does. The function reads ?host= and returns dist/index.html with
-  // meta tags injected.
-  if (url.pathname === '/' && !isMainDomain) {
-    const target = new URL(request.url)
-    target.pathname = '/api/og-html'
-    target.searchParams.set('host', rawHost)
-    return rewrite(target)
+  // Custom-domain requests: serve the restaurant's PRERENDERED pages by
+  // rewriting to the main-domain slug path (Vercel then serves dist/{slug}/…).
+  // The domain→slug map is generated at build time (scripts/gen-domain-map.mjs)
+  // and imported above, so there is no per-request DB lookup. new URL(request.url)
+  // preserves the query string; the slug-prefixed target matches no matcher
+  // entry, so the rewrite does not re-enter middleware.
+  if (!isMainDomain) {
+    const slug = domainMap[normalized]
+    if (slug) {
+      if (url.pathname === '/')     { const t = new URL(request.url); t.pathname = `/${slug}/home`; return rewrite(t) }
+      if (url.pathname === '/menu') { const t = new URL(request.url); t.pathname = `/${slug}/menu`; return rewrite(t) }
+      const m = url.pathname.match(/^\/places\/([^/]+)\/?$/)
+      if (m)                        { const t = new URL(request.url); t.pathname = `/${slug}/places/${m[1]}`; return rewrite(t) }
+    }
+
+    // Fallback — domain attached but NOT in the map (not website_enabled /
+    // prerendered yet): inject per-restaurant OG/Twitter meta into the SPA
+    // shell via /api/og-html. Vercel's vercel.json `has` rewrites silently fail
+    // on this project; middleware runs at a layer that does. The function reads
+    // ?host= and returns dist/index.html with meta tags injected.
+    if (url.pathname === '/') {
+      const target = new URL(request.url)
+      target.pathname = '/api/og-html'
+      target.searchParams.set('host', rawHost)
+      return rewrite(target)
+    }
   }
 
   // Permanent QR redirect: /r/:slug → restaurants.redirect_url. Lets us
