@@ -68,3 +68,40 @@ export function getStatus(hours, now = new Date()) {
 
   return { isOpen: false, statusText: 'CLOSED', todaysHours: null }
 }
+
+// Compact human week-hours string for FAQ/schema answers, e.g.
+// "Mon–Thu 11am–10pm, Fri–Sat 11am–11pm, Sun 12pm–9pm".
+// Collapses consecutive days with identical hours into ranges; folds
+// closed days in as "Closed". Pure/build-safe (formatTime is pure).
+// `hours`: array of { day_of_week (0=Sun..6=Sat), is_open, open_time, close_time }.
+// Reuses the module-level DAY_ABBR array (indexed by day_of_week, 0=Sun).
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] // Mon..Sun display order
+
+export function formatWeekHours(hours) {
+  if (!Array.isArray(hours) || hours.length === 0) return ''
+  const byDay = {}
+  for (const h of hours) byDay[h.day_of_week] = h
+
+  // Build a per-day label string ("11am – 10pm" or "Closed") in week order.
+  const days = WEEK_ORDER.map((dow) => {
+    const h = byDay[dow]
+    const label = h && h.is_open && h.open_time && h.close_time
+      ? `${formatTime(h.open_time)} – ${formatTime(h.close_time)}`
+      : 'Closed'
+    return { dow, label }
+  })
+
+  // Collapse consecutive same-label runs into "Mon–Thu {label}".
+  const parts = []
+  let i = 0
+  while (i < days.length) {
+    let j = i
+    while (j + 1 < days.length && days[j + 1].label === days[i].label) j++
+    const startAbbr = DAY_ABBR[days[i].dow]
+    const endAbbr = DAY_ABBR[days[j].dow]
+    const dayPart = i === j ? startAbbr : `${startAbbr}–${endAbbr}`
+    parts.push(`${dayPart} ${days[i].label}`)
+    i = j + 1
+  }
+  return parts.join(', ')
+}

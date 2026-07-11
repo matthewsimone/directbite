@@ -13,9 +13,11 @@ import Reviews from './components/Reviews'
 import Location from './components/Location'
 import Footer from './components/Footer'
 import StickyMobileCTA from './components/StickyMobileCTA'
-import { getStatus } from './utils/hours'
+import { getStatus, formatWeekHours } from './utils/hours'
 import { parseAddress } from './utils/address'
 import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
+import { buildFaqSchema } from './utils/schema'
+import { buildRestaurantFaq } from './utils/faqContent'
 
 const SCHEMA_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -161,6 +163,12 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
   const galleryUrls = restaurant.gallery_urls || []
   const reviews = restaurant.reviews || []
   const schemaData = buildSchemaJsonLd(restaurant, hours)
+  const faqData = buildFaqSchema(
+    buildRestaurantFaq(restaurant, {
+      hoursText: formatWeekHours(hours),
+      categoriesText: '',
+    })
+  )
 
   return (
     <div
@@ -190,6 +198,12 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaData) }}
       />
+      {faqData && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqData).replace(/</g, '\\u003c') }}
+        />
+      )}
     </div>
   )
 }

@@ -114,7 +114,9 @@ async function main() {
     // Load ONLY the project files through Vite (JSX + import.meta.env transform).
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
     const { buildSeoHead } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
-    const { buildMenuSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
+    const { buildMenuSchema, buildFaqSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
+    const { buildRestaurantFaq } = await vite.ssrLoadModule('/src/pages/website/utils/faqContent.js')
+    const { formatWeekHours } = await vite.ssrLoadModule('/src/pages/website/utils/hours.js')
     const { parseAddress } = await vite.ssrLoadModule('/src/pages/website/utils/address.js')
     const HomePageMod = await vite.ssrLoadModule('/src/pages/website/HomePage.jsx')
     const HomePage = HomePageMod.default
@@ -406,6 +408,24 @@ async function main() {
 
           let placeOut = shell.replace('<div id="root"></div>', `<div id="root">${placeHtml}</div>`)
           placeOut = injectHead(placeOut, placeSeo)
+
+          // Place-page FAQ (real data: cuisine/categories, location, hours,
+          // and the delivery Q ONLY where we actually deliver to this town).
+          const placeCategoriesText = categories && categories.length
+            ? categories.map((c) => c.name).slice(0, 6).join(', ')
+            : ''
+          const placeFaq = buildFaqSchema(
+            buildRestaurantFaq(restaurant, {
+              hoursText: formatWeekHours(hoursData),
+              categoriesText: placeCategoriesText,
+              town,
+              delivers,
+            })
+          )
+          if (placeFaq) {
+            placeOut = placeOut.replace('</head>', `    ${schemaScriptTag(placeFaq)}\n  </head>`)
+          }
+
           const placeOutDir = path.resolve('dist', restaurant.slug, 'places', town.slug)
           await fs.mkdir(placeOutDir, { recursive: true })
           await fs.writeFile(path.join(placeOutDir, 'index.html'), placeOut, 'utf-8')

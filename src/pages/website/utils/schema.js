@@ -82,3 +82,23 @@ export function schemaScriptTag(schema) {
   const json = JSON.stringify(schema).replace(/</g, '\\u003c')
   return `<script type="application/ld+json">${json}</script>`
 }
+
+// FAQPage -> mainEntity[Question -> acceptedAnswer[Answer]].
+// `qas`: [{ q, a }]. Entries with an empty q or a are dropped, so a
+// caller can conditionally build a list and let empties fall away
+// (e.g. omit the delivery Q on non-delivery pages by passing a='').
+export function buildFaqSchema(qas) {
+  const mainEntity = (qas || [])
+    .filter((x) => x && x.q && x.a)
+    .map((x) => ({
+      '@type': 'Question',
+      name: x.q,
+      acceptedAnswer: { '@type': 'Answer', text: x.a },
+    }))
+  if (mainEntity.length === 0) return null
+  return clean({
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity,
+  })
+}
