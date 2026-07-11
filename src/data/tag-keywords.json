@@ -1,0 +1,22 @@
+{
+  "_comment": "Canonical tag-page vocabulary. Each entry generates /tags/{slug} for a restaurant ONLY when >=3 matching items exist. 'match' terms are lowercased substrings tested against menu_category names (case-insensitive). Dupes/variants collapse into one canonical tag. Curated food-only; excludes structural headers, specials, test rows, and time-gated categories by omission.",
+  "tags": [
+    { "slug": "pizza",           "label": "Pizza",            "match": ["pizza", "pizzas", "by the slice"] },
+    { "slug": "sicilian-pizza",  "label": "Sicilian Pizza",   "match": ["sicilian"] },
+    { "slug": "specialty-pizza", "label": "Specialty Pizza",  "match": ["specialty pizza", "gourmet pizza", "signature pizza"] },
+    { "slug": "calzones",        "label": "Calzones",         "match": ["calzone", "calzones", "rolls & calzones"] },
+    { "slug": "stromboli",       "label": "Stromboli",        "match": ["stromboli", "strombolis"] },
+    { "slug": "pasta",           "label": "Pasta",            "match": ["pasta", "pastas", "pasta dishes"] },
+    { "slug": "salads",          "label": "Salads",           "match": ["salad", "salads"] },
+    { "slug": "wings",           "label": "Wings",            "match": ["wing", "wings", "chicken wings"] },
+    { "slug": "subs",            "label": "Subs & Heroes",    "match": ["sub", "subs", "hero", "heros", "heroes", "hoagie"] },
+    { "slug": "wraps",           "label": "Wraps",            "match": ["wrap", "wraps"] },
+    { "slug": "paninis",         "label": "Paninis",          "match": ["panini", "paninis"] },
+    { "slug": "burgers",         "label": "Burgers",          "match": ["burger", "burgers"] },
+    { "slug": "seafood",         "label": "Seafood",          "match": ["seafood", "fish"] },
+    { "slug": "gyros",           "label": "Gyros",            "match": ["gyro", "gyros"] },
+    { "slug": "appetizers",      "label": "Appetizers",       "match": ["appetizer", "appetizers", "starters"] },
+    { "slug": "soups",           "label": "Soups",            "match": ["soup", "soups"] },
+    { "slug": "desserts",        "label": "Desserts",         "match": ["dessert", "desserts"] }
+  ]
+}
