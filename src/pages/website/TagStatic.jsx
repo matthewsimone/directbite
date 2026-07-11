@@ -17,6 +17,8 @@ import Footer from './components/Footer'
 import Location from './components/Location'
 import Hero from './components/Hero'
 import { FeaturedGrid } from './components/FeaturedMenu'
+import MenuItemCard from '../../components/MenuItemCard'
+import { getOrderUrl } from '../../lib/customDomain'
 import PromoBar from './components/PromoBar'
 import StickyMobileCTA from './components/StickyMobileCTA'
 import { usePromotion } from '../../hooks/usePromotion'
@@ -28,6 +30,14 @@ const DEFAULT_BRAND_COLOR = '#16a34a'
 
 export default function TagStatic({ restaurant, hours, tag, siblingTags, tagItems }) {
   const slug = restaurant.slug
+  const lowestPriceOf = (it) => {
+    const s = it.item_sizes || []
+    return s.length ? Math.min(...s.map((x) => Number(x.price))) : null
+  }
+  // Carousel shows imaged items only, bounded (the full set lives in the
+  // text list below). FeaturedGrid is a visual highlight, not the content.
+  const CAROUSEL_MAX = 8
+  const imagedItems = (tagItems || []).filter((it) => it.image_url).slice(0, CAROUSEL_MAX)
   const linkBase = useLinkBase()
   const base = linkBase !== null ? linkBase : (isMainDomain() ? `/${slug}` : '')
 
@@ -63,8 +73,11 @@ export default function TagStatic({ restaurant, hours, tag, siblingTags, tagItem
         title={label}
       />
 
-      {/* Featured — the tag's actual items (this IS the page's content depth) */}
-      <FeaturedGrid items={tagItems} slug={restaurant.slug} />
+      {/* Featured — carousel of the tag's IMAGED items only (FeaturedGrid
+          assumes photos). Text spine below carries the imageless items. */}
+      {imagedItems.length > 0 && (
+        <FeaturedGrid items={imagedItems} slug={restaurant.slug} />
+      )}
 
       {/* About — dish keyword in the first sentence */}
       <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pb-10">
@@ -72,6 +85,28 @@ export default function TagStatic({ restaurant, hours, tag, siblingTags, tagItem
           {`Looking for ${labelLower}? ${restaurant.name} makes ${labelLower} fresh daily — order directly online for pickup or delivery, commission-free.`}
         </p>
       </section>
+
+      {/* Full item list — the content spine (indexable text: name,
+          description, price). Renders regardless of photos; MenuItemCard
+          shows an image only when the item has one. onClick is inert at
+          prerender (React never fires handlers server-side) and wires to
+          the ordering deep-link after hydration, exactly like MenuStatic. */}
+      {(tagItems || []).length > 0 && (
+        <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {tagItems.map((item) => (
+              <MenuItemCard
+                key={item.id}
+                item={item}
+                lowestPrice={lowestPriceOf(item)}
+                onClick={() => {
+                  window.location.href = getOrderUrl(slug, `?item=${item.id}`)
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Map — reuse Location with dish-localized copy */}
       <Location

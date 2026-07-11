@@ -118,6 +118,7 @@ async function main() {
     const { buildMenuSchema, buildFaqSchema, buildItemListSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
     const { buildRestaurantFaq } = await vite.ssrLoadModule('/src/pages/website/utils/faqContent.js')
     const { formatWeekHours } = await vite.ssrLoadModule('/src/pages/website/utils/hours.js')
+    const { resolveGeneratedTags, siblingTagsFor, withItemSizes } = await vite.ssrLoadModule('/src/pages/website/utils/tagMatch.js')
     const { parseAddress } = await vite.ssrLoadModule('/src/pages/website/utils/address.js')
     const HomePageMod = await vite.ssrLoadModule('/src/pages/website/HomePage.jsx')
     const HomePage = HomePageMod.default
@@ -451,33 +452,20 @@ async function main() {
           .eq('page_type', 'tag')
         const tagOverrideBySlug = new Map((tagOverrides || []).map((o) => [o.slug, o]))
 
-        const generatedTags = []
-        for (const tagDef of TAG_KEYWORDS.tags) {
-          const matchedCatIds = (categories || [])
-            .filter((c) => tagDef.match.some((m) => (c.name || '').toLowerCase().includes(m)))
-            .map((c) => c.id)
-          if (matchedCatIds.length === 0) continue
-          const items = (menuItems || []).filter(
-            (it) => matchedCatIds.includes(it.category_id) && it.image_url
-          )
-          if (items.length < 3) continue // anti-thin-content gate
-          generatedTags.push({ def: tagDef, items })
-        }
+        const generatedTags = resolveGeneratedTags({
+          allowlist: TAG_KEYWORDS.tags,
+          categories,
+          items: menuItems,
+        })
 
         let tagsWritten = 0
         for (const { def: tagDef, items } of generatedTags) {
           const ov = tagOverrideBySlug.get(tagDef.slug)
           if (ov && ov.enabled === false) continue // kill-switch
 
-          const siblingTags = generatedTags
-            .filter((g) => g.def.slug !== tagDef.slug)
-            .map((g) => ({ slug: g.def.slug, label: g.def.label }))
-            .slice(0, 15)
+          const siblingTags = siblingTagsFor(generatedTags, tagDef.slug)
 
-          const tagItems = items.slice(0, 12).map((it) => ({
-            ...it,
-            item_sizes: (sizes || []).filter((s) => s.item_id === it.id),
-          }))
+          const tagItems = withItemSizes(items, (id) => (sizes || []).filter((s) => s.item_id === id))
 
           const tagHtml = renderToString(
             React.createElement(
@@ -512,7 +500,7 @@ async function main() {
           tagOut = injectHead(tagOut, tagSeo)
 
           const tagSchema = buildItemListSchema(
-            items.map((it) => ({
+            tagItems.map((it) => ({
               name: it.name,
               description: it.description,
               image: it.image_url,
