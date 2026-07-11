@@ -45,6 +45,7 @@ import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router-dom'
 import { findNearestTowns, MAX_RADIUS_MILES } from './lib/findNearestTowns.mjs'
 import NJ_TOWNS from '../src/data/nj-towns.json' with { type: 'json' }
+import TAG_KEYWORDS from '../src/data/tag-keywords.json' with { type: 'json' }
 
 const SHELL = path.resolve('dist/index.html')
 const SITE_NAME = 'DirectBite'
@@ -114,7 +115,7 @@ async function main() {
     // Load ONLY the project files through Vite (JSX + import.meta.env transform).
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
     const { buildSeoHead } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
-    const { buildMenuSchema, buildFaqSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
+    const { buildMenuSchema, buildFaqSchema, buildItemListSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
     const { buildRestaurantFaq } = await vite.ssrLoadModule('/src/pages/website/utils/faqContent.js')
     const { formatWeekHours } = await vite.ssrLoadModule('/src/pages/website/utils/hours.js')
     const { parseAddress } = await vite.ssrLoadModule('/src/pages/website/utils/address.js')
@@ -122,6 +123,7 @@ async function main() {
     const HomePage = HomePageMod.default
     const MenuStatic = (await vite.ssrLoadModule('/src/pages/website/MenuStatic.jsx')).default
     const PlaceStatic = (await vite.ssrLoadModule('/src/pages/website/PlaceStatic.jsx')).default
+    const TagStatic = (await vite.ssrLoadModule('/src/pages/website/TagStatic.jsx')).default
     const { LinkBaseProvider } = await vite.ssrLoadModule('/src/pages/website/LinkBaseContext.jsx')
 
     // ---- Build-time data fetch: full fleet (all website_enabled restaurants) ----
@@ -433,6 +435,102 @@ async function main() {
           placesWritten++
         }
         console.log(`✓ generated ${placesWritten} location pages for ${restaurant.name}`)
+
+        // ============================================================
+        // /{slug}/tags/{tag} — dish-intent SEO landing pages.
+        // Sourced from the canonical allowlist; a tag generates ONLY
+        // where >=3 matching items exist (the anti-thin-content gate).
+        // Reuses categories/menuItems/lowestPrices already fetched
+        // above. Additive: new URLs, never touches menu/places/order.
+        // ============================================================
+
+        const { data: tagOverrides } = await supabase
+          .from('seo_pages')
+          .select('*')
+          .eq('restaurant_id', restaurant.id)
+          .eq('page_type', 'tag')
+        const tagOverrideBySlug = new Map((tagOverrides || []).map((o) => [o.slug, o]))
+
+        const generatedTags = []
+        for (const tagDef of TAG_KEYWORDS.tags) {
+          const matchedCatIds = (categories || [])
+            .filter((c) => tagDef.match.some((m) => (c.name || '').toLowerCase().includes(m)))
+            .map((c) => c.id)
+          if (matchedCatIds.length === 0) continue
+          const items = (menuItems || []).filter(
+            (it) => matchedCatIds.includes(it.category_id) && it.image_url
+          )
+          if (items.length < 3) continue // anti-thin-content gate
+          generatedTags.push({ def: tagDef, items })
+        }
+
+        let tagsWritten = 0
+        for (const { def: tagDef, items } of generatedTags) {
+          const ov = tagOverrideBySlug.get(tagDef.slug)
+          if (ov && ov.enabled === false) continue // kill-switch
+
+          const siblingTags = generatedTags
+            .filter((g) => g.def.slug !== tagDef.slug)
+            .map((g) => ({ slug: g.def.slug, label: g.def.label }))
+            .slice(0, 15)
+
+          const tagItems = items.slice(0, 12).map((it) => ({
+            ...it,
+            item_sizes: (sizes || []).filter((s) => s.item_id === it.id),
+          }))
+
+          const tagHtml = renderToString(
+            React.createElement(
+              StaticRouter,
+              { location: `/${restaurant.slug}/tags/${tagDef.slug}` },
+              React.createElement(
+                LinkBaseProvider,
+                { value: linkBaseValue },
+                React.createElement(TagStatic, {
+                  restaurant,
+                  hours: hoursData || [],
+                  tag: { slug: tagDef.slug, label: tagDef.label },
+                  siblingTags,
+                  tagItems,
+                })
+              )
+            )
+          )
+
+          const tagSeo = {
+            title: ov?.title_override
+              || `${tagDef.label} | ${restaurant.name}`,
+            description: ov?.meta_description_override
+              || `Order ${tagDef.label.toLowerCase()} from ${restaurant.name} — made fresh daily. Pickup or delivery, commission-free.`,
+            canonical: restaurant.custom_domain
+              ? `https://${restaurant.custom_domain}/tags/${tagDef.slug}`
+              : `https://directbite.co/${restaurant.slug}/tags/${tagDef.slug}`,
+            image: seo.image,
+          }
+
+          let tagOut = shell.replace('<div id="root"></div>', `<div id="root">${tagHtml}</div>`)
+          tagOut = injectHead(tagOut, tagSeo)
+
+          const tagSchema = buildItemListSchema(
+            items.map((it) => ({
+              name: it.name,
+              description: it.description,
+              image: it.image_url,
+              price: lowestPrices[it.id],
+            })),
+            { name: `${tagDef.label} at ${restaurant.name}` }
+          )
+          if (tagSchema) {
+            tagOut = tagOut.replace('</head>', `    ${schemaScriptTag(tagSchema)}\n  </head>`)
+          }
+
+          const tagOutDir = path.resolve('dist', restaurant.slug, 'tags', tagDef.slug)
+          await fs.mkdir(tagOutDir, { recursive: true })
+          await fs.writeFile(path.join(tagOutDir, 'index.html'), tagOut, 'utf-8')
+          restaurantUrls.push(tagSeo.canonical)
+          tagsWritten++
+        }
+        console.log(`  wrote ${tagsWritten} /tags pages for ${restaurant.slug}`)
 
         // Per-restaurant sitemap + robots, served on the restaurant's own
         // domain (custom domain for the 15, directbite.co/{slug} for the rest).
