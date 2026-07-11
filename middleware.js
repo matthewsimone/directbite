@@ -2,7 +2,7 @@ import { rewrite, waitUntil } from '@vercel/functions'
 import domainMap from './src/lib/domainMap.js'
 
 export const config = {
-  matcher: ['/', '/menu', '/places/:town', '/sitemap.xml', '/robots.txt', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
+  matcher: ['/', '/menu', '/places/:town', '/tags/:tag', '/sitemap.xml', '/robots.txt', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
 }
 
 export default async function middleware(request) {
@@ -27,6 +27,8 @@ export default async function middleware(request) {
       if (url.pathname === '/menu') { const t = new URL(request.url); t.pathname = `/${slug}/menu`; return rewrite(t) }
       const m = url.pathname.match(/^\/places\/([^/]+)\/?$/)
       if (m)                        { const t = new URL(request.url); t.pathname = `/${slug}/places/${m[1]}`; return rewrite(t) }
+      const tg = url.pathname.match(/^\/tags\/([^/]+)\/?$/)
+      if (tg)                       { const t = new URL(request.url); t.pathname = `/${slug}/tags/${tg[1]}`; return rewrite(t) }
       if (url.pathname === '/sitemap.xml') { const t = new URL(request.url); t.pathname = `/${slug}/sitemap.xml`; return rewrite(t) }
       if (url.pathname === '/robots.txt')  { const t = new URL(request.url); t.pathname = `/${slug}/robots.txt`;  return rewrite(t) }
     }
