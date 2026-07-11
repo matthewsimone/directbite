@@ -14,6 +14,7 @@ import TermsOfService from './pages/TermsOfService'
 import HomePage from './pages/website/HomePage'
 import MenuStaticRoute from './pages/website/MenuStaticRoute'
 import PlaceStaticRoute from './pages/website/PlaceStaticRoute'
+import TagStaticRoute from './pages/website/TagStaticRoute'
 import CustomDomainShell from './CustomDomainShell'
 import { LinkBaseProvider } from './pages/website/LinkBaseContext'
 
@@ -52,6 +53,7 @@ function MainRoutes() {
       <Route path="/:slug/home" element={<SlugLinkBase><HomePage /></SlugLinkBase>} />
       <Route path="/:slug/menu" element={<SlugLinkBase><MenuStaticRoute /></SlugLinkBase>} />
       <Route path="/:slug/places/:townSlug" element={<SlugLinkBase><PlaceStaticRoute /></SlugLinkBase>} />
+      <Route path="/:slug/tags/:tagSlug" element={<SlugLinkBase><TagStaticRoute /></SlugLinkBase>} />
       <Route path="/:slug/checkout" element={<CheckoutPage />} />
       <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
       <Route path="/:slug/tablet" element={<TabletPage />} />
