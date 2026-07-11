@@ -34,9 +34,9 @@ function buildSchemaJsonLd(restaurant, hours) {
     url: canonicalUrl,
     menu: restaurant.custom_domain
       ? `https://${restaurant.custom_domain}/menu`
-      : `https://${MAIN_DOMAIN}/${restaurant.slug}`,
+      : `https://${MAIN_DOMAIN}/${restaurant.slug}/menu`,
     priceRange: '$$',
-    servesCuisine: 'Pizza',
+    servesCuisine: restaurant.cuisine || 'Pizza',
   }
 
   if (city && state) {
