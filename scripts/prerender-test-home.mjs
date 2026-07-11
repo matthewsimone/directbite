@@ -185,12 +185,13 @@ async function main() {
         // description, canonical, OG/Twitter). useRestaurantBranding stays and
         // re-writes the same values on hydrate — no conflict.
         const seo = buildSeoHead(restaurant)
-        let out = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
-        out = injectHead(out, seo)
-        await fs.mkdir(OUT_DIR, { recursive: true })
-        await fs.writeFile(path.join(OUT_DIR, 'index.html'), out, 'utf-8')
+        let homeOut = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
+        homeOut = injectHead(homeOut, seo)
         restaurantUrls.push(seo.canonical)
-        console.log(`✓ prerendered ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (${out.length} bytes, root html ${appHtml.length} bytes)`)
+        // NOTE: home file is written LATER (after tags/towns are computed) so the
+        // FAQ-mesh block can link to the generated /tags and /places pages. See
+        // the deferred write after the /tags loop.
+        console.log(`✓ prepared ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (deferred write for mesh, root html ${appHtml.length} bytes)`)
 
         // ======================================================================
         // /{slug}/menu — static, crawlable full menu (no cart / tabs / search).
@@ -519,6 +520,38 @@ async function main() {
           tagsWritten++
         }
         console.log(`  wrote ${tagsWritten} /tags pages for ${restaurant.slug}`)
+
+        // ============================================================
+        // Home FAQ-mesh block — visible FAQ that doubles as the internal
+        // -link hub (Owner pattern). Links home -> every /tags and /places
+        // page (1 hop from root = crawlable). Built from generatedTags +
+        // targetTowns (both in scope here). Prerender-only: crawlers hit
+        // this prerendered home; client SPA nav doesn't need a crawl mesh.
+        // ============================================================
+        const meshBase = linkBaseValue != null ? linkBaseValue : `/${restaurant.slug}`
+        const chipClass = 'inline-flex items-center px-3 py-1.5 rounded-full bg-gray-100 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors'
+        const tagLinks = (generatedTags || [])
+          .map((g) => `<a href="${meshBase}/tags/${g.def.slug}" class="${chipClass}">${escapeHtml(g.def.label)}</a>`)
+          .join('')
+        const townLinks = (targetTowns || [])
+          .map((t) => `<a href="${meshBase}/places/${t.slug}" class="${chipClass}">${escapeHtml(cuisine)} in ${escapeHtml(t.name)}</a>`)
+          .join('')
+
+        // Only emit a group when it has links (a restaurant with no tags or
+        // no towns simply omits that group — no empty hub sections).
+        const hubRows = []
+        if (tagLinks) hubRows.push(`<div class="mb-6"><h3 class="text-lg font-bold text-gray-900 mb-3">Explore the menu</h3><div class="flex flex-wrap gap-2">${tagLinks}</div></div>`)
+        if (townLinks) hubRows.push(`<div class="mb-6"><h3 class="text-lg font-bold text-gray-900 mb-3">Areas we serve</h3><div class="flex flex-wrap gap-2">${townLinks}</div></div>`)
+
+        if (hubRows.length > 0) {
+          const meshHtml = `<section class="max-w-[1100px] mx-auto px-6 sm:px-8 py-10"><h2 class="text-xl font-bold text-gray-900 mb-6">Explore ${escapeHtml(restaurant.name)}</h2>${hubRows.join('')}</section>`
+          if (homeOut.includes('</body>')) {
+            homeOut = homeOut.replace('</body>', `${meshHtml}</body>`)
+          }
+        }
+
+        await fs.mkdir(OUT_DIR, { recursive: true })
+        await fs.writeFile(path.join(OUT_DIR, 'index.html'), homeOut, 'utf-8')
 
         // Per-restaurant sitemap + robots, served on the restaurant's own
         // domain (custom domain for the 15, directbite.co/{slug} for the rest).
