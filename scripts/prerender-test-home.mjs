@@ -544,7 +544,7 @@ async function main() {
         if (townLinks) hubRows.push(`<div class="mb-6"><h3 class="text-lg font-bold text-gray-900 mb-3">Areas we serve</h3><div class="flex flex-wrap gap-2">${townLinks}</div></div>`)
 
         if (hubRows.length > 0) {
-          const meshHtml = `<section class="max-w-[1100px] mx-auto px-6 sm:px-8 py-10"><h2 class="text-xl font-bold text-gray-900 mb-6">Explore ${escapeHtml(restaurant.name)}</h2>${hubRows.join('')}</section>`
+          const meshHtml = `<section class="max-w-[1100px] mx-auto px-6 sm:px-8 -mt-32 md:mt-0 pt-10 pb-32 md:pb-10"><h2 class="text-xl font-bold text-gray-900 mb-6">Explore ${escapeHtml(restaurant.name)}</h2>${hubRows.join('')}</section>`
           // Inject before </body> — OUTSIDE #root, so React hydration
           // doesn't strip it (anything inside #root that HomePage
           // doesn't render gets removed on hydrate). Renders below the
