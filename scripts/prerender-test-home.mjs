@@ -114,6 +114,7 @@ async function main() {
     // Load ONLY the project files through Vite (JSX + import.meta.env transform).
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
     const { buildSeoHead } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
+    const { buildMenuSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
     const { parseAddress } = await vite.ssrLoadModule('/src/pages/website/utils/address.js')
     const HomePageMod = await vite.ssrLoadModule('/src/pages/website/HomePage.jsx')
     const HomePage = HomePageMod.default
@@ -279,6 +280,27 @@ async function main() {
 
         let menuOut = shell.replace('<div id="root"></div>', `<div id="root">${menuHtml}</div>`)
         menuOut = injectHead(menuOut, menuSeo)
+
+        // Menu JSON-LD (Menu/MenuSection/MenuItem). Injected raw AFTER
+        // injectHead so it bypasses escapeHtml (JSON-LD must not be
+        // HTML-entity-escaped). Built from the same categories/menuItems/
+        // lowestPrices already rendered, so schema == visible content.
+        const menuSchema = buildMenuSchema({
+          name: `${restaurant.name} Menu`,
+          sections: categories.map((cat) => ({
+            name: cat.name,
+            items: menuItems
+              .filter((it) => it.category_id === cat.id)
+              .map((it) => ({
+                name: it.name,
+                description: it.description,
+                image: it.image_url,
+                price: lowestPrices[it.id],
+              })),
+          })),
+        })
+        menuOut = menuOut.replace('</head>', `    ${schemaScriptTag(menuSchema)}\n  </head>`)
+
         await fs.mkdir(OUT_DIR_MENU, { recursive: true })
         await fs.writeFile(path.join(OUT_DIR_MENU, 'index.html'), menuOut, 'utf-8')
         restaurantUrls.push(menuSeo.canonical)

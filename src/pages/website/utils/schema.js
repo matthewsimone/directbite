@@ -47,3 +47,38 @@ export function buildItemListSchema(items, { name } = {}) {
     itemListElement: list,
   })
 }
+
+// A full restaurant Menu -> Menu > hasMenuSection[] > hasMenuItem[].
+// `sections`: [{ name, items: [{ name, description, image, price }] }].
+// Sections with zero items are dropped. Items reuse buildMenuItemSchema.
+export function buildMenuSchema({ name, sections } = {}) {
+  const hasMenuSection = (sections || [])
+    .map((sec) => {
+      const items = (sec.items || []).map(buildMenuItemSchema)
+      if (items.length === 0) return null
+      return clean({
+        '@type': 'MenuSection',
+        name: sec.name,
+        hasMenuItem: items,
+      })
+    })
+    .filter(Boolean)
+  return clean({
+    '@context': 'https://schema.org',
+    '@type': 'Menu',
+    name,
+    hasMenuSection,
+  })
+}
+
+// Serialize a schema object into a ready-to-inject <script> tag.
+// Hardens against tag-breakout: any '<' inside the JSON (e.g. an item
+// named "Fish <3" or a stray "</script>") becomes the literal escape
+// < (backslash-u-003c), which is a
+// valid JSON escape AND cannot terminate the script element or open a
+// comment. This is why menu JSON-LD must NOT go through the HTML-entity
+// escapeHtml path (that would corrupt the JSON).
+export function schemaScriptTag(schema) {
+  const json = JSON.stringify(schema).replace(/</g, '\\u003c')
+  return `<script type="application/ld+json">${json}</script>`
+}
