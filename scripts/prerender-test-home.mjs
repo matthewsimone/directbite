@@ -545,9 +545,12 @@ async function main() {
 
         if (hubRows.length > 0) {
           const meshHtml = `<section class="max-w-[1100px] mx-auto px-6 sm:px-8 py-10"><h2 class="text-xl font-bold text-gray-900 mb-6">Explore ${escapeHtml(restaurant.name)}</h2>${hubRows.join('')}</section>`
-          if (homeOut.includes('<footer')) {
-            homeOut = homeOut.replace('<footer', `${meshHtml}<footer`)
-          } else if (homeOut.includes('</body>')) {
+          // Inject before </body> — OUTSIDE #root, so React hydration
+          // doesn't strip it (anything inside #root that HomePage
+          // doesn't render gets removed on hydrate). Renders below the
+          // footer; crawlers + users both keep it. Above-footer would
+          // require making this a real HomePage component (follow-up).
+          if (homeOut.includes('</body>')) {
             homeOut = homeOut.replace('</body>', `${meshHtml}</body>`)
           }
         }
