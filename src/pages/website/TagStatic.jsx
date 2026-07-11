@@ -80,9 +80,9 @@ export default function TagStatic({ restaurant, hours, tag, siblingTags, tagItem
       )}
 
       {/* About — dish keyword in the first sentence */}
-      <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pb-10">
+      <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pt-8 pb-10">
         <p className="text-base text-gray-700 leading-relaxed">
-          {`Looking for ${labelLower}? ${restaurant.name} makes ${labelLower} fresh daily — order directly online for pickup or delivery, commission-free.`}
+          {`Looking for ${labelLower}? ${restaurant.name} makes ${labelLower} fresh daily — order directly online for pickup or delivery.`}
         </p>
       </section>
 
@@ -115,10 +115,19 @@ export default function TagStatic({ restaurant, hours, tag, siblingTags, tagItem
         subtext={`Order ${labelLower} from ${restaurant.name} for pickup or delivery.`}
       />
 
-      {/* Internal link hub — sibling tags (per-restaurant scope) */}
-      {siblings.length > 0 && (
-        <section className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10">
-          <h2 className="text-lg font-bold text-gray-900 mb-3">More from the menu</h2>
+      {/* Internal link hub — sibling tags + always a path to the full menu */}
+      <section className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10">
+        <div className="flex items-baseline justify-between gap-4 mb-3 flex-wrap">
+          <h2 className="text-lg font-bold text-gray-900">More from the menu</h2>
+          <a
+            href={`${base}/menu`}
+            className="text-sm font-semibold hover:underline"
+            style={{ color: brandColor }}
+          >
+            See full menu →
+          </a>
+        </div>
+        {siblings.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {siblings.map((s) => (
               <a
@@ -130,8 +139,8 @@ export default function TagStatic({ restaurant, hours, tag, siblingTags, tagItem
               </a>
             ))}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {!drawerOpen && <StickyMobileCTA restaurant={restaurant} />}
       <Footer restaurant={restaurant} hours={hours} />

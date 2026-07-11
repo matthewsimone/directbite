@@ -45,7 +45,7 @@ export function buildRestaurantFaq(restaurant, { hoursText, categoriesText, town
 
   qas.push({
     q: `Can I order online from ${name}?`,
-    a: `Yes — you can order directly from ${name} online for pickup or delivery, commission-free.`,
+    a: `Yes — you can order directly from ${name} online for pickup or delivery.`,
   })
 
   return qas

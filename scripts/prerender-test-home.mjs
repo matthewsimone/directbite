@@ -400,10 +400,10 @@ async function main() {
               ? `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`
               : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`),
             description: ov?.meta_description_override || (isHome
-              ? `${restaurant.name} is your local ${cuisine} spot in ${town.name}, NJ. View the menu, hours, and order directly online for pickup or delivery — commission-free.`
+              ? `${restaurant.name} is your local ${cuisine} spot in ${town.name}, NJ. View the menu, hours, and order directly online for pickup or delivery.`
               : delivers
-              ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers commission-free — support local.`
-              : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery, commission-free.`),
+              ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers to ${town.name} — support local.`
+              : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery.`),
             canonical: restaurant.custom_domain
               ? `https://${restaurant.custom_domain}/places/${town.slug}`
               : `https://directbite.co/${restaurant.slug}/places/${town.slug}`,
@@ -490,7 +490,7 @@ async function main() {
             title: ov?.title_override
               || `${tagDef.label} | ${restaurant.name}`,
             description: ov?.meta_description_override
-              || `Order ${tagDef.label.toLowerCase()} from ${restaurant.name} — made fresh daily. Pickup or delivery, commission-free.`,
+              || `Order ${tagDef.label.toLowerCase()} from ${restaurant.name} — made fresh daily. Pickup or delivery.`,
             canonical: restaurant.custom_domain
               ? `https://${restaurant.custom_domain}/tags/${tagDef.slug}`
               : `https://directbite.co/${restaurant.slug}/tags/${tagDef.slug}`,
@@ -545,7 +545,9 @@ async function main() {
 
         if (hubRows.length > 0) {
           const meshHtml = `<section class="max-w-[1100px] mx-auto px-6 sm:px-8 py-10"><h2 class="text-xl font-bold text-gray-900 mb-6">Explore ${escapeHtml(restaurant.name)}</h2>${hubRows.join('')}</section>`
-          if (homeOut.includes('</body>')) {
+          if (homeOut.includes('<footer')) {
+            homeOut = homeOut.replace('<footer', `${meshHtml}<footer`)
+          } else if (homeOut.includes('</body>')) {
             homeOut = homeOut.replace('</body>', `${meshHtml}</body>`)
           }
         }
