@@ -50,12 +50,39 @@ export default function RevenueTab() {
 
   useEffect(() => { fetchData() }, [])
 
+  // PostgREST silently caps a single select at 1000 rows, which truncates the
+  // fleet's revenue totals. Pull every order in 1000-row .range() pages (same
+  // status filter + ordering as before) until a short/empty page marks the end.
+  // A page error stops the loop and returns what we have (UI never hangs); a
+  // hard page cap guards against an accidental infinite loop.
+  async function fetchAllOrders() {
+    const PAGE = 1000
+    const MAX_PAGES = 50
+    const all = []
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .in('status', ['new', 'in_progress', 'scheduled', 'complete'])
+        .order('created_at', { ascending: false })
+        .range(from, from + PAGE - 1)
+      if (error) {
+        console.error('[RevenueTab] orders page fetch failed:', error.message)
+        break
+      }
+      if (data && data.length) all.push(...data)
+      if (!data || data.length < PAGE) break
+    }
+    return all
+  }
+
   async function fetchData() {
-    const [ordersRes, restRes] = await Promise.all([
-      supabase.from('orders').select('*').in('status', ['new', 'in_progress', 'scheduled', 'complete']).order('created_at', { ascending: false }),
+    const [allOrders, restRes] = await Promise.all([
+      fetchAllOrders(),
       supabase.from('restaurants').select('id, name').order('name'),
     ])
-    setOrders(ordersRes.data || [])
+    setOrders(allOrders)
     setRestaurants(restRes.data || [])
     setLoading(false)
   }
