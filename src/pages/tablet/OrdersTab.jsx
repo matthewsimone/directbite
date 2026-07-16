@@ -120,6 +120,11 @@ function isScheduledSelfDeliver(o) {
 
 // ── Order Card ──
 function OrderCard({ order, onTap, onRetryPrint }) {
+  // Per-card busy state — the Retry button lives here while handleRetryPrint
+  // lives in the parent, so we bracket the awaited call locally. This keeps the
+  // busy feedback scoped to THIS card (a single parent flag would light up every
+  // card's Retry button at once).
+  const [printing, setPrinting] = useState(false)
   const isDelivery = order.order_type === 'delivery'
   const borderColor = isDelivery ? 'border-l-blue-500' : 'border-l-[#16A34A]'
   const isUnacked = order.status === 'new' && !order.acknowledged_at
@@ -239,10 +244,15 @@ function OrderCard({ order, onTap, onRetryPrint }) {
       {showRetry && (
         <div className="px-4 pb-3">
           <button
-            onClick={(e) => { e.stopPropagation(); onRetryPrint(order) }}
-            className="w-full h-9 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold"
+            onClick={async (e) => {
+              e.stopPropagation()
+              setPrinting(true)
+              try { await onRetryPrint(order) } finally { setPrinting(false) }
+            }}
+            disabled={printing}
+            className="w-full h-9 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-semibold disabled:opacity-60"
           >
-            Retry Print
+            {printing ? 'Printing…' : 'Retry Print'}
           </button>
         </div>
       )}
@@ -258,6 +268,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   // with per-attempt rows; the disclosure header summarizes failures.
   const [printLogExpanded, setPrintLogExpanded] = useState(false)
   const [showReprint, setShowReprint] = useState(false)
+  const [printing, setPrinting] = useState(false)
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [showDeliverConfirm, setShowDeliverConfirm] = useState(false)
@@ -550,37 +561,37 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       return
     }
 
-    // Fetch full order with items and toppings for printing
-    const { data: fullOrder } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('id', order.id)
-      .single()
+    setPrinting(true)
+    try {
+      // Fetch full order + items/toppings for printing. Parallel so it's ONE
+      // round-trip of latency instead of two sequential fetches. Both kept:
+      // reprint must reflect current DB state (fresh order AND fresh items).
+      const [{ data: fullOrder }, { data: orderItems }] = await Promise.all([
+        supabase.from('orders').select('*').eq('id', order.id).single(),
+        supabase.from('order_items').select('*, order_item_toppings(*)').eq('order_id', order.id).order('created_at'),
+      ])
 
-    const { data: orderItems } = await supabase
-      .from('order_items')
-      .select('*, order_item_toppings(*)')
-      .eq('order_id', order.id)
-      .order('created_at')
+      const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
 
-    const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
+      // Log the print attempt and update order print_status
+      await supabase.from('print_logs').insert({
+        order_id: order.id,
+        order_number: order.order_number,
+        restaurant_id: restaurant.id,
+        attempt_number: printLogs.length + 1,
+        status: result.success ? 'success' : 'failed',
+        error_message: result.success ? null : result.message,
+      })
+      await supabase.from('orders').update({
+        print_status: result.success ? 'printed' : 'failed',
+        print_attempts: printLogs.length + 1,
+      }).eq('id', order.id)
 
-    // Log the print attempt and update order print_status
-    await supabase.from('print_logs').insert({
-      order_id: order.id,
-      order_number: order.order_number,
-      restaurant_id: restaurant.id,
-      attempt_number: printLogs.length + 1,
-      status: result.success ? 'success' : 'failed',
-      error_message: result.success ? null : result.message,
-    })
-    await supabase.from('orders').update({
-      print_status: result.success ? 'printed' : 'failed',
-      print_attempts: printLogs.length + 1,
-    }).eq('id', order.id)
-
-    fetchOrderDetails()
-    setShowReprint(false)
+      fetchOrderDetails()
+      setShowReprint(false)
+    } finally {
+      setPrinting(false)
+    }
   }
 
   async function submitAdjustment() {
@@ -1049,7 +1060,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             <p className="text-center font-medium">Reprint this order?</p>
             <div className="flex gap-3">
               <button onClick={() => setShowReprint(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">No</button>
-              <button onClick={handleReprint} className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold">Yes</button>
+              <button onClick={handleReprint} disabled={printing} className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-60">{printing ? 'Printing…' : 'Yes'}</button>
             </div>
           </div>
         )}
