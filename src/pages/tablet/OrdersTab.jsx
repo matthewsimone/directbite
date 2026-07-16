@@ -627,15 +627,12 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     setUpdating(false)
   }
 
-  // M9a: derive prep-time bracket options for the dispatch modal.
-  // Decision #4: [estimated_delivery_minutes - 10, base, +10, +15], clamped
-  // 5-120, deduped. Operator falls back to the Custom input for non-standard
-  // cases (e.g., scheduled orders with a longer prep window).
+  // Fixed prep-time bracket options for the dispatch modal. Previously derived
+  // from restaurant.estimated_delivery_minutes; now a fixed menu so the presets
+  // don't drift with the customer-facing delivery estimate. Operator falls back
+  // to the Custom input (5-120) for non-standard cases.
   function prepBrackets() {
-    const base = Number(restaurant?.estimated_delivery_minutes) || 30
-    const raw = [base - 10, base, base + 10, base + 15]
-    const clamped = raw.map(n => Math.max(5, Math.min(120, n)))
-    return Array.from(new Set(clamped)).sort((a, b) => a - b)
+    return [10, 20, 30, 40]
   }
 
   // M9a: POST to uber-create-delivery and handle structured response.
