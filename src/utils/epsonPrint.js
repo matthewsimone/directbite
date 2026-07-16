@@ -7,6 +7,33 @@ import { formatPhone } from './format'
 const W = 48
 const DW = W / 2 // double-width chars per line at 2x size = 24
 
+// Serialize every print job — auto-print, retry, and manual reprint all funnel
+// onto this one FIFO chain. The shared TM-M30 accepts a single ePOS connection
+// at a time; concurrent connects collide and surface as "connection timed out".
+// Each job waits for the previous one to settle before opening its connection.
+let printChain = Promise.resolve()
+
+// Decode the ePOS ASB status bitmask -> human-readable hard-fault reason, or
+// null if clean. A hard fault means the ticket did NOT physically print even
+// when the SDK reports res.success:true (a silent phantom "success").
+//
+// Bit VALUES are the epos-2.27.0 SDK's OWN ASB_* constants, verified against
+// public/epos-2.27.0.js — the ePOS-Print API doc's abstract masks do NOT match
+// these numeric values, so we use the SDK's. Fault-only: soft/transient states
+// (ASB_RECEIPT_NEAR_END 0x20000, ASB_PAPER_FEED 0x40, ASB_DRAWER_KICK/
+// ASB_BATTERY_OFFLINE 0x04) are intentionally NOT treated as failures.
+function asbFaultReason(status) {
+  if (status == null) return null
+  const faults = []
+  if (status & 0x00080000) faults.push('no paper')            // ASB_RECEIPT_END    524288
+  if (status & 0x00000020) faults.push('cover open')          // ASB_COVER_OPEN         32
+  if (status & 0x00000008) faults.push('printer offline')     // ASB_OFF_LINE            8
+  if (status & 0x00000400) faults.push('mechanical error')    // ASB_MECHANICAL_ERR   1024
+  if (status & 0x00000800) faults.push('autocutter error')    // ASB_AUTOCUTTER_ERR   2048
+  if (status & 0x00002000) faults.push('unrecoverable error') // ASB_UNRECOVER_ERR    8192
+  return faults.length ? faults.join(', ') : null
+}
+
 function fmt(amount) {
   return `$${Number(amount || 0).toFixed(2)}`
 }
@@ -101,9 +128,19 @@ function fmtScheduledForReceipt(isoString) {
  * @param {object} rest - Restaurant info { name, address, phone }
  * @returns {Promise<{success: boolean, message: string}>}
  */
-export async function printOrder(printerIp, order, rest, copies = 1) {
-  if (!printerIp) return { success: false, message: 'No printer IP configured' }
-  if (!window.epson) return { success: false, message: 'Epson ePOS SDK not loaded' }
+export async function printOrder(...args) {
+  // Queue this job behind any in-flight print, then run it. `_printOrder` never
+  // rejects (it always resolve()s a {success,...} object), but we .catch() the
+  // chain link anyway so one job's failure can't break FIFO ordering for the
+  // next. Callers await `run` and receive the real result unchanged.
+  const run = printChain.then(() => _printOrder(...args))
+  printChain = run.catch(() => {})
+  return run
+}
+
+async function _printOrder(printerIp, order, rest, copies = 1) {
+  if (!printerIp) return { success: false, message: 'No printer IP configured', code: null, status: null }
+  if (!window.epson) return { success: false, message: 'Epson ePOS SDK not loaded', code: null, status: null }
   const copyCount = Math.min(5, Math.max(1, parseInt(copies) || 1))
 
   return new Promise((resolve) => {
@@ -111,14 +148,14 @@ export async function printOrder(printerIp, order, rest, copies = 1) {
       const ePosDev = new window.epson.ePOSDevice()
       const timeout = setTimeout(() => {
         console.error('[EpsonPrint] Connection timed out to', printerIp)
-        resolve({ success: false, message: 'Printer connection timed out' })
+        resolve({ success: false, message: 'Printer connection timed out', code: null, status: null })
       }, 10000)
 
       ePosDev.connect(printerIp, 8008, (connectResult) => {
         if (connectResult !== 'OK' && connectResult !== 'SSL_CONNECT_OK') {
           clearTimeout(timeout)
           console.error('[EpsonPrint] Connection failed:', connectResult)
-          resolve({ success: false, message: `Connection failed: ${connectResult}` })
+          resolve({ success: false, message: `Connection failed: ${connectResult}`, code: null, status: null })
           return
         }
 
@@ -127,9 +164,20 @@ export async function printOrder(printerIp, order, rest, copies = 1) {
           if (retcode !== 'OK' || !printer) {
             console.error('[EpsonPrint] Device creation failed:', retcode)
             try { ePosDev.disconnect() } catch {}
-            resolve({ success: false, message: `Printer device error: ${retcode}` })
+            resolve({ success: false, message: `Printer device error: ${retcode}`, code: null, status: null })
             return
           }
+
+          // Send-phase timeout. The connect timeout above is already cleared, so
+          // without this a hang after send() (onreceive/onerror never fires)
+          // would wedge the Promise forever. Cleared at the top of onreceive and
+          // onerror, and in the build/send catch below. A late callback after
+          // this fires is harmless — the Promise ignores the second resolve()
+          // and disconnect() is try/catch-wrapped.
+          const sendTimeout = setTimeout(() => {
+            try { ePosDev.disconnect() } catch {}
+            resolve({ success: false, message: 'Printer send timed out', code: null, status: null })
+          }, 15000)
 
           try {
             const sep = '-'.repeat(W)
@@ -404,32 +452,40 @@ export async function printOrder(printerIp, order, rest, copies = 1) {
 
             // Send
             printer.onreceive = (res) => {
+              clearTimeout(sendTimeout)
               try { ePosDev.deleteDevice(printer) } catch {}
               try { ePosDev.disconnect() } catch {}
-              if (res.success) {
-                resolve({ success: true, message: 'Printed successfully' })
+              // A hard ASB fault overrides res.success — the SDK can report
+              // success:true while a fault bit (paper out, cover open, offline)
+              // means nothing physically printed.
+              const fault = asbFaultReason(res.status)
+              if (res.success && !fault) {
+                resolve({ success: true, message: 'Printed successfully', code: res.code, status: res.status })
               } else {
-                resolve({ success: false, message: `Print error: code ${res.code}` })
+                const reason = fault ? `Printer fault: ${fault}` : `Print error: code ${res.code}`
+                resolve({ success: false, message: reason, code: res.code, status: res.status })
               }
             }
 
             printer.onerror = (err) => {
+              clearTimeout(sendTimeout)
               console.error('[EpsonPrint] Printer error:', err)
               try { ePosDev.disconnect() } catch {}
-              resolve({ success: false, message: `Print error: ${err}` })
+              resolve({ success: false, message: `Print error: ${err}`, code: null, status: null })
             }
 
             printer.send()
           } catch (err) {
+            clearTimeout(sendTimeout)
             console.error('[EpsonPrint] Send error:', err)
             try { ePosDev.disconnect() } catch {}
-            resolve({ success: false, message: `Print error: ${err.message}` })
+            resolve({ success: false, message: `Print error: ${err.message}`, code: null, status: null })
           }
         })
       })
     } catch (err) {
       console.error('[EpsonPrint] Fatal error:', err)
-      resolve({ success: false, message: `Print error: ${err.message}` })
+      resolve({ success: false, message: `Print error: ${err.message}`, code: null, status: null })
     }
   })
 }
