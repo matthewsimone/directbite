@@ -140,6 +140,10 @@ export function useOrderPolling(restaurant, hours) {
       attempt_number: attempt,
       status: result.success ? 'success' : 'failed',
       error_message: result.success ? null : result.message,
+      // Raw ePOS diagnostics on EVERY attempt (success + failure) so a phantom
+      // "success" still has its ASB bitmask recorded for later inspection.
+      asb_status: (typeof result.status === 'number' ? result.status : null),
+      status_code: (result.code != null ? String(result.code) : null),
     })
     if (logErr) console.error('[AutoPrint] Failed to insert print log:', logErr)
 
