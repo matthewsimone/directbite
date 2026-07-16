@@ -128,6 +128,15 @@ function OrderCard({ order, onTap, onRetryPrint }) {
   const isDelivery = order.order_type === 'delivery'
   const borderColor = isDelivery ? 'border-l-blue-500' : 'border-l-[#16A34A]'
   const isUnacked = order.status === 'new' && !order.acknowledged_at
+  // Escalation window: acknowledged but still 'new' (not yet in-progress) for
+  // >= 7 min. Same window as hasEscalation in useOrderPolling.js — keep this
+  // literal in sync with ESCALATION_MINUTES there (not imported to avoid
+  // cross-file coupling for a single number). Mutually exclusive with
+  // isUnacked (that needs !acknowledged_at; this needs acknowledged_at != null).
+  const isEscalating =
+    order.status === 'new' &&
+    order.acknowledged_at != null &&
+    (Date.now() - new Date(order.acknowledged_at).getTime()) >= 7 * 60 * 1000
   const showRetry = (order.print_status === 'failed' || order.print_status === 'pending') && onRetryPrint
   // Partial-failure cue: a failed refund leaves the order in its pre-cancel
   // status (e.g. in_progress) so it hides in plain sight among active orders.
@@ -151,6 +160,7 @@ function OrderCard({ order, onTap, onRetryPrint }) {
       : stuckStage === 2 ? 'bg-yellow-300 ring-4 ring-yellow-500 animate-pulse'
       : stuckStage === 1 ? 'bg-yellow-300'
       : isUnacked ? 'animate-flash-green'
+      : isEscalating ? 'animate-flash-yellow'
       : 'bg-white'
 
   // Customer info line. Each segment is independently optional so missing

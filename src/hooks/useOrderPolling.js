@@ -13,6 +13,10 @@ import { isStuckUnacked } from '../utils/stuckStage'
 // old fixed 5s settle delay with a deterministic signal + a safety net.
 const PRINT_FALLBACK_MS = 8000
 
+// Escalation threshold: an order acknowledged but still not marked in-progress
+// after this many minutes drives the second (escalation) alert layer.
+const ESCALATION_MINUTES = 7
+
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
 // SSR / non-browser test contexts. Lives at module scope so re-mounts
@@ -30,6 +34,23 @@ function getAudioElement() {
     audioElement.preload = 'auto'
   }
   return audioElement
+}
+
+// ── Escalation audio element (SECOND module-level singleton) ──
+// A fully separate looping element for the escalation tone, mirroring the
+// new-order singleton above but pointing at the distinct escalation clip. It
+// has its own element + its own isPlaying ref so the two alert layers never
+// share state or fight over playback.
+let escalationAudioElement = null
+
+function getEscalationAudioElement() {
+  if (typeof window === 'undefined') return null
+  if (!escalationAudioElement) {
+    escalationAudioElement = new Audio('/escalation-chime.wav')
+    escalationAudioElement.loop = true
+    escalationAudioElement.preload = 'auto'
+  }
+  return escalationAudioElement
 }
 
 // One-time gesture-based unlock for non-FullyKiosk environments (admin
@@ -57,6 +78,7 @@ export function useOrderPolling(restaurant, hours) {
   const [loading, setLoading] = useState(true)
   const knownOrderIds = useRef(new Set())
   const isPlayingRef = useRef(false)
+  const isEscalatingRef = useRef(false)
 
   const diagnostics = useRef({
     pollAttempts: 0,
@@ -110,6 +132,31 @@ export function useOrderPolling(restaurant, hours) {
       a.pause()
       a.currentTime = 0
       isPlayingRef.current = false
+    }
+  }
+
+  // Escalation audio — a separate second layer, mirroring syncAudioState
+  // exactly but operating ONLY on the escalation element + isEscalatingRef.
+  // Independent of the new-order chime: both can be playing at once (a fresh
+  // un-acked order AND an older acked-but-not-started one).
+  function syncEscalationAudioState(hasEscalation) {
+    const a = getEscalationAudioElement()
+    if (!a) return
+    if (hasEscalation && !isEscalatingRef.current) {
+      diagnostics.current.audioPlayAttempts++
+      a.play().then(() => {
+        isEscalatingRef.current = true
+      }).catch(err => {
+        diagnostics.current.audioPlayFailures++
+        diagnostics.current.lastAudioError = err?.message || String(err)
+        console.warn('[ESCALATION] play blocked:', err)
+        // Pulsing amber tile already covers the no-audio case visually.
+      })
+    } else if (!hasEscalation && isEscalatingRef.current) {
+      diagnostics.current.audioPauseAttempts++
+      a.pause()
+      a.currentTime = 0
+      isEscalatingRef.current = false
     }
   }
 
@@ -240,6 +287,17 @@ export function useOrderPolling(restaurant, hours) {
         data.some(o => isStuckUnacked(o, now))
       syncAudioState(hasUnacked)
 
+      // Escalation layer (independent of hasUnacked): an order acknowledged but
+      // still 'new' — not yet marked in-progress — for >= ESCALATION_MINUTES.
+      // Mutually exclusive with the new-order chime per order (that requires
+      // !acknowledged_at; this requires acknowledged_at != null).
+      const hasEscalation = data.some(o =>
+        o.status === 'new' &&
+        o.acknowledged_at != null &&
+        (now - new Date(o.acknowledged_at).getTime()) >= ESCALATION_MINUTES * 60 * 1000
+      )
+      syncEscalationAudioState(hasEscalation)
+
       // Retry failed/pending prints on every poll cycle
       if (restaurant.printer_ip) {
         const now = Date.now()
@@ -368,6 +426,14 @@ export function useOrderPolling(restaurant, hours) {
         a.pause()
         a.currentTime = 0
         isPlayingRef.current = false
+      }
+      // Same for the escalation element — pause on unmount so it doesn't keep
+      // looping after navigating away (mirrors the new-order pause above).
+      const e = getEscalationAudioElement()
+      if (e && isEscalatingRef.current) {
+        e.pause()
+        e.currentTime = 0
+        isEscalatingRef.current = false
       }
     }
   }, [fetchOrders])

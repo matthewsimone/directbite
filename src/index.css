@@ -48,6 +48,17 @@ input, textarea, select {
   animation: flash-green 1s ease-in-out infinite;
 }
 
+/* Escalation tile flash — acknowledged-but-not-started orders. Same 1Hz
+   cadence as flash-green but white ↔ amber-400, a distinct hue so staff can
+   tell the escalation apart from the new-order (green) alert at a glance. */
+@keyframes flash-yellow {
+  0%, 100% { background-color: rgb(255 255 255); }
+  50%      { background-color: rgb(251 191 36); }
+}
+.animate-flash-yellow {
+  animation: flash-yellow 1s ease-in-out infinite;
+}
+
 /* Clamp text to 2 lines */
 .line-clamp-2 {
   display: -webkit-box;
