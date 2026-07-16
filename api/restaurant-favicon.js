@@ -44,20 +44,27 @@ export default async function handler(req, res) {
   // who deep-links the API doesn't get a broken image.
 
   const sourceBuffer = await loadSourceBuffer(restaurant)
+  // Only trim when the source has an alpha channel. Trimming strips transparent
+  // dead padding around a logo — good. But an OPAQUE background-tile logo (e.g.
+  // a solid gold badge) has no alpha, and trim() would crop the tile down to the
+  // glyph's bounding box, destroying the design's intended margin. So gate it.
+  const meta = await sharp(sourceBuffer).metadata()
   const background = style === 'white'
     ? { r: 255, g: 255, b: 255, alpha: 1 }
     : { r: 255, g: 255, b: 255, alpha: 0 }
 
-  // ~8% safe margin so logos don't render edge-to-edge: fit the trimmed logo
-  // into an inner square (84% of size), then pad back out to the full size on
-  // the same background. Final output is exactly size×size.
+  // ~8% safe margin so logos don't render edge-to-edge: fit the logo into an
+  // inner square (84% of size), then pad back out to the full size on the same
+  // background. Final output is exactly size×size.
   const inner = Math.round(size * 0.84)
   const pad = Math.floor((size - inner) / 2)
 
   try {
-    const png = await sharp(sourceBuffer)
-      // Strip whitespace around the logo so it renders larger after resize.
-      .trim({ threshold: 10 })
+    let p = sharp(sourceBuffer)
+    // Strip transparent padding ONLY when the source actually has alpha;
+    // opaque tile logos are left intact so their built-in margin survives.
+    if (meta.hasAlpha) p = p.trim({ threshold: 10 })
+    const png = await p
       .resize(inner, inner, { fit: 'contain', background })
       .extend({
         top: pad,
