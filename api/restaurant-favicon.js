@@ -48,11 +48,24 @@ export default async function handler(req, res) {
     ? { r: 255, g: 255, b: 255, alpha: 1 }
     : { r: 255, g: 255, b: 255, alpha: 0 }
 
+  // ~8% safe margin so logos don't render edge-to-edge: fit the trimmed logo
+  // into an inner square (84% of size), then pad back out to the full size on
+  // the same background. Final output is exactly size×size.
+  const inner = Math.round(size * 0.84)
+  const pad = Math.floor((size - inner) / 2)
+
   try {
     const png = await sharp(sourceBuffer)
       // Strip whitespace around the logo so it renders larger after resize.
       .trim({ threshold: 10 })
-      .resize(size, size, { fit: 'contain', background })
+      .resize(inner, inner, { fit: 'contain', background })
+      .extend({
+        top: pad,
+        left: pad,
+        bottom: size - inner - pad,
+        right: size - inner - pad,
+        background,
+      })
       .png()
       .toBuffer()
 
