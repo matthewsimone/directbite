@@ -187,6 +187,14 @@ async function main() {
         const seo = buildSeoHead(restaurant)
         let homeOut = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
         homeOut = injectHead(homeOut, seo)
+        // GSC verification — home page only, custom-domain restaurants only.
+        // Each custom domain is its own GSC property; the token verifies it.
+        // null-domain restaurants (served on directbite.co/{slug}) share the
+        // directbite.co property, verified once separately — they get no tag.
+        if (restaurant.gsc_verification && restaurant.custom_domain) {
+          const gscTag = `<meta name="google-site-verification" content="${escapeHtml(restaurant.gsc_verification)}" />`
+          homeOut = homeOut.replace('</head>', `    ${gscTag}\n  </head>`)
+        }
         restaurantUrls.push(seo.canonical)
         // NOTE: home file is written LATER (after tags/towns are computed) so the
         // FAQ-mesh block can link to the generated /tags and /places pages. See
