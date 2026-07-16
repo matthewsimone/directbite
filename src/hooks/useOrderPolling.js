@@ -156,6 +156,7 @@ export function useOrderPolling(restaurant, hours) {
 
   const retryingIds = useRef(new Set())
   const recheckTimer = useRef(null)
+  const realtimeDebounce = useRef(null)
 
   const fetchOrders = useCallback(async () => {
     if (!restaurant) return
@@ -325,9 +326,40 @@ export function useOrderPolling(restaurant, hours) {
     const interval = setInterval(() => {
       if (isRestaurantOpen()) fetchOrders()
     }, 10000)
+
+    // Realtime poke: an orders-table change triggers an EARLY fetchOrders() so
+    // prints fire ~sub-second instead of waiting up to 10s for the next poll.
+    // This only changes WHEN the fetch runs — printing still flows through the
+    // unchanged items_written_at gate + knownOrderIds baseline + serialized
+    // queue inside fetchOrders. The handler NEVER prints and NEVER calls
+    // autoPrint directly. The 10s poll above stays as the backstop for a dropped
+    // socket. A burst of events coalesces into one fetch via a 250ms debounce,
+    // using the same single-timer guard idiom as recheckTimer.
+    const triggerRealtimeFetch = () => {
+      if (realtimeDebounce.current !== null) return // coalesce: a fetch is already pending
+      realtimeDebounce.current = setTimeout(() => {
+        realtimeDebounce.current = null
+        if (isRestaurantOpen()) fetchOrders()
+      }, 250)
+    }
+
+    let channel = null
+    if (restaurant?.id) {
+      channel = supabase
+        .channel(`orders-rt-${restaurant.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurant.id}` },
+          () => triggerRealtimeFetch()
+        )
+        .subscribe()
+    }
+
     return () => {
       clearInterval(interval)
       if (recheckTimer.current) { clearTimeout(recheckTimer.current); recheckTimer.current = null }
+      if (realtimeDebounce.current) { clearTimeout(realtimeDebounce.current); realtimeDebounce.current = null }
+      if (channel) supabase.removeChannel(channel)
       // Don't tear down the audio element on unmount — it's module-level
       // and will be reused by the next mount. We do pause it so a stale
       // chime doesn't keep playing if the tablet navigates away mid-loop.
