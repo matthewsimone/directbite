@@ -1017,6 +1017,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                   </span>
                   <span className="text-gray-600">
                     Attempt {log.attempt_number} — {formatTime(log.created_at)}
+                    {log.status !== 'success' && log.error_message ? ` · ${log.error_message}` : ''}
                   </span>
                 </div>
               ))}
