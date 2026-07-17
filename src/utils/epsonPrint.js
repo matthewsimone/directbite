@@ -190,7 +190,8 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             // Per-restaurant "large" receipt font: double the HEIGHT of the
             // ITEM-LOOP lines only (item name/price, size, modifiers, per-item
             // notes) while leaving WIDTH untouched, so character counts /
-            // wrapping are unchanged. Used ONLY inside the item loop; every
+            // wrapping are unchanged. Used inside the item loop and for the
+            // customer name; every
             // other section prints via plain printer.addTextSize (always
             // standard height). Defaults to 'standard' when rest.receipt_font is
             // absent or null. In 'standard' mode setSize(w,h) resolves to
@@ -259,13 +260,13 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             printer.addText('\n')
 
             // ── 4. CUSTOMER ──
-            // Promoted to its own block. Name at 2x1 bold because the
+            // Promoted to its own block. Name at 2x width bold (2x height too in large mode) because the
             // counter person calls it out when food is ready. Phone
             // formatted; delivery address only printed for delivery.
             bold(true)
             printer.addText('CUSTOMER\n')
             bold(false)
-            printer.addTextSize(2, 1)
+            setSize(2, 1)
             bold(true)
             printer.addText((order.customer_name || '') + '\n')
             printer.addTextSize(1, 1)
