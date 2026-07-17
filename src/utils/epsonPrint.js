@@ -187,6 +187,13 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             const C = printer.ALIGN_CENTER
             const L = printer.ALIGN_LEFT
             const bold = (on) => printer.addTextStyle(false, false, on, printer.COLOR_1)
+            // Per-restaurant "large" receipt font: double every line's HEIGHT
+            // while leaving WIDTH untouched, so character counts / wrapping are
+            // unchanged. Defaults to 'standard' when rest.receipt_font is absent
+            // or null — any caller that doesn't thread the field prints exactly
+            // as before. In 'standard' mode setSize(w,h) === addTextSize(w,h).
+            const receiptFont = rest?.receipt_font === 'large' ? 'large' : 'standard'
+            const setSize = (w, h) => printer.addTextSize(w, receiptFont === 'large' ? h * 2 : h)
 
             // Multi-copy: append [full receipt + feed + cut] once per copy into
             // the SAME buffer, then a single send() below. copyCount===1 (manual
@@ -201,9 +208,9 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             // helper so it always reads as (XXX) XXX-XXXX.
             printer.addTextAlign(C)
             bold(true)
-            printer.addTextSize(2, 2)
+            setSize(2, 2)
             printer.addText((rest.name || '') + '\n')
-            printer.addTextSize(1, 1)
+            setSize(1, 1)
             bold(false)
             const addrLines = splitAddress(rest.address)
             for (const line of addrLines) printer.addText(line + '\n')
@@ -216,10 +223,10 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             if (order.scheduled_for) {
               printer.addText(eqLine + '\n')
               bold(true)
-              printer.addTextSize(2, 2)
+              setSize(2, 2)
               printer.addText('*** FUTURE ORDER ***\n')
               printer.addText(`*** ${fmtScheduledForReceipt(order.scheduled_for)} ***\n`)
-              printer.addTextSize(1, 1)
+              setSize(1, 1)
               bold(false)
               printer.addText(eqLine + '\n')
             }
@@ -229,10 +236,10 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             // ── 2. PICKUP/DELIVERY + PAID ──
             const typeLabel = order.order_type === 'delivery' ? 'DELIVERY' : 'PICKUP'
             bold(true)
-            printer.addTextSize(2, 1)
+            setSize(2, 1)
             printer.addTextAlign(L)
             printer.addText(padDW(typeLabel, 'PAID') + '\n')
-            printer.addTextSize(1, 1)
+            setSize(1, 1)
             bold(false)
             printer.addText('\n')
 
@@ -240,9 +247,9 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             // Order # at 2x1 bold so the kitchen can scan it from across
             // the room when pulling tickets. Date stays 1x.
             bold(true)
-            printer.addTextSize(2, 1)
+            setSize(2, 1)
             printer.addText(`Order #${order.order_number}\n`)
-            printer.addTextSize(1, 1)
+            setSize(1, 1)
             bold(false)
             printer.addText(fmtDate(order.created_at) + '\n')
             printer.addText('\n')
@@ -254,10 +261,10 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             bold(true)
             printer.addText('CUSTOMER\n')
             bold(false)
-            printer.addTextSize(2, 1)
+            setSize(2, 1)
             bold(true)
             printer.addText((order.customer_name || '') + '\n')
-            printer.addTextSize(1, 1)
+            setSize(1, 1)
             bold(false)
             if (order.customer_phone) printer.addText(formatPhone(order.customer_phone) + '\n')
             if (order.order_type === 'delivery' && order.delivery_address) {
@@ -298,7 +305,7 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
               const indent = ' '.repeat(qtyPrefix.length)
 
               bold(true)
-              printer.addTextSize(2, 1)
+              setSize(2, 1)
 
               // Print the line 1 in two parts so the qty+name stays bold
               // and the price drops to non-bold (still 2x), making the
@@ -331,7 +338,7 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
                 printer.addText(indent + wrappedLines[i] + '\n')
               }
 
-              printer.addTextSize(1, 1)
+              setSize(1, 1)
               bold(false)
 
               // Sub-item lines (size, modifiers, per-item Note) print at
@@ -425,9 +432,9 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
 
             // TOTAL — 2x1 bold
             bold(true)
-            printer.addTextSize(2, 1)
+            setSize(2, 1)
             printer.addText(padDW('TOTAL', fmt(order.total_amount)) + '\n')
-            printer.addTextSize(1, 1)
+            setSize(1, 1)
             bold(false)
             printer.addText(sep + '\n')
 

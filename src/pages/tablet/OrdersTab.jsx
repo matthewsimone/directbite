@@ -582,7 +582,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         supabase.from('order_items').select('*, order_item_toppings(*)').eq('order_id', order.id).order('created_at'),
       ])
 
-      const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
+      const result = await printOrder(restaurant.printer_ip, { ...fullOrder, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone, receipt_font: restaurant?.receipt_font ?? 'standard' })
 
       // Log the print attempt and update order print_status
       await supabase.from('print_logs').insert({
@@ -1551,7 +1551,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
       .eq('order_id', order.id)
       .order('created_at')
 
-    const result = await printOrder(restaurant.printer_ip, { ...order, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone })
+    const result = await printOrder(restaurant.printer_ip, { ...order, items: orderItems || [] }, { name: restaurant.name, address: restaurant.address, phone: restaurant.phone, receipt_font: restaurant?.receipt_font ?? 'standard' })
 
     const attempts = (order.print_attempts || 0) + 1
     await supabase.from('print_logs').insert({

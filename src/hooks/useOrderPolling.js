@@ -176,7 +176,7 @@ export function useOrderPolling(restaurant, hours) {
     const result = await printOrder(
       restaurant.printer_ip,
       { ...newOrder, items: orderItems || [] },
-      { name: restaurant.name, address: restaurant.address, phone: restaurant.phone },
+      { name: restaurant.name, address: restaurant.address, phone: restaurant.phone, receipt_font: restaurant?.receipt_font ?? 'standard' },
       copies
     )
 
