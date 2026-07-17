@@ -268,7 +268,9 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             bold(false)
             setSize(2, 1)
             bold(true)
-            printer.addText((order.customer_name || '') + '\n')
+            for (const nameLine of wrapText(order.customer_name || '', DW)) {
+              printer.addText(nameLine + '\n')
+            }
             printer.addTextSize(1, 1)
             bold(false)
             if (order.customer_phone) printer.addText(formatPhone(order.customer_phone) + '\n')
