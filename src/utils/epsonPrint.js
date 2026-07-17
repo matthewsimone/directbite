@@ -273,35 +273,53 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             }
             printer.addTextSize(1, 1)
             bold(false)
-            // Phone — enlarged to 2x1 bold (matches the Order # header style).
-            // Literal addTextSize so the height is fixed regardless of receipt_font.
+            // Phone
             if (order.customer_phone) {
-              printer.addTextSize(2, 1)
-              bold(true)
-              printer.addText(formatPhone(order.customer_phone) + '\n')
-              printer.addTextSize(1, 1)
-              bold(false)
-            }
-            // Delivery address — main line + apt line, each 1x2 (fixed 2x height via
-            // literal addTextSize so large mode doesn't compound to 4x) bold. Country
-            // stripped; apt (", Apt X") pulled onto its own line. Apt suffix is split
-            // FIRST because at checkout it's appended AFTER the country segment.
-            if (order.order_type === 'delivery' && order.delivery_address) {
-              let mainAddr = order.delivery_address
-              let aptLine = null
-              const aptIdx = mainAddr.lastIndexOf(', Apt ')
-              if (aptIdx !== -1) {
-                aptLine = 'Apt ' + mainAddr.slice(aptIdx + ', Apt '.length).trim()
-                mainAddr = mainAddr.slice(0, aptIdx)
+              if (receiptFont === 'large') {
+                printer.addTextSize(2, 1)
+                bold(true)
+                printer.addText(formatPhone(order.customer_phone) + '\n')
+                printer.addTextSize(1, 1)
+                bold(false)
+              } else {
+                // standard: byte-identical to original (inherited 1x1, bold off)
+                printer.addText(formatPhone(order.customer_phone) + '\n')
               }
-              // strip trailing country (", USA" / ", United States"), case-insensitive
-              mainAddr = mainAddr.replace(/,\s*(usa|united states)\s*$/i, '').trim()
-              printer.addTextSize(1, 2)
-              bold(true)
-              printer.addText(mainAddr + '\n')
-              if (aptLine) printer.addText(aptLine + '\n')
-              printer.addTextSize(1, 1)
-              bold(false)
+            }
+            // Delivery address — ", USA"/", United States" stripped in BOTH modes.
+            // Standard: raw address (apt inline) at 1x1, only country removed.
+            // Large: apt pulled onto its own line, both lines 2x1 bold.
+            if (order.order_type === 'delivery' && order.delivery_address) {
+              if (receiptFont === 'large') {
+                let mainAddr = order.delivery_address
+                let aptLine = null
+                const aptIdx = mainAddr.lastIndexOf(', Apt ')
+                if (aptIdx !== -1) {
+                  aptLine = 'Apt ' + mainAddr.slice(aptIdx + ', Apt '.length).trim()
+                  mainAddr = mainAddr.slice(0, aptIdx)
+                }
+                mainAddr = mainAddr.replace(/,\s*(usa|united states)\s*$/i, '').trim()
+                printer.addTextSize(2, 1)
+                bold(true)
+                printer.addText(mainAddr + '\n')
+                if (aptLine) printer.addText(aptLine + '\n')
+                printer.addTextSize(1, 1)
+                bold(false)
+              } else {
+                // standard: byte-identical to original EXCEPT ", USA"/", United States"
+                // removed (matching the email/website strip). Apt stays inline as before.
+                // Checkout appends apt AFTER the country ("...NJ, USA, Apt 4B"), so split
+                // the apt off, strip the trailing country, then re-join.
+                let addr = order.delivery_address
+                const aptIdx = addr.lastIndexOf(', Apt ')
+                if (aptIdx !== -1) {
+                  const apt = addr.slice(aptIdx)                              // ", Apt 4B"
+                  addr = addr.slice(0, aptIdx).replace(/,\s*(usa|united states)\s*$/i, '') + apt
+                } else {
+                  addr = addr.replace(/,\s*(usa|united states)\s*$/i, '')
+                }
+                printer.addText(addr.trim() + '\n')
+              }
             }
             printer.addText('\n')
 
