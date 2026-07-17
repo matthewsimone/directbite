@@ -4,6 +4,7 @@ import { printOrder } from '../../utils/epsonPrint'
 import { formatPhone } from '../../utils/format'
 import { formatScheduledLabel, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
 import { getStuckStage } from '../../utils/stuckStage'
+import { isUberActiveNow } from '../../utils/uberActive'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -1634,13 +1635,32 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     if (data) setRestaurant(data)
   }
 
+  // Live "is Uber Direct the active method right now?" — pure read of restaurant
+  // state, recomputed each render. The 10s poll re-renders OrdersTab, so this
+  // refreshes at schedule window boundaries (same cadence as escalation).
+  const uberActive = restaurant ? isUberActiveNow(restaurant) : false
+
   return (
     <div className="h-full flex flex-col">
       {/* Delivery toggle */}
       <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-100">
-        <span className={`text-sm font-medium ${restaurant.delivery_available ? 'text-gray-900' : 'text-gray-400'}`}>
-          Delivery: {restaurant.delivery_available ? 'ON' : 'OFF'}
+        {/* Left: delivery status + context-aware descriptor / Uber badge */}
+        <span className="flex items-baseline gap-2">
+          <span className={`text-sm font-medium ${restaurant.delivery_available ? 'text-gray-900' : 'text-gray-400'}`}>
+            Delivery: {restaurant.delivery_available ? 'ON' : 'OFF'}
+            {!restaurant.delivery_available && ', Not Accepting Deliveries'}
+          </span>
+          {restaurant.delivery_available && uberActive && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-[#16A34A]">Uber: Active</span>
+              <span
+                className="inline-block w-2 h-2 rounded-full bg-[#16A34A] animate-pulse"
+                style={{ boxShadow: '0 0 0 3px rgba(22, 163, 74, 0.25)' }}
+              />
+            </span>
+          )}
         </span>
+        {/* Right: toggle */}
         <button
           onClick={toggleDelivery}
           className={`relative w-12 h-7 rounded-full transition-colors ${restaurant.delivery_available ? 'bg-[#16A34A]' : 'bg-gray-300'}`}
