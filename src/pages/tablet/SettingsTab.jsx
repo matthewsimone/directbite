@@ -203,6 +203,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [taxRate, setTaxRate] = useState(restaurant ? (Number(restaurant.tax_rate) * 100).toFixed(3) : '0')
   const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
   const [autoPrintCopies, setAutoPrintCopies] = useState(restaurant?.auto_print_copies || 1)
+  const [receiptFont, setReceiptFont] = useState(restaurant?.receipt_font === 'large' ? 'large' : 'standard')
   const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
   const [smsPhone, setSmsPhone] = useState(restaurant?.sms_phone || '')
   const [notificationEmail, setNotificationEmail] = useState(restaurant?.notification_email || '')
@@ -579,6 +580,24 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       }
       return { ...prev, [key]: updated }
     })
+  }
+
+  // Receipt Font — tap-to-save. Same supabase update path as the Printer
+  // fields (.update().eq().select().single() → setRestaurant), just fired on
+  // tap instead of via a Save button. Optimistic: flip the local selection
+  // immediately, revert if the write fails.
+  async function saveReceiptFont(value) {
+    const prev = receiptFont
+    if (value === prev) return
+    setReceiptFont(value)
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({ receipt_font: value })
+      .eq('id', restaurant.id)
+      .select()
+      .single()
+    if (error || !data) { setReceiptFont(prev); return }
+    setRestaurant(data)
   }
 
   // Atomic save of the 3 M5b config columns. Mirrors saveDelivery's pattern
@@ -1487,6 +1506,31 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </div>
           </FieldRow>
           <p className="text-xs text-gray-400">Extra copies print on new orders only — manual reprints always print once.</p>
+
+          {/* Receipt Font — tap-to-save (saves immediately, independent of the Save button above) */}
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Receipt Font</p>
+            {[
+              { value: 'standard', label: 'Standard' },
+              { value: 'large', label: 'Large' },
+            ].map(opt => {
+              const active = receiptFont === opt.value
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => saveReceiptFont(opt.value)}
+                  className={`w-full flex items-center justify-between px-4 h-12 rounded-xl border text-base font-medium transition-colors ${
+                    active
+                      ? 'bg-[#16A34A] border-[#16A34A] text-white'
+                      : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
+                  }`}
+                >
+                  <span>{opt.label}</span>
+                  {active && <span aria-hidden="true">✓</span>}
+                </button>
+              )
+            })}
+          </div>
         </Section>
 
         {/* SMS Alerts */}
