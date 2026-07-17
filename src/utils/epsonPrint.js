@@ -187,11 +187,15 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             const C = printer.ALIGN_CENTER
             const L = printer.ALIGN_LEFT
             const bold = (on) => printer.addTextStyle(false, false, on, printer.COLOR_1)
-            // Per-restaurant "large" receipt font: double every line's HEIGHT
-            // while leaving WIDTH untouched, so character counts / wrapping are
-            // unchanged. Defaults to 'standard' when rest.receipt_font is absent
-            // or null — any caller that doesn't thread the field prints exactly
-            // as before. In 'standard' mode setSize(w,h) === addTextSize(w,h).
+            // Per-restaurant "large" receipt font: double the HEIGHT of the
+            // ITEM-LOOP lines only (item name/price, size, modifiers, per-item
+            // notes) while leaving WIDTH untouched, so character counts /
+            // wrapping are unchanged. Used ONLY inside the item loop; every
+            // other section prints via plain printer.addTextSize (always
+            // standard height). Defaults to 'standard' when rest.receipt_font is
+            // absent or null. In 'standard' mode setSize(w,h) resolves to
+            // addTextSize(w,h), so the whole receipt is byte-identical to prior
+            // behavior.
             const receiptFont = rest?.receipt_font === 'large' ? 'large' : 'standard'
             const setSize = (w, h) => printer.addTextSize(w, receiptFont === 'large' ? h * 2 : h)
 
@@ -208,9 +212,9 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             // helper so it always reads as (XXX) XXX-XXXX.
             printer.addTextAlign(C)
             bold(true)
-            setSize(2, 2)
+            printer.addTextSize(2, 2)
             printer.addText((rest.name || '') + '\n')
-            setSize(1, 1)
+            printer.addTextSize(1, 1)
             bold(false)
             const addrLines = splitAddress(rest.address)
             for (const line of addrLines) printer.addText(line + '\n')
@@ -223,10 +227,10 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             if (order.scheduled_for) {
               printer.addText(eqLine + '\n')
               bold(true)
-              setSize(2, 2)
+              printer.addTextSize(2, 2)
               printer.addText('*** FUTURE ORDER ***\n')
               printer.addText(`*** ${fmtScheduledForReceipt(order.scheduled_for)} ***\n`)
-              setSize(1, 1)
+              printer.addTextSize(1, 1)
               bold(false)
               printer.addText(eqLine + '\n')
             }
@@ -236,10 +240,10 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             // ── 2. PICKUP/DELIVERY + PAID ──
             const typeLabel = order.order_type === 'delivery' ? 'DELIVERY' : 'PICKUP'
             bold(true)
-            setSize(2, 1)
+            printer.addTextSize(2, 1)
             printer.addTextAlign(L)
             printer.addText(padDW(typeLabel, 'PAID') + '\n')
-            setSize(1, 1)
+            printer.addTextSize(1, 1)
             bold(false)
             printer.addText('\n')
 
@@ -247,9 +251,9 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             // Order # at 2x1 bold so the kitchen can scan it from across
             // the room when pulling tickets. Date stays 1x.
             bold(true)
-            setSize(2, 1)
+            printer.addTextSize(2, 1)
             printer.addText(`Order #${order.order_number}\n`)
-            setSize(1, 1)
+            printer.addTextSize(1, 1)
             bold(false)
             printer.addText(fmtDate(order.created_at) + '\n')
             printer.addText('\n')
@@ -261,10 +265,10 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             bold(true)
             printer.addText('CUSTOMER\n')
             bold(false)
-            setSize(2, 1)
+            printer.addTextSize(2, 1)
             bold(true)
             printer.addText((order.customer_name || '') + '\n')
-            setSize(1, 1)
+            printer.addTextSize(1, 1)
             bold(false)
             if (order.customer_phone) printer.addText(formatPhone(order.customer_phone) + '\n')
             if (order.order_type === 'delivery' && order.delivery_address) {
@@ -387,6 +391,12 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
               }
             }
 
+            // In 'large' mode the item loop leaves the printer at doubled
+            // height; reset so everything below (utensils, order NOTE, totals,
+            // footer) prints at standard height. Guarded on 'large' so the
+            // command stream stays byte-identical in standard mode.
+            if (receiptFont === 'large') printer.addTextSize(1, 1)
+
             if (order.include_utensils) {
               printer.addText('\n')
               printer.addTextAlign(C)
@@ -432,9 +442,9 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
 
             // TOTAL — 2x1 bold
             bold(true)
-            setSize(2, 1)
+            printer.addTextSize(2, 1)
             printer.addText(padDW('TOTAL', fmt(order.total_amount)) + '\n')
-            setSize(1, 1)
+            printer.addTextSize(1, 1)
             bold(false)
             printer.addText(sep + '\n')
 
