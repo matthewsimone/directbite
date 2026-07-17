@@ -582,24 +582,6 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     })
   }
 
-  // Receipt Font — tap-to-save. Same supabase update path as the Printer
-  // fields (.update().eq().select().single() → setRestaurant), just fired on
-  // tap instead of via a Save button. Optimistic: flip the local selection
-  // immediately, revert if the write fails.
-  async function saveReceiptFont(value) {
-    const prev = receiptFont
-    if (value === prev) return
-    setReceiptFont(value)
-    const { data, error } = await supabase
-      .from('restaurants')
-      .update({ receipt_font: value })
-      .eq('id', restaurant.id)
-      .select()
-      .single()
-    if (error || !data) { setReceiptFont(prev); return }
-    setRestaurant(data)
-  }
-
   // Atomic save of the 3 M5b config columns. Mirrors saveDelivery's pattern
   // — single .update().eq().select().single() call, setRestaurant on
   // success, 2-second "Saved ✓" indicator, toast.error on failure.
@@ -1478,7 +1460,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         {/* Printer */}
         <Section title="Printer" onSave={async () => {
           setSavingPrinter(true); setSavedPrinter(false)
-          const { data } = await supabase.from('restaurants').update({ printer_ip: printerIp.trim() || null, auto_print_copies: Math.min(5, Math.max(1, parseInt(autoPrintCopies) || 1)) }).eq('id', restaurant.id).select().single()
+          const { data } = await supabase.from('restaurants').update({ printer_ip: printerIp.trim() || null, auto_print_copies: Math.min(5, Math.max(1, parseInt(autoPrintCopies) || 1)), receipt_font: receiptFont }).eq('id', restaurant.id).select().single()
           if (data) setRestaurant(data)
           setSavingPrinter(false); setSavedPrinter(true)
           setTimeout(() => setSavedPrinter(false), 2000)
@@ -1507,29 +1489,17 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
           </FieldRow>
           <p className="text-xs text-gray-400">Extra copies print on new orders only — manual reprints always print once.</p>
 
-          {/* Receipt Font — tap-to-save (saves immediately, independent of the Save button above) */}
+          {/* Receipt Font — saved via this Section's Save button (see onSave above) */}
           <div className="space-y-2 pt-2 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Receipt Font</p>
-            {[
-              { value: 'standard', label: 'Standard' },
-              { value: 'large', label: 'Large' },
-            ].map(opt => {
-              const active = receiptFont === opt.value
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => saveReceiptFont(opt.value)}
-                  className={`w-full flex items-center justify-between px-4 h-12 rounded-xl border text-base font-medium transition-colors ${
-                    active
-                      ? 'bg-[#16A34A] border-[#16A34A] text-white'
-                      : 'bg-white border-gray-300 text-gray-700 hover:border-gray-400'
-                  }`}
-                >
-                  <span>{opt.label}</span>
-                  {active && <span aria-hidden="true">✓</span>}
-                </button>
-              )
-            })}
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Select font size</p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="receiptFontSize" checked={receiptFont === 'standard'} onChange={() => setReceiptFont('standard')} className="accent-[#16A34A] w-4 h-4" />
+              <span className="text-sm text-gray-700">Standard</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="receiptFontSize" checked={receiptFont === 'large'} onChange={() => setReceiptFont('large')} className="accent-[#16A34A] w-4 h-4" />
+              <span className="text-sm text-gray-700">Larger</span>
+            </label>
           </div>
         </Section>
 
