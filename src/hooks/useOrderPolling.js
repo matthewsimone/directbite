@@ -194,11 +194,21 @@ export function useOrderPolling(restaurant, hours) {
     })
     if (logErr) console.error('[AutoPrint] Failed to insert print log:', logErr)
 
-    const { error: statusErr } = await supabase.from('orders').update({
-      print_status: result.success ? 'printed' : 'failed',
-      print_attempts: attempt,
-    }).eq('id', newOrder.id)
-    if (statusErr) console.error('[AutoPrint] Failed to update print_status:', statusErr)
+    // Durable status write: the print already happened (above). If this DB write
+    // fails transiently, the order would stay 'pending' and reprint next poll (a
+    // duplicate). Retry a few times before giving up so a momentary blip doesn't
+    // cause a double ticket. Does NOT affect the print — that already fired.
+    let statusErr = null
+    for (let w = 0; w < 3; w++) {
+      const { error } = await supabase.from('orders').update({
+        print_status: result.success ? 'printed' : 'failed',
+        print_attempts: attempt,
+      }).eq('id', newOrder.id)
+      if (!error) { statusErr = null; break }
+      statusErr = error
+      if (w < 2) await new Promise(r => setTimeout(r, 300))
+    }
+    if (statusErr) console.error('[AutoPrint] print_status write failed after retries:', statusErr)
   }
 
   const retryingIds = useRef(new Set())
@@ -259,7 +269,11 @@ export function useOrderPolling(restaurant, hours) {
       const freshNew = data.filter(
         o => o.status === 'new' && !knownOrderIds.current.has(o.id)
       )
-      if (freshNew.length > 0 && knownOrderIds.current.size > 0) {
+      // print_trigger 'in_progress': suppress the on-arrival auto-print. Only
+      // the firing is gated — knownOrderIds bookkeeping below still runs every
+      // poll, so an order taken in in-progress mode stays tracked as "known"
+      // and can't retroactively arrival-print if the toggle later flips.
+      if (restaurant?.print_trigger !== 'in_progress' && freshNew.length > 0 && knownOrderIds.current.size > 0) {
         for (const newOrder of freshNew) {
           const writeComplete = newOrder.items_written_at != null
           const ageMs = settleNow - new Date(newOrder.created_at).getTime()
@@ -298,8 +312,11 @@ export function useOrderPolling(restaurant, hours) {
       )
       syncEscalationAudioState(hasEscalation)
 
-      // Retry failed/pending prints on every poll cycle
-      if (restaurant.printer_ip) {
+      // Retry failed/pending prints on every poll cycle. Skipped entirely in
+      // print_trigger 'in_progress' mode: there, a taken order legitimately
+      // sits new+pending briefly before the operator take, and this loop must
+      // not auto-print it (that would defeat the feature).
+      if (restaurant.printer_ip && restaurant?.print_trigger !== 'in_progress') {
         const now = Date.now()
         const retryable = data.filter(o =>
           (o.print_status === 'failed' || o.print_status === 'pending') &&
@@ -350,6 +367,35 @@ export function useOrderPolling(restaurant, hours) {
           .then(({ error }) => {
             if (error) console.error('[WakeUp] promote failed', o.id, error)
           })
+      }
+
+      // ── Take-fire: print-on-Mark-In-Progress mode ──────────────────────
+      // print_trigger 'in_progress': the order did NOT print on arrival (both the
+      // detect block and retry loop are gated off above). Instead it prints when the
+      // operator TAKES it — status reaches 'in_progress' (Mark In Progress, or UD
+      // dispatch server-write) or 'scheduled' (Accept on a scheduled order). Fires
+      // auto_print_copies copies, exactly once:
+      //   • print_status IN ('pending','failed')  → durable guard: once we write
+      //     'printed' the order is excluded forever; a failed attempt stays eligible
+      //     (never-miss: it retries next poll until it prints or hits attempt cap).
+      //   • !retryingIds                          → in-flight guard: the multi-second
+      //     print can't be double-dispatched by an overlapping poll.
+      //   • items_written_at != null              → never print a half-written ticket.
+      //   • print_attempts < 3                    → bound the retry so a hard-failing
+      //     printer can't loop forever; after the cap, operator uses Reprint.
+      if (restaurant.printer_ip && restaurant?.print_trigger === 'in_progress') {
+        const takeFire = data.filter(o =>
+          (o.status === 'in_progress' || o.status === 'scheduled') &&
+          (o.print_status === 'pending' || o.print_status === 'failed') &&
+          o.items_written_at != null &&
+          (o.print_attempts || 0) < 3 &&
+          !retryingIds.current.has(o.id)
+        )
+        for (const order of takeFire) {
+          retryingIds.current.add(order.id)
+          autoPrint(order, restaurant?.auto_print_copies || 1)
+            .finally(() => retryingIds.current.delete(order.id))
+        }
       }
 
       // Mark every fetched order seen EXCEPT ones deferred as too-fresh above —

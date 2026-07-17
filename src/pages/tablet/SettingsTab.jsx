@@ -204,6 +204,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [printerIp, setPrinterIp] = useState(restaurant?.printer_ip || '')
   const [autoPrintCopies, setAutoPrintCopies] = useState(restaurant?.auto_print_copies || 1)
   const [receiptFont, setReceiptFont] = useState(restaurant?.receipt_font === 'large' ? 'large' : 'standard')
+  const [printTrigger, setPrintTrigger] = useState(restaurant?.print_trigger === 'in_progress' ? 'in_progress' : 'received')
   const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
   const [smsPhone, setSmsPhone] = useState(restaurant?.sms_phone || '')
   const [notificationEmail, setNotificationEmail] = useState(restaurant?.notification_email || '')
@@ -1460,7 +1461,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         {/* Printer */}
         <Section title="Printer" onSave={async () => {
           setSavingPrinter(true); setSavedPrinter(false)
-          const { data } = await supabase.from('restaurants').update({ printer_ip: printerIp.trim() || null, auto_print_copies: Math.min(5, Math.max(1, parseInt(autoPrintCopies) || 1)), receipt_font: receiptFont }).eq('id', restaurant.id).select().single()
+          const { data } = await supabase.from('restaurants').update({ printer_ip: printerIp.trim() || null, auto_print_copies: Math.min(5, Math.max(1, parseInt(autoPrintCopies) || 1)), receipt_font: receiptFont, print_trigger: printTrigger }).eq('id', restaurant.id).select().single()
           if (data) setRestaurant(data)
           setSavingPrinter(false); setSavedPrinter(true)
           setTimeout(() => setSavedPrinter(false), 2000)
@@ -1499,6 +1500,19 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             <label className="flex items-center gap-3 cursor-pointer">
               <input type="radio" name="receiptFontSize" checked={receiptFont === 'large'} onChange={() => setReceiptFont('large')} className="accent-[#16A34A] w-4 h-4" />
               <span className="text-sm text-gray-700">Larger</span>
+            </label>
+          </div>
+
+          {/* Print Trigger — saved via this Section's Save button */}
+          <div className="space-y-2 pt-2 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Print on</p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="printTrigger" checked={printTrigger === 'received'} onChange={() => setPrintTrigger('received')} className="accent-[#16A34A] w-4 h-4" />
+              <span className="text-sm text-gray-700">Received Order</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="radio" name="printTrigger" checked={printTrigger === 'in_progress'} onChange={() => setPrintTrigger('in_progress')} className="accent-[#16A34A] w-4 h-4" />
+              <span className="text-sm text-gray-700">Marked In Progress</span>
             </label>
           </div>
         </Section>
