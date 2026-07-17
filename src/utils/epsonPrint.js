@@ -298,10 +298,11 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
                   aptLine = 'Apt ' + mainAddr.slice(aptIdx + ', Apt '.length).trim()
                   mainAddr = mainAddr.slice(0, aptIdx)
                 }
-                mainAddr = mainAddr.replace(/,\s*(usa|united states)\s*$/i, '').trim()
+                // splitAddress pops the country and returns [street, "city, state zip"]
+                const addrLines = splitAddress(mainAddr)
                 printer.addTextSize(2, 1)
                 bold(true)
-                printer.addText(mainAddr + '\n')
+                for (const line of addrLines) printer.addText(line + '\n')
                 if (aptLine) printer.addText(aptLine + '\n')
                 printer.addTextSize(1, 1)
                 bold(false)
