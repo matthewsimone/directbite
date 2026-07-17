@@ -48,6 +48,7 @@ export interface RestaurantForMode {
   uber_credentials_verified_at: string | null;
   uber_direct_active: boolean | null;
   uber_schedule: Schedule | null;
+  uber_billing_mode: string | null;
 }
 
 export type ResolveReason =
@@ -102,7 +103,11 @@ export function resolveMode(
     return { resolved_mode: 'in_house', requires_quote: false };
   }
 
-  const credentialsVerified = !!restaurant.uber_credentials_verified_at;
+  // Platform restaurants use the shared DirectBite Uber account — their creds
+  // live in env vars and are validated in uberToken/uberCreds, so they are
+  // never stamped with uber_credentials_verified_at. Treat platform as ready.
+  const isPlatform = (restaurant.uber_billing_mode ?? 'self') === 'platform';
+  const credentialsVerified = isPlatform || !!restaurant.uber_credentials_verified_at;
 
   // Branch 2: uber_direct only
   if (mode === 'uber_direct') {
