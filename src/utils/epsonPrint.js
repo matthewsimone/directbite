@@ -273,9 +273,35 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             }
             printer.addTextSize(1, 1)
             bold(false)
-            if (order.customer_phone) printer.addText(formatPhone(order.customer_phone) + '\n')
+            // Phone — enlarged to 2x1 bold (matches the Order # header style).
+            // Literal addTextSize so the height is fixed regardless of receipt_font.
+            if (order.customer_phone) {
+              printer.addTextSize(2, 1)
+              bold(true)
+              printer.addText(formatPhone(order.customer_phone) + '\n')
+              printer.addTextSize(1, 1)
+              bold(false)
+            }
+            // Delivery address — main line + apt line, each 1x2 (fixed 2x height via
+            // literal addTextSize so large mode doesn't compound to 4x) bold. Country
+            // stripped; apt (", Apt X") pulled onto its own line. Apt suffix is split
+            // FIRST because at checkout it's appended AFTER the country segment.
             if (order.order_type === 'delivery' && order.delivery_address) {
-              printer.addText(order.delivery_address + '\n')
+              let mainAddr = order.delivery_address
+              let aptLine = null
+              const aptIdx = mainAddr.lastIndexOf(', Apt ')
+              if (aptIdx !== -1) {
+                aptLine = 'Apt ' + mainAddr.slice(aptIdx + ', Apt '.length).trim()
+                mainAddr = mainAddr.slice(0, aptIdx)
+              }
+              // strip trailing country (", USA" / ", United States"), case-insensitive
+              mainAddr = mainAddr.replace(/,\s*(usa|united states)\s*$/i, '').trim()
+              printer.addTextSize(1, 2)
+              bold(true)
+              printer.addText(mainAddr + '\n')
+              if (aptLine) printer.addText(aptLine + '\n')
+              printer.addTextSize(1, 1)
+              bold(false)
             }
             printer.addText('\n')
 
