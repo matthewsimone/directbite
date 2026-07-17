@@ -367,7 +367,7 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
                 const placement = isAddon ? '' : `${(t.placement || '').toUpperCase()}: `
                 const tPriceStr = tPrice === 0 ? 'Free' : `+${fmt(tPrice)}${qty > 1 ? ' ea' : ''}`
                 bold(true)
-                printer.addText(`        +${placement}${tName.toUpperCase()}  ${tPriceStr}\n`)
+                printer.addText(`        +${placement}${receiptFont === 'large' ? tName : tName.toUpperCase()}  ${tPriceStr}\n`)
                 bold(false)
               }
 
@@ -377,7 +377,7 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
               const instructions = item.special_instructions || item.specialInstructions
               if (instructions) {
                 bold(true)
-                printer.addText(`        NOTE: ${instructions.toUpperCase()}\n`)
+                printer.addText(`        NOTE: ${receiptFont === 'large' ? instructions : instructions.toUpperCase()}\n`)
                 bold(false)
               }
 
