@@ -55,7 +55,7 @@ export default function CustomDomainShell() {
 
       try {
         const restGrp = await boundedFetch(
-          [(s) => supabase.from('restaurants').select('*').eq('custom_domain', domain).maybeSingle().abortSignal(s)],
+          [(s) => supabase.from('restaurants').select('*').eq('custom_domain', domain).maybeSingle().abortSignal(s).retry(false)],
           { deadlineAt, signal: outerSignal }
         )
         if (restGrp.cancelled) return
@@ -66,7 +66,7 @@ export default function CustomDomainShell() {
         if (!rest) { setNotFound(true); setLoading(false); return }
 
         const hoursGrp = await boundedFetch(
-          [(s) => supabase.from('hours').select('*').eq('restaurant_id', rest.id).order('day_of_week').abortSignal(s)],
+          [(s) => supabase.from('hours').select('*').eq('restaurant_id', rest.id).order('day_of_week').abortSignal(s).retry(false)],
           { deadlineAt, signal: outerSignal }
         )
         if (hoursGrp.cancelled) return

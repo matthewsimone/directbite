@@ -64,7 +64,7 @@ export function useRestaurant(slug) {
 
     try {
       const restGrp = await boundedFetch(
-        [(s) => supabase.from('restaurants').select('*').eq('slug', slug).single().abortSignal(s)],
+        [(s) => supabase.from('restaurants').select('*').eq('slug', slug).single().abortSignal(s).retry(false)],
         { deadlineAt, onStalled: () => { if (isCurrent()) setStalled(true) }, signal: outerSignal }
       )
       if (restGrp.cancelled || !isCurrent()) return
@@ -79,7 +79,7 @@ export function useRestaurant(slug) {
       setRestaurant(rest)
 
       const hoursGrp = await boundedFetch(
-        [(s) => supabase.from('hours').select('*').eq('restaurant_id', rest.id).order('day_of_week').abortSignal(s)],
+        [(s) => supabase.from('hours').select('*').eq('restaurant_id', rest.id).order('day_of_week').abortSignal(s).retry(false)],
         { deadlineAt, onStalled: () => { if (isCurrent()) setStalled(true) }, signal: outerSignal }
       )
       if (hoursGrp.cancelled || !isCurrent()) return

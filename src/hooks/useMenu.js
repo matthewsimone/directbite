@@ -59,12 +59,12 @@ export function useMenu(restaurantId) {
       // some rows silently vanish and items render with missing modifiers.
       const grp = await boundedFetch(
         [
-          (s) => supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s),
-          (s) => supabase.from('menu_items').select('*, menu_categories(discount_exempt)').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s),
-          (s) => supabase.from('item_sizes').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).order('sort_order').abortSignal(s),
-          (s) => supabase.from('topping_groups').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s),
-          (s) => supabase.from('toppings').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s),
-          (s) => supabase.from('item_topping_groups').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).abortSignal(s),
+          (s) => supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
+          (s) => supabase.from('menu_items').select('*, menu_categories(discount_exempt)').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
+          (s) => supabase.from('item_sizes').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
+          (s) => supabase.from('topping_groups').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
+          (s) => supabase.from('toppings').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
+          (s) => supabase.from('item_topping_groups').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).abortSignal(s).retry(false),
         ],
         { deadlineAt, onStalled: () => { if (isCurrent()) setStalled(true) }, signal: outerSignal }
       )
