@@ -11,6 +11,7 @@ export default {
   "marcsdeliandpizza.com": "marcs",
   "newparktavern.com": "newparktavern",
   "parkpizza.co": "parkpizza",
+  "pizzavillagecafebelleville.com": "pizzavillage2",
   "ralphseastrutherford.com": "ralphs",
   "testpizza.co": "test",
   "theoriginalangelospizzeria.com": "angelos",
