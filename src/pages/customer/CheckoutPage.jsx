@@ -24,11 +24,11 @@ import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
 // ---------- Tip Selector ----------
-// Order-type-dependent default: pickup → "No Tip"; delivery → 15%. Once the
+// Order-type-dependent default: pickup → "No Tip"; delivery → 18%. Once the
 // user taps any option, userSelectedRef latches on for the session and
 // further orderType switches no longer reset the selection.
 function TipSelector({ subtotal, orderType, onTipChange }) {
-  const [tipType, setTipType] = useState(orderType === 'delivery' ? '15' : 'none')
+  const [tipType, setTipType] = useState(orderType === 'delivery' ? '18' : 'none')
   const [customTip, setCustomTip] = useState('')
   const userSelectedRef = useRef(false)
 
@@ -37,8 +37,8 @@ function TipSelector({ subtotal, orderType, onTipChange }) {
   useEffect(() => {
     if (userSelectedRef.current) return
     if (orderType === 'delivery') {
-      setTipType('15')
-      onTipChange(subtotal > 0 ? Math.round(subtotal * 0.15 * 100) / 100 : 0)
+      setTipType('18')
+      onTipChange(subtotal > 0 ? Math.round(subtotal * 0.18 * 100) / 100 : 0)
     } else {
       setTipType('none')
       onTipChange(0)
@@ -72,7 +72,7 @@ function TipSelector({ subtotal, orderType, onTipChange }) {
     }
   }
 
-  const presets = ['10', '15', '20']
+  const presets = ['15', '18', '20']
 
   return (
     <div>
