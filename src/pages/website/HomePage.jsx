@@ -15,6 +15,7 @@ import Footer from './components/Footer'
 import StickyMobileCTA from './components/StickyMobileCTA'
 import { getStatus, formatWeekHours } from './utils/hours'
 import { parseAddress } from './utils/address'
+import { canonicalHost } from './utils/seoHead'
 import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
 import { buildFaqSchema } from './utils/schema'
 import { buildRestaurantFaq } from './utils/faqContent'
@@ -24,7 +25,7 @@ const SCHEMA_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'
 function buildSchemaJsonLd(restaurant, hours) {
   const { street, city, state, zip } = parseAddress(restaurant.address)
   const canonicalUrl = restaurant.custom_domain
-    ? `https://${restaurant.custom_domain}`
+    ? `https://${canonicalHost(restaurant)}`
     : `https://${MAIN_DOMAIN}/${restaurant.slug}/home`
   const data = {
     '@context': 'https://schema.org',
@@ -35,7 +36,7 @@ function buildSchemaJsonLd(restaurant, hours) {
     telephone: restaurant.phone || undefined,
     url: canonicalUrl,
     menu: restaurant.custom_domain
-      ? `https://${restaurant.custom_domain}/menu`
+      ? `https://${canonicalHost(restaurant)}/menu`
       : `https://${MAIN_DOMAIN}/${restaurant.slug}/menu`,
     priceRange: '$$',
     servesCuisine: restaurant.cuisine || 'Pizza',

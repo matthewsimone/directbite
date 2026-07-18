@@ -19,6 +19,16 @@ function truncateAtWord(s, max = 150) {
   return (lastSpace > 80 ? slice.slice(0, lastSpace) : slice).trim() + '…'
 }
 
+// Canonical host for a restaurant: the www subdomain of its custom_domain,
+// matching the live infra (all custom domains 30x apex -> www). Null-domain
+// restaurants (served under directbite.co/{slug}) have no custom host and
+// return null. Guards against double-prefixing an already-www value.
+export function canonicalHost(restaurant) {
+  const d = restaurant?.custom_domain
+  if (!d) return null
+  return d.startsWith('www.') ? d : `www.${d}`
+}
+
 export function buildSeoHead(restaurant) {
   const name = restaurant.name
   const cuisine = restaurant.cuisine || 'Pizza'
@@ -40,7 +50,7 @@ export function buildSeoHead(restaurant) {
     )
 
   const canonical = restaurant.custom_domain
-    ? `https://${restaurant.custom_domain}`
+    ? `https://${canonicalHost(restaurant)}`
     : `https://directbite.co/${restaurant.slug}/home`
 
   const image =

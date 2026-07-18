@@ -114,7 +114,7 @@ async function main() {
   try {
     // Load ONLY the project files through Vite (JSX + import.meta.env transform).
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
-    const { buildSeoHead } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
+    const { buildSeoHead, canonicalHost } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
     const { buildMenuSchema, buildFaqSchema, buildItemListSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
     const { buildRestaurantFaq } = await vite.ssrLoadModule('/src/pages/website/utils/faqContent.js')
     const { formatWeekHours } = await vite.ssrLoadModule('/src/pages/website/utils/hours.js')
@@ -287,7 +287,7 @@ async function main() {
               : `Menu | ${restaurant.name}`,
           description: seo.description,
           canonical: restaurant.custom_domain
-            ? `https://${restaurant.custom_domain}/menu`
+            ? `https://${canonicalHost(restaurant)}/menu`
             : `https://directbite.co/${restaurant.slug}/menu`,
           image: seo.image,
         }
@@ -413,7 +413,7 @@ async function main() {
               ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers to ${town.name} — support local.`
               : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery.`),
             canonical: restaurant.custom_domain
-              ? `https://${restaurant.custom_domain}/places/${town.slug}`
+              ? `https://${canonicalHost(restaurant)}/places/${town.slug}`
               : `https://directbite.co/${restaurant.slug}/places/${town.slug}`,
             image: seo.image,
           }
@@ -500,7 +500,7 @@ async function main() {
             description: ov?.meta_description_override
               || `Order ${tagDef.label.toLowerCase()} from ${restaurant.name} — made fresh daily. Pickup or delivery.`,
             canonical: restaurant.custom_domain
-              ? `https://${restaurant.custom_domain}/tags/${tagDef.slug}`
+              ? `https://${canonicalHost(restaurant)}/tags/${tagDef.slug}`
               : `https://directbite.co/${restaurant.slug}/tags/${tagDef.slug}`,
             image: seo.image,
           }
@@ -572,7 +572,7 @@ async function main() {
         // its own file listing exactly the pages we wrote for it — every entry
         // in restaurantUrls is already an absolute canonical on the right host.
         const sitemapUrl = restaurant.custom_domain
-          ? `https://${restaurant.custom_domain}/sitemap.xml`
+          ? `https://${canonicalHost(restaurant)}/sitemap.xml`
           : `https://directbite.co/${restaurant.slug}/sitemap.xml`
         const sitemapXml =
           `<?xml version="1.0" encoding="UTF-8"?>\n` +
