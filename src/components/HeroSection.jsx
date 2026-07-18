@@ -1,18 +1,22 @@
 import { formatDisplayAddress } from '../pages/website/utils/address'
 
-export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
+export default function HeroSection({ restaurant, isOpen, nextOpenTime, hoursUnknown }) {
   return (
     <div className="w-full bg-white">
       {/* Desktop: split layout */}
       <div className="hidden sm:flex max-w-[1100px] mx-auto">
         {/* Left: info */}
         <div className="w-[40%] flex flex-col justify-center px-8 py-10 bg-white">
-          <div className="flex items-center gap-2 mb-3">
-            <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'bg-[#16A34A]' : 'bg-red-500'}`} />
-            <span className={`text-sm font-medium ${isOpen ? 'text-[#16A34A]' : 'text-red-500'}`}>
-              {isOpen ? 'Open Now' : 'Closed'}
-            </span>
-          </div>
+          {/* Suppress the open/closed pill when hours couldn't load — showing an
+              open restaurant as "Closed" is worse than showing no status. */}
+          {!hoursUnknown && (
+            <div className="flex items-center gap-2 mb-3">
+              <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'bg-[#16A34A]' : 'bg-red-500'}`} />
+              <span className={`text-sm font-medium ${isOpen ? 'text-[#16A34A]' : 'text-red-500'}`}>
+                {isOpen ? 'Open Now' : 'Closed'}
+              </span>
+            </div>
+          )}
           <h1 className="text-4xl font-bold text-gray-900 leading-tight">{restaurant.name}</h1>
           {restaurant.address && (
             <p className="mt-2 text-sm text-gray-500">{formatDisplayAddress(restaurant.address)}</p>
@@ -52,12 +56,14 @@ export default function HeroSection({ restaurant, isOpen, nextOpenTime }) {
           )}
         </div>
         <div className="px-6 py-5 bg-white">
-          <div className="flex items-center gap-2 mb-2">
-            <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'bg-[#16A34A]' : 'bg-red-500'}`} />
-            <span className={`text-sm font-medium ${isOpen ? 'text-[#16A34A]' : 'text-red-500'}`}>
-              {isOpen ? 'Open Now' : 'Closed'}
-            </span>
-          </div>
+          {!hoursUnknown && (
+            <div className="flex items-center gap-2 mb-2">
+              <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'bg-[#16A34A]' : 'bg-red-500'}`} />
+              <span className={`text-sm font-medium ${isOpen ? 'text-[#16A34A]' : 'text-red-500'}`}>
+                {isOpen ? 'Open Now' : 'Closed'}
+              </span>
+            </div>
+          )}
           <h1 className="text-2xl font-bold text-gray-900">{restaurant.name}</h1>
           {restaurant.address && (
             <p className="mt-1 text-sm text-gray-500">{formatDisplayAddress(restaurant.address)}</p>
