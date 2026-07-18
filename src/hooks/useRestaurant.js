@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { boundedFetch } from '../lib/boundedFetch'
 
 export function useRestaurant(slug) {
   const [restaurant, setRestaurant] = useState(null)
@@ -8,14 +9,28 @@ export function useRestaurant(slug) {
   const [nextOpenTime, setNextOpenTime] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  // Bounded-fetch UI signals: `stalled` = the 2500ms hedge started (show a
+  // "still loading" hint); `failed` = the 10s hard deadline fired (show retry).
+  const [stalled, setStalled] = useState(false)
+  const [failed, setFailed] = useState(false)
+  // Hours couldn't be loaded (timeout or error) — restaurant IS loaded, but we
+  // must NOT assert open/closed (showing an open shop as CLOSED is worse than
+  // showing no status). Consumers suppress the open/closed UI while set.
+  const [hoursUnknown, setHoursUnknown] = useState(false)
 
   // Tracks whether the component is still mounted so async setState calls
   // after unmount become no-ops. Set true on every (re)mount to handle
   // React StrictMode's mount→unmount→mount cycle in dev.
   const mountedRef = useRef(true)
+  // Outer controller for the current load(); a new load()/retry() or unmount
+  // aborts the prior one so its bounded-fetch attempts stop and never strand.
+  const loadAbortRef = useRef(null)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      loadAbortRef.current?.abort()
+    }
   }, [])
 
   const load = useCallback(async () => {
@@ -28,41 +43,60 @@ export function useRestaurant(slug) {
       return
     }
 
+    // Supersede any in-flight load; this one now owns loading/error/stalled/failed.
+    loadAbortRef.current?.abort()
+    const controller = new AbortController()
+    loadAbortRef.current = controller
+    const outerSignal = controller.signal
+    // Only the current (non-superseded, still-mounted) load may write state.
+    const isCurrent = () => mountedRef.current && loadAbortRef.current === controller
+    // ONE shared 10s ceiling for the whole load — restaurant + hours together,
+    // not 10s each. A group starting late gets only the remaining budget.
+    const deadlineAt = Date.now() + 10000
+
     if (mountedRef.current) {
       setLoading(true)
       setError(null)
+      setStalled(false)
+      setFailed(false)
+      setHoursUnknown(false)
     }
 
     try {
-      const { data: rest, error: restErr } = await supabase
-        .from('restaurants')
-        .select('*')
-        .eq('slug', slug)
-        .single()
+      const restGrp = await boundedFetch(
+        [(s) => supabase.from('restaurants').select('*').eq('slug', slug).single().abortSignal(s)],
+        { deadlineAt, onStalled: () => { if (isCurrent()) setStalled(true) }, signal: outerSignal }
+      )
+      if (restGrp.cancelled || !isCurrent()) return
+      if (restGrp.timedOut) { setFailed(true); return }
+      setStalled(false)
 
-      if (!mountedRef.current) return
+      const { data: rest, error: restErr } = restGrp.results[0]
       if (restErr || !rest) {
         setError(restErr?.message || 'Restaurant not found')
         return
       }
       setRestaurant(rest)
 
-      const { data: hoursData, error: hoursErr } = await supabase
-        .from('hours')
-        .select('*')
-        .eq('restaurant_id', rest.id)
-        .order('day_of_week')
+      const hoursGrp = await boundedFetch(
+        [(s) => supabase.from('hours').select('*').eq('restaurant_id', rest.id).order('day_of_week').abortSignal(s)],
+        { deadlineAt, onStalled: () => { if (isCurrent()) setStalled(true) }, signal: outerSignal }
+      )
+      if (hoursGrp.cancelled || !isCurrent()) return
+      setStalled(false)
 
-      if (!mountedRef.current) return
-      if (hoursErr) {
-        // Hours failure is non-fatal — restaurant is loaded; show as
-        // closed with no nextOpenTime rather than blocking the page.
-        console.error('useRestaurant: hours load failed', hoursErr)
+      // Hours failure OR timeout is non-fatal — the restaurant is loaded and
+      // usable. Mark hoursUnknown so consumers DON'T assert closed (a stalled
+      // hours fetch must not flip an open restaurant to "Closed").
+      const hoursErr = hoursGrp.timedOut ? null : hoursGrp.results[0].error
+      if (hoursGrp.timedOut || hoursErr) {
+        if (hoursErr) console.error('useRestaurant: hours load failed', hoursErr)
+        setHoursUnknown(true)
         setHours([])
-        setIsOpen(false)
         setNextOpenTime(null)
         return
       }
+      const hoursData = hoursGrp.results[0].data || []
       setHours(hoursData || [])
 
       const now = new Date()
@@ -104,13 +138,18 @@ export function useRestaurant(slug) {
         setNextOpenTime(null)
       }
     } catch (err) {
-      if (!mountedRef.current) return
+      if (!isCurrent()) return
       console.error('useRestaurant: load failed', err)
       setError(err?.message || 'Failed to load restaurant')
     } finally {
-      if (mountedRef.current) setLoading(false)
+      // Only the current (non-superseded) load clears loading.
+      if (isCurrent()) setLoading(false)
     }
   }, [slug])
+
+  // Manual retry (Retry button / refocus-while-failed). load() aborts any
+  // stale attempt and resets stalled/failed/error before re-fetching.
+  const retry = useCallback(() => { load() }, [load])
 
   useEffect(() => {
     load()
@@ -127,7 +166,7 @@ export function useRestaurant(slug) {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [load])
 
-  return { restaurant, hours, isOpen, nextOpenTime, loading, error }
+  return { restaurant, hours, isOpen, nextOpenTime, loading, error, stalled, failed, hoursUnknown, retry }
 }
 
 function formatTime(timeStr) {

@@ -25,8 +25,9 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
   const hours = propHours || hook.hours
   const loading = propRestaurant ? false : hook.loading
   const error = propRestaurant ? null : hook.error
+  const failed = propRestaurant ? false : hook.failed
 
-  const { loading: menuLoading } = useMenu(restaurant?.id)
+  const { loading: menuLoading, failed: menuFailed, retry: menuRetry } = useMenu(restaurant?.id)
 
   useRestaurantBranding(restaurant, 'website')
 
@@ -60,21 +61,40 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
     }
   }, [restaurant])
 
-  if (loading || menuLoading) {
+  // Network stall hit the 10s hard deadline — offer a retry instead of an
+  // endless spinner. Takes priority over the loading spinner below.
+  if (failed || menuFailed) {
     return (
-      <div className="min-h-dvh bg-white flex items-center justify-center">
-        <div className="w-8 h-8 border-3 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-dvh bg-white flex items-center justify-center px-6 text-center">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Couldn't load</h1>
+          <p className="mt-2 text-sm text-gray-500">Your connection looks unstable.</p>
+          <button onClick={() => { hook.retry?.(); menuRetry?.() }} className="mt-4 h-11 px-5 rounded-xl bg-[#16A34A] text-white font-semibold">
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
 
-  if (error || !restaurant) {
+  // Definitive not-found — hoisted ABOVE the spinner. A restaurant fetch ERROR
+  // leaves restaurant null, and useMenu(undefined) early-returns with menuLoading
+  // stuck true; without this above the spinner the page would strand forever.
+  if (error || (!loading && !restaurant)) {
     return (
       <div className="min-h-dvh bg-white flex items-center justify-center px-6 text-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Restaurant not found</h1>
           <p className="mt-2 text-sm text-gray-500">{error || 'No restaurant matches this URL.'}</p>
         </div>
+      </div>
+    )
+  }
+
+  if (loading || menuLoading) {
+    return (
+      <div className="min-h-dvh bg-white flex items-center justify-center">
+        <div className="w-8 h-8 border-3 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }

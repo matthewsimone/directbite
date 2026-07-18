@@ -67,7 +67,7 @@ function MenuSkeleton() {
 export default function MenuPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { restaurant, hours, isOpen, nextOpenTime, loading: restLoading, error } = useRestaurant(slug)
+  const { restaurant, hours, isOpen, nextOpenTime, loading: restLoading, error, stalled: restStalled, failed: restFailed, hoursUnknown, retry: restRetry } = useRestaurant(slug)
 
   // First bookable slot for the closed-state banner. Uses a 30-min lead
   // floor — checkout will recompute against the order-type's prep time.
@@ -87,6 +87,9 @@ export default function MenuPage() {
     categories,
     items,
     loading: menuLoading,
+    stalled: menuStalled,
+    failed: menuFailed,
+    retry: menuRetry,
     getItemsByCategory,
     getSizesForItem,
     getToppingGroupsForItem,
@@ -252,9 +255,25 @@ export default function MenuPage() {
     if (match) setSelectedItem(match)
   }, [menuLoading, items])
 
-  // Show not-found only once the restaurant fetch has settled — during the
-  // initial load we render the progressive skeleton below instead of blocking.
-  if (!restLoading && (error || !restaurant)) {
+  // Restaurant fetch hit the 10s hard deadline (network stall) — we don't know
+  // whether the restaurant exists, so offer a retry rather than a misleading
+  // "not found". Only reachable when the restaurant never loaded.
+  if (restFailed && !restaurant) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6 text-center">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Couldn't load this page</h1>
+        <p className="text-gray-500 mb-6">Your connection looks unstable. Please try again.</p>
+        <button onClick={restRetry} className="h-12 px-6 rounded-xl bg-[#16A34A] text-white font-semibold">
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  // Show not-found only once the restaurant fetch has settled without a timeout
+  // — during the initial load we render the progressive skeleton below instead
+  // of blocking, and a timeout is handled by the retry screen above.
+  if (!restLoading && !restFailed && (error || !restaurant)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white px-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Restaurant not found</h1>
@@ -267,11 +286,11 @@ export default function MenuPage() {
     <div className="min-h-screen bg-white pb-24">
       {restaurant && <PromotionBanner promotion={promotion} />}
       {restaurant ? (
-        <HeroSection restaurant={restaurant} isOpen={isOpen} nextOpenTime={nextOpenTime} />
+        <HeroSection restaurant={restaurant} isOpen={isOpen} nextOpenTime={nextOpenTime} hoursUnknown={hoursUnknown} />
       ) : (
         <HeroSkeleton />
       )}
-      {restaurant && !isOpen && nextSlotLabel && (
+      {restaurant && !isOpen && !hoursUnknown && nextSlotLabel && (
         <div className="bg-amber-50 border-y border-amber-200 px-6 py-4">
           <div className="max-w-[1100px] mx-auto flex items-start gap-3 text-amber-900">
             <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -288,8 +307,20 @@ export default function MenuPage() {
           </div>
         </div>
       )}
-      {menuLoading ? (
-        <MenuSkeleton />
+      {menuFailed ? (
+        <div className="max-w-[1100px] mx-auto px-6 py-16 text-center">
+          <p className="text-gray-600 mb-4">We couldn't load the menu — your connection looks unstable.</p>
+          <button onClick={menuRetry} className="h-12 px-6 rounded-xl bg-[#16A34A] text-white font-semibold">
+            Retry
+          </button>
+        </div>
+      ) : menuLoading ? (
+        <>
+          <MenuSkeleton />
+          {(menuStalled || restStalled) && (
+            <p className="text-center text-sm text-gray-400 pb-8">Still loading… hang tight.</p>
+          )}
+        </>
       ) : (
         <>
           {/* Popular Items section */}
