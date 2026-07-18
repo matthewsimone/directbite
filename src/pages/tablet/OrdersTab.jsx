@@ -120,7 +120,7 @@ function isScheduledSelfDeliver(o) {
 }
 
 // ── Order Card ──
-function OrderCard({ order, onTap, onRetryPrint }) {
+function OrderCard({ order, onTap, onRetryPrint, printTrigger }) {
   // Per-card busy state — the Retry button lives here while handleRetryPrint
   // lives in the parent, so we bracket the awaited call locally. This keeps the
   // busy feedback scoped to THIS card (a single parent flag would light up every
@@ -138,7 +138,11 @@ function OrderCard({ order, onTap, onRetryPrint }) {
     order.status === 'new' &&
     order.acknowledged_at != null &&
     (Date.now() - new Date(order.acknowledged_at).getTime()) >= 7 * 60 * 1000
-  const showRetry = (order.print_status === 'failed' || order.print_status === 'pending') && onRetryPrint
+  // In 'in_progress' print mode an untaken order is pending by design (it was
+  // never asked to print), so Retry/pending UI would be misleading. Once taken
+  // (status leaves 'new') a print WAS attempted, so show them normally again.
+  const awaitingTake = printTrigger === 'in_progress' && order.status === 'new'
+  const showRetry = !awaitingTake && (order.print_status === 'failed' || order.print_status === 'pending') && onRetryPrint
   // Partial-failure cue: a failed refund leaves the order in its pre-cancel
   // status (e.g. in_progress) so it hides in plain sight among active orders.
   // Flag it red so the operator knows it needs manual follow-up — the
@@ -213,7 +217,7 @@ function OrderCard({ order, onTap, onRetryPrint }) {
             <span className="font-medium text-gray-900">#{order.order_number}</span>
             {order.print_status === 'printed' && <span className="text-green-500 text-xs">✓</span>}
             {order.print_status === 'failed' && <span className="text-red-500 text-xs">⚠</span>}
-            {order.print_status === 'pending' && <span className="text-gray-400 text-xs">⏳</span>}
+            {order.print_status === 'pending' && !awaitingTake && <span className="text-gray-400 text-xs">⏳</span>}
           </div>
           <span>{formatTime(order.created_at)}</span>
         </div>
@@ -1746,7 +1750,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
                     </div>
                     <div className="space-y-3">
                       {group.orders.map(order => (
-                        <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} />
+                        <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger} />
                       ))}
                     </div>
                   </div>
@@ -1766,7 +1770,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
           <p className="text-center text-gray-400 mt-8">No {subTab === 'in_progress' ? 'in progress' : subTab} orders</p>
         ) : (
           filteredOrders.map(order => (
-            <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} />
+            <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger} />
           ))
         )}
       </div>
