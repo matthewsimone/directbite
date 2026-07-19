@@ -212,6 +212,25 @@ export default function ItemModal({
     }
     setValidationErrors([])
 
+    // Sort selected toppings into menu display order (group order, then
+    // topping order within group) so downstream surfaces — cart, checkout,
+    // confirmation, email, and the kitchen receipt — read top-to-bottom
+    // the way the customer saw them. Selection/tap order is discarded.
+    const END = Number.MAX_SAFE_INTEGER
+    const groupIdxOf = (gid) => {
+      const i = toppingGroupsForItem.findIndex(g => g.id === gid)
+      return i === -1 ? END : i
+    }
+    const topIdxOf = (gid, tid) => {
+      const i = (getToppingsForGroup(gid) || []).findIndex(x => x.id === tid)
+      return i === -1 ? END : i
+    }
+    const orderedToppings = [...selectedToppings].sort((a, b) => {
+      const ga = groupIdxOf(a.groupId), gb = groupIdxOf(b.groupId)
+      if (ga !== gb) return ga - gb
+      return topIdxOf(a.groupId, a.toppingId) - topIdxOf(b.groupId, b.toppingId)
+    })
+
     const cartItem = {
       menuItemId: item.id,
       itemSizeId: selectedSizeId,
@@ -222,7 +241,7 @@ export default function ItemModal({
       quantity,
       discount_exempt: isExempt,
       specialInstructions: specialInstructions.trim() || null,
-      toppings: selectedToppings.map(t => ({
+      toppings: orderedToppings.map(t => ({
         toppingId: t.toppingId,
         toppingName: t.toppingName,
         placement: t.placement,
