@@ -44,7 +44,7 @@ export function buildSeoHead(restaurant) {
     restaurant.seo_description ||
     truncateAtWord(
       city && state
-        ? `View the menu, hours, address, and photos for ${name} in ${city}, ${state}. Order directly online for pickup or delivery.`
+        ? `${name}: the best ${cuisine} in ${city}, ${state}. Order directly online for pickup or delivery — support your local restaurant!`
         : (restaurant.tagline || `Order directly online from ${name} for pickup or delivery.`),
       160
     )

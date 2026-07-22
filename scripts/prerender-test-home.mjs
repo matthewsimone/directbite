@@ -63,11 +63,17 @@ function escapeHtml(s) {
 
 // Build the description + canonical + OG/Twitter block from buildSeoHead's
 // (raw) values, escaping at this injection boundary (same split as og-html).
-function buildMetaBlock({ title, description, canonical, image }) {
+function buildMetaBlock({ title, description, canonical, image, siteName, imageAlt }) {
   const t = escapeHtml(title)
   const d = escapeHtml(description)
   const u = escapeHtml(canonical)
   const img = escapeHtml(image)
+  // The restaurant is the publisher of its own pages — og:site_name carries the
+  // restaurant name, not the platform. Applies on custom domains AND on
+  // directbite.co/{slug} (null-domain), so social cards read the same either way.
+  // SITE_NAME remains only as a defensive fallback if a caller omits siteName.
+  const sn = escapeHtml(siteName || SITE_NAME)
+  const alt = escapeHtml(imageAlt || siteName || SITE_NAME)
   return [
     `<meta name="description" content="${d}" />`,
     `<link rel="canonical" href="${u}" />`,
@@ -76,7 +82,8 @@ function buildMetaBlock({ title, description, canonical, image }) {
     `<meta property="og:type" content="website" />`,
     `<meta property="og:url" content="${u}" />`,
     `<meta property="og:image" content="${img}" />`,
-    `<meta property="og:site_name" content="${escapeHtml(SITE_NAME)}" />`,
+    `<meta property="og:image:alt" content="${alt}" />`,
+    `<meta property="og:site_name" content="${sn}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${t}" />`,
     `<meta name="twitter:description" content="${d}" />`,
@@ -184,7 +191,13 @@ async function main() {
         // (1) prerendered app into #root, then (2) per-restaurant <head> (title,
         // description, canonical, OG/Twitter). useRestaurantBranding stays and
         // re-writes the same values on hydrate — no conflict.
-        const seo = buildSeoHead(restaurant)
+        // siteName/imageAlt are per-restaurant constants; every derived *Seo
+        // object below inherits them from here so all four page types agree.
+        const seo = {
+          ...buildSeoHead(restaurant),
+          siteName: restaurant.name,
+          imageAlt: restaurant.name,
+        }
         let homeOut = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
         homeOut = injectHead(homeOut, seo)
         // GSC verification — home page only, custom-domain restaurants only.
@@ -285,11 +298,19 @@ async function main() {
             city && state
               ? `Menu | ${restaurant.name} — Best ${cuisine} in ${city}, ${state}`
               : `Menu | ${restaurant.name}`,
-          description: seo.description,
+          // Menu gets its own description (was: reused home's verbatim). Falls
+          // back to home's when the address yields no city/state. No seo_pages
+          // row type exists for menu, so there is no override to honor here.
+          description:
+            city && state
+              ? `See the full menu with prices for ${restaurant.name} in ${city}, ${state}. Order online for pickup or delivery.`
+              : seo.description,
           canonical: restaurant.custom_domain
             ? `https://${canonicalHost(restaurant)}/menu`
             : `https://directbite.co/${restaurant.slug}/menu`,
           image: seo.image,
+          siteName: seo.siteName,
+          imageAlt: seo.imageAlt,
         }
 
         let menuOut = shell.replace('<div id="root"></div>', `<div id="root">${menuHtml}</div>`)
@@ -398,6 +419,10 @@ async function main() {
           const deliveryBoundary = Number(restaurant.delivery_max_radius_miles) || 0
           const delivers = town.distanceMiles != null && town.distanceMiles <= deliveryBoundary
 
+          // "Westwood, NJ" — or bare "Westwood" when parseAddress yields no
+          // state, so a null never renders into a description string.
+          const townState = `${town.name}${state ? `, ${state}` : ''}`
+
           // seo_pages can override title/description; else fall back to the auto-formula.
           // NOTE: h1_override / body_override are a follow-up — they need PlaceStatic prop
           // wiring to reach the rendered body, so they are intentionally not applied here.
@@ -407,15 +432,20 @@ async function main() {
               : delivers
               ? `Best ${cuisine} around ${town.name}, NJ | ${restaurant.name}`
               : `Best ${cuisine} near ${town.name}, NJ | ${restaurant.name}`),
+            // Three framings preserved deliberately: only the `delivers` branch
+            // may claim delivery to this town, and `near` offers pickup only —
+            // a town outside the radius must never imply we deliver there.
             description: ov?.meta_description_override || (isHome
-              ? `${restaurant.name} is your local ${cuisine} spot in ${town.name}, NJ. View the menu, hours, and order directly online for pickup or delivery.`
+              ? `Best ${cuisine} in ${townState} — order directly from ${restaurant.name} for pickup or delivery. No third-party fees.`
               : delivers
-              ? `Order ${cuisine} for pickup or delivery to ${town.name}. ${restaurant.name} delivers to ${town.name} — support local.`
-              : `Looking for ${cuisine} near ${town.name}? ${restaurant.name} serves the area — order online for pickup or delivery.`),
+              ? `${restaurant.name} delivers ${cuisine} to ${townState}. Order directly online — no third-party fees, no markups.`
+              : `Looking for ${cuisine} near ${townState}? ${restaurant.name} serves the area — order directly online for pickup. No third-party fees.`),
             canonical: restaurant.custom_domain
               ? `https://${canonicalHost(restaurant)}/places/${town.slug}`
               : `https://directbite.co/${restaurant.slug}/places/${town.slug}`,
             image: seo.image,
+            siteName: seo.siteName,
+            imageAlt: seo.imageAlt,
           }
 
           let placeOut = shell.replace('<div id="root"></div>', `<div id="root">${placeHtml}</div>`)
@@ -503,6 +533,8 @@ async function main() {
               ? `https://${canonicalHost(restaurant)}/tags/${tagDef.slug}`
               : `https://directbite.co/${restaurant.slug}/tags/${tagDef.slug}`,
             image: seo.image,
+            siteName: seo.siteName,
+            imageAlt: seo.imageAlt,
           }
 
           let tagOut = shell.replace('<div id="root"></div>', `<div id="root">${tagHtml}</div>`)

@@ -78,7 +78,7 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
           : `Best ${cuisine} near ${town.name}, NJ`
         }
         title={
-          isHome ? `${cuisine} in ${town.name}`
+          isHome ? `Best ${cuisine} in ${town.name}`
           : delivers ? `${cuisine} Delivery to ${town.name}`
           : `Best ${cuisine} near ${town.name}`
         }
