@@ -84,7 +84,7 @@ export default async function handler(req, res) {
   // Pass through for main domain and Vercel preview deploys. Vercel's
   // host-match regex was silently failing to filter these at the rewrite
   // layer, so we filter here in the function instead.
-  if (host === 'directbite.co' || host.endsWith('.vercel.app')) {
+  if (host === 'directbite.co' || host === 'ordr.co' || host.endsWith('.vercel.app')) {
     return res.status(200).send(template)
   }
 

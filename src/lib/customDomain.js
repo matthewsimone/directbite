@@ -8,9 +8,16 @@
 
 const MAIN_DOMAIN = 'directbite.co'
 
+// Routing identity — every host this app serves as the main app domain.
+// Deliberately NOT derived from MAIN_DOMAIN: the public-facing domain will
+// flip to ordr.co, but routing must keep recognising BOTH brands permanently
+// (directbite.co never sunsets — QR stickers and historical email assets
+// resolve there forever).
 const MAIN_HOSTS = new Set([
-  MAIN_DOMAIN,
-  `www.${MAIN_DOMAIN}`,
+  'directbite.co',
+  'www.directbite.co',
+  'ordr.co',
+  'www.ordr.co',
   'localhost',
   '127.0.0.1',
 ])

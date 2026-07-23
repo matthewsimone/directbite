@@ -11,6 +11,7 @@ export default async function middleware(request) {
   const normalized = rawHost.toLowerCase().replace(/^www\./, '').split(':')[0]
   const isMainDomain =
     normalized === 'directbite.co' ||
+    normalized === 'ordr.co' ||
     normalized.endsWith('.vercel.app') ||
     normalized.startsWith('localhost')
 
