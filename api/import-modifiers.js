@@ -71,7 +71,7 @@ function toppingsSig(toppings) {
 
 export default async function handler(req, res) {
   const origin = req.headers.origin || ''
-  if (/^chrome-extension:\/\//.test(origin) || /^https:\/\/(www\.)?directbite\.co$/.test(origin)) {
+  if (/^chrome-extension:\/\//.test(origin) || /^https:\/\/(www\.)?(directbite|ordr)\.co$/.test(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
