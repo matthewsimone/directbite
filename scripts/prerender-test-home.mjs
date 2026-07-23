@@ -123,7 +123,6 @@ async function main() {
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
     const { buildSeoHead, canonicalHost } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
     const { PUBLIC_DOMAIN } = await vite.ssrLoadModule('/src/lib/publicDomain.js')
-    console.log(`✓ PUBLIC_DOMAIN resolved to: ${PUBLIC_DOMAIN}`)
     const { buildMenuSchema, buildFaqSchema, buildItemListSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
     const { buildRestaurantFaq } = await vite.ssrLoadModule('/src/pages/website/utils/faqContent.js')
     const { formatWeekHours } = await vite.ssrLoadModule('/src/pages/website/utils/hours.js')
