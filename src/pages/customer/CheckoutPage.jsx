@@ -20,6 +20,7 @@ import TimePickerModal from '../../components/TimePickerModal'
 // @googlemaps/js-api-loader is dynamically imported when needed
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
 import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
+import { calcRecoup } from '../../utils/recoup'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
@@ -632,7 +633,13 @@ export default function CheckoutPage() {
   const needsAddress = orderType === 'delivery' && !deliveryLat
   const showPlaceholder = needsAddress || feeCalculating
   const taxRate = Number(restaurant?.tax_rate || 0)
-  const serviceFee = 1.50
+  // Migration 061: opt-in per-restaurant credit-processing recoup, folded into
+  // the customer-facing Service Fee line. Flag OFF (every restaurant by
+  // default) => amount 0 and serviceFee 1.50, making every line below
+  // byte-identical to pre-061 behavior. Base excludes tax by design — see
+  // src/utils/recoup.js design note #1.
+  const recoup = calcRecoup({ restaurant, discountedSubtotal, deliveryFee, tip })
+  const serviceFee = recoup.serviceFee
   const taxableAmount = discountedSubtotal + deliveryFee + serviceFee
   const taxAmount = Math.round(taxableAmount * taxRate * 100) / 100
   const total = Math.round((discountedSubtotal + deliveryFee + taxAmount + tip + serviceFee) * 100) / 100
@@ -686,6 +693,8 @@ export default function CheckoutPage() {
     tax_amount: taxAmount,
     tip_amount: tip,
     service_fee: serviceFee,
+    recoup_amount: recoup.amount,
+    recoup_rate: recoup.rate,
     total_amount: total,
     include_utensils: includeUtensils,
     special_instructions: specialInstructions.trim() || null,
@@ -715,7 +724,7 @@ export default function CheckoutPage() {
         placement_type: t.placementType || 'pizza',
       })),
     })),
-  }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, deliveryLat, deliveryLon, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, total, includeUtensils, specialInstructions, items, resolvedMode, uberQuoteId, uberQuotedFeeCents, uberEnvironment])
+  }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, deliveryLat, deliveryLon, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, recoup.amount, recoup.rate, total, includeUtensils, specialInstructions, items, resolvedMode, uberQuoteId, uberQuotedFeeCents, uberEnvironment])
 
   // M6: handle quote_validation_failed errors from create-payment-intent.
   // Reset uber quote state so the existing fee-computation useEffect re-fires
