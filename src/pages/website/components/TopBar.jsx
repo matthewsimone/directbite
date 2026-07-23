@@ -84,14 +84,13 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
         >
           Order
         </OrderLink>
-        <OrderLink
-          slug={restaurant.slug}
-          suffix="/menu"
+        <Link
+          to={`${base}/menu`}
           onClick={onClose}
           className="block py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
         >
           Menu
-        </OrderLink>
+        </Link>
         {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&
           restaurant.website_links.map(link => (
             <Link
@@ -206,9 +205,9 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, 
             </span>
           )}
           <div className="flex items-center gap-5">
-            <OrderLink slug={restaurant.slug} suffix="/menu" className={linkCls}>
+            <Link to={`${base}/menu`} className={linkCls}>
               Menu
-            </OrderLink>
+            </Link>
             {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&
               restaurant.website_links.map(link => (
                 <Link
