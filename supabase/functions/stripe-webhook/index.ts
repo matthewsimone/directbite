@@ -117,6 +117,13 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
     tax_amount,
     tip_amount,
     service_fee,
+    // Migration 061 — credit-processing recoup. Absent on pre-061 payloads and
+    // on every restaurant with recoup_enabled=false, which is why both default
+    // to 0 below. service_fee already CONTAINS the recoup; these two columns
+    // exist so the settlement report can break it out and so the rate charged
+    // is frozen historically.
+    recoup_amount,
+    recoup_rate,
     total_amount,
     special_instructions,
     include_utensils,
@@ -203,6 +210,8 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
       tax_amount,
       tip_amount: tip_amount || 0,
       service_fee: service_fee || 1.5,
+      recoup_amount: recoup_amount || 0,
+      recoup_rate: recoup_rate || 0,
       total_amount,
       stripe_payment_intent_id: paymentIntentId,
       stripe_charge_id: chargeId,
