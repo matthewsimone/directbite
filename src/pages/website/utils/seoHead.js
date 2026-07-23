@@ -3,9 +3,11 @@
 // boundary (the prerender script), mirroring api/og-html.js's separation of
 // build-the-values vs. escapeHtml-at-inject.
 //
-// No DOM / window / import.meta — safe to import at build time.
+// No DOM / window. Imports PUBLIC_DOMAIN (import.meta.env), so this module
+// must be loaded through Vite — the prerender does that via ssrLoadModule.
 
 import { parseAddress } from './address'
+import { PUBLIC_DOMAIN } from '../../../lib/publicDomain'
 
 // Word-boundary truncation, mirrored from api/og-html.js's truncateAtWord:
 // keep <= max; otherwise cut at the last space (only if past 80 chars, so we
@@ -51,7 +53,7 @@ export function buildSeoHead(restaurant) {
 
   const canonical = restaurant.custom_domain
     ? `https://${canonicalHost(restaurant)}`
-    : `https://directbite.co/${restaurant.slug}/home`
+    : `https://${PUBLIC_DOMAIN}/${restaurant.slug}/home`
 
   const image =
     restaurant.hero_image_url ||

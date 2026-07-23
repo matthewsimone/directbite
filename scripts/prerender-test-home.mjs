@@ -122,6 +122,8 @@ async function main() {
     // Load ONLY the project files through Vite (JSX + import.meta.env transform).
     const { getBuildClient } = await vite.ssrLoadModule('/src/lib/supabaseBuild.js')
     const { buildSeoHead, canonicalHost } = await vite.ssrLoadModule('/src/pages/website/utils/seoHead.js')
+    const { PUBLIC_DOMAIN } = await vite.ssrLoadModule('/src/lib/publicDomain.js')
+    console.log(`✓ PUBLIC_DOMAIN resolved to: ${PUBLIC_DOMAIN}`)
     const { buildMenuSchema, buildFaqSchema, buildItemListSchema, schemaScriptTag } = await vite.ssrLoadModule('/src/pages/website/utils/schema.js')
     const { buildRestaurantFaq } = await vite.ssrLoadModule('/src/pages/website/utils/faqContent.js')
     const { formatWeekHours } = await vite.ssrLoadModule('/src/pages/website/utils/hours.js')
@@ -307,7 +309,7 @@ async function main() {
               : seo.description,
           canonical: restaurant.custom_domain
             ? `https://${canonicalHost(restaurant)}/menu`
-            : `https://directbite.co/${restaurant.slug}/menu`,
+            : `https://${PUBLIC_DOMAIN}/${restaurant.slug}/menu`,
           image: seo.image,
           siteName: seo.siteName,
           imageAlt: seo.imageAlt,
@@ -442,7 +444,7 @@ async function main() {
               : `Looking for ${cuisine} near ${townState}? ${restaurant.name} serves the area — order directly online for pickup. No third-party fees.`),
             canonical: restaurant.custom_domain
               ? `https://${canonicalHost(restaurant)}/places/${town.slug}`
-              : `https://directbite.co/${restaurant.slug}/places/${town.slug}`,
+              : `https://${PUBLIC_DOMAIN}/${restaurant.slug}/places/${town.slug}`,
             image: seo.image,
             siteName: seo.siteName,
             imageAlt: seo.imageAlt,
@@ -531,7 +533,7 @@ async function main() {
               || `Order ${tagDef.label.toLowerCase()} from ${restaurant.name} — made fresh daily. Pickup or delivery.`,
             canonical: restaurant.custom_domain
               ? `https://${canonicalHost(restaurant)}/tags/${tagDef.slug}`
-              : `https://directbite.co/${restaurant.slug}/tags/${tagDef.slug}`,
+              : `https://${PUBLIC_DOMAIN}/${restaurant.slug}/tags/${tagDef.slug}`,
             image: seo.image,
             siteName: seo.siteName,
             imageAlt: seo.imageAlt,
@@ -605,7 +607,7 @@ async function main() {
         // in restaurantUrls is already an absolute canonical on the right host.
         const sitemapUrl = restaurant.custom_domain
           ? `https://${canonicalHost(restaurant)}/sitemap.xml`
-          : `https://directbite.co/${restaurant.slug}/sitemap.xml`
+          : `https://${PUBLIC_DOMAIN}/${restaurant.slug}/sitemap.xml`
         const sitemapXml =
           `<?xml version="1.0" encoding="UTF-8"?>\n` +
           `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
@@ -635,7 +637,7 @@ async function main() {
       `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
       rootUrls.map((u) => `  <url><loc>${escapeHtml(u)}</loc></url>`).join('\n') +
       `\n</urlset>\n`
-    const rootRobotsTxt = `User-agent: *\nAllow: /\nSitemap: https://directbite.co/sitemap.xml\n`
+    const rootRobotsTxt = `User-agent: *\nAllow: /\nSitemap: https://${PUBLIC_DOMAIN}/sitemap.xml\n`
     await fs.mkdir(path.resolve('dist'), { recursive: true })
     await fs.writeFile(path.resolve('dist', 'sitemap.xml'), rootSitemapXml, 'utf-8')
     await fs.writeFile(path.resolve('dist', 'robots.txt'), rootRobotsTxt, 'utf-8')
