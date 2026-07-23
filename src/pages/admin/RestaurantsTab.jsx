@@ -62,6 +62,8 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
         tax_rate: parseFloat(data.tax_rate) || 0,
         stripe_account_id: data.stripe_account_id || null,
         printer_ip: data.printer_ip || null,
+        recoup_enabled: data.recoup_enabled === true,
+        recoup_rate: data.recoup_enabled === true ? (Number(data.recoup_rate) || 0) : 0,
       }),
     })
     const result = await res.json()
@@ -172,6 +174,42 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
           {field('Stripe Account ID', 'stripe_account_id')}
           {field('Printer IP Address', 'printer_ip')}
           {field('Tablet Email', 'tablet_email', 'email')}
+        </div>
+
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Processing Recoup</h4>
+          <button
+            type="button"
+            onClick={() => setData(prev => ({
+              ...prev,
+              recoup_enabled: !prev.recoup_enabled,
+              recoup_rate: prev.recoup_enabled ? 0 : prev.recoup_rate,
+            }))}
+            className={`w-full h-9 rounded-lg text-sm font-semibold border transition-colors ${
+              data.recoup_enabled
+                ? 'bg-[#16A34A] text-white border-[#16A34A] hover:bg-[#15803D]'
+                : 'bg-white text-gray-400 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {data.recoup_enabled ? 'Recoup: On' : 'Recoup: Off'}
+          </button>
+          {data.recoup_enabled && (
+            <div>
+              <label className="text-xs text-gray-500">Rate (%)</label>
+              <input
+                type="number" step="0.1" min="0" max="10"
+                value={data.recoup_rate ? String(Number((Number(data.recoup_rate) * 100).toFixed(4))) : ''}
+                onChange={e => {
+                  const pct = Math.min(Math.max(Number(e.target.value) || 0, 0), 10)
+                  setData(prev => ({ ...prev, recoup_rate: pct / 100 }))
+                }}
+                className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Added to the customer's Service Fee. Goes to the restaurant, not DirectBite.
+              </p>
+            </div>
+          )}
         </div>
 
         <WebsiteSettingsPanel

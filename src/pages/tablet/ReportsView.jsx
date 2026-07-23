@@ -268,6 +268,15 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
           value={`+${fmt(a.directbite_fees)}`}
           muted
         />
+        {(b.recoup_cents || 0) > 0 && (
+          <StatementRow
+            label={b.recoup_rate
+              ? `Service Fee Recoup (${String(Number((b.recoup_rate * 100).toFixed(4)))}%)`
+              : 'Service Fee Recoup'}
+            value={`+${fmt(b.recoup_cents)}`}
+            muted
+          />
+        )}
         <SubtotalRow label="Gross Charged" value={fmt(a.gross_charged)} />
       </section>
 
