@@ -125,7 +125,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
   <div style="max-width:520px;margin:0 auto;padding:24px;">
     <!-- Header -->
     <div style="text-align:center;padding:24px;">
-      <img src="https://directbite.co/directbite-logo-lockup.png" alt="DirectBite" style="height:28px;display:block;margin:0 auto;" />
+      <img src="https://www.directbite.co/ordr-pin.png" alt="" width="51" height="48" style="height:48px;width:51px;display:block;margin:0 auto;" />
     </div>
 
     <!-- Card -->
