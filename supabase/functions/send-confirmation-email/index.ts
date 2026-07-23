@@ -260,6 +260,11 @@ serve(async (req: Request) => {
     // Build email
     const html = buildConfirmationHtml(order, restaurant, items || []);
 
+    // RFC 5322 display name: always quoted, with internal " and \ escaped.
+    // Unquoted, a name like `Pazza Pizza, Inc.` splits the header on the comma
+    // and Resend rejects the send — that customer would get no receipt.
+    const senderName = `"${String(restaurant.name || "DirectBite").replace(/[\\"]/g, "\\$&")}"`;
+
     // Send via Resend
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -268,11 +273,11 @@ serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "DirectBite <orders@directbite.co>",
+        from: `${senderName} <orders@directbite.co>`,
         to: [order.customer_email],
         subject: order.scheduled_for
-          ? `Your order at ${restaurant.name} is scheduled 🍕`
-          : `Your order at ${restaurant.name} is confirmed! 🍕`,
+          ? `Your order is scheduled 🍕`
+          : `Your order is confirmed! 🍕`,
         html,
       }),
     });
