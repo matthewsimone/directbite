@@ -200,7 +200,7 @@ serve(async (req: Request) => {
     const { data: ordersData, error: ordersErr } = await supabase
       .from("orders")
       .select(
-        "status, subtotal, discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status"
+        "status, subtotal, discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status, recoup_amount, recoup_rate"
       )
       .eq("restaurant_id", restaurant_id)
       .gte("created_at", selStartIso)
@@ -222,6 +222,16 @@ serve(async (req: Request) => {
     const tax_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.tax_amount), 0);
     const tips_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.tip_amount), 0);
     const delivery_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.delivery_fee), 0);
+
+    // Migration 061 — credit-processing recoup. NOTE: orders.service_fee
+    // ALREADY CONTAINS this amount; never sum the two. The rate comes from the
+    // per-order stamp, not current restaurant config, so a window spanning a
+    // rate change reports honestly — mixed rates yield null and the UI drops
+    // the percentage rather than showing a wrong one.
+    const recoupOrders = nonCancelled.filter((o: any) => Number(o.recoup_amount || 0) > 0);
+    const recoup_cents = recoupOrders.reduce((s: number, o: any) => s + dollarsToCents(o.recoup_amount), 0);
+    const recoupRates = [...new Set(recoupOrders.map((o: any) => Number(o.recoup_rate || 0)))];
+    const recoup_rate = recoupRates.length === 1 ? recoupRates[0] : null;
 
     // Attribute Uber economics ONLY to orders the courier actually delivered.
     // uber_status === 'delivered' is the sole positive marker: the switch-to-
@@ -261,6 +271,8 @@ serve(async (req: Request) => {
       tax_cents,
       tips_cents,
       delivery_cents,
+      recoup_cents,
+      recoup_rate,
       completed_count: nonCancelled.length,
       cancelled_count: cancelledOrders.length,
       ud_count,

@@ -70,6 +70,8 @@ serve(async (req: Request) => {
       tablet_password,
       stripe_account_id,
       printer_ip,
+      recoup_enabled,
+      recoup_rate,
       latitude,
       longitude,
     } = await req.json();
@@ -116,6 +118,11 @@ serve(async (req: Request) => {
       if (tax_rate !== undefined) updateData.tax_rate = tax_rate || 0;
       if (stripe_account_id !== undefined) updateData.stripe_account_id = stripe_account_id || null;
       if (printer_ip !== undefined) updateData.printer_ip = printer_ip || null;
+      // Migration 061. Guarded by !== undefined so the onboarding wizard —
+      // which never sends these — cannot touch them, and the CREATE path below
+      // is unaffected. Rate clamped to the DB CHECK ceiling (0.10).
+      if (recoup_enabled !== undefined) updateData.recoup_enabled = recoup_enabled === true;
+      if (recoup_rate !== undefined) updateData.recoup_rate = Math.min(Math.max(Number(recoup_rate) || 0, 0), 0.10);
 
       // Use provided coords or geocode if address changed/lat/lon missing
       if (latitude && longitude) {
