@@ -28,7 +28,14 @@ function SummaryCard({ title, earned, volume, count }) {
 function computeStats(orders) {
   const count = orders.length
   const volume = orders.reduce((s, o) => s + Number(o.total_amount), 0)
-  const earned = orders.reduce((s, o) => s + Number(o.service_fee), 0)
+  // service_fee CONTAINS recoup_amount (migration 061). The recoup is the
+  // restaurant's money — it reaches them via the Direct Charge, not us. Our
+  // revenue is the flat platform fee only. Mirrors stripe-settlement-report,
+  // which breaks the two out for the same reason.
+  const earned = orders.reduce(
+    (s, o) => s + Number(o.service_fee) - Number(o.recoup_amount || 0),
+    0
+  )
   return { count, volume, earned }
 }
 
