@@ -6,7 +6,12 @@
 // that point at /:slug must absolute-redirect when the page is rendered
 // on a custom domain.
 
-const MAIN_DOMAIN = 'directbite.co'
+import { PUBLIC_DOMAIN } from './publicDomain'
+
+// Where ordering lives. Custom-domain sites cross-origin here for checkout,
+// so this is the order-ENTRY path for all 15 of them. Follows PUBLIC_DOMAIN
+// so the brand flip moves order links together with canonicals, in one place.
+const MAIN_DOMAIN = PUBLIC_DOMAIN
 
 // Routing identity — every host this app serves as the main app domain.
 // Deliberately NOT derived from MAIN_DOMAIN: the public-facing domain will
