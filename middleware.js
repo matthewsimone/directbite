@@ -1,6 +1,11 @@
 import { rewrite, waitUntil } from '@vercel/functions'
 import domainMap from './src/lib/domainMap.js'
 
+// Public-facing host for QR fallback redirects. Plain-Node context, so this
+// reads process.env rather than importing src/lib/publicDomain.js. Same
+// variable, same fallback — the two stay in step.
+const PUBLIC_DOMAIN = process.env.VITE_PUBLIC_DOMAIN || 'directbite.co'
+
 export const config = {
   matcher: ['/', '/menu', '/places/:town', '/tags/:tag', '/sitemap.xml', '/robots.txt', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
 }
@@ -57,7 +62,7 @@ export default async function middleware(request) {
     const supabaseUrl = process.env.VITE_SUPABASE_URL
     const anonKey = process.env.VITE_SUPABASE_ANON_KEY
 
-    let target = `https://directbite.co/${slug}`
+    let target = `https://${PUBLIC_DOMAIN}/${slug}`
     if (supabaseUrl && anonKey) {
       try {
         const lookupRes = await fetch(
@@ -68,7 +73,7 @@ export default async function middleware(request) {
           const rows = await lookupRes.json()
           if (rows.length > 0) {
             const r = rows[0]
-            target = r.redirect_url || `https://directbite.co/${slug}`
+            target = r.redirect_url || `https://${PUBLIC_DOMAIN}/${slug}`
             waitUntil(
               fetch(`${supabaseUrl}/rest/v1/scans`, {
                 method: 'POST',
@@ -82,7 +87,7 @@ export default async function middleware(request) {
               }).catch(() => null)
             )
           } else {
-            target = 'https://directbite.co'
+            target = `https://${PUBLIC_DOMAIN}`
           }
         }
       } catch {

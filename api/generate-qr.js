@@ -1,7 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
 import QRCode from 'qrcode'
 
-const ORIGIN = 'https://directbite.co'
+// Encoded into newly generated QR images. Existing printed stickers are
+// unaffected — they encode /r/{slug}, which resolves via restaurants.redirect_url.
+const ORIGIN = `https://${process.env.VITE_PUBLIC_DOMAIN || 'directbite.co'}`
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
