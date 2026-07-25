@@ -1,6 +1,6 @@
 {
-  "name": "DirectBite Tablet",
-  "short_name": "DB Tablet",
+  "name": "Ordr Tablet",
+  "short_name": "Ordr Tablet",
   "display": "standalone",
   "start_url": "/test/tablet",
   "theme_color": "#111111",
