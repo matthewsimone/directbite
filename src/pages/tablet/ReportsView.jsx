@@ -264,7 +264,7 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
         <StatementRow label="Delivery Charges" value={fmt(b.delivery_cents)} />
         <SubtotalRow label="Collected from customers" value={fmt(collected)} />
         <StatementRow
-          label="DirectBite (added at checkout)"
+          label="Ordr (added at checkout)"
           value={`+${fmt(a.directbite_fees)}`}
           muted
         />

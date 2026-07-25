@@ -206,7 +206,7 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
                 className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
               />
               <p className="text-xs text-gray-400 mt-1">
-                Added to the customer's Service Fee. Goes to the restaurant, not DirectBite.
+                Added to the customer's Service Fee. Goes to the restaurant, not Ordr.
               </p>
             </div>
           )}
