@@ -20,6 +20,18 @@ export default async function middleware(request) {
     normalized.endsWith('.vercel.app') ||
     normalized.startsWith('localhost')
 
+  // TEMPORARY — remove at ordr.co flip #2. Pre-cutover, ordr.co serves the full
+  // app but must not be crawled: its prerendered pages carry directbite.co
+  // canonicals and its sitemap lists directbite.co URLs (invalid on this host).
+  // A disallow-all robots.txt is host-wide, so it covers every page regardless
+  // of the middleware matcher. Covers ordr.co and www.ordr.co (www is stripped).
+  if (normalized === 'ordr.co' && url.pathname === '/robots.txt') {
+    return new Response('User-agent: *\nDisallow: /\n', {
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+    })
+  }
+
   // Custom-domain requests: serve the restaurant's PRERENDERED pages by
   // rewriting to the main-domain slug path (Vercel then serves dist/{slug}/…).
   // The domain→slug map is generated at build time (scripts/gen-domain-map.mjs)
