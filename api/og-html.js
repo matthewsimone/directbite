@@ -2,7 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 import fs from 'fs'
 import path from 'path'
 
-const FALLBACK_IMAGE = 'https://directbite.co/directbite-logo-lockup.png'
+// Public-facing host for the OG fallback image. Plain-Node context, so this
+// reads process.env rather than importing src/lib/publicDomain.js. Same
+// variable, same fallback — the two stay in step.
+const PUBLIC_DOMAIN = process.env.VITE_PUBLIC_DOMAIN || 'directbite.co'
+
+const FALLBACK_IMAGE = `https://${PUBLIC_DOMAIN}/ordr-og-image.png`
 
 let TEMPLATE_CACHE = null
 function getTemplate() {

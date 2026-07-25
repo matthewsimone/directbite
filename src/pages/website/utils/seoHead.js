@@ -58,7 +58,7 @@ export function buildSeoHead(restaurant) {
   const image =
     restaurant.hero_image_url ||
     restaurant.logo_url ||
-    'https://directbite.co/directbite-logo-lockup.png'
+    `https://${PUBLIC_DOMAIN}/ordr-og-image.png`
 
   return { title, description, canonical, image }
 }
