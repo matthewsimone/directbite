@@ -8,37 +8,37 @@ export default function TermsOfService() {
       </header>
       <div className="max-w-[720px] mx-auto px-6 py-12">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms of Service</h1>
-        <p className="text-sm text-gray-500 mb-8">Last updated: April 24, 2026</p>
+        <p className="text-sm text-gray-500 mb-8">Last updated: July 25, 2026</p>
 
         <div className="prose prose-sm max-w-none text-gray-700 space-y-6">
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">1. Service Description</h2>
-            <p>DirectBite is an online ordering platform that connects customers with local restaurants for pickup and delivery orders. We provide the technology; restaurants prepare and fulfill the food.</p>
+            <p>Ordr is an online ordering platform that connects customers with local restaurants for pickup and delivery orders. We provide the technology; restaurants prepare and fulfill the food.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">2. Eligibility</h2>
-            <p>You must be at least 18 years old, or have parental or guardian consent, to use DirectBite.</p>
+            <p>You must be at least 18 years old, or have parental or guardian consent, to use Ordr.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">3. Accounts</h2>
-            <p>Restaurant operator accounts are created by invitation from DirectBite. Customers place orders as guests without creating an account.</p>
+            <p>Restaurant operator accounts are created by invitation from Ordr. Customers place orders as guests without creating an account.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">4. Orders</h2>
-            <p>Placing an order through DirectBite creates a binding purchase agreement between you and the restaurant. Restaurants are responsible for fulfilling accepted orders.</p>
+            <p>Placing an order through Ordr creates a binding purchase agreement between you and the restaurant. Restaurants are responsible for fulfilling accepted orders.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">5. Payments</h2>
-            <p>All payments are processed securely via Stripe. DirectBite charges a $1.50 service fee per order, which is paid by the customer and displayed at checkout. The restaurant receives the full order amount minus the service fee.</p>
+            <p>All payments are processed securely via Stripe. Ordr charges a $1.50 service fee per order, which is paid by the customer and displayed at checkout. The restaurant receives the full order amount minus the service fee.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">6. Refunds</h2>
-            <p>Refunds are subject to the individual restaurant's refund policy. Payment disputes are handled through Stripe's dispute resolution process. DirectBite may facilitate refunds on behalf of restaurants when appropriate.</p>
+            <p>Refunds are subject to the individual restaurant's refund policy. Payment disputes are handled through Stripe's dispute resolution process. Ordr may facilitate refunds on behalf of restaurants when appropriate.</p>
           </section>
 
           <section>
@@ -52,28 +52,27 @@ export default function TermsOfService() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">8. SMS Program — DirectBite Order Alerts</h2>
-            <p>DirectBite offers an SMS notification service for restaurant operators:</p>
+            <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">8. SMS Program — Ordr Restaurant Alerts</h2>
+            <p>Ordr offers an SMS notification service for restaurant operators:</p>
             <ul className="list-disc pl-6 space-y-1">
-              <li><strong>Program name:</strong> DirectBite Order Alerts</li>
+              <li><strong>Program name:</strong> Ordr Restaurant Alerts</li>
               <li><strong>Description:</strong> Transactional order notifications sent to restaurant operators when a new order is placed</li>
               <li><strong>Message frequency:</strong> Typically 1–50 messages per day, depending on order volume</li>
               <li><strong>Message and data rates may apply</strong></li>
               <li>To stop receiving messages: Reply <strong>STOP</strong></li>
-              <li>For help: Reply <strong>HELP</strong> or contact <a href="mailto:matthewsimone100@gmail.com" className="text-[#16A34A] underline">matthewsimone100@gmail.com</a></li>
+              <li>For help: Reply <strong>HELP</strong> or contact <a href="mailto:matt@ordr.co" className="text-[#16A34A] underline">matt@ordr.co</a></li>
               <li><strong>Supported carriers:</strong> All major US carriers including AT&T, T-Mobile, Verizon, and others</li>
-              <li><strong>Opt-in:</strong> Restaurant operators opt in to SMS alerts via the DirectBite tablet interface settings</li>
             </ul>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">9. Prohibited Uses</h2>
-            <p>You agree not to use DirectBite for any fraudulent, abusive, or spam-related purposes. We reserve the right to suspend or terminate access for violations.</p>
+            <p>You agree not to use Ordr for any fraudulent, abusive, or spam-related purposes. We reserve the right to suspend or terminate access for violations.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">10. Limitation of Liability</h2>
-            <p>DirectBite provides its service on an "as-is" basis. Our liability is limited to the amount paid for the specific order in question. We are not liable for restaurant-side issues including food quality, preparation delays, or fulfillment errors.</p>
+            <p>Ordr provides its service on an "as-is" basis. Our liability is limited to the amount paid for the specific order in question. We are not liable for restaurant-side issues including food quality, preparation delays, or fulfillment errors.</p>
           </section>
 
           <section>
@@ -88,7 +87,7 @@ export default function TermsOfService() {
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">13. Contact Us</h2>
-            <p>If you have questions about these Terms, contact us at <a href="mailto:matthewsimone100@gmail.com" className="text-[#16A34A] underline">matthewsimone100@gmail.com</a>.</p>
+            <p>If you have questions about these Terms, contact us at <a href="mailto:matt@ordr.co" className="text-[#16A34A] underline">matt@ordr.co</a>.</p>
           </section>
         </div>
       </div>
