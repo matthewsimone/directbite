@@ -48,7 +48,7 @@ import NJ_TOWNS from '../src/data/nj-towns.json' with { type: 'json' }
 import TAG_KEYWORDS from '../src/data/tag-keywords.json' with { type: 'json' }
 
 const SHELL = path.resolve('dist/index.html')
-const SITE_NAME = 'DirectBite'
+const SITE_NAME = 'Ordr'
 
 // HTML-escape for injected head values — mirrored from api/og-html.js so a
 // quote/ampersand in a restaurant name can't break an attribute or the markup.
@@ -134,6 +134,43 @@ async function main() {
     const PlaceStatic = (await vite.ssrLoadModule('/src/pages/website/PlaceStatic.jsx')).default
     const TagStatic = (await vite.ssrLoadModule('/src/pages/website/TagStatic.jsx')).default
     const { LinkBaseProvider } = await vite.ssrLoadModule('/src/pages/website/LinkBaseContext.jsx')
+
+    // ---- Static legal pages: /terms and /privacy ----
+    // No DB, no props, no useEffect — pure static JSX, so renderToString is
+    // deterministic and hydration matches by construction. Carrier/A2P reviewers
+    // and crawlers fetch these without running JS, so the text must be in the
+    // served HTML, not injected client-side.
+    const LEGAL = [
+      { mod: '/src/pages/TermsOfService.jsx', route: '/terms',
+        title: 'Terms of Service — Ordr',
+        description: 'Terms of Service for Ordr, including our SMS program disclosures.' },
+      { mod: '/src/pages/PrivacyPolicy.jsx', route: '/privacy',
+        title: 'Privacy Policy — Ordr',
+        description: 'How Ordr collects, uses, and protects your information, including SMS data.' },
+    ]
+
+    for (const p of LEGAL) {
+      const Component = (await vite.ssrLoadModule(p.mod)).default
+      const html = renderToString(
+        React.createElement(StaticRouter, { location: p.route },
+          React.createElement(Component))
+      )
+      let out = shell.replace('<div id="root"></div>', `<div id="root">${html}</div>`)
+      out = injectHead(out, {
+        title: p.title,
+        description: p.description,
+        canonical: `https://${PUBLIC_DOMAIN}${p.route}`,
+        image: `https://${PUBLIC_DOMAIN}/ordr-og-image.png`,
+        siteName: 'Ordr',
+      })
+      const hashed = (await fs.readdir(path.resolve('dist/assets')))
+        .find(f => f.startsWith('ordr-logo-lockup-'))
+      if (hashed) out = out.replaceAll('/src/assets/ordr-logo-lockup.svg', `/assets/${hashed}`)
+      const outDir = path.resolve(`dist${p.route}`)
+      await fs.mkdir(outDir, { recursive: true })
+      await fs.writeFile(path.join(outDir, 'index.html'), out, 'utf-8')
+      console.log(`  wrote dist${p.route}/index.html`)
+    }
 
     // ---- Build-time data fetch: full fleet (all website_enabled restaurants) ----
     const supabase = getBuildClient()
