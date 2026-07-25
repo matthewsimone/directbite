@@ -309,7 +309,7 @@ export default function OnboardingTab() {
             </svg>
           </div>
           <h2 className="text-2xl font-bold mb-2">Restaurant Created!</h2>
-          <p className="text-gray-500 mb-4">{success.name} is now live on DirectBite</p>
+          <p className="text-gray-500 mb-4">{success.name} is now live on Ordr</p>
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
             <p className="text-sm text-gray-500">Restaurant URL</p>
             <p className="text-lg font-bold text-[#16A34A]">directbite.co/{success.slug}</p>

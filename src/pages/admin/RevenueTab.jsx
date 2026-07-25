@@ -205,7 +205,7 @@ export default function RevenueTab() {
                   <th className="px-4 py-3 cursor-pointer select-none" onClick={() => handleSort('name')}>Restaurant{sortIndicator('name')}</th>
                   <th className="px-4 py-3 cursor-pointer select-none text-right" onClick={() => handleSort('count')}>Orders{sortIndicator('count')}</th>
                   <th className="px-4 py-3 cursor-pointer select-none text-right" onClick={() => handleSort('volume')}>Order Volume{sortIndicator('volume')}</th>
-                  <th className="px-4 py-3 cursor-pointer select-none text-right" onClick={() => handleSort('earned')}>DirectBite Earned{sortIndicator('earned')}</th>
+                  <th className="px-4 py-3 cursor-pointer select-none text-right" onClick={() => handleSort('earned')}>Ordr Earned{sortIndicator('earned')}</th>
                 </tr>
               </thead>
               <tbody>

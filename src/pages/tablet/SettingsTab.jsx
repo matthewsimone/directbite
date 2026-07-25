@@ -683,7 +683,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               <label className="text-xs text-gray-400">Address</label>
               <p className="font-medium">{restaurant?.address || '—'}</p>
             </div>
-            <p className="text-xs text-gray-400 italic">Contact DirectBite to update this information</p>
+            <p className="text-xs text-gray-400 italic">Contact Ordr to update this information</p>
             <div className="mt-3">
               <label className="text-xs text-gray-400 mb-1 block">Hero Image</label>
               <ImageUpload
@@ -932,7 +932,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               <span className="font-medium">Uber Direct available</span>
             </div>
             <p className="text-xs text-gray-500 italic">
-              Powered by DirectBite — no setup required. Toggle on, set your minimum and cost sharing, and save.
+              Powered by Ordr — no setup required. Toggle on, set your minimum and cost sharing, and save.
             </p>
 
             {/* Uber Direct delivery minimum — first option in this section */}

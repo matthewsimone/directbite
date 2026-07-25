@@ -117,7 +117,7 @@ export default function ReconciliationTab() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '1.5rem' }}>
             <SummaryCard label="Platform orders" value={summary.count} />
-            <SummaryCard label="DirectBite net" value={c(summary.net)} />
+            <SummaryCard label="Ordr net" value={c(summary.net)} />
             <SummaryCard label="Open variances" value={summary.openCount} warn={summary.openCount > 0} />
             <SummaryCard label="Unsettled total" value={c(summary.unsettled)} />
           </div>
@@ -171,8 +171,8 @@ function ReconRow({ order, d, restName, c }) {
   else { band = '#c0392b'; label = 'Open variance'; }
 
   const dir = d.variance == null ? '' :
-    d.variance > 1 ? `Restaurant owes DirectBite ${c(d.variance)}` :
-    d.variance < -1 ? `DirectBite owes restaurant ${c(-d.variance)}` :
+    d.variance > 1 ? `Restaurant owes Ordr ${c(d.variance)}` :
+    d.variance < -1 ? `Ordr owes restaurant ${c(-d.variance)}` :
     'Balanced';
 
   return (
@@ -196,7 +196,7 @@ function ReconRow({ order, d, restName, c }) {
       </div>
       <div style={{ borderTop: '0.5px solid #eee', marginTop: '10px', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', fontSize: '13px' }}>
         <div><span style={{ color: '#666' }}>Variance:</span> <span style={{ fontWeight: 500, color: hasVar ? band : '#666' }}>{pending ? 'pending Uber charge' : (hasVar ? dir : '$0.00 — balanced')}</span></div>
-        <div><span style={{ color: '#666' }}>DirectBite net:</span> <span style={{ fontWeight: 500 }}>{d.dbNet != null ? c(d.dbNet) : '—'}</span></div>
+        <div><span style={{ color: '#666' }}>Ordr net:</span> <span style={{ fontWeight: 500 }}>{d.dbNet != null ? c(d.dbNet) : '—'}</span></div>
       </div>
       {order.uber_delivery_id && (
         <div style={{ marginTop: '8px', fontSize: '11px', color: '#999' }}>

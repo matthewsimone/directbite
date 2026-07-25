@@ -405,8 +405,8 @@ export default function WebsiteSettingsPanel({ restaurant, onSave, isAdmin }) {
       <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
         <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Website Settings</h3>
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
-          <p className="text-sm text-blue-900 font-medium">Contact DirectBite to activate your website</p>
-          <p className="text-xs text-blue-700 mt-1">A branded website is a paid add-on for DirectBite restaurants.</p>
+          <p className="text-sm text-blue-900 font-medium">Contact Ordr to activate your website</p>
+          <p className="text-xs text-blue-700 mt-1">A branded website is a paid add-on for Ordr restaurants.</p>
         </div>
       </div>
     )

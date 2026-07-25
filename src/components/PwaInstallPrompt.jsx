@@ -50,7 +50,7 @@ export default function PwaInstallPrompt() {
       {/* Banner */}
       <div className="relative bg-white border-t border-gray-200 shadow-lg px-4 py-3 flex items-center justify-between gap-3">
         <p className="text-sm text-gray-700">
-          Install <strong>DirectBite</strong> for the best experience
+          Install <strong>Ordr</strong> for the best experience
         </p>
         <div className="flex gap-2 shrink-0">
           <button
