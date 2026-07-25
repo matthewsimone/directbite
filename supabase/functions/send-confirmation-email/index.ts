@@ -3,6 +3,28 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 
 const resendApiKey = Deno.env.get("RESEND_API_KEY") || "";
 
+// Warm-up ramp for the ordr.co sender domain. WARMUP_ORDR_PERCENT (0–100)
+// controls what share of receipts send from orders@ordr.co vs the established
+// orders@directbite.co. Deterministic per order_id, so a retry never flips the
+// sender mid-flight. Default 0 → every receipt stays on directbite.co,
+// identical to pre-change behaviour. Raise the env var to ramp; no redeploy of
+// this code needed, only an env change + function redeploy.
+const WARMUP_ORDR_PERCENT = Number(Deno.env.get("WARMUP_ORDR_PERCENT") || "0");
+
+// Stable 0–99 bucket from an order id (FNV-1a, tiny + deterministic).
+function orderBucket(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) % 100;
+}
+
+function senderDomain(orderId: string): string {
+  return orderBucket(orderId) < WARMUP_ORDR_PERCENT ? "ordr.co" : "directbite.co";
+}
+
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
@@ -273,7 +295,7 @@ serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: `${senderName} <orders@directbite.co>`,
+        from: `${senderName} <orders@${senderDomain(order.id)}>`,
         to: [order.customer_email],
         subject: order.scheduled_for
           ? `Your order is scheduled 🍕`
