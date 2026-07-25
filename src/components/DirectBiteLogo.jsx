@@ -1,10 +1,10 @@
-import logoLockup from '../assets/directbite-logo-lockup.png'
+import logoLockup from '../assets/ordr-logo-lockup.svg'
 
 export default function DirectBiteLogo({ color = 'dark', height = 28 }) {
   return (
     <img
       src={logoLockup}
-      alt="DirectBite"
+      alt="Ordr"
       style={{
         height,
         filter: color === 'dark' ? 'brightness(0) invert(0.24)' : 'none',
