@@ -501,7 +501,7 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             printer.addTextAlign(C)
             printer.addText('Thank you for ordering direct!\n')
             bold(true)
-            printer.addText('powered by DirectBite\n')
+            printer.addText('powered by Ordr\n')
             bold(false)
             printer.addText('\n')
 
