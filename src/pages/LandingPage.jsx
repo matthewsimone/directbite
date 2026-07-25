@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import directbiteWordmark from '../assets/directbite-wordmark.png'
+import ordrLockupWhite from '../assets/ordr-lockup-white.svg'
 import peopleOrderingFood from '../assets/people-ordering-food.jpg'
 import pizzaHero from '../assets/pizza-hero.jpg'
 
@@ -107,20 +107,7 @@ function Nav({ onContact }) {
       }}
     >
       <div className="flex items-center gap-2.5">
-        <svg width="24" height="24" viewBox="0 0 100 130" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <mask id="pin-bite-mask">
-              <rect width="100" height="130" fill="white" />
-              <circle cx="-14" cy="38" r="36" fill="black" />
-            </mask>
-          </defs>
-          <path
-            d="M50 0 C22.4 0 0 22.4 0 50 C0 80 50 130 50 130 C50 130 100 80 100 50 C100 22.4 77.6 0 50 0 Z"
-            fill="white"
-            mask="url(#pin-bite-mask)"
-          />
-        </svg>
-        <img src={directbiteWordmark} alt="DirectBite" className="h-3.5" style={{ marginTop: 1 }} />
+        <img src={ordrLockupWhite} alt="Ordr" className="h-6" />
       </div>
       <button
         onClick={() => onContact('Get in Touch')}
@@ -265,7 +252,7 @@ function Hero({ onContact }) {
             Reclaim your margin online.
           </h1>
           <p className="text-[#6b7280] text-lg max-w-[520px] mx-auto md:mx-0 mb-10">
-            DirectBite is not a marketplace. We don't list your competitors. We don't
+            Ordr is not a marketplace. We don't list your competitors. We don't
             take a cut. We give your customers a direct line to you — and get out of
             the way.
           </p>
@@ -351,14 +338,14 @@ function ValueProp() {
     <section className="py-24 px-6 text-center animate-fadeInUp">
       <div className="max-w-[520px] mx-auto">
         <p className="text-xs tracking-[0.15em] text-[#6b7280] uppercase mb-4">
-          The DirectBite Difference
+          The Ordr Difference
         </p>
         <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-[#111] mb-6">
           Not a marketplace. A margin tool.
         </h2>
         <p className="text-[#6b7280] text-base leading-relaxed">
           We don't sell ads. We don't list your competitors next to you. We don't
-          own your customers. DirectBite plugs directly into your website and lets
+          own your customers. Ordr plugs directly into your website and lets
           customers order — without a middleman touching your money.
         </p>
       </div>
@@ -400,7 +387,7 @@ function Footer() {
   return (
     <footer className="border-t border-[#e5e7eb] py-6 px-6">
       <div className="max-w-[1200px] mx-auto text-center text-sm text-[#6b7280]">
-        <span>&copy; 2026 DirectBite</span>
+        <span>&copy; 2026 Ordr</span>
       </div>
     </footer>
   )
