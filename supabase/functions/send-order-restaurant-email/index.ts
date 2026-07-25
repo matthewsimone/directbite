@@ -152,7 +152,7 @@ function buildRestaurantHtml(order: any, restaurant: any, items: any[]): string 
     </div>
 
     <div style="text-align:center;padding:24px 0;">
-      <p style="color:#9ca3af;font-size:12px;margin:0;">Powered by <span style="font-weight:bold;">DirectBite</span></p>
+      <p style="color:#9ca3af;font-size:12px;margin:0;">Powered by <span style="font-weight:bold;">Ordr</span></p>
     </div>
   </div>
 </body>
@@ -236,7 +236,7 @@ serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "DirectBite <orders@directbite.co>",
+        from: "Ordr <orders@directbite.co>",
         to: [restaurant.notification_email],
         subject,
         html,

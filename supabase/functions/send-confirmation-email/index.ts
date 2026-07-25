@@ -213,7 +213,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
 
     <!-- Footer -->
     <div style="text-align:center;padding:24px 0;">
-      <p style="color:#9ca3af;font-size:12px;margin:0;">Powered by <span style="font-weight:bold;">DirectBite</span></p>
+      <p style="color:#9ca3af;font-size:12px;margin:0;">Powered by <span style="font-weight:bold;">Ordr</span></p>
     </div>
   </div>
 </body>
@@ -285,7 +285,7 @@ serve(async (req: Request) => {
     // RFC 5322 display name: always quoted, with internal " and \ escaped.
     // Unquoted, a name like `Pazza Pizza, Inc.` splits the header on the comma
     // and Resend rejects the send — that customer would get no receipt.
-    const senderName = `"${String(restaurant.name || "DirectBite").replace(/[\\"]/g, "\\$&")}"`;
+    const senderName = `"${String(restaurant.name || "Ordr").replace(/[\\"]/g, "\\$&")}"`;
 
     // Send via Resend
     const response = await fetch("https://api.resend.com/emails", {
