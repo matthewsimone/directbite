@@ -7,7 +7,7 @@ export default function DirectBiteLogo({ color = 'dark', height = 28 }) {
       alt="Ordr"
       style={{
         height,
-        filter: color === 'dark' ? 'brightness(0) invert(0.24)' : 'none',
+        filter: color === 'dark' ? 'invert(0.24)' : 'none',
       }}
     />
   )

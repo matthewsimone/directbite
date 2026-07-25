@@ -17,7 +17,7 @@ export default function AdminLogin({ onLogin, error: authError }) {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="flex justify-center"><DirectBiteLogo color="dark" height={28} /></div>
+          <div className="flex justify-center"><DirectBiteLogo color="dark" height={38} /></div>
           <p className="text-gray-500 mt-1">Sign in to continue</p>
         </div>
 

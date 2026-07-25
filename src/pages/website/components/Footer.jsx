@@ -131,7 +131,7 @@ export default function Footer({ restaurant, hours }) {
           <p>© {year} {restaurant.name}. All rights reserved.</p>
           <div className="flex flex-col items-start md:items-end gap-1">
             <span className="text-xs">Powered by:</span>
-            <DirectBiteLogo color="dark" height={20} />
+            <DirectBiteLogo color="dark" height={28} />
           </div>
         </div>
       </div>

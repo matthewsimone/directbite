@@ -59,7 +59,7 @@ export default function AdminPage() {
       {/* Sidebar — desktop only */}
       <aside className="hidden md:flex w-56 bg-white border-r border-gray-200 flex-col shrink-0">
         <div className="px-5 py-4 border-b border-gray-200">
-          <DirectBiteLogo color="dark" height={24} />
+          <DirectBiteLogo color="dark" height={32} />
           <p className="text-xs text-gray-400 mt-1">Admin Panel</p>
         </div>
         <nav className="flex-1 py-3">
@@ -91,7 +91,7 @@ export default function AdminPage() {
           className="bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 shrink-0"
           style={{ height: 'calc(3.5rem + env(safe-area-inset-top))', paddingTop: 'env(safe-area-inset-top)' }}
         >
-          <DirectBiteLogo color="dark" height={20} />
+          <DirectBiteLogo color="dark" height={28} />
           <div className="flex items-center gap-4">
             <span className="hidden md:inline text-sm text-gray-500">{session.user.email}</span>
             <button onClick={logout} className="text-sm text-gray-400 hover:text-gray-600 transition-colors min-h-[44px] px-2">

@@ -21,7 +21,7 @@ export default function TabletLogin({ slug, onLogin, error: authError, termsAcce
     <div className="min-h-screen bg-white flex items-center justify-center p-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-2"><DirectBiteLogo color="dark" height={32} /></div>
+          <div className="flex justify-center mb-2"><DirectBiteLogo color="dark" height={42} /></div>
           <p className="text-gray-500 mt-1">Tablet Login</p>
         </div>
 

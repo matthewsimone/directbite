@@ -107,7 +107,7 @@ function Nav({ onContact }) {
       }}
     >
       <div className="flex items-center gap-2.5">
-        <img src={ordrLockupWhite} alt="Ordr" className="h-6" />
+        <img src={ordrLockupWhite} alt="Ordr" className="h-8" />
       </div>
       <button
         onClick={() => onContact('Get in Touch')}
