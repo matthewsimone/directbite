@@ -192,7 +192,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     const pr = stripe.paymentRequest({
       country: 'US',
       currency: 'usd',
-      total: { label: `${restaurant?.name || 'Ordr'} Order`, amount: Math.round(total * 100) },
+      total: { label: `${restaurant?.name || 'Ordr'}`, amount: Math.round(total * 100) },
       requestPayerName: true,
       requestPayerEmail: true,
       requestPayerPhone: true,
@@ -295,7 +295,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   useEffect(() => {
     if (paymentRequest && total > 0) {
       paymentRequest.update({
-        total: { label: `${restaurant?.name || 'Ordr'} Order`, amount: Math.round(total * 100) },
+        total: { label: `${restaurant?.name || 'Ordr'}`, amount: Math.round(total * 100) },
       })
     }
   }, [paymentRequest, total, restaurant?.name])
