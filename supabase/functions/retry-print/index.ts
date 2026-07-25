@@ -38,7 +38,6 @@ function formatReceipt(order: any, restaurant: any, items: any[]): string {
   const timeStr = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
   lines.push(sep);
-  lines.push("        DIRECTBITE ORDER");
   lines.push(`        Order #${order.order_number}`);
   lines.push(`  ${restaurant.name}`);
   lines.push(`  ${dateStr} ${timeStr}`);
@@ -86,7 +85,7 @@ function formatReceipt(order: any, restaurant: any, items: any[]): string {
 
   lines.push(formatReceiptLine("TOTAL:", formatMoney(order.total_amount)));
   lines.push("");
-  lines.push("    Powered by DirectBite.co");
+  lines.push("       Powered by Ordr.co");
   lines.push("");
 
   return lines.join("\n");
@@ -139,7 +138,7 @@ async function sendAlertEmail(to: string[], subject: string, htmlBody: string) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "DirectBite <orders@directbite.co>",
+        from: "Ordr <orders@directbite.co>",
         to,
         subject,
         html: htmlBody,
@@ -266,10 +265,10 @@ serve(async (req: Request) => {
         },
         body: JSON.stringify({
           printerId: parseInt(restaurant.printnode_printer_id),
-          title: `DirectBite Order #${order.order_number}`,
+          title: `Ordr Order #${order.order_number}`,
           contentType: "raw_base64",
           content: receiptBase64,
-          source: "DirectBite",
+          source: "Ordr",
         }),
       });
 
