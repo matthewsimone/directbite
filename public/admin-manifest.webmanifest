@@ -1,6 +1,6 @@
 {
-  "name": "DirectBite Admin",
-  "short_name": "DB Admin",
+  "name": "Ordr Admin",
+  "short_name": "Ordr Admin",
   "display": "standalone",
   "start_url": "/admin",
   "scope": "/admin",

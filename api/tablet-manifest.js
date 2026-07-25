@@ -6,8 +6,8 @@ export default function handler(req, res) {
   }
 
   const manifest = {
-    name: `DirectBite Tablet`,
-    short_name: 'DirectBite',
+    name: `Ordr Tablet`,
+    short_name: 'Ordr Tablet',
     display: 'standalone',
     start_url: `/${slug}/tablet`,
     scope: `/${slug}/`,
