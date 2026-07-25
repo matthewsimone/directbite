@@ -21,7 +21,7 @@ function getTemplate() {
     // Dev fallback. Production always has dist/ bundled via
     // vercel.json functions.includeFiles.
     TEMPLATE_CACHE =
-      '<!doctype html><html lang="en"><head><meta charset="UTF-8"/><title>DirectBite</title></head><body><div id="root"></div></body></html>'
+      '<!doctype html><html lang="en"><head><meta charset="UTF-8"/><title>Ordr</title></head><body><div id="root"></div></body></html>'
   }
   return TEMPLATE_CACHE
 }
