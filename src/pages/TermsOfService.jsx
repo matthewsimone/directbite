@@ -39,6 +39,7 @@ export default function TermsOfService() {
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">6. Refunds</h2>
             <p>Refunds are subject to the individual restaurant's refund policy. Payment disputes are handled through Stripe's dispute resolution process. Ordr may facilitate refunds on behalf of restaurants when appropriate.</p>
+            <p><strong>Post-Order Charges.</strong> When you place an order, your payment method is stored by our payment processor (Stripe) so that the restaurant can charge it again if your order is adjusted after it has been placed. This applies to additional items, substitutions, or corrections — including requests you enter in special instructions. Any such charge is a one-time charge for that specific order, not a recurring payment, and is initiated by the restaurant. By submitting an order, you authorize these charges.</p>
           </section>
 
           <section>
