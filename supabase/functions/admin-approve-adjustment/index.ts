@@ -139,6 +139,7 @@ serve(async (req: Request) => {
     }
 
     let stripeRefundId = null;
+    let stripeChargeIntentId = null;
 
     if (adjustment.type === "refund") {
       try {
@@ -185,19 +186,94 @@ serve(async (req: Request) => {
       }
     }
 
+    if (adjustment.type === "charge") {
+      // Post-completion charge. Reuse the payment method saved at checkout
+      // via setup_future_usage. Orders placed before that shipped have no
+      // customer/payment_method on the PI and cannot be charged this way.
+      try {
+        const originalPi = await stripe.paymentIntents.retrieve(
+          order.stripe_payment_intent_id,
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+
+        const custId =
+          typeof originalPi.customer === "string" ? originalPi.customer : null;
+        const pmId =
+          typeof originalPi.payment_method === "string"
+            ? originalPi.payment_method
+            : null;
+
+        if (!custId || !pmId) {
+          return new Response(
+            JSON.stringify({
+              error:
+                "This order has no saved payment method and cannot be charged. Send the customer a payment link instead.",
+              reason: "no_saved_payment_method",
+            }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const chargePi = await stripe.paymentIntents.create(
+          {
+            amount: Math.round(adjustment.amount * 100),
+            currency: "usd",
+            customer: custId,
+            payment_method: pmId,
+            off_session: true,
+            confirm: true,
+            description: `Adjustment for order #${order.order_number}: ${adjustment.note || ""}`,
+            metadata: {
+              adjustment_id,
+              order_id: adjustment.order_id,
+              order_number: String(order.order_number),
+            },
+          },
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+
+        if (chargePi.status !== "succeeded") {
+          return new Response(
+            JSON.stringify({
+              error: `Charge not completed (status: ${chargePi.status}). The adjustment remains pending.`,
+              reason: chargePi.status,
+            }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        stripeChargeIntentId = chargePi.id;
+      } catch (chargeErr: any) {
+        console.error("[admin-approve-adjustment] charge failed", chargeErr.message);
+        return new Response(
+          JSON.stringify({
+            error: chargeErr.message || "Charge failed. The adjustment remains pending.",
+            reason: "charge_error",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     await supabase
       .from("adjustment_requests")
       .update({
         status: "approved",
         approved_at: new Date().toISOString(),
         stripe_refund_id: stripeRefundId,
+        stripe_charge_intent_id: stripeChargeIntentId,
       })
       .eq("id", adjustment_id);
 
     console.log(`Adjustment ${adjustment_id} approved for order #${order.order_number}`);
 
     return new Response(
-      JSON.stringify({ success: true, status: "approved", stripe_refund_id: stripeRefundId }),
+      JSON.stringify({
+        success: true,
+        status: "approved",
+        stripe_refund_id: stripeRefundId,
+        stripe_charge_intent_id: stripeChargeIntentId,
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {

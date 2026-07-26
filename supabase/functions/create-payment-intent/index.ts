@@ -319,12 +319,37 @@ serve(async (req: Request) => {
 
     pending_order_id = pendingOrder.id;
 
+    // Create a Stripe Customer on the connected account so the payment method
+    // can be reused for post-completion adjustment charges. NON-FATAL: if this
+    // fails we fall through to a customerless PaymentIntent (pre-change
+    // behavior) rather than blocking checkout.
+    let customerId: string | null = null;
+    try {
+      const cd = order_data || {};
+      const customer = await stripe.customers.create(
+        {
+          name: cd.customer_name || undefined,
+          email: cd.customer_email || undefined,
+          phone: cd.customer_phone || undefined,
+          metadata: { restaurant_id, pending_order_id },
+        },
+        { stripeAccount: restaurant.stripe_account_id }
+      );
+      customerId = customer.id;
+    } catch (custErr: any) {
+      console.error(
+        "[create-payment-intent] customer create failed (non-fatal)",
+        custErr.message
+      );
+    }
+
     // Create PaymentIntent directly on the connected account (direct charges)
     const paymentIntent = await stripe.paymentIntents.create(
       {
         amount, // already in cents from frontend
         currency: "usd",
         payment_method_types: ["card"],
+        ...(customerId ? { customer: customerId, setup_future_usage: "off_session" } : {}),
         application_fee_amount: applicationFeeCents, // 150 self/pickup/in-house; 150 + Uber fee for platform
         metadata: {
           restaurant_id,
