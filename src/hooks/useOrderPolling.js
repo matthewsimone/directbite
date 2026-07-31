@@ -5,13 +5,13 @@ import { isStuckUnacked } from '../utils/stuckStage'
 
 // Auto-print gate (B2 write-complete signal).
 // The webhook stamps orders.items_written_at as its FINAL write, after all
-// order_items + order_item_toppings are persisted. Primary gate: print as soon
-// as items_written_at is set — the order is provably complete, no blind wait.
-// Fallback gate: if the stamp never lands (an order predating this feature, or
-// a rare stamp-write failure), still print once the order is older than
-// PRINT_FALLBACK_MS so a print is never permanently blocked. This replaces the
-// old fixed 5s settle delay with a deterministic signal + a safety net.
-const PRINT_FALLBACK_MS = 8000
+// order_items + order_item_toppings are persisted. That stamp is the ONLY
+// print trigger: an order prints the moment it is provably complete.
+// There is deliberately NO age-based fallback. An order that is not fully
+// written must never print — a half-written ticket sends the kitchen an
+// order missing items or toppings, which is worse than a delayed print.
+// An order whose stamp never lands stays unprinted until it is stamped;
+// the operator's Reprint control covers that case.
 
 // Escalation threshold: an order acknowledged but still not marked in-progress
 // after this many minutes drives the second (escalation) alert layer.
@@ -213,6 +213,7 @@ export function useOrderPolling(restaurant, hours) {
 
   const retryingIds = useRef(new Set())
   const recheckTimer = useRef(null)
+  const recheckCount = useRef(0)
   const realtimeDebounce = useRef(null)
 
   const fetchOrders = useCallback(async () => {
@@ -258,13 +259,12 @@ export function useOrderPolling(restaurant, hours) {
       // Auto-print first-seen new orders. knownOrderIds dedups print
       // attempts across the session — independent of chime/ack state.
       //
-      // Write-complete gate (see PRINT_FALLBACK_MS): print an order once the
-      // webhook has stamped items_written_at (all items + toppings persisted).
-      // An order detected as new but not yet stamped is DEFERRED — collected in
-      // deferredIds and deliberately left OUT of knownOrderIds below — so it
-      // stays eligible and a later poll prints it once the stamp lands (or the
-      // age fallback fires). Marking it seen now would skip it forever.
-      const settleNow = Date.now()
+      // Write-complete gate: print an order once the webhook has stamped
+      // items_written_at (all items + toppings persisted). An order detected as
+      // new but not yet stamped is DEFERRED — collected in deferredIds and
+      // deliberately left OUT of knownOrderIds below — so it stays eligible and
+      // a later poll prints it once the stamp lands. Marking it seen now would
+      // skip it forever.
       const deferredIds = new Set()
       const freshNew = data.filter(
         o => o.status === 'new' && !knownOrderIds.current.has(o.id)
@@ -276,12 +276,10 @@ export function useOrderPolling(restaurant, hours) {
       if (restaurant?.print_trigger !== 'in_progress' && freshNew.length > 0 && knownOrderIds.current.size > 0) {
         for (const newOrder of freshNew) {
           const writeComplete = newOrder.items_written_at != null
-          const ageMs = settleNow - new Date(newOrder.created_at).getTime()
-          // Primary: print the moment the webhook signals the write is complete.
-          // Fallback: a missing stamp (old order / stamp failure) still prints once
-          // it's older than PRINT_FALLBACK_MS. Otherwise defer to a later poll,
-          // left unmarked so it stays eligible (same defer mechanism as before).
-          if (!writeComplete && ageMs < PRINT_FALLBACK_MS) {
+          // Print ONLY once the webhook signals the write is complete. No age
+          // fallback: an unstamped order is deferred indefinitely, left unmarked
+          // so it stays eligible for a later poll once the stamp lands.
+          if (!writeComplete) {
             deferredIds.add(newOrder.id)
             continue
           }
@@ -320,6 +318,7 @@ export function useOrderPolling(restaurant, hours) {
         const now = Date.now()
         const retryable = data.filter(o =>
           (o.print_status === 'failed' || o.print_status === 'pending') &&
+          o.items_written_at != null &&
           o.status === 'new' &&
           (o.print_attempts || 0) < 3 &&
           now - new Date(o.created_at).getTime() > 30000 &&
@@ -408,7 +407,14 @@ export function useOrderPolling(restaurant, hours) {
       // stamped), re-check shortly instead of waiting the full 10s poll. The
       // write settles ~1s after the row appears, so a ~1.5s re-check prints it
       // promptly. Single-timer guard: never stack overlapping re-checks.
-      if (deferredIds.size > 0 && recheckTimer.current === null) {
+      // Bounded re-arm: with no age fallback, a stamp that never lands would
+      // otherwise re-arm this timer forever. Cap the burst at 10 re-checks
+      // (~15s) and fall back to the regular 10s poll; the counter resets as
+      // soon as a poll completes with nothing deferred.
+      if (deferredIds.size === 0) {
+        recheckCount.current = 0
+      } else if (recheckTimer.current === null && recheckCount.current < 10) {
+        recheckCount.current++
         recheckTimer.current = setTimeout(() => {
           recheckTimer.current = null
           if (isRestaurantOpen()) fetchOrders()
