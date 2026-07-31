@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import ordrLockupWhite from '../assets/ordr-lockup-white.svg'
+import ordrLockupBlack from '../assets/ordr-logo-lockup.svg'
 import peopleOrderingFood from '../assets/people-ordering-food.jpg'
 import pizzaHero from '../assets/pizza-hero.jpg'
 
@@ -98,16 +98,16 @@ function Nav({ onContact }) {
 
   return (
     <nav
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[88%] max-w-[1200px] px-6 py-3 flex items-center justify-between transition-all duration-300"
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[88%] max-w-[1200px] px-7 py-4 flex items-center justify-between transition-all duration-300"
       style={{
-        backgroundColor: 'rgba(0,0,0,0.82)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderRadius: 12,
+        backgroundColor: '#FFFFFF',
+        border: '1px solid rgba(0,0,0,0.04)',
+        boxShadow: '0 2px 20px rgba(0,0,0,0.06)',
+        borderRadius: 9999,
       }}
     >
       <div className="flex items-center gap-2.5">
-        <img src={ordrLockupWhite} alt="Ordr" className="h-8" />
+        <img src={ordrLockupBlack} alt="Ordr" className="h-8" />
       </div>
       <button
         onClick={() => onContact('Get in Touch')}
