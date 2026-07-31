@@ -158,7 +158,6 @@ function IPhoneMockup() {
         background: '#000',
         borderRadius: 40,
         padding: 12,
-        transform: 'rotate(4deg)',
         boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
       }}
     >
@@ -264,48 +263,151 @@ function IPhoneMockup() {
   )
 }
 
+const HERO_SLIDES = [
+  { h: 'Grow your online orders', sub: 'Direct orders from your own site, on your own domain. No marketplace, no middleman.' },
+  { h: 'Increase your profitability', sub: 'Keep 100% of what you charge your customers. No monthly fee, no commission.' },
+  { h: 'Increase your visibility', sub: 'Grow your discovery potential through Google search engine optimization.' },
+]
+
+const HERO_TILES_DESKTOP = [
+  { amt: '+$72.14', s: { top: '6%', left: '5%', animationDelay: '.1s' } },
+  { amt: '+$38.90', s: { top: '15%', left: '16%', animationDelay: '.25s' } },
+  { amt: '+$52.84', s: { top: '7%', right: '5%', animationDelay: '.35s' } },
+  { amt: '+$61.30', s: { top: '16%', right: '16%', animationDelay: '.5s' } },
+  { amt: '+$136.85', s: { top: '57%', left: '6%', animationDelay: '.65s' } },
+  { amt: '+$41.60', s: { top: '65%', left: '17%', animationDelay: '.8s' } },
+  { amt: '+$94.20', s: { top: '58%', right: '6%', animationDelay: '.95s' } },
+  { amt: '+$118.05', s: { top: '66%', right: '17%', animationDelay: '1.1s' } },
+]
+
+const HERO_TILES_MOBILE = [
+  { amt: '+$72.14', s: { top: '4%', left: '5%', animationDelay: '.1s' } },
+  { amt: '+$38.90', s: { top: '10%', left: '28%', animationDelay: '.25s' } },
+  { amt: '+$52.84', s: { top: '5%', right: '5%', animationDelay: '.4s' } },
+  { amt: '+$136.85', s: { top: '56%', left: '5%', animationDelay: '.55s' } },
+  { amt: '+$41.60', s: { top: '62%', left: '30%', animationDelay: '.7s' } },
+  { amt: '+$94.20', s: { top: '57%', right: '5%', animationDelay: '.85s' } },
+]
+
 // ── Hero ──
 function Hero({ onContact }) {
+  const [slide, setSlide] = useState(0)
+  const [paused, setPaused] = useState(false)
+
+  useEffect(() => {
+    if (paused) return
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const id = setInterval(() => setSlide((s) => (s + 1) % HERO_SLIDES.length), 4200)
+    return () => clearInterval(id)
+  }, [paused])
+
+  const on = (i) => (i === slide ? 'hr-slide hr-on' : 'hr-slide')
+
   return (
     <section
-      className="pt-36 md:pt-40 pb-20 md:pb-24 px-6 md:px-12 lg:px-20 animate-fadeInUp"
+      className="relative overflow-hidden pt-32 md:pt-36 pb-20 md:pb-24 px-6 animate-fadeInUp"
       style={{ background: 'radial-gradient(ellipse at center, rgba(34,197,94,0.04) 0%, transparent 70%)' }}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
     >
       <div className="max-w-[1200px] mx-auto">
-        <div className="flex justify-center mb-14">
-          <StarPill />
-        </div>
-        <div className="flex flex-col md:flex-row items-center gap-16 md:gap-12">
-        <div className="flex-1 text-center md:text-left">
-          <p className="text-[#16A34A] text-xs font-medium tracking-[0.15em] uppercase mb-6">
-            Commission-Free Direct Ordering
-          </p>
-          <h1 className="font-semibold tracking-tight leading-[1.1] text-[#111] mb-6" style={{ fontSize: 'clamp(42px, 6vw, 72px)' }}>
-            Reclaim your margin online.
-          </h1>
-          <p className="text-[#6b7280] text-lg max-w-[520px] mx-auto md:mx-0 mb-10">
-            Ordr is not a marketplace. We don't list your competitors. We don't
-            take a cut. We give your customers a direct line to you — and get out of
-            the way.
-          </p>
-          <div className="flex items-center justify-center md:justify-start gap-4 flex-wrap">
-            <a
-              href="#how-it-works"
-              className="bg-[#111] text-white px-7 py-3 rounded-full text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              See How It Works
-            </a>
-            <button
-              onClick={() => onContact('Request a Demo')}
-              className="border border-[#e5e7eb] px-7 py-3 rounded-full text-sm font-medium text-[#111] hover:bg-gray-50 transition-colors"
-            >
-              Request a Demo
-            </button>
+        <div className="relative h-[470px]">
+
+          <div className="absolute inset-0" aria-hidden="true">
+            <div className={`absolute inset-0 ${on(0)}`}>
+              <div className="hidden md:block absolute inset-0">
+                {HERO_TILES_DESKTOP.map((t) => (
+                  <div key={t.amt} className="hr-tile" style={t.s}>{t.amt}</div>
+                ))}
+              </div>
+              <div className="md:hidden absolute inset-0">
+                {HERO_TILES_MOBILE.map((t) => (
+                  <div key={t.amt} className="hr-tile" style={t.s}>{t.amt}</div>
+                ))}
+              </div>
+            </div>
+
+            <div className={`absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-screen ${on(1)}`}>
+              <svg viewBox="0 0 600 470" preserveAspectRatio="none" className="hidden md:block absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+                <defs>
+                  <linearGradient id="hrFadeD" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="470">
+                    <stop offset="0" stopColor="#16A34A" stopOpacity="0.11" />
+                    <stop offset="1" stopColor="#16A34A" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path className="hr-area" d="M-40 441 L110 402 L250 350 L390 268 L520 199 L660 80 L660 520 L-40 520 Z" fill="url(#hrFadeD)" opacity="0" style={{ transformOrigin: 'bottom' }} transform="scale(1,0)" />
+                <path className="hr-line" d="M-40 441 L110 402 L250 350 L390 268 L520 199 L660 80" fill="none" stroke="rgba(22,163,74,.3)" strokeWidth="3" strokeLinecap="round" strokeDasharray="810" strokeDashoffset="810" />
+              </svg>
+              <svg viewBox="0 0 375 470" preserveAspectRatio="none" className="md:hidden absolute inset-0 w-full h-full" style={{ overflow: 'visible' }}>
+                <defs>
+                  <linearGradient id="hrFadeM" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="470">
+                    <stop offset="0" stopColor="#16A34A" stopOpacity="0.11" />
+                    <stop offset="1" stopColor="#16A34A" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path className="hr-area" d="M-30 440 L70 406 L160 360 L250 284 L320 222 L410 104 L410 520 L-30 520 Z" fill="url(#hrFadeM)" opacity="0" style={{ transformOrigin: 'bottom' }} transform="scale(1,0)" />
+                <path className="hr-line" d="M-30 440 L70 406 L160 360 L250 284 L320 222 L410 104" fill="none" stroke="rgba(22,163,74,.3)" strokeWidth="3" strokeLinecap="round" strokeDasharray="580" strokeDashoffset="580" />
+              </svg>
+            </div>
+
+            <div className={`absolute inset-0 ${on(2)}`}>
+              <div className="hidden md:block absolute inset-0">
+                <div className="hr-seo-d" style={{ top: '16%' }} />
+                <div className="hr-seo-d" style={{ top: '26%' }} />
+                <div className="hr-seo-d" style={{ top: '36%' }} />
+                <div className="hr-seo-d" style={{ top: '46%' }} />
+                <div className="hr-seo-d" style={{ top: '56%' }} />
+                <div className="hr-seo-d hr-seo-green hr-climb-d" style={{ top: '54%' }} />
+              </div>
+              <div className="md:hidden absolute inset-0">
+                <div className="hr-seo-m" style={{ top: '56%' }} />
+                <div className="hr-seo-m" style={{ top: '62%' }} />
+                <div className="hr-seo-m" style={{ top: '68%' }} />
+                <div className="hr-seo-m" style={{ top: '74%' }} />
+                <div className="hr-seo-m" style={{ top: '80%' }} />
+                <div className="hr-seo-m hr-seo-green hr-climb-m" style={{ top: '78%' }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="relative z-10 h-full flex flex-col items-center justify-center text-center">
+            <StarPill />
+
+            <div className="relative w-full h-[165px] md:h-[140px] mt-6 md:mt-8">
+              {HERO_SLIDES.map((s, i) => (
+                <div key={s.h} className={`absolute inset-0 flex flex-col md:justify-center ${on(i)}`}>
+                  <h1 className="font-semibold tracking-tight leading-[1.08] text-[#111] mb-3 md:mb-4" style={{ fontSize: 'clamp(34px, 4.5vw, 54px)' }}>
+                    {s.h}
+                  </h1>
+                  <p className="text-[#6b7280] text-base md:text-lg max-w-[520px] mx-auto">{s.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-center gap-3 md:gap-4 w-full md:w-auto mt-6 md:mt-7">
+              <a href="#how-it-works" className="bg-[#111] text-white px-7 py-3.5 rounded-full text-sm font-medium hover:opacity-90 transition-opacity">
+                See How It Works
+              </a>
+              <button onClick={() => onContact('Request a Demo')} className="border border-[#e5e7eb] px-7 py-3.5 rounded-full text-sm font-medium text-[#111] hover:bg-gray-50 transition-colors">
+                Request a Demo
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 mt-6">
+              {HERO_SLIDES.map((s, i) => (
+                <button
+                  key={s.h}
+                  onClick={() => setSlide(i)}
+                  aria-label={s.h}
+                  className={i === slide ? 'h-1.5 w-5 rounded-full bg-[#16A34A] transition-all' : 'h-1.5 w-1.5 rounded-full bg-[#d1d5db] transition-all'}
+                />
+              ))}
+            </div>
           </div>
         </div>
-        <div className="flex-shrink-0">
+
+        <div className="mt-14 md:mt-16 flex justify-center">
           <IPhoneMockup />
-        </div>
         </div>
       </div>
     </section>
@@ -521,6 +623,46 @@ export default function LandingPage() {
         }
         .animate-fadeInUp {
           animation: fadeInUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+        .hr-slide { opacity: 0; transition: opacity .55s ease; pointer-events: none; }
+        .hr-slide.hr-on { opacity: 1; }
+        .hr-tile {
+          position: absolute;
+          background: rgba(22,163,74,.13);
+          border: 1px solid rgba(22,163,74,.22);
+          border-radius: 9px;
+          color: rgba(22,163,74,.55);
+          font-weight: 500;
+          padding: 5px 8px;
+          font-size: 10px;
+          opacity: 0;
+          transform: scale(.8);
+        }
+        @media (min-width: 768px) { .hr-tile { padding: 7px 11px; font-size: 12px; } }
+        .hr-on .hr-tile { animation: hrPop .6s cubic-bezier(.22,1,.36,1) forwards; }
+        @keyframes hrPop { to { opacity: 1; transform: scale(1); } }
+        .hr-on .hr-line { animation: hrDraw 1.6s ease forwards; }
+        @keyframes hrDraw { to { stroke-dashoffset: 0; } }
+        .hr-on .hr-area { animation: hrRise 1.4s cubic-bezier(.22,1,.36,1) forwards; }
+        @keyframes hrRise { to { opacity: 1; transform: scaleY(1); } }
+        .hr-seo-d, .hr-seo-m {
+          position: absolute;
+          border-radius: 6px;
+          background: rgba(0,0,0,.045);
+        }
+        .hr-seo-d { right: 7%; width: 250px; height: 24px; }
+        .hr-seo-m { left: 12%; width: 76%; height: 18px; }
+        .hr-seo-green { background: rgba(22,163,74,.16); border: 1px solid rgba(22,163,74,.3); }
+        .hr-on .hr-climb-d { animation: hrClimbD 1.8s cubic-bezier(.22,1,.36,1) forwards; }
+        @keyframes hrClimbD { 0% { top: 54%; } 100% { top: 16%; } }
+        .hr-on .hr-climb-m { animation: hrClimbM 1.8s cubic-bezier(.22,1,.36,1) forwards; }
+        @keyframes hrClimbM { 0% { top: 78%; } 100% { top: 56%; } }
+        @media (prefers-reduced-motion: reduce) {
+          .hr-slide { transition: none; }
+          .hr-on .hr-tile, .hr-on .hr-line, .hr-on .hr-area,
+          .hr-on .hr-climb-d, .hr-on .hr-climb-m { animation: none; }
+          .hr-on .hr-tile { opacity: 1; transform: none; }
+          .hr-on .hr-line { stroke-dashoffset: 0; }
         }
       `}</style>
     </div>
