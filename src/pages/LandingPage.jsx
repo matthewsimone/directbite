@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react'
 import ordrLockupBlack from '../assets/ordr-logo-lockup.svg'
 import peopleOrderingFood from '../assets/people-ordering-food.jpg'
 import pizzaHero from '../assets/pizza-hero.jpg'
+import payApple from '../assets/pay-apple.svg'
+import payGoogle from '../assets/pay-google.svg'
+import payVisa from '../assets/pay-visa.svg'
+import payMastercard from '../assets/pay-mastercard.svg'
+import payAmex from '../assets/pay-amex.svg'
+import ordrLockupWhite from '../assets/ordr-lockup-white.svg'
+import uberDirectWhite from '../assets/uber-direct-white.svg'
 
 // ── Contact Form Dialog ──
 function ContactFormDialog({ open, onOpenChange, heading }) {
@@ -83,6 +90,27 @@ function ContactFormDialog({ open, onOpenChange, heading }) {
           </form>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Star Pill ──
+function StarPill() {
+  return (
+    <div
+      className="inline-flex items-center gap-2.5 bg-white rounded-full px-[18px] py-2"
+      style={{ border: '1px solid rgba(0,0,0,0.06)', boxShadow: '0 2px 20px rgba(0,0,0,0.06)' }}
+    >
+      <span className="inline-flex gap-[2px]" aria-hidden="true">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <svg key={i} width="13" height="13" viewBox="0 0 24 24" fill="#16A34A" style={{ display: 'block' }}>
+            <path d="M12 .587l3.668 7.431 8.332 1.151-6.064 5.828 1.48 8.279L12 19.309l-7.416 3.967 1.481-8.279L.001 9.169l8.332-1.151z" />
+          </svg>
+        ))}
+      </span>
+      <span className="text-[13px] font-medium text-[#111] tracking-[-0.01em]">
+        Restaurant ordering done right
+      </span>
     </div>
   )
 }
@@ -243,7 +271,11 @@ function Hero({ onContact }) {
       className="pt-36 md:pt-40 pb-20 md:pb-24 px-6 md:px-12 lg:px-20 animate-fadeInUp"
       style={{ background: 'radial-gradient(ellipse at center, rgba(34,197,94,0.04) 0%, transparent 70%)' }}
     >
-      <div className="max-w-[1200px] mx-auto flex flex-col md:flex-row items-center gap-16 md:gap-12">
+      <div className="max-w-[1200px] mx-auto">
+        <div className="flex justify-center mb-14">
+          <StarPill />
+        </div>
+        <div className="flex flex-col md:flex-row items-center gap-16 md:gap-12">
         <div className="flex-1 text-center md:text-left">
           <p className="text-[#16A34A] text-xs font-medium tracking-[0.15em] uppercase mb-6">
             Commission-Free Direct Ordering
@@ -273,6 +305,7 @@ function Hero({ onContact }) {
         </div>
         <div className="flex-shrink-0">
           <IPhoneMockup />
+        </div>
         </div>
       </div>
     </section>
@@ -353,6 +386,60 @@ function ValueProp() {
   )
 }
 
+// ── Delivery ──
+function Delivery() {
+  return (
+    <section className="bg-[#111] py-24 px-6 animate-fadeInUp" id="delivery">
+      <div className="max-w-[1200px] mx-auto">
+        <p className="text-xs tracking-[0.15em] text-[#8b8f96] uppercase mb-4">Delivery</p>
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-white mb-6 max-w-[720px]">
+          Expand your delivery zone
+        </h2>
+        <p className="text-[#9ca3af] text-base leading-relaxed max-w-[560px] mb-4">
+          Uber Direct is white-label delivery on your own site — no marketplace listing, no competitors shown, your customer stays yours. Fulfill every delivery, or only the orders beyond your in-house zone.
+        </p>
+        <p className="text-[#9ca3af] text-base leading-relaxed max-w-[560px] mb-10">
+          Flat-rate pricing by distance, <span className="text-[#16A34A]">no commission on the order</span>. You set the customer's delivery fee.
+        </p>
+        <div className="flex items-center gap-5">
+          <img src={ordrLockupWhite} alt="Ordr" className="h-9 w-auto" />
+          <span className="w-px h-6 bg-[#4b5056]" aria-hidden="true" />
+          <img src={uberDirectWhite} alt="Uber Direct" width="152" height="24" style={{ display: 'block' }} />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── Payments ──
+function Payments() {
+  const marks = [
+    { src: payApple, alt: 'Apple Pay', w: 41 },
+    { src: payGoogle, alt: 'Google Pay', w: 49 },
+    { src: payVisa, alt: 'Visa', w: 40 },
+    { src: payMastercard, alt: 'Mastercard', w: 40 },
+    { src: payAmex, alt: 'American Express', w: 40 },
+  ]
+  return (
+    <section className="py-24 px-6 animate-fadeInUp" id="payments">
+      <div className="max-w-[1200px] mx-auto">
+        <p className="text-xs tracking-[0.15em] text-[#6b7280] uppercase mb-4">Checkout</p>
+        <h2 className="text-3xl md:text-4xl font-semibold tracking-tight text-[#111] mb-6 max-w-[720px]">
+          Increase checkout conversions with flexible payment options
+        </h2>
+        <p className="text-[#6b7280] text-base leading-relaxed max-w-[560px] mb-12">
+          76% of Ordr orders are paid in one tap. Most restaurant websites can't accept a single wallet payment — every one of those customers hits a card form instead.
+        </p>
+        <div className="flex items-center justify-center gap-[18px] flex-wrap">
+          {marks.map((m) => (
+            <img key={m.alt} src={m.src} alt={m.alt} width={m.w} height={26} style={{ display: 'block', flexShrink: 0 }} />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── Final CTA ──
 function FinalCTA({ onContact }) {
   return (
@@ -417,6 +504,8 @@ export default function LandingPage() {
       <Receipt />
       <Stats />
       <ValueProp />
+      <Delivery />
+      <Payments />
       <FinalCTA onContact={openContact} />
       <Footer />
       <ContactFormDialog open={contactOpen} onOpenChange={setContactOpen} heading={contactHeading} />
