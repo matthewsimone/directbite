@@ -10,6 +10,7 @@ import {
 } from '@stripe/react-stripe-js'
 import toast from 'react-hot-toast'
 import { useRestaurant } from '../../hooks/useRestaurant'
+import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
@@ -517,6 +518,19 @@ export default function CheckoutPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, hours, isOpen, loading: restLoading } = useRestaurant(slug)
+
+  // Title / favicon / manifest for the checkout screen. Without it, navigating
+  // menu → checkout runs MenuPage's branding cleanup on unmount, which RESTORES
+  // the shell's <title>Ordr</title> — so the tab reads "Ordr" on a client's own
+  // domain at the exact moment the customer is entering card details.
+  //
+  // 'ordering' context matches MenuPage (manifest start_url = /{slug}).
+  //
+  // Deliberately placed here in the OUTER component, not inside the payment
+  // child: the "Create PaymentRequest ONCE" effect must never gain a
+  // restaurant?.name dependency, and this hook is nowhere near it.
+  useRestaurantBranding(restaurant, 'ordering')
+
   const { promotion } = usePromotion(restaurant?.id)
   const { items, subtotal, clearCart } = useCart()
 
