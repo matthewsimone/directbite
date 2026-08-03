@@ -138,7 +138,7 @@ async function sendAlertEmail(to: string[], subject: string, htmlBody: string) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Ordr <orders@directbite.co>",
+        from: "Ordr <orders@ordr.co>",
         to,
         subject,
         html: htmlBody,

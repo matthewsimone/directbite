@@ -236,7 +236,7 @@ serve(async (req: Request) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Ordr <orders@directbite.co>",
+        from: "Ordr <orders@ordr.co>",
         to: [restaurant.notification_email],
         subject,
         html,
