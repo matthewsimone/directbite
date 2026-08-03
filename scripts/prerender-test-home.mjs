@@ -91,6 +91,35 @@ function buildMetaBlock({ title, description, canonical, image, siteName, imageA
   ].join('\n    ')
 }
 
+// Per-restaurant icon links for prerendered pages. Google's favicon crawler
+// does not execute JS, so useRestaurantBranding's runtime injection is invisible
+// to it — it falls back to /favicon.ico and caches the platform default. These
+// tags put the restaurant's own logo in the served HTML source.
+//
+// Injected SEPARATELY from buildMetaBlock so the OG/canonical block is untouched,
+// and so the legal pages (/terms, /privacy) — which have no restaurant — get
+// nothing by simply not calling this. Same pattern as the GSC tag and JSON-LD.
+//
+// mask-icon is deliberately omitted: it requires monochrome SVG and this API
+// emits PNG. The version param mirrors useRestaurantBranding exactly so the
+// prerendered href and the runtime href are byte-identical — the hook then
+// finds the existing tag, sets the same value, and restores it on unmount.
+function injectIcons(html, restaurant) {
+  if (!restaurant?.slug) return html
+  const tMatch = restaurant.logo_url?.match(/[?&]t=(\d+)/)
+  const version = tMatch ? tMatch[1] : 'default'
+  const slug = encodeURIComponent(restaurant.slug)
+  const transparent = `/api/restaurant-favicon?slug=${slug}&size=192&style=transparent&v=${version}`
+  const white = `/api/restaurant-favicon?slug=${slug}&size=192&style=white&v=${version}`
+  const tags = [
+    `<link rel="icon" href="${transparent}" />`,
+    `<link rel="shortcut icon" href="${transparent}" />`,
+    `<link rel="apple-touch-icon" href="${white}" />`,
+    `<link rel="apple-touch-icon-precomposed" href="${white}" />`,
+  ].join('\n    ')
+  return html.replace('</head>', `    ${tags}\n  </head>`)
+}
+
 // Regex title-replace (not a literal "DirectBite") + inject block before
 // </head> — the exact injectMeta mechanics from api/og-html.js.
 function injectHead(html, seo) {
@@ -238,6 +267,7 @@ async function main() {
         }
         let homeOut = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
         homeOut = injectHead(homeOut, seo)
+        homeOut = injectIcons(homeOut, restaurant)
         // GSC verification — home page only, custom-domain restaurants only.
         // Each custom domain is its own GSC property; the token verifies it.
         // null-domain restaurants (served on directbite.co/{slug}) share the
@@ -353,6 +383,7 @@ async function main() {
 
         let menuOut = shell.replace('<div id="root"></div>', `<div id="root">${menuHtml}</div>`)
         menuOut = injectHead(menuOut, menuSeo)
+        menuOut = injectIcons(menuOut, restaurant)
 
         // Menu JSON-LD (Menu/MenuSection/MenuItem). Injected raw AFTER
         // injectHead so it bypasses escapeHtml (JSON-LD must not be
@@ -488,6 +519,7 @@ async function main() {
 
           let placeOut = shell.replace('<div id="root"></div>', `<div id="root">${placeHtml}</div>`)
           placeOut = injectHead(placeOut, placeSeo)
+          placeOut = injectIcons(placeOut, restaurant)
 
           // Place-page FAQ (real data: cuisine/categories, location, hours,
           // and the delivery Q ONLY where we actually deliver to this town).
@@ -577,6 +609,7 @@ async function main() {
 
           let tagOut = shell.replace('<div id="root"></div>', `<div id="root">${tagHtml}</div>`)
           tagOut = injectHead(tagOut, tagSeo)
+          tagOut = injectIcons(tagOut, restaurant)
 
           const tagSchema = buildItemListSchema(
             tagItems.map((it) => ({
