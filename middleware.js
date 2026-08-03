@@ -1,5 +1,5 @@
 import { rewrite, waitUntil } from '@vercel/functions'
-import domainMap from './src/lib/domainMap.js'
+import domainMap, { linkPaths } from './src/lib/domainMap.js'
 
 // Public-facing host for QR fallback redirects. Plain-Node context, so this
 // reads process.env rather than importing src/lib/publicDomain.js. Same
@@ -7,7 +7,7 @@ import domainMap from './src/lib/domainMap.js'
 const PUBLIC_DOMAIN = process.env.VITE_PUBLIC_DOMAIN || 'directbite.co'
 
 export const config = {
-  matcher: ['/', '/menu', '/places/:town', '/tags/:tag', '/sitemap.xml', '/robots.txt', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
+  matcher: ['/', '/menu', '/:path', '/places/:town', '/tags/:tag', '/sitemap.xml', '/robots.txt', '/r/:slug', '/:slug/tablet', '/:slug/tablet/login'],
 }
 
 export default async function middleware(request) {
@@ -49,6 +49,49 @@ export default async function middleware(request) {
       if (tg)                       { const t = new URL(request.url); t.pathname = `/${slug}/tags/${tg[1]}`; return rewrite(t) }
       if (url.pathname === '/sitemap.xml') { const t = new URL(request.url); t.pathname = `/${slug}/sitemap.xml`; return rewrite(t) }
       if (url.pathname === '/robots.txt')  { const t = new URL(request.url); t.pathname = `/${slug}/robots.txt`;  return rewrite(t) }
+
+      // Single-segment path that matched none of the rewrites above. Two cases:
+      //   - a REAL page: /catering, /storemenu (website_links → LinkViewer), or
+      //     /order (CustomDomainShell redirects to the main domain)
+      //   - a LEGACY url inherited from the restaurant's previous website
+      //     (/pasta, /deals, /contact-us). Google has these indexed and the SPA
+      //     catch-all answers 200 with an empty shell titled "Ordr" — a soft 404
+      //     on a client's own domain, unbounded in count.
+      // Real pages pass through untouched. The rest get a genuine 404 STATUS
+      // while still serving the SPA shell as the BODY, so LinkViewer renders its
+      // existing branded "Page not found" for humans. Status and body are
+      // independent: crawlers read the status, browsers render the body.
+      //
+      // The [^/.] character class excludes dots, so /favicon.ico, /chime.wav,
+      // /manifest.webmanifest and every other static asset can never match here.
+      // That guard is structural, not a maintained list.
+      const seg = url.pathname.match(/^\/([^/.]+)\/?$/)
+      if (seg) {
+        const p = seg[1]
+        const allowed = p === 'order' || (linkPaths[normalized] || []).includes(p)
+        if (!allowed) {
+          try {
+            const shellRes = await fetch(new URL('/index.html', url.origin), {
+              headers: { Accept: 'text/html' },
+            })
+            if (shellRes.ok) {
+              const shell = await shellRes.text()
+              return new Response(shell, {
+                status: 404,
+                headers: {
+                  'content-type': 'text/html; charset=utf-8',
+                  'cache-control': 'public, max-age=0, must-revalidate',
+                },
+              })
+            }
+          } catch (err) {
+            console.error('[Middleware] 404 shell fetch failed:', err?.message || err)
+          }
+          // Fail OPEN: shell fetch failed, so fall through to the existing
+          // catch-all (200 + shell). A wrong status code is a SEO problem;
+          // a 500 here would be an outage. Never fail closed on this path.
+        }
+      }
     }
 
     // Fallback — domain attached but NOT in the map (not website_enabled /

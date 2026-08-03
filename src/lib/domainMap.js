@@ -8,12 +8,22 @@ export default {
   "getfranks.com": "franksoakland",
   "ginosbellevillenj.com": "ginos",
   "mamarosapasta.com": "mamarosa",
+  "mangiapizzawaldwick.com": "mangia",
   "marcsdeliandpizza.com": "marcs",
   "newparktavern.com": "newparktavern",
   "parkpizza.co": "parkpizza",
   "pizzavillagecafebelleville.com": "pizzavillage2",
   "ralphseastrutherford.com": "ralphs",
+  "sonnyspizzaenglewood.com": "sonnys",
   "testpizza.co": "test",
   "theoriginalangelospizzeria.com": "angelos",
   "torinomenu.com": "torino",
+}
+
+// host → website_links paths. Single-segment paths that are REAL pages.
+export const linkPaths = {
+  "ginosbellevillenj.com": ["storemenu"],
+  "marcsdeliandpizza.com": ["catering"],
+  "testpizza.co": ["catering"],
+  "torinomenu.com": ["catering"],
 }
