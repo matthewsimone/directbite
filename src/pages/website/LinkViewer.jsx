@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import * as pdfjsLib from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { useRestaurant } from '../../hooks/useRestaurant'
+import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import { getStatus } from './utils/hours'
 import { isMainDomain } from '../../lib/customDomain'
 import TopBar from './components/TopBar'
@@ -81,6 +82,18 @@ export default function LinkViewer({ restaurant: propRestaurant, hours: propHour
   const restaurant = propRestaurant || hook.restaurant
   const hours = propHours || hook.hours
   const loading = propRestaurant ? false : hook.loading
+
+  // Title / favicon / apple-touch-icon / manifest for this route. Without it,
+  // a DIRECT load of /catering (or a 404 path, which also renders here) serves
+  // the SPA shell's <title>Ordr</title> on a client's own domain. Navigating in
+  // from the home page happened to look right only because HomePage's hook had
+  // already set the title and its cleanup had not yet run — the correct title
+  // was an accident of navigation order, not a property of this route.
+  //
+  // context mirrors the homeHref branch below: LinkViewer serves both
+  // /{slug}/{path} on the main domain and /{path} on a custom domain, and
+  // context only selects the manifest start_url for those two cases.
+  useRestaurantBranding(restaurant, isMainDomain() ? 'ordering' : 'website')
 
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
   useEffect(() => {
