@@ -295,20 +295,32 @@ serve(async (req: Request) => {
       }
 
       // Register Apple Pay domains (both root and www)
-      let applePayOk = false;
-      for (const domain of ["directbite.co", "www.directbite.co"]) {
+      let applePayFailures = 0;
+      // All four hosts, both brands. Apple Pay is registered per connected
+      // account and scoped to an EXACT host — ordr.co and www.ordr.co are
+      // separate registrations, as are the directbite.co pair. Deliberately
+      // NOT derived from VITE_PUBLIC_DOMAIN: directbite.co never sunsets
+      // (QR stickers and historical email links resolve there forever), so
+      // both brands must stay registered regardless of which one is public.
+      // Restaurants onboarded between the earlier backfill and the ordr.co
+      // flip had only the directbite pair, and lost Apple Pay the moment
+      // order links moved to ordr.co.
+      for (const domain of ["directbite.co", "www.directbite.co", "ordr.co", "www.ordr.co"]) {
         try {
           await stripe.applePayDomains.create(
             { domain_name: domain },
             { stripeAccount: stripe_account_id }
           );
           console.log(`Apple Pay domain ${domain} registered for ${stripe_account_id}`);
-          applePayOk = true;
         } catch (apErr: any) {
           console.error(`Apple Pay domain ${domain} registration failed:`, apErr.message);
+          applePayFailures++;
         }
       }
-      if (applePayOk) {
+      // Only flag as registered when ALL four hosts succeeded — a partial
+      // registration is exactly the state that caused the incident, and it
+      // must not look complete in the DB.
+      if (applePayFailures === 0) {
         await supabase
           .from("restaurants")
           .update({ apple_pay_registered: true })
