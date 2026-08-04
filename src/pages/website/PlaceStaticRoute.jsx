@@ -17,6 +17,20 @@ const SIBLING_LIMIT = 12
 
 const slugify = (s) => (s || '').toLowerCase().replace(/\s+/g, '-')
 
+// Tag links the prerender embedded in <head> — same payload and slug gate as
+// HomePage's copy. Covers the window before useMenu resolves, so the FAQ's
+// /tags anchors survive hydration instead of blinking out. Guarded for
+// renderToString, which has no document.
+function readFaqLinks(slug) {
+  if (typeof document === 'undefined') return {}
+  const el = document.getElementById('faq-links')
+  if (!el) return {}
+  try {
+    const data = JSON.parse(el.textContent) || {}
+    return data.slug === slug ? data : {}
+  } catch { return {} }
+}
+
 // Client-side wrapper for the /{slug}/places/{townSlug} route (in-app nav).
 // Mirrors MenuStaticRoute's prop-vs-fetch seam, then feeds the pure PlaceStatic.
 // The prerendered dist/{slug}/places/{townSlug}/index.html is the crawler /
@@ -70,7 +84,10 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
 
   // Network stall hit the 10s hard deadline — offer a retry instead of an
   // endless spinner. Takes priority over the loading spinner below.
-  if (failed || menuFailed) {
+  // menuFailed is deliberately NOT included: place pages don't depend on menu
+  // data (it feeds only the FAQ's tag links, which fall back to the embedded
+  // payload), so a menu timeout must not replace a page that can render.
+  if (failed) {
     return (
       <div className="min-h-dvh bg-white flex items-center justify-center px-6 text-center">
         <div>
@@ -98,7 +115,10 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
     )
   }
 
-  if (loading || menuLoading) {
+  // Menu data feeds ONLY the FAQ's tag links (and those fall back to the
+  // embedded payload below), so this page never waits on useMenu — gating on
+  // menuLoading would replace the prerendered page with a spinner on hydrate.
+  if (loading) {
     return (
       <div className="min-h-dvh bg-white flex items-center justify-center">
         <div className="w-8 h-8 border-3 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
@@ -153,7 +173,9 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
   // that table); with zero override rows both sides produce the same list.
   const base = linkBase !== null ? linkBase : (isMainDomain() ? `/${restaurant.slug}` : '')
   const generated = resolveGeneratedTags({ allowlist: TAG_KEYWORDS.tags, categories, items })
-  const tagLinks = generated.map((g) => ({ label: g.def.label, href: `${base}/tags/${g.def.slug}` }))
+  const resolvedTagLinks = generated.map((g) => ({ label: g.def.label, href: `${base}/tags/${g.def.slug}` }))
+  const embedded = readFaqLinks(restaurant.slug)
+  const tagLinks = resolvedTagLinks.length > 0 ? resolvedTagLinks : (embedded.tagLinks || [])
 
   return (
     <PlaceStatic

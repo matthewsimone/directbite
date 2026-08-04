@@ -523,6 +523,16 @@ async function main() {
           let placeOut = shell.replace('<div id="root"></div>', `<div id="root">${placeHtml}</div>`)
           placeOut = injectHead(placeOut, placeSeo)
           placeOut = injectIcons(placeOut, restaurant)
+          // Embed the tag links this render used. PlaceStaticRoute no longer
+          // blocks on useMenu, so on hydrate `categories`/`items` are still
+          // empty — without this the FAQ's /tags anchors would vanish until
+          // the menu fetch lands. No townLinks: sibling towns come from static
+          // geo data, so the client always has them.
+          const placeFaqLinkData = JSON.stringify({
+            slug: restaurant.slug,
+            tagLinks: faqTagLinks,
+          })
+          placeOut = placeOut.replace('</head>', `    <script id="faq-links" type="application/json">${placeFaqLinkData.replace(/</g, '\\u003c')}</script>\n  </head>`)
 
           // NOTE: the place-page FAQ schema is NOT injected here. PlaceStatic
           // renders the visible FAQ and its FAQPage JSON-LD from one shared
