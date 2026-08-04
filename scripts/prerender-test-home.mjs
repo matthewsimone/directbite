@@ -425,6 +425,34 @@ async function main() {
           .eq('page_type', 'place')
         const overrideBySlug = new Map((seoOverrides || []).map((o) => [o.slug, o]))
 
+        // Tag resolution runs BEFORE the places loop: place pages carry the
+        // /tags links in their FAQ, so generatedTags has to exist by the time
+        // PlaceStatic renders. The /tags pages themselves are still written
+        // further below, from these same two values.
+        const { data: tagOverrides } = await supabase
+          .from('seo_pages')
+          .select('*')
+          .eq('restaurant_id', restaurant.id)
+          .eq('page_type', 'tag')
+        const tagOverrideBySlug = new Map((tagOverrides || []).map((o) => [o.slug, o]))
+
+        const generatedTags = resolveGeneratedTags({
+          allowlist: TAG_KEYWORDS.tags,
+          categories,
+          items: menuItems,
+        })
+
+        // Same kill-switch filter the /tags loop applies — link only pages we
+        // actually write. meshBase is defined later (home render), so the place
+        // pages derive the identical prefix locally.
+        const placeBase = linkBaseValue != null ? linkBaseValue : `/${restaurant.slug}`
+        const faqTagLinks = (generatedTags || [])
+          .filter((g) => {
+            const ov = tagOverrideBySlug.get(g.def.slug)
+            return !(ov && ov.enabled === false)
+          })
+          .map((g) => ({ label: g.def.label, href: `${placeBase}/tags/${g.def.slug}` }))
+
         // Count pages actually written (kill-switch skips must not inflate the total).
         let placesWritten = 0
         for (const town of targetTowns) {
@@ -448,6 +476,7 @@ async function main() {
                   town,
                   siblingTowns,
                   featuredItems,
+                  tagLinks: faqTagLinks,
                 })
               )
             )
@@ -495,22 +524,10 @@ async function main() {
           placeOut = injectHead(placeOut, placeSeo)
           placeOut = injectIcons(placeOut, restaurant)
 
-          // Place-page FAQ (real data: cuisine/categories, location, hours,
-          // and the delivery Q ONLY where we actually deliver to this town).
-          const placeCategoriesText = categories && categories.length
-            ? categories.map((c) => c.name).slice(0, 6).join(', ')
-            : ''
-          const placeFaq = buildFaqSchema(
-            buildRestaurantFaq(restaurant, {
-              hoursText: formatWeekHours(hoursData),
-              categoriesText: placeCategoriesText,
-              town,
-              delivers,
-            })
-          )
-          if (placeFaq) {
-            placeOut = placeOut.replace('</head>', `    ${schemaScriptTag(placeFaq)}\n  </head>`)
-          }
+          // NOTE: the place-page FAQ schema is NOT injected here. PlaceStatic
+          // renders the visible FAQ and its FAQPage JSON-LD from one shared
+          // qas array, so the schema is already inside #root above — injecting
+          // again would emit it twice on every place page.
 
           const placeOutDir = path.resolve('dist', restaurant.slug, 'places', town.slug)
           await fs.mkdir(placeOutDir, { recursive: true })
@@ -526,20 +543,9 @@ async function main() {
         // where >=3 matching items exist (the anti-thin-content gate).
         // Reuses categories/menuItems/lowestPrices already fetched
         // above. Additive: new URLs, never touches menu/places/order.
+        // tagOverrideBySlug + generatedTags are resolved ABOVE the places
+        // loop (place-page FAQs link to these tags) and reused here.
         // ============================================================
-
-        const { data: tagOverrides } = await supabase
-          .from('seo_pages')
-          .select('*')
-          .eq('restaurant_id', restaurant.id)
-          .eq('page_type', 'tag')
-        const tagOverrideBySlug = new Map((tagOverrides || []).map((o) => [o.slug, o]))
-
-        const generatedTags = resolveGeneratedTags({
-          allowlist: TAG_KEYWORDS.tags,
-          categories,
-          items: menuItems,
-        })
 
         let tagsWritten = 0
         for (const { def: tagDef, items } of generatedTags) {
@@ -617,16 +623,11 @@ async function main() {
         // #root precisely because React strips unrendered #root content.
         // ============================================================
         const meshBase = linkBaseValue != null ? linkBaseValue : `/${restaurant.slug}`
+        // faqTagLinks is built once above the places loop (place FAQs need it
+        // too) — same prefix, same kill-switch filter — and reused here.
         // Kill-switch parity: link only the pages we actually wrote. An
         // override row with enabled === false skips the page in the loops
         // above, so linking it would point at a URL that doesn't exist.
-        const faqTagLinks = (generatedTags || [])
-          .filter((g) => {
-            const ov = tagOverrideBySlug.get(g.def.slug)
-            return !(ov && ov.enabled === false)
-          })
-          .map((g) => ({ label: g.def.label, href: `${meshBase}/tags/${g.def.slug}` }))
-
         const faqTownLinks = (targetTowns || [])
           .filter((t) => {
             const ov = overrideBySlug.get(t.slug)

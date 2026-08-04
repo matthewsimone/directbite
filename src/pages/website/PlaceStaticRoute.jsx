@@ -7,8 +7,11 @@ import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
 import { MAX_RADIUS_MILES, haversineMiles, findNearestTowns } from '../../lib/geoTowns'
 import { parseAddress } from './utils/address'
+import { resolveGeneratedTags } from './utils/tagMatch'
+import { useLinkBase } from './LinkBaseContext'
 import PlaceStatic from './PlaceStatic'
 import NJ_TOWNS from '../../data/nj-towns.json'
+import TAG_KEYWORDS from '../../data/tag-keywords.json'
 
 const SIBLING_LIMIT = 12
 
@@ -27,7 +30,11 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
   const error = propRestaurant ? null : hook.error
   const failed = propRestaurant ? false : hook.failed
 
-  const { loading: menuLoading, failed: menuFailed, retry: menuRetry } = useMenu(restaurant?.id)
+  const { categories, items, loading: menuLoading, failed: menuFailed, retry: menuRetry } = useMenu(restaurant?.id)
+
+  // Same link prefix PlaceStatic derives internally, so the FAQ's /tags hrefs
+  // match the prerendered ones on both custom domains and directbite.co.
+  const linkBase = useLinkBase()
 
   useRestaurantBranding(restaurant, 'website')
 
@@ -141,6 +148,13 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
         .slice(0, SIBLING_LIMIT)
     : []
 
+  // Tag links for the FAQ — resolved from the menu the same way the prerender
+  // does. No seo_pages kill-switch filter here (the client has no access to
+  // that table); with zero override rows both sides produce the same list.
+  const base = linkBase !== null ? linkBase : (isMainDomain() ? `/${restaurant.slug}` : '')
+  const generated = resolveGeneratedTags({ allowlist: TAG_KEYWORDS.tags, categories, items })
+  const tagLinks = generated.map((g) => ({ label: g.def.label, href: `${base}/tags/${g.def.slug}` }))
+
   return (
     <PlaceStatic
       restaurant={restaurant}
@@ -148,6 +162,7 @@ export default function PlaceStaticRoute({ restaurant: propRestaurant, hours: pr
       town={{ ...town, distanceMiles: Number.isFinite(townDistance) ? Math.round(townDistance * 100) / 100 : null }}
       siblingTowns={siblingTowns}
       featuredItems={featuredItems}
+      tagLinks={tagLinks}
     />
   )
 }
