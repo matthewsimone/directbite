@@ -241,23 +241,7 @@ async function main() {
           .order('day_of_week')
         if (hErr) throw new Error(`hours fetch failed: ${hErr.message}`)
 
-        // ---- Render via the SAME prop seam CustomDomainShell uses ----
-        const appHtml = renderToString(
-          React.createElement(
-            StaticRouter,
-            { location: ROUTE },
-            React.createElement(
-              LinkBaseProvider,
-              { value: linkBaseValue },
-              React.createElement(HomePage, { restaurant, hours: hoursData || [] })
-            )
-          )
-        )
-
-        // ---- Inject into a copy of the shell; write this restaurant's home ----
-        // (1) prerendered app into #root, then (2) per-restaurant <head> (title,
-        // description, canonical, OG/Twitter). useRestaurantBranding stays and
-        // re-writes the same values on hydrate — no conflict.
+        // ---- Per-restaurant <head> values ----
         // siteName/imageAlt are per-restaurant constants; every derived *Seo
         // object below inherits them from here so all four page types agree.
         const seo = {
@@ -265,22 +249,12 @@ async function main() {
           siteName: restaurant.name,
           imageAlt: restaurant.name,
         }
-        let homeOut = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
-        homeOut = injectHead(homeOut, seo)
-        homeOut = injectIcons(homeOut, restaurant)
-        // GSC verification — home page only, custom-domain restaurants only.
-        // Each custom domain is its own GSC property; the token verifies it.
-        // null-domain restaurants (served on directbite.co/{slug}) share the
-        // directbite.co property, verified once separately — they get no tag.
-        if (restaurant.gsc_verification && restaurant.custom_domain) {
-          const gscTag = `<meta name="google-site-verification" content="${escapeHtml(restaurant.gsc_verification)}" />`
-          homeOut = homeOut.replace('</head>', `    ${gscTag}\n  </head>`)
-        }
         restaurantUrls.push(seo.canonical)
-        // NOTE: home file is written LATER (after tags/towns are computed) so the
-        // FAQ-mesh block can link to the generated /tags and /places pages. See
-        // the deferred write after the /tags loop.
-        console.log(`✓ prepared ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (deferred write for mesh, root html ${appHtml.length} bytes)`)
+        // NOTE: the home page is RENDERED and written LATER (after tags/towns
+        // are computed) so FaqSection can link to the generated /tags and
+        // /places pages from inside the React tree. `seo` is computed here and
+        // stays in scope for that render; keeping the restaurantUrls.push here
+        // holds the sitemap URL order steady. See the render before the write.
 
         // ======================================================================
         // /{slug}/menu — static, crawlable full menu (no cart / tabs / search).
@@ -633,38 +607,77 @@ async function main() {
         console.log(`  wrote ${tagsWritten} /tags pages for ${restaurant.slug}`)
 
         // ============================================================
-        // Home FAQ-mesh block — visible FAQ that doubles as the internal
-        // -link hub (Owner pattern). Links home -> every /tags and /places
-        // page (1 hop from root = crawlable). Built from generatedTags +
-        // targetTowns (both in scope here). Prerender-only: crawlers hit
-        // this prerendered home; client SPA nav doesn't need a crawl mesh.
+        // Home render — deliberately deferred to here. The FAQ that
+        // FaqSection renders doubles as the internal-link hub (Owner
+        // pattern): home -> every /tags and /places page, 1 hop from root
+        // = crawlable. Those link lists are built from generatedTags +
+        // targetTowns, which don't exist until the loops above have run.
+        // Rendering here puts the links INSIDE the React tree, so hydration
+        // keeps them — the old string-injected mesh had to live outside
+        // #root precisely because React strips unrendered #root content.
         // ============================================================
         const meshBase = linkBaseValue != null ? linkBaseValue : `/${restaurant.slug}`
-        const chipClass = 'inline-flex items-center px-3 py-1.5 rounded-full bg-gray-100 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors'
-        const tagLinks = (generatedTags || [])
-          .map((g) => `<a href="${meshBase}/tags/${g.def.slug}" class="${chipClass}">${escapeHtml(g.def.label)}</a>`)
-          .join('')
-        const townLinks = (targetTowns || [])
-          .map((t) => `<a href="${meshBase}/places/${t.slug}" class="${chipClass}">${escapeHtml(cuisine)} in ${escapeHtml(t.name)}</a>`)
-          .join('')
+        // Kill-switch parity: link only the pages we actually wrote. An
+        // override row with enabled === false skips the page in the loops
+        // above, so linking it would point at a URL that doesn't exist.
+        const faqTagLinks = (generatedTags || [])
+          .filter((g) => {
+            const ov = tagOverrideBySlug.get(g.def.slug)
+            return !(ov && ov.enabled === false)
+          })
+          .map((g) => ({ label: g.def.label, href: `${meshBase}/tags/${g.def.slug}` }))
 
-        // Only emit a group when it has links (a restaurant with no tags or
-        // no towns simply omits that group — no empty hub sections).
-        const hubRows = []
-        if (tagLinks) hubRows.push(`<div class="mb-6"><h3 class="text-lg font-bold text-gray-900 mb-3">Explore the menu</h3><div class="flex flex-wrap gap-2">${tagLinks}</div></div>`)
-        if (townLinks) hubRows.push(`<div class="mb-6"><h3 class="text-lg font-bold text-gray-900 mb-3">Areas we serve</h3><div class="flex flex-wrap gap-2">${townLinks}</div></div>`)
+        const faqTownLinks = (targetTowns || [])
+          .filter((t) => {
+            const ov = overrideBySlug.get(t.slug)
+            return !(ov && ov.enabled === false)
+          })
+          .map((t) => ({ label: t.name, href: `${meshBase}/places/${t.slug}` }))
 
-        if (hubRows.length > 0) {
-          const meshHtml = `<section class="max-w-[1100px] mx-auto px-6 sm:px-8 -mt-32 md:mt-0 pt-10 pb-32 md:pb-10"><h2 class="text-xl font-bold text-gray-900 mb-6">Explore ${escapeHtml(restaurant.name)}</h2>${hubRows.join('')}</section>`
-          // Inject before </body> — OUTSIDE #root, so React hydration
-          // doesn't strip it (anything inside #root that HomePage
-          // doesn't render gets removed on hydrate). Renders below the
-          // footer; crawlers + users both keep it. Above-footer would
-          // require making this a real HomePage component (follow-up).
-          if (homeOut.includes('</body>')) {
-            homeOut = homeOut.replace('</body>', `${meshHtml}</body>`)
-          }
+        // ---- Render via the SAME prop seam CustomDomainShell uses ----
+        const appHtml = renderToString(
+          React.createElement(
+            StaticRouter,
+            { location: ROUTE },
+            React.createElement(
+              LinkBaseProvider,
+              { value: linkBaseValue },
+              React.createElement(HomePage, {
+                restaurant,
+                hours: hoursData || [],
+                tagLinks: faqTagLinks,
+                townLinks: faqTownLinks,
+              })
+            )
+          )
+        )
+
+        // ---- Inject into a copy of the shell; write this restaurant's home ----
+        // (1) prerendered app into #root, then (2) per-restaurant <head> (title,
+        // description, canonical, OG/Twitter). useRestaurantBranding stays and
+        // re-writes the same values on hydrate — no conflict.
+        let homeOut = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
+        homeOut = injectHead(homeOut, seo)
+        homeOut = injectIcons(homeOut, restaurant)
+        // Embed the link arrays the render above just used. On hydrate the
+        // client has no props (SPA nav gets none), so HomePage reads this
+        // instead — without it React would re-render the FAQ without links
+        // and strip the anchors the crawl mesh depends on.
+        const faqLinkData = JSON.stringify({
+          slug: restaurant.slug,
+          tagLinks: faqTagLinks,
+          townLinks: faqTownLinks,
+        })
+        homeOut = homeOut.replace('</head>', `    <script id="faq-links" type="application/json">${faqLinkData.replace(/</g, '\\u003c')}</script>\n  </head>`)
+        // GSC verification — home page only, custom-domain restaurants only.
+        // Each custom domain is its own GSC property; the token verifies it.
+        // null-domain restaurants (served on directbite.co/{slug}) share the
+        // directbite.co property, verified once separately — they get no tag.
+        if (restaurant.gsc_verification && restaurant.custom_domain) {
+          const gscTag = `<meta name="google-site-verification" content="${escapeHtml(restaurant.gsc_verification)}" />`
+          homeOut = homeOut.replace('</head>', `    ${gscTag}\n  </head>`)
         }
+        console.log(`✓ prepared ${path.relative(process.cwd(), path.join(OUT_DIR, 'index.html'))} (deferred write for mesh, root html ${appHtml.length} bytes)`)
 
         await fs.mkdir(OUT_DIR, { recursive: true })
         await fs.writeFile(path.join(OUT_DIR, 'index.html'), homeOut, 'utf-8')

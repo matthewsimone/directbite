@@ -11,6 +11,7 @@ import FeaturedMenu from './components/FeaturedMenu'
 import Gallery from './components/Gallery'
 import Reviews from './components/Reviews'
 import Location from './components/Location'
+import FaqSection from './components/FaqSection'
 import Footer from './components/Footer'
 import StickyMobileCTA from './components/StickyMobileCTA'
 import { getStatus, formatWeekHours } from './utils/hours'
@@ -78,7 +79,23 @@ function buildSchemaJsonLd(restaurant, hours) {
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
-export default function HomePage({ restaurant: propRestaurant, hours: propHours }) {
+// Link arrays the prerender embedded in <head>. Props win when present (the
+// prerender's own render passes them); this is the hydrate path, where the
+// client would otherwise rebuild the FAQ without its /tags and /places
+// anchors. Guarded for renderToString, which has no document.
+// The tag is per-restaurant but survives SPA nav between restaurants on the
+// main domain, so a slug mismatch means it belongs to the page we came from.
+function readFaqLinks(slug) {
+  if (typeof document === 'undefined') return {}
+  const el = document.getElementById('faq-links')
+  if (!el) return {}
+  try {
+    const data = JSON.parse(el.textContent) || {}
+    return data.slug === slug ? data : {}
+  } catch { return {} }
+}
+
+export default function HomePage({ restaurant: propRestaurant, hours: propHours, tagLinks, townLinks }) {
   // Custom domain context: parent (CustomDomainShell) provides restaurant + hours.
   // Main domain context: read slug from URL and fetch via useRestaurant.
   const { slug: paramSlug } = useParams()
@@ -164,12 +181,16 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
   const galleryUrls = restaurant.gallery_urls || []
   const reviews = restaurant.reviews || []
   const schemaData = buildSchemaJsonLd(restaurant, hours)
-  const faqData = buildFaqSchema(
-    buildRestaurantFaq(restaurant, {
-      hoursText: formatWeekHours(hours),
-      categoriesText: '',
-    })
-  )
+  const embedded = readFaqLinks(restaurant.slug)
+  const effectiveTagLinks = tagLinks || embedded.tagLinks
+  const effectiveTownLinks = townLinks || embedded.townLinks
+  const faqQas = buildRestaurantFaq(restaurant, {
+    hoursText: formatWeekHours(hours),
+    categoriesText: '',
+    tagLinks: effectiveTagLinks,
+    townLinks: effectiveTownLinks,
+  })
+  const faqData = buildFaqSchema(faqQas)
 
   return (
     <div
@@ -191,6 +212,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
       {restaurant.reviews_section_visible && reviews.length > 0 && (
         <Reviews reviews={reviews} />
       )}
+      <FaqSection qas={faqQas} />
       <Location restaurant={restaurant} />
       <Footer restaurant={restaurant} hours={hours} />
       {!drawerOpen && <StickyMobileCTA restaurant={restaurant} />}
