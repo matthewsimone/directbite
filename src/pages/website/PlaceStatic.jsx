@@ -88,7 +88,7 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
       <FeaturedGrid items={featuredItems} slug={restaurant.slug} />
 
       {/* 4. About — town in the first sentence */}
-      <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pb-10">
+      <section className="max-w-[1100px] mx-auto px-6 sm:px-8 pt-8 pb-10">
         <p className="text-base text-gray-700 leading-relaxed">
           {delivers
             ? `Craving ${cuisine} in ${town.name}? ${restaurant.name} delivers to ${town.name} and the surrounding ${town.county} County area — hand-made, fresh daily, ready when you are.`
