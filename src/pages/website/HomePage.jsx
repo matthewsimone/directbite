@@ -212,8 +212,8 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours,
       {restaurant.reviews_section_visible && reviews.length > 0 && (
         <Reviews reviews={reviews} />
       )}
-      <Location restaurant={restaurant} />
       <FaqSection qas={faqQas} />
+      <Location restaurant={restaurant} />
       <Footer restaurant={restaurant} hours={hours} />
       {!drawerOpen && <StickyMobileCTA restaurant={restaurant} />}
 

@@ -19,8 +19,7 @@ function LinkedAnswer({ linkList }) {
           {separatorBefore(i, items.length)}
           <a
             href={item.href}
-            className="hover:underline"
-            style={{ color: 'var(--brand-color)' }}
+            className="font-medium underline decoration-gray-300 underline-offset-2 hover:decoration-gray-600"
           >
             {item.label}
           </a>
@@ -41,11 +40,11 @@ export default function FaqSection({ qas }) {
   return (
     <section className="bg-white py-10 md:py-16">
       <div className="max-w-[1280px] mx-auto px-6 md:px-8">
-        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8">
+        <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6 md:mb-8 text-center">
           Frequently Asked Questions
         </h2>
 
-        <div className="max-w-3xl divide-y divide-gray-200 border-t border-b border-gray-200">
+        <div className="max-w-3xl mx-auto divide-y divide-gray-200 border-t border-b border-gray-200">
           {qas.map((item) => (
             <details key={item.q} open className="py-4 group">
               <summary className="text-lg md:text-xl font-semibold text-gray-900 cursor-pointer list-none flex items-start justify-between gap-4">
