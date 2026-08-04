@@ -659,6 +659,16 @@ async function main() {
         let homeOut = shell.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`)
         homeOut = injectHead(homeOut, seo)
         homeOut = injectIcons(homeOut, restaurant)
+        // Embed the link arrays the render above just used. On hydrate the
+        // client has no props (SPA nav gets none), so HomePage reads this
+        // instead — without it React would re-render the FAQ without links
+        // and strip the anchors the crawl mesh depends on.
+        const faqLinkData = JSON.stringify({
+          slug: restaurant.slug,
+          tagLinks: faqTagLinks,
+          townLinks: faqTownLinks,
+        })
+        homeOut = homeOut.replace('</head>', `    <script id="faq-links" type="application/json">${faqLinkData.replace(/</g, '\\u003c')}</script>\n  </head>`)
         // GSC verification — home page only, custom-domain restaurants only.
         // Each custom domain is its own GSC property; the token verifies it.
         // null-domain restaurants (served on directbite.co/{slug}) share the
