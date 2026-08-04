@@ -16,15 +16,18 @@ import Hero from './components/Hero'
 import { FeaturedGrid } from './components/FeaturedMenu'
 import PromoBar from './components/PromoBar'
 import StickyMobileCTA from './components/StickyMobileCTA'
+import FaqSection from './components/FaqSection'
 import { usePromotion } from '../../hooks/usePromotion'
-import { getStatus } from './utils/hours'
+import { getStatus, formatWeekHours } from './utils/hours'
 import { parseAddress } from './utils/address'
+import { buildRestaurantFaq } from './utils/faqContent'
+import { buildFaqSchema } from './utils/schema'
 import { isMainDomain } from '../../lib/customDomain'
 import { useLinkBase } from './LinkBaseContext'
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
-export default function PlaceStatic({ restaurant, hours, town, siblingTowns, featuredItems }) {
+export default function PlaceStatic({ restaurant, hours, town, siblingTowns, featuredItems, tagLinks }) {
   const slug = restaurant.slug
   const cuisine = restaurant.cuisine || 'Pizza'
   const linkBase = useLinkBase()
@@ -63,6 +66,22 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
 
   const siblings = (siblingTowns || []).slice(0, 15)
+
+  // The FAQ carries the sibling-town links that used to live in a chip block,
+  // and the schema below is built from the SAME qas array the section renders —
+  // visible text and JSON-LD cannot drift apart.
+  const townLinks = siblings.map((s) => ({
+    label: s.name,
+    href: `${base}/places/${s.slug}`,
+  }))
+  const faqQas = buildRestaurantFaq(restaurant, {
+    hoursText: formatWeekHours(hours),
+    town,
+    delivers,
+    tagLinks,
+    townLinks,
+  })
+  const faqData = buildFaqSchema(faqQas)
 
   return (
     <div className="min-h-dvh bg-white pb-32 md:pb-0" style={{ '--brand-color': brandColor }}>
@@ -105,27 +124,21 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
           : `Serving the ${town.name} area. Order online for pickup, or check if delivery reaches you.`}
       />
 
-      {/* 6. Internal link hub — nearby sibling towns (per-restaurant scope) */}
-      {siblings.length > 0 && (
-        <section className="max-w-[1100px] mx-auto px-6 sm:px-8 py-10">
-          <h2 className="text-lg font-bold text-gray-900 mb-3">Also serving nearby</h2>
-          <div className="flex flex-wrap gap-2">
-            {siblings.map((s) => (
-              <a
-                key={s.slug}
-                href={`${base}/places/${s.slug}`}
-                className="inline-flex items-center px-3 py-1.5 rounded-full bg-gray-100 text-sm font-medium text-gray-700 hover:bg-gray-200 transition-colors"
-              >
-                {cuisine} in {s.name}
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* 6. FAQ — visible Q&A that also carries the sibling-town links
+          (replaces the old "Also serving nearby" chip block). Backs the
+          FAQPage JSON-LD emitted at the end of this component. */}
+      <FaqSection qas={faqQas} />
 
       {!drawerOpen && <StickyMobileCTA restaurant={restaurant} />}
 
       <Footer restaurant={restaurant} hours={hours} />
+
+      {faqData && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqData).replace(/</g, '\\u003c') }}
+        />
+      )}
     </div>
   )
 }
