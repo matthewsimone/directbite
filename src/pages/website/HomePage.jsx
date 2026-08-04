@@ -11,6 +11,7 @@ import FeaturedMenu from './components/FeaturedMenu'
 import Gallery from './components/Gallery'
 import Reviews from './components/Reviews'
 import Location from './components/Location'
+import FaqSection from './components/FaqSection'
 import Footer from './components/Footer'
 import StickyMobileCTA from './components/StickyMobileCTA'
 import { getStatus, formatWeekHours } from './utils/hours'
@@ -78,7 +79,7 @@ function buildSchemaJsonLd(restaurant, hours) {
 
 const DEFAULT_BRAND_COLOR = '#16a34a'
 
-export default function HomePage({ restaurant: propRestaurant, hours: propHours }) {
+export default function HomePage({ restaurant: propRestaurant, hours: propHours, tagLinks, townLinks }) {
   // Custom domain context: parent (CustomDomainShell) provides restaurant + hours.
   // Main domain context: read slug from URL and fetch via useRestaurant.
   const { slug: paramSlug } = useParams()
@@ -164,12 +165,13 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
   const galleryUrls = restaurant.gallery_urls || []
   const reviews = restaurant.reviews || []
   const schemaData = buildSchemaJsonLd(restaurant, hours)
-  const faqData = buildFaqSchema(
-    buildRestaurantFaq(restaurant, {
-      hoursText: formatWeekHours(hours),
-      categoriesText: '',
-    })
-  )
+  const faqQas = buildRestaurantFaq(restaurant, {
+    hoursText: formatWeekHours(hours),
+    categoriesText: '',
+    tagLinks,
+    townLinks,
+  })
+  const faqData = buildFaqSchema(faqQas)
 
   return (
     <div
@@ -192,6 +194,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours 
         <Reviews reviews={reviews} />
       )}
       <Location restaurant={restaurant} />
+      <FaqSection qas={faqQas} />
       <Footer restaurant={restaurant} hours={hours} />
       {!drawerOpen && <StickyMobileCTA restaurant={restaurant} />}
 
