@@ -525,7 +525,7 @@ export default function LoyaltyTab() {
         ) : loading ? (
           <p className="text-gray-400 text-center mt-8">Loading...</p>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 max-w-4xl">
             {/* ── Section 1: program config ── */}
             <div className="bg-white rounded-lg border border-gray-200">
               <div className="bg-gray-50 border-b px-4 py-3">
@@ -601,49 +601,51 @@ export default function LoyaltyTab() {
                     </button>
                   ) : (
                     <>
-                      {tiers.map((t, i) => (
-                        <div key={t.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
-                          <p className="text-xs font-semibold text-gray-400">Tier {t.tier_level}</p>
-                          <div>
-                            <label className="text-xs text-gray-500">Name</label>
-                            <input
-                              type="text"
-                              value={t.name || ''}
-                              onChange={e => updateTier(i, { name: e.target.value })}
-                              className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-500">Color</label>
-                            <input
-                              type="color"
-                              value={t.color || '#000000'}
-                              onChange={e => updateTier(i, { color: e.target.value })}
-                              className="w-full h-9 px-1 border border-gray-300 rounded-lg"
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <div className="flex-1">
-                              <label className="text-xs text-gray-500">Multiplier</label>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {tiers.map((t, i) => (
+                          <div key={t.id} className="border border-gray-200 rounded-lg p-3 space-y-2">
+                            <p className="text-xs font-semibold text-gray-400">Tier {t.tier_level}</p>
+                            <div>
+                              <label className="text-xs text-gray-500">Name</label>
                               <input
-                                type="number" step="0.001" min="1" max="10"
-                                value={t.multiplier ?? ''}
-                                onChange={e => updateTier(i, { multiplier: e.target.value })}
+                                type="text"
+                                value={t.name || ''}
+                                onChange={e => updateTier(i, { name: e.target.value })}
                                 className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
                               />
                             </div>
-                            <div className="flex-1">
-                              <label className="text-xs text-gray-500">Threshold Points</label>
+                            <div>
+                              <label className="text-xs text-gray-500">Color</label>
                               <input
-                                type="number" step="1" min="0"
-                                value={t.threshold_points ?? ''}
-                                onChange={e => updateTier(i, { threshold_points: e.target.value })}
-                                className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                                type="color"
+                                value={t.color || '#000000'}
+                                onChange={e => updateTier(i, { color: e.target.value })}
+                                className="w-full h-9 px-1 border border-gray-300 rounded-lg"
                               />
                             </div>
+                            <div className="flex gap-2">
+                              <div className="flex-1">
+                                <label className="text-xs text-gray-500">Multiplier</label>
+                                <input
+                                  type="number" step="0.001" min="1" max="10"
+                                  value={t.multiplier ?? ''}
+                                  onChange={e => updateTier(i, { multiplier: e.target.value })}
+                                  className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                                />
+                              </div>
+                              <div className="flex-1">
+                                <label className="text-xs text-gray-500">Threshold Points</label>
+                                <input
+                                  type="number" step="1" min="0"
+                                  value={t.threshold_points ?? ''}
+                                  onChange={e => updateTier(i, { threshold_points: e.target.value })}
+                                  className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                                />
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                       <button
                         onClick={handleSaveTiers}
                         disabled={savingTiers}
