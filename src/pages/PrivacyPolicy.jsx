@@ -74,6 +74,7 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">7. Your Rights</h2>
             <p>You have the right to access, modify, or delete your personal data. To exercise these rights, contact us at <a href="mailto:matt@ordr.co" className="text-[#16A34A] underline">matt@ordr.co</a>.</p>
+            <p>If you have an Ordr account, you may request deletion of your account at any time. Deleting your account removes your profile, saved payment methods, and loyalty balances across all restaurants on the platform. Order records are retained as described in Section 4 for tax and legal compliance.</p>
           </section>
 
           <section>
