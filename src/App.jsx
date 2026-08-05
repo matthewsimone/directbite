@@ -10,7 +10,6 @@ import CheckoutPage from './pages/customer/CheckoutPage'
 import ConfirmationPage from './pages/customer/ConfirmationPage'
 import TabletPage from './pages/tablet/TabletPage'
 import AdminPage from './pages/admin/AdminPage'
-import CustomerAuthTest from './pages/CustomerAuthTest'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import HomePage from './pages/website/HomePage'
@@ -47,7 +46,6 @@ function MainRoutes() {
           </Suspense>
         }
       />
-      <Route path="/customer-auth-test" element={<CustomerAuthTest />} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfService />} />
       <Route path="/admin" element={<AdminPage />} />
