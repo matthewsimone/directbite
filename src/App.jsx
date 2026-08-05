@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { CartProvider } from './hooks/useCart'
+import { CustomerAuthProvider } from './hooks/useCustomerAuth'
 import { isMainDomain } from './lib/customDomain'
 import LandingPage from './pages/LandingPage'
 import MenuPage from './pages/customer/MenuPage'
@@ -9,6 +10,7 @@ import CheckoutPage from './pages/customer/CheckoutPage'
 import ConfirmationPage from './pages/customer/ConfirmationPage'
 import TabletPage from './pages/tablet/TabletPage'
 import AdminPage from './pages/admin/AdminPage'
+import CustomerAuthTest from './pages/CustomerAuthTest'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import TermsOfService from './pages/TermsOfService'
 import HomePage from './pages/website/HomePage'
@@ -45,6 +47,7 @@ function MainRoutes() {
           </Suspense>
         }
       />
+      <Route path="/customer-auth-test" element={<CustomerAuthTest />} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/terms" element={<TermsOfService />} />
       <Route path="/admin" element={<AdminPage />} />
@@ -75,7 +78,9 @@ export default function App() {
     <BrowserRouter>
       <Toaster position="top-center" toastOptions={{ duration: 2000 }} />
       <CartProvider>
-        {isMainDomain() ? <MainRoutes /> : <CustomDomainShell />}
+        <CustomerAuthProvider>
+          {isMainDomain() ? <MainRoutes /> : <CustomDomainShell />}
+        </CustomerAuthProvider>
       </CartProvider>
     </BrowserRouter>
   )
