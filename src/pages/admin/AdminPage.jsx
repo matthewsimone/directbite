@@ -6,6 +6,7 @@ import OrdersTab from './OrdersTab'
 import RestaurantsTab from './RestaurantsTab'
 import RevenueTab from './RevenueTab'
 import MenuManagementTab from './MenuManagementTab'
+import LoyaltyTab from './LoyaltyTab'
 import OnboardingTab from './OnboardingTab'
 import ReconciliationTab from './ReconciliationTab'
 import SeoTab from './SeoTab'
@@ -15,6 +16,7 @@ const TABS = [
   { key: 'restaurants', label: 'Restaurants', short: 'Stores', icon: RestaurantsIcon },
   { key: 'revenue', label: 'Revenue', short: 'Revenue', icon: RevenueIcon },
   { key: 'menu', label: 'Menu Management', short: 'Menu', icon: MenuIcon },
+  { key: 'loyalty', label: 'Loyalty', short: 'Loyalty', icon: LoyaltyIcon },
   { key: 'onboarding', label: 'Onboarding', short: 'New', icon: OnboardingIcon },
   { key: 'reconciliation', label: 'Reconciliation', short: 'Recon', icon: RevenueIcon },
   { key: 'seo', label: 'SEO', short: 'SEO', icon: SeoIcon },
@@ -106,6 +108,7 @@ export default function AdminPage() {
           {activeTab === 'restaurants' && <RestaurantsTab />}
           {activeTab === 'revenue' && <RevenueTab />}
           {activeTab === 'menu' && <MenuManagementTab />}
+          {activeTab === 'loyalty' && <LoyaltyTab />}
           {activeTab === 'onboarding' && <OnboardingTab />}
           {activeTab === 'reconciliation' && <ReconciliationTab />}
           {activeTab === 'seo' && <SeoTab />}
@@ -167,6 +170,14 @@ function MenuIcon({ active }) {
   return (
     <svg className={`w-5 h-5 ${active ? 'text-[#16A34A]' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+    </svg>
+  )
+}
+
+function LoyaltyIcon({ active }) {
+  return (
+    <svg className={`w-5 h-5 ${active ? 'text-[#16A34A]' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
     </svg>
   )
 }
