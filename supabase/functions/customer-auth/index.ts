@@ -431,9 +431,12 @@ async function handleVerify(req: Request, body: any): Promise<Response> {
         profileUpsertErr.message
       );
     } else {
+      // restaurant_customers.tier was dropped by migration 063 in favour of
+      // tier_level; lifetime_points_earned drives tier progress on the
+      // customer rewards page.
       const { data: profileRow, error: profileErr } = await supabase
         .from("restaurant_customers")
-        .select("display_name, email, points_balance, tier")
+        .select("display_name, email, points_balance, tier_level, lifetime_points_earned")
         .eq("restaurant_id", body.restaurant_id)
         .eq("customer_id", identity.id)
         .maybeSingle();
@@ -536,9 +539,12 @@ async function handleSession(body: any): Promise<Response> {
   let profile: Record<string, unknown> | null = null;
 
   if (body.restaurant_id) {
+    // restaurant_customers.tier was dropped by migration 063 in favour of
+    // tier_level; lifetime_points_earned drives tier progress on the customer
+    // rewards page.
     const { data: profileRow, error: profileErr } = await supabase
       .from("restaurant_customers")
-      .select("display_name, email, points_balance, tier")
+      .select("display_name, email, points_balance, tier_level, lifetime_points_earned")
       .eq("restaurant_id", body.restaurant_id)
       .eq("customer_id", identity.id)
       .maybeSingle();
