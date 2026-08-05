@@ -31,7 +31,7 @@ function rewardSubtitle(rw, menuItems) {
     const itemName = item?.name || 'Item no longer on the menu'
     return `Item · ${itemName}${size?.name ? ` (${size.name})` : ''}`
   }
-  return `Discount${Number(rw.min_subtotal_cents) > 0 ? ` · minimum ${formatCents(rw.min_subtotal_cents)}` : ''}`
+  return `Discount · ${formatCents(rw.discount_cents)} off${Number(rw.min_subtotal_cents) > 0 ? ` · minimum ${formatCents(rw.min_subtotal_cents)}` : ''}`
 }
 
 // ── Reward Editor Panel ──
