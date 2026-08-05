@@ -1,4 +1,4 @@
--- 058_customer_accounts_schema.sql
+-- 062_customer_accounts_schema.sql
 -- Additive only. No existing column altered or dropped.
 -- Nothing reads or writes these tables until the edge function ships.
 
