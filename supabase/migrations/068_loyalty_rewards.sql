@@ -85,6 +85,12 @@ create unique index if not exists idx_lrd_active_code
   on loyalty_redemptions (restaurant_id, code)
   where code is not null and status = 'pending';
 
+-- One applied reward per order. v1 allows a single redemption per ticket;
+-- enforced here so the client cannot send two regardless of UI state.
+create unique index if not exists idx_lrd_one_per_order
+  on loyalty_redemptions (order_id)
+  where order_id is not null and status = 'applied';
+
 -- ---------------------------------------------------------------
 -- 3. Order columns. Loyalty is its own money line, never merged
 --    with discount_amount — the receipt has to name which is which,
