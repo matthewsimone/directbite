@@ -8,7 +8,7 @@ export default function PrivacyPolicy() {
       </header>
       <div className="max-w-[720px] mx-auto px-6 py-12">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-        <p className="text-sm text-gray-500 mb-8">Last updated: July 25, 2026</p>
+        <p className="text-sm text-gray-500 mb-8">Last updated: August 5, 2026</p>
 
         <div className="prose prose-sm max-w-none text-gray-700 space-y-6">
           <section>
@@ -20,6 +20,9 @@ export default function PrivacyPolicy() {
               <li>Payment information (processed securely via Stripe — we do not store card numbers)</li>
               <li>Delivery address (if applicable)</li>
               <li>IP address and basic device information</li>
+              <li>Verification records, including the date and time a code was requested and the consent language shown to you</li>
+              <li>Loyalty point balances and transaction history, held separately for each restaurant</li>
+              <li>Account session identifiers stored on your device</li>
             </ul>
           </section>
 
@@ -31,6 +34,8 @@ export default function PrivacyPolicy() {
               <li>Send transactional SMS notifications to restaurant operators</li>
               <li>Communicate about your orders or account</li>
               <li>Improve our platform and services</li>
+              <li>Verify your identity when you create or sign in to an account</li>
+              <li>Calculate and track loyalty points where a restaurant offers a program</li>
             </ul>
           </section>
 
@@ -54,21 +59,16 @@ export default function PrivacyPolicy() {
           </section>
 
           <section>
-            <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">5. Cookies</h2>
-            <p>Ordr uses session cookies only to maintain your login state and cart contents. We do not use third-party marketing or tracking cookies.</p>
+            <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">5. Cookies and Local Storage</h2>
+            <p>Ordr uses your browser's local storage to keep your cart contents and, if you have an account, to keep you signed in. We do not use third-party marketing or tracking cookies.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">6. SMS Communications</h2>
-            <p>Ordr offers SMS order notifications for restaurant operators:</p>
-            <ul className="list-disc pl-6 space-y-1">
-              <li>Messages are transactional order notifications only — never marketing</li>
-              <li>Mobile information and SMS consent will not be shared with third parties or affiliates for marketing or promotional purposes</li>
-              <li>Message frequency varies based on order volume</li>
-              <li>Message and data rates may apply</li>
-              <li>Reply <strong>STOP</strong> to unsubscribe from SMS alerts at any time</li>
-              <li>Reply <strong>HELP</strong> for assistance</li>
-            </ul>
+            <p>Ordr sends two kinds of SMS messages. Both are transactional only and are never used for marketing.</p>
+            <p><strong>To restaurant operators:</strong> order notifications when a new order is placed. Frequency varies with order volume.</p>
+            <p><strong>To customers:</strong> one-time verification codes, sent only when you request one to create or access an account.</p>
+            <p>For both: mobile information and SMS consent will not be shared with third parties or affiliates for marketing or promotional purposes. Message and data rates may apply. Reply <strong>STOP</strong> to unsubscribe, <strong>HELP</strong> for assistance.</p>
           </section>
 
           <section>
