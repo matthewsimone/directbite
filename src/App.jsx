@@ -8,6 +8,7 @@ import LandingPage from './pages/LandingPage'
 import MenuPage from './pages/customer/MenuPage'
 import CheckoutPage from './pages/customer/CheckoutPage'
 import ConfirmationPage from './pages/customer/ConfirmationPage'
+import RewardsPage from './pages/customer/RewardsPage'
 import TabletPage from './pages/tablet/TabletPage'
 import AdminPage from './pages/admin/AdminPage'
 import PrivacyPolicy from './pages/PrivacyPolicy'
@@ -56,6 +57,7 @@ function MainRoutes() {
       <Route path="/:slug/places/:townSlug" element={<SlugLinkBase><PlaceStaticRoute /></SlugLinkBase>} />
       <Route path="/:slug/tags/:tagSlug" element={<SlugLinkBase><TagStaticRoute /></SlugLinkBase>} />
       <Route path="/:slug/checkout" element={<CheckoutPage />} />
+      <Route path="/:slug/rewards" element={<RewardsPage />} />
       <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
       <Route path="/:slug/tablet" element={<TabletPage />} />
       <Route path="/:slug/tablet/login" element={<TabletPage />} />
