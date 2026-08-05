@@ -155,6 +155,26 @@ verify_jwt = false
 
 
 # ---------------------------------------------------------------------------
+# Customer-facing public endpoints
+# Anonymous customer-callable. Customers are not Supabase Auth users, so
+# there is no JWT for the platform to verify; abuse control lives in the
+# handler.
+# ---------------------------------------------------------------------------
+
+# customer-auth — anonymous customer-callable. Phone OTP via Twilio Verify,
+# with session tokens we own and store only as a SHA-256 hash. Customers are
+# NOT Supabase Auth users, so the handler makes no supabase.auth.* call and
+# there is no JWT to verify. JWT off is required rather than preferred: the
+# send and verify actions run before any session exists. Abuse control is
+# handler-side — per-phone cooldown plus hourly and daily caps, and a per-IP
+# hourly cap, all counted from customer_consents. Service-role used
+# internally for the DB reads and writes.
+
+[functions.customer-auth]
+verify_jwt = false
+
+
+# ---------------------------------------------------------------------------
 # Admin endpoints with platform-level JWT validation
 # The only JWT-ON function in this project. The platform validates the
 # caller's JWT before the handler runs; the handler depends on that
