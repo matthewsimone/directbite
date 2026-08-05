@@ -226,17 +226,19 @@ async function handleSend(req: Request, body: any): Promise<Response> {
     }
   }
 
-  // --- Restaurant name for Twilio's CustomFriendlyName. Only sent when the
-  // restaurant actually resolves; no default is substituted. The resolved id
-  // is also what gets written to customer_consents, so an unknown id stores
-  // null rather than tripping the restaurant_id foreign key. ---
-  let restaurantName: string | null = null;
+  // --- Resolve the restaurant purely to validate the id before it is written
+  // to customer_consents, so an unknown id stores null rather than tripping the
+  // restaurant_id foreign key. We deliberately do NOT pass CustomFriendlyName to
+  // Twilio: this account is not permitted to use it (error 60204), and the
+  // Verify service friendly name is set to 'restaurant', so the body reads
+  // "Your restaurant verification code is: 123456" — intentionally generic,
+  // leaking no platform name to the customer. ---
   let resolvedRestaurantId: string | null = null;
 
   if (body.restaurant_id) {
     const { data: restaurant, error: restErr } = await supabase
       .from("restaurants")
-      .select("id, name")
+      .select("id")
       .eq("id", body.restaurant_id)
       .maybeSingle();
 
@@ -247,7 +249,6 @@ async function handleSend(req: Request, body: any): Promise<Response> {
       );
     } else if (restaurant) {
       resolvedRestaurantId = restaurant.id;
-      restaurantName = restaurant.name;
     }
   }
 
@@ -255,9 +256,6 @@ async function handleSend(req: Request, body: any): Promise<Response> {
   const form = new URLSearchParams();
   form.set("To", phone);
   form.set("Channel", "sms");
-  if (restaurantName) {
-    form.set("CustomFriendlyName", restaurantName);
-  }
 
   const twilioRes = await fetch(
     `https://verify.twilio.com/v2/Services/${twilioVerifySid}/Verifications`,
