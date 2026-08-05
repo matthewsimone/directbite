@@ -296,7 +296,24 @@ async function handleSend(req: Request, body: any): Promise<Response> {
       user_agent: userAgent,
     });
 
-  if (consentErr) {
+  // Migration 067 caps one otp_verification row per phone per clock-minute
+  // with a partial unique index, closing the race where two concurrent sends
+  // both clear the app-level cooldown check above before either inserts. That
+  // index is on an expression, so PostgREST's upsert/onConflict — which takes
+  // a plain column list — cannot express it; the violation is absorbed here
+  // instead.
+  //
+  // A 23505 at this point is a benign outcome, not a failure: Twilio has
+  // already accepted the send, and the row that won the race records the same
+  // consent for the same phone in the same minute. Returning 500 would show
+  // the customer server_error while their code is already in flight, so this
+  // is logged as a debug line and the response stays 200.
+  if (consentErr && consentErr.code === "23505") {
+    console.debug(
+      "customer-auth send consent insert lost cooldown race (benign):",
+      consentErr.message
+    );
+  } else if (consentErr) {
     console.error(
       "customer-auth send consent insert failed:",
       consentErr.message
