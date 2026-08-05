@@ -374,6 +374,25 @@ async function handleVerify(req: Request, body: any): Promise<Response> {
     return jsonResponse({ error: "server_error" }, 500);
   }
 
+  // --- Guest loyalty claim. Points accrue to a normalized phone number with
+  // a null customer_id while the customer is a guest. On first verification
+  // we attach those ledger rows to this identity, rebuild the per-restaurant
+  // balances from the ledger, and backfill orders.customer_id. This must run
+  // before the profile upsert below: the claim creates profile rows for every
+  // restaurant the phone has points at, and the profile read that follows has
+  // to see the claimed balance. A failure here is logged but never fails the
+  // verification — the claim is idempotent and can be re-run. ---
+  const { error: claimErr } = await supabase.rpc("claim_guest_loyalty", {
+    p_customer_id: identity.id,
+  });
+
+  if (claimErr) {
+    console.error(
+      "customer-auth verify guest loyalty claim failed:",
+      claimErr.message
+    );
+  }
+
   // --- Per-restaurant profile. ignoreDuplicates makes this INSERT ... ON
   // CONFLICT DO NOTHING, so an existing profile's points, tier, name and
   // email are left untouched. A bad restaurant_id fails the foreign key;
