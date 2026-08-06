@@ -6,7 +6,6 @@ import { useMenu } from '../../hooks/useMenu'
 import { usePromotion } from '../../hooks/usePromotion'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
 import { useCart } from '../../hooks/useCart'
-import { calculateLoyaltyPoints } from '../../utils/loyaltyPoints'
 import { useWalletDetection } from '../../hooks/useWalletDetection'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import HeroSection from '../../components/HeroSection'
@@ -104,22 +103,10 @@ export default function MenuPage() {
   const [activeCategory, setActiveCategory] = useState(null)
   const [selectedItem, setSelectedItem] = useState(null)
   const [showCart, setShowCart] = useState(false)
-  const [pointsDelta, setPointsDelta] = useState(0)
 
-  const prevPointsRef = useRef(0)
   const sectionRefs = useRef({})
   const programmaticScrollRef = useRef(false)
   const programmaticScrollTimeoutRef = useRef(null)
-
-  // The float shows the CHANGE in the cart's total points, not a per-item
-  // figure. Points are floored once over the whole order, so per-item values
-  // would not sum to the order total and the float would disagree with the
-  // band in the cart sheet.
-  useEffect(() => {
-    const next = calculateLoyaltyPoints({ restaurant, subtotal })
-    if (next > prevPointsRef.current) setPointsDelta(next - prevPointsRef.current)
-    prevPointsRef.current = next
-  }, [subtotal, restaurant])
 
   // Set initial active category
   useEffect(() => {
@@ -413,7 +400,7 @@ export default function MenuPage() {
 
       {/* Cart button */}
       {restaurant && (
-        <CartButton itemCount={itemCount} total={subtotal} onClick={() => setShowCart(true)} pointsDelta={pointsDelta} />
+        <CartButton itemCount={itemCount} total={subtotal} onClick={() => setShowCart(true)} />
       )}
 
       {/* Item modal */}
