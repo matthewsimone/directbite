@@ -11,23 +11,30 @@ export default function RewardsPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
-  // NOTE: `profile` is null today for every customer. CustomerAuthProvider is
-  // mounted in App.jsx without a restaurantId, and customer-auth only reads a
-  // restaurant_customers row when one is supplied — so the signed-in view below
-  // will not render real balances until the provider receives a restaurantId.
-  // That is a separate change.
-  const { profile, loading: authLoading, isLoggedIn } = useCustomerAuth()
+  const { loading: authLoading, isLoggedIn, loadProfile } = useCustomerAuth()
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
   useRestaurantBranding(restaurant, 'ordering')
 
   const [tiers, setTiers] = useState([])
   const [rewards, setRewards] = useState([])
+  const [profile, setProfile] = useState(null)
   const [dataLoading, setDataLoading] = useState(false)
 
   useEffect(() => {
     if (!restaurant?.id) return
     fetchLoyalty(restaurant.id)
   }, [restaurant?.id])
+
+  // The profile is scoped to THIS page's restaurant, so a customer viewing one
+  // restaurant's rewards can never see another restaurant's balance. The
+  // cancelled flag stops a slow response for a previous restaurant from
+  // overwriting a newer one.
+  useEffect(() => {
+    if (!restaurant?.id || !isLoggedIn) { setProfile(null); return }
+    let cancelled = false
+    loadProfile(restaurant.id).then(p => { if (!cancelled) setProfile(p) })
+    return () => { cancelled = true }
+  }, [restaurant?.id, isLoggedIn, loadProfile])
 
   async function fetchLoyalty(restaurantId) {
     setDataLoading(true)

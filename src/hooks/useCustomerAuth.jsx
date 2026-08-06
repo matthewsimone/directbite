@@ -52,10 +52,14 @@ async function callCustomerAuth(body, signal) {
 
 const CustomerAuthContext = createContext(null)
 
-export function CustomerAuthProvider({ children, restaurantId = null }) {
+// Holds IDENTITY only — who the customer is, not what they have anywhere.
+// The provider is mounted above the router, so it cannot know which
+// restaurant a page is showing. Per-restaurant profile data (points, tier,
+// name) is fetched by whichever page needs it via loadProfile, which keeps a
+// page from ever displaying another restaurant's balance.
+export function CustomerAuthProvider({ children }) {
   const [customerId, setCustomerId] = useState(null)
   const [phone, setPhone] = useState(null)
-  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
 
   // Tracks whether the component is still mounted so async setState calls
@@ -89,7 +93,6 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
       if (isCurrent()) {
         setCustomerId(null)
         setPhone(null)
-        setProfile(null)
         setLoading(false)
       }
       return
@@ -99,7 +102,7 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
 
     try {
       const { ok, data } = await callCustomerAuth(
-        { action: 'session', token, restaurant_id: restaurantId },
+        { action: 'session', token },
         controller.signal
       )
       if (!isCurrent()) return
@@ -107,12 +110,10 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
         clearToken()
         setCustomerId(null)
         setPhone(null)
-        setProfile(null)
         return
       }
       setCustomerId(data.customer_id ?? null)
       setPhone(data.phone_e164 ?? null)
-      setProfile(data.profile ?? null)
     } catch (err) {
       if (err?.name === 'AbortError') return
       // A network failure is not evidence the token is bad — the request
@@ -125,15 +126,16 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
       // Only the current (non-superseded) check clears loading.
       if (isCurrent()) setLoading(false)
     }
-  }, [restaurantId])
+  }, [])
 
-  // Re-runs on restaurantId change so `profile` is scoped to the restaurant
-  // currently being viewed.
+  // Runs once on mount — identity does not vary by restaurant.
   useEffect(() => {
     checkSession()
   }, [checkSession])
 
-  const sendCode = useCallback(async (phoneArg) => {
+  // restaurantId is optional: when the caller knows it, the edge function
+  // records the consent row against that restaurant.
+  const sendCode = useCallback(async (phoneArg, restaurantId = null) => {
     try {
       const { ok, data } = await callCustomerAuth({
         action: 'send',
@@ -151,9 +153,11 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
     } catch {
       return { ok: false, error: 'network', retryAfter: null }
     }
-  }, [restaurantId])
+  }, [])
 
-  const verifyCode = useCallback(async (phoneArg, code) => {
+  // restaurantId is optional: when the caller knows it, the edge function
+  // upserts the customer's profile row for that restaurant on verify.
+  const verifyCode = useCallback(async (phoneArg, code, restaurantId = null) => {
     try {
       const { ok, data } = await callCustomerAuth({
         action: 'verify',
@@ -173,14 +177,13 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
         // is only echoed by 'session', so the caller's argument stands in
         // until the next session check refreshes it.
         setPhone(phoneArg)
-        setProfile(data.profile ?? null)
         setLoading(false)
       }
       return { ok: true }
     } catch {
       return { ok: false, error: 'network' }
     }
-  }, [restaurantId])
+  }, [])
 
   const logout = useCallback(async () => {
     const token = readToken()
@@ -191,8 +194,28 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
     if (mountedRef.current) {
       setCustomerId(null)
       setPhone(null)
-      setProfile(null)
       setLoading(false)
+    }
+  }, [])
+
+  // Per-restaurant profile fetch for the caller's own use. Deliberately sets
+  // no provider state — the result belongs to the page that asked for it, so
+  // two pages on different restaurants cannot overwrite each other. Returns
+  // the profile object, or null on any failure.
+  const loadProfile = useCallback(async (restaurantId) => {
+    if (!restaurantId) return null
+    const token = readToken()
+    if (!token) return null
+    try {
+      const { ok, data } = await callCustomerAuth({
+        action: 'session',
+        token,
+        restaurant_id: restaurantId,
+      })
+      if (!ok || !data.ok) return null
+      return data.profile ?? null
+    } catch {
+      return null
     }
   }, [])
 
@@ -201,13 +224,13 @@ export function CustomerAuthProvider({ children, restaurantId = null }) {
       value={{
         customerId,
         phone,
-        profile,
         loading,
         isLoggedIn: customerId !== null,
         sendCode,
         verifyCode,
         logout,
         refresh: checkSession,
+        loadProfile,
       }}
     >
       {children}
