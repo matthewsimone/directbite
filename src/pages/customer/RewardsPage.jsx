@@ -6,6 +6,7 @@ import { useRestaurant } from '../../hooks/useRestaurant'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import RewardsView from '../../components/RewardsView'
+import SignInSheet from '../../components/SignInSheet'
 
 export default function RewardsPage() {
   const { slug } = useParams()
@@ -19,6 +20,7 @@ export default function RewardsPage() {
   const [rewards, setRewards] = useState([])
   const [profile, setProfile] = useState(null)
   const [dataLoading, setDataLoading] = useState(false)
+  const [signInOpen, setSignInOpen] = useState(false)
 
   useEffect(() => {
     if (!restaurant?.id) return
@@ -130,11 +132,20 @@ export default function RewardsPage() {
           tiers={tiers}
           rewards={rewards}
           customer={customer}
-          // Placeholder — the customer sign-in flow is not built yet. Wiring
-          // this to the OTP modal is a separate change.
-          onSignIn={() => {}}
+          onSignIn={() => setSignInOpen(true)}
         />
       </div>
+
+      <SignInSheet
+        open={signInOpen}
+        onClose={() => setSignInOpen(false)}
+        // No explicit refetch: the profile effect above depends on isLoggedIn,
+        // which flips true on a successful verify, so the profile for this
+        // restaurant reloads on its own.
+        onSuccess={() => {}}
+        restaurantId={restaurant.id}
+        brandColor={restaurant.primary_color || '#16A34A'}
+      />
     </div>
   )
 }
