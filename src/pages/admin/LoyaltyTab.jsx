@@ -333,6 +333,7 @@ export default function LoyaltyTab() {
 
   // Program config form — seeded from the selected restaurant row.
   const [enabled, setEnabled] = useState(false)
+  const [programName, setProgramName] = useState('')
   const [pointsPerDollar, setPointsPerDollar] = useState('')
   const [earnBasis, setEarnBasis] = useState('subtotal')
   const [savingConfig, setSavingConfig] = useState(false)
@@ -350,7 +351,7 @@ export default function LoyaltyTab() {
   useEffect(() => {
     supabase
       .from('restaurants')
-      .select('id, name, slug, loyalty_enabled, loyalty_points_per_dollar, loyalty_earn_basis')
+      .select('id, name, slug, loyalty_enabled, loyalty_program_name, loyalty_points_per_dollar, loyalty_earn_basis')
       .order('name')
       .then(({ data, error }) => {
         if (error) {
@@ -369,6 +370,7 @@ export default function LoyaltyTab() {
     if (!selectedRestaurant) return
     const r = restaurants.find(x => x.id === selectedRestaurant)
     setEnabled(r?.loyalty_enabled === true)
+    setProgramName(r?.loyalty_program_name || '')
     setPointsPerDollar(r?.loyalty_points_per_dollar == null ? '' : String(r.loyalty_points_per_dollar))
     setEarnBasis(r?.loyalty_earn_basis || 'subtotal')
     fetchLoyalty()
@@ -424,6 +426,7 @@ export default function LoyaltyTab() {
       .from('restaurants')
       .update({
         loyalty_enabled: enabled,
+        loyalty_program_name: programName.trim(),
         loyalty_points_per_dollar: Number(pointsPerDollar) || 0,
         loyalty_earn_basis: earnBasis,
       })
@@ -546,6 +549,16 @@ export default function LoyaltyTab() {
 
                 {enabled && (
                   <>
+                    <div>
+                      <label className="text-xs text-gray-500">Program Name</label>
+                      <input
+                        type="text"
+                        value={programName}
+                        onChange={e => setProgramName(e.target.value)}
+                        placeholder="Test Rewards"
+                        className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                      />
+                    </div>
                     <div>
                       <label className="text-xs text-gray-500">Points per Dollar</label>
                       <input
