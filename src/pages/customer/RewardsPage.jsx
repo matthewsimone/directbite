@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
+import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import RewardsView from '../../components/RewardsView'
 
 export default function RewardsPage() {
@@ -16,6 +17,8 @@ export default function RewardsPage() {
   // will not render real balances until the provider receives a restaurantId.
   // That is a separate change.
   const { profile, loading: authLoading, isLoggedIn } = useCustomerAuth()
+  // Per-restaurant tab branding + Add-to-Home-Screen manifest.
+  useRestaurantBranding(restaurant, 'ordering')
 
   const [tiers, setTiers] = useState([])
   const [rewards, setRewards] = useState([])
