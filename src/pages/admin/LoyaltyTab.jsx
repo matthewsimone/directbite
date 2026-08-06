@@ -17,8 +17,8 @@ const EARN_BASIS_OPTIONS = [
 // 1.000 and its threshold is 0.
 const DEFAULT_TIERS = [
   { tier_level: 1, name: 'Standard', color: '#A9B0BA', multiplier: 1.000, threshold_points: 0 },
-  { tier_level: 2, name: 'Plus', color: '#C9A227', multiplier: 1.150, threshold_points: 500 },
-  { tier_level: 3, name: 'Premium', color: '#171C27', multiplier: 1.250, threshold_points: 2000 },
+  { tier_level: 2, name: 'Plus', color: '#C9A227', multiplier: 1.150, threshold_points: 5000 },
+  { tier_level: 3, name: 'Premium', color: '#171C27', multiplier: 1.250, threshold_points: 20000 },
 ]
 
 // Catalog subtitle. Reads from the already-loaded menu_items array rather than
