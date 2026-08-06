@@ -75,6 +75,17 @@ export function formatPoints(n) {
   return Math.trunc(v).toLocaleString('en-US')
 }
 
+/**
+ * Formatted count plus the correctly pluralised word: '1 point',
+ * '18 points', '1,250 points'. Non-numeric input reads '0 points'.
+ */
+export function pointsLabel(n) {
+  const v = Number(n)
+  // Compare the truncated absolute value so -1 and 1.4 both read "point".
+  const singular = Number.isFinite(v) && Math.trunc(Math.abs(v)) === 1
+  return `${formatPoints(n)} ${singular ? 'point' : 'points'}`
+}
+
 // Coerces to a usable number; anything non-finite (null, '', NaN) becomes 0
 // so a missing field can never poison the arithmetic into NaN.
 function num(v) {

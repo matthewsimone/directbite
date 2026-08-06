@@ -430,6 +430,7 @@ export default function MenuPage() {
             onClose={() => setShowCart(false)}
             onCheckout={handleCheckout}
             promotion={promotion}
+            restaurant={restaurant}
           />
         </Suspense>
       )}

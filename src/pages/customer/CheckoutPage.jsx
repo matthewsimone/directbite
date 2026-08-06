@@ -15,7 +15,7 @@ import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
-import { calculateLoyaltyPoints, formatPoints } from '../../utils/loyaltyPoints'
+import { calculateLoyaltyPoints, pointsLabel } from '../../utils/loyaltyPoints'
 import { haversineDistanceMiles, calculateDeliveryFeeCents } from '../../utils/haversine'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
 import TimePickerModal from '../../components/TimePickerModal'
@@ -25,6 +25,14 @@ import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 import { calcRecoup } from '../../utils/recoup'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
+
+// Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
+  if (!m) return hex
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
 
 // ---------- Tip Selector ----------
 // Order-type-dependent default: pickup → "No Tip"; delivery → 18%. Once the
@@ -671,6 +679,7 @@ export default function CheckoutPage() {
     discountAmount,
     totalAmount: total,
   })
+  const brandColor = restaurant?.primary_color || '#16A34A'
 
   const estimatedTime =
     orderType === 'pickup'
@@ -1548,11 +1557,13 @@ export default function CheckoutPage() {
               <span>{showPlaceholder ? '—' : formatCurrency(total)}</span>
             </div>
             {loyaltyPoints > 0 && (
-              <div className="flex justify-between pt-3">
-                <span className="text-gray-500">You'll earn</span>
-                <span className="font-semibold" style={{ color: restaurant?.primary_color || '#16A34A' }}>
-                  {formatPoints(loyaltyPoints)} points
-                </span>
+              <div
+                className="rounded-xl px-4 py-2.5 mt-3 text-center"
+                style={{ backgroundColor: withAlpha(brandColor, 0.08) }}
+              >
+                <p className="text-sm" style={{ color: brandColor }}>
+                  You'll earn <strong>{pointsLabel(loyaltyPoints)}</strong> with this order
+                </p>
               </div>
             )}
           </div>

@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react'
 import { formatCurrency } from '../utils/format'
+import { calculateLoyaltyPoints, pointsLabel } from '../utils/loyaltyPoints'
 import { useCart } from '../hooks/useCart'
 
-export default function CartSheet({ onClose, onCheckout, promotion }) {
+// Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
+  if (!m) return hex
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
+
+export default function CartSheet({ onClose, onCheckout, promotion, restaurant }) {
   const { items, removeItem, updateQuantity } = useCart()
   const [visible, setVisible] = useState(false)
 
@@ -19,6 +28,19 @@ export default function CartSheet({ onClose, onCheckout, promotion }) {
     setVisible(false)
     setTimeout(onCheckout, 300)
   }
+
+  // Mirrors the per-line total computed in the items.map below.
+  const cartSubtotal = items.reduce((sum, item) => {
+    const toppingsTotal = (item.toppings || []).reduce((t, top) => t + (parseFloat(top.price) || 0), 0)
+    return sum + ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
+  }, 0)
+
+  const brandColor = restaurant?.primary_color || '#16A34A'
+  // The cart only knows the food subtotal, so this previews the base earn on
+  // that figure. Tax, fees and tip are not yet known, and the tier multiplier
+  // is not applied — a customer at a higher tier earns MORE than shown, which
+  // is the safe direction to be wrong.
+  const loyaltyPoints = calculateLoyaltyPoints({ restaurant, subtotal: cartSubtotal })
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" onClick={handleClose}>
@@ -123,6 +145,14 @@ export default function CartSheet({ onClose, onCheckout, promotion }) {
             </div>
           )}
         </div>
+
+        {loyaltyPoints > 0 && (
+          <div className="px-5 py-2.5 text-center" style={{ backgroundColor: withAlpha(brandColor, 0.08) }}>
+            <p className="text-sm" style={{ color: brandColor }}>
+              You'll earn <strong>{pointsLabel(loyaltyPoints)}</strong> with this order
+            </p>
+          </div>
+        )}
 
         {/* Bottom buttons */}
         {items.length > 0 && (
