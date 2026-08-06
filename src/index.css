@@ -37,6 +37,19 @@ input, textarea, select {
   animation: cart-pulse 0.3s ease-in-out 2;
 }
 
+/* "+N points" float on add. The -50% translate-X repeats in every frame
+   because the element is centered with left-1/2 — omitting it from any
+   keyframe would snap it sideways mid-animation. */
+@keyframes points-float {
+  0%   { opacity: 0; transform: translate(-50%, 0) scale(0.9); }
+  15%  { opacity: 1; transform: translate(-50%, -6px) scale(1); }
+  70%  { opacity: 1; transform: translate(-50%, -26px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -40px) scale(1); }
+}
+.animate-points-float {
+  animation: points-float 1.1s ease-out forwards;
+}
+
 /* Un-acknowledged order tile flash — high-visibility kitchen alert.
    Background alternates white ↔ green-500 at 1Hz so the tile is
    impossible to miss even with audio failing. */
