@@ -114,18 +114,22 @@ export default function RewardsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="max-w-[720px] mx-auto px-6 pt-4 pb-8">
-        {/* Floating back button in place of a sticky header bar — the bar's
-            "Rewards" title only repeated the program name headline below it. */}
+      {/* Floating back button in place of a sticky header bar — the bar's
+          "Rewards" title only repeated the program name headline below it.
+          It lives in the page gutter rather than the centred content column,
+          so on a wide screen it lands at the far left where the bar had it. */}
+      <div className="px-5 pt-4">
         <button
           onClick={() => navigate(`/${slug}`)}
-          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center mb-3"
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"
         >
           <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
+      </div>
 
+      <div className="max-w-[720px] mx-auto px-6 pt-2 pb-8">
         <RewardsView
           restaurant={restaurant}
           tiers={tiers}
