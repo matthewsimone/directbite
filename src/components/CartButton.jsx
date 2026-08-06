@@ -20,11 +20,14 @@ export default function CartButton({ itemCount, total, onClick, pointsDelta }) {
     prevCount.current = itemCount
   }, [itemCount])
 
-  // The key remounts the span so the CSS animation replays — without it a
-  // second add of the same value would render an already-finished animation.
+  // The key comes from the page rather than being generated here: two
+  // identical adds must be distinguishable. A bare number would compare equal,
+  // the state would not change, and this effect would never re-run — so the
+  // second of two identical adds would show no float at all. The key also
+  // remounts the span below, which is what replays the CSS animation.
   useEffect(() => {
-    if (!(Number(pointsDelta) > 0)) return
-    setFloat({ value: pointsDelta, key: Date.now() })
+    if (!(pointsDelta?.value > 0)) return
+    setFloat({ value: pointsDelta.value, key: pointsDelta.key })
     const timer = setTimeout(() => setFloat(null), 1200)
     return () => clearTimeout(timer)
   }, [pointsDelta])
