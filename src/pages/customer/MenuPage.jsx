@@ -104,7 +104,7 @@ export default function MenuPage() {
   const [activeCategory, setActiveCategory] = useState(null)
   const [selectedItem, setSelectedItem] = useState(null)
   const [showCart, setShowCart] = useState(false)
-  const [pointsDelta, setPointsDelta] = useState(null)
+  const [pointsDelta, setPointsDelta] = useState(0)
 
   const prevPointsRef = useRef(0)
   const sectionRefs = useRef({})
@@ -117,9 +117,7 @@ export default function MenuPage() {
   // band in the cart sheet.
   useEffect(() => {
     const next = calculateLoyaltyPoints({ restaurant, subtotal })
-    if (next > prevPointsRef.current) {
-      setPointsDelta({ value: next - prevPointsRef.current, key: Date.now() })
-    }
+    if (next > prevPointsRef.current) setPointsDelta(next - prevPointsRef.current)
     prevPointsRef.current = next
   }, [subtotal, restaurant])
 
