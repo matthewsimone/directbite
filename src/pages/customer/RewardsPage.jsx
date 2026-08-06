@@ -114,20 +114,18 @@ export default function RewardsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-5 py-4 flex items-center gap-3">
+      <div className="max-w-[720px] mx-auto px-6 pt-4 pb-8">
+        {/* Floating back button in place of a sticky header bar — the bar's
+            "Rewards" title only repeated the program name headline below it. */}
         <button
           onClick={() => navigate(`/${slug}`)}
-          className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"
+          className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center mb-3"
         >
           <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        <h1 className="text-xl font-bold text-gray-900">Rewards</h1>
-      </div>
 
-      <div className="max-w-[720px] mx-auto px-6 py-8">
         <RewardsView
           restaurant={restaurant}
           tiers={tiers}

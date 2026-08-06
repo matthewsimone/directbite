@@ -292,9 +292,11 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               >
                 {/* Top-right on a filled card: at the bottom the number sits
                     under the detail text, which no longer has a white
-                    background to stay legible against. */}
+                    background to stay legible against. Any bleed past the
+                    card's edge belongs at the bottom, below the text, not
+                    across the top of the digit. */}
                 <span
-                  className="absolute right-0 -top-3 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
+                  className="absolute right-2 top-0 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
                   style={{ color: 'rgba(255,255,255,0.18)' }}
                 >
                   {i + 1}
