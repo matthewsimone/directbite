@@ -107,7 +107,7 @@ function TierCard({ tier, brandColor, emojiChars, pointsPerDollar, isCurrent }) 
   const percentFaster = Math.round((multiplier - 1) * 100)
 
   const explainer = level === 1
-    ? `Everyone starts here. ${pointsPerDollar} point per dollar.`
+    ? `Everyone starts here. ${pointsPerDollar} point${pointsPerDollar === 1 ? '' : 's'} per dollar.`
     : `Reach ${formatPoints(tier.threshold_points)} lifetime points and earn ${percentFaster}% faster on every order.`
 
   return (
@@ -287,16 +287,20 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             {HOW_IT_WORKS.map((step, i) => (
               <div
                 key={i}
-                className="flex-1 relative overflow-hidden border border-gray-200 rounded-xl px-2 py-2.5 sm:px-4 sm:py-4 min-h-[62px] sm:min-h-[84px]"
+                className="flex-1 relative overflow-hidden rounded-xl px-2 py-2.5 sm:px-4 sm:py-4 min-h-[62px] sm:min-h-[84px]"
+                style={{ backgroundColor: brandColor }}
               >
+                {/* Top-right on a filled card: at the bottom the number sits
+                    under the detail text, which no longer has a white
+                    background to stay legible against. */}
                 <span
-                  className="absolute right-1 -bottom-3 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
-                  style={{ color: brandColor, opacity: 0.10 }}
+                  className="absolute right-0 -top-3 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
+                  style={{ color: 'rgba(255,255,255,0.18)' }}
                 >
                   {i + 1}
                 </span>
-                <p className="relative text-[13px] font-semibold text-gray-900 mb-1">{step.title}</p>
-                <p className="relative text-xs text-gray-500 leading-snug">{step.detail}</p>
+                <p className="relative text-[13px] font-semibold text-white mb-1">{step.title}</p>
+                <p className="relative text-xs text-white/75 leading-snug">{step.detail}</p>
               </div>
             ))}
           </div>
