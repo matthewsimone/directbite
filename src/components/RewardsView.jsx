@@ -203,8 +203,12 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
 
       {/* ── 1. Header ── */}
       <header className="text-center">
-        <p className="text-xs tracking-[0.14em] text-gray-500 uppercase">{restaurant.name}</p>
-        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mt-1">Rewards</h1>
+        {/* The program name is entered per restaurant rather than derived from
+            restaurants.name — the legal business name is usually too long to
+            work as a program title. */}
+        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mt-1">
+          {restaurant.loyalty_program_name || 'Rewards'}
+        </h1>
         <p className="text-gray-500 mt-3">
           Earn points on every order. Redeem them for free food or credit — online or in the shop.
         </p>
