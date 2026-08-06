@@ -679,7 +679,6 @@ export default function CheckoutPage() {
     discountAmount,
     totalAmount: total,
   })
-  const brandColor = restaurant?.primary_color || '#16A34A'
 
   const estimatedTime =
     orderType === 'pickup'
@@ -1556,12 +1555,17 @@ export default function CheckoutPage() {
               <span>Total</span>
               <span>{showPlaceholder ? '—' : formatCurrency(total)}</span>
             </div>
+            {/* The ordering flow is platform green throughout, so this does
+                NOT use the restaurant's brand colour — a red band on a green
+                page reads as inconsistent. If the flow is ever rebranded per
+                restaurant, this becomes brandColor along with everything
+                else. */}
             {loyaltyPoints > 0 && (
               <div
                 className="rounded-xl px-4 py-2.5 mt-3 text-center"
-                style={{ backgroundColor: withAlpha(brandColor, 0.08) }}
+                style={{ backgroundColor: withAlpha('#16A34A', 0.08) }}
               >
-                <p className="text-sm" style={{ color: brandColor }}>
+                <p className="text-sm" style={{ color: '#16A34A' }}>
                   You'll earn <strong>{pointsLabel(loyaltyPoints)}</strong> with this order
                 </p>
               </div>

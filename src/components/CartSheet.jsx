@@ -35,7 +35,6 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
     return sum + ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
   }, 0)
 
-  const brandColor = restaurant?.primary_color || '#16A34A'
   // The cart only knows the food subtotal, so this previews the base earn on
   // that figure. Tax, fees and tip are not yet known, and the tier multiplier
   // is not applied — a customer at a higher tier earns MORE than shown, which
@@ -146,9 +145,13 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
           )}
         </div>
 
+        {/* The ordering flow is platform green throughout, so this does NOT
+            use the restaurant's brand colour — a red band on a green page
+            reads as inconsistent. If the flow is ever rebranded per
+            restaurant, this becomes brandColor along with everything else. */}
         {loyaltyPoints > 0 && (
-          <div className="px-5 py-2.5 text-center" style={{ backgroundColor: withAlpha(brandColor, 0.08) }}>
-            <p className="text-sm" style={{ color: brandColor }}>
+          <div className="px-5 py-2.5 text-center" style={{ backgroundColor: withAlpha('#16A34A', 0.08) }}>
+            <p className="text-sm" style={{ color: '#16A34A' }}>
               You'll earn <strong>{pointsLabel(loyaltyPoints)}</strong> with this order
             </p>
           </div>
