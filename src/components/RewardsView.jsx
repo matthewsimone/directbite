@@ -15,26 +15,82 @@ function withAlpha(hex, alpha) {
 
 function formatPoints(n) { return Number(n || 0).toLocaleString('en-US') }
 
-// Fixed scatter geometry, one entry per tier_level (cycled), so the headers
-// don't look identical and a re-render never reshuffles them. Sizes stay
-// within 18–40px and opacity within 0.13–0.24.
+// Lighten (amount > 0) or darken (amount < 0) a #RRGGBB color by that fraction
+// of the distance to white/black. Returns the input untouched when it isn't a
+// 6-digit hex, so a CSS keyword still renders.
+function shadeHex(hex, amount) {
+  if (!/^#([0-9a-f]{6})$/i.test(hex || '')) return hex
+  const n = parseInt(hex.slice(1), 16)
+  const target = amount >= 0 ? 255 : 0
+  const mix = c => Math.max(0, Math.min(255, Math.round(c + (target - c) * Math.abs(amount))))
+  const r = mix((n >> 16) & 255)
+  const g = mix((n >> 8) & 255)
+  const b = mix(n & 255)
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+}
+
+// Depth for the tier header: lit from the top-left, falling away to a deeper
+// shade at the bottom-right. Unparseable input has nothing to interpolate, so
+// it falls back to the flat color.
+function tierGradient(hex) {
+  if (!/^#([0-9a-f]{6})$/i.test(hex || '')) return hex
+  return `linear-gradient(155deg, ${shadeHex(hex, 0.22)} 0%, ${hex} 45%, ${shadeHex(hex, -0.38)} 100%)`
+}
+
+// Falling-particle geometry, one layout per tier_level (cycled), so the three
+// headers never read as copies and a re-render never reshuffles them.
+//
+// Depth of field is the whole trick: LARGE particles are blurred and dim (near
+// the lens, out of focus), SMALL ones are sharp and brighter (far away, in
+// focus). Nothing is both large and sharp.
+//
+// Entries are paired — 0/1, 2/3, 4/5, 6/7 — sharing a duration with delays
+// offset by exactly half of it, so each pair keeps one particle on screen at
+// all times and the total count never visibly thins or clumps. Durations are
+// distinct within a layout so the columns don't resynchronise.
 const EMOJI_LAYOUTS = [
   [
-    { top: '8%',  left: '6%',  size: 34, rotate: -12, opacity: 0.20 },
-    { top: '46%', left: '62%', size: 22, rotate: 8,   opacity: 0.15 },
-    { top: '12%', left: '82%', size: 18, rotate: 20,  opacity: 0.13 },
+    { left: '6%',   size: 34, opacity: 0.37, blur: 2, r0: '-8deg',  r1: '172deg',  duration: 27, delay: -2 },
+    { left: '58%',  size: 18, opacity: 0.53, blur: 0, r0: '12deg',  r1: '-148deg', duration: 27, delay: -15.5 },
+    { left: '-3%',  size: 16, opacity: 0.49, blur: 0, r0: '24deg',  r1: '206deg',  duration: 33, delay: -7 },
+    { left: '44%',  size: 42, opacity: 0.34, blur: 3, r0: '-16deg', r1: '124deg',  duration: 33, delay: -23.5 },
+    { left: '78%',  size: 20, opacity: 0.55, blur: 0, r0: '4deg',   r1: '-192deg', duration: 21, delay: -5 },
+    { left: '24%',  size: 15, opacity: 0.47, blur: 0, r0: '-20deg', r1: '158deg',  duration: 21, delay: -15.5 },
+    { left: '91%',  size: 28, opacity: 0.41, blur: 1, r0: '16deg',  r1: '-134deg', duration: 39, delay: -11 },
+    { left: '36%',  size: 22, opacity: 0.51, blur: 0, r0: '-6deg',  r1: '188deg',  duration: 39, delay: -30.5 },
   ],
   [
-    { top: '40%', left: '10%', size: 20, rotate: 14,  opacity: 0.16 },
-    { top: '6%',  left: '44%', size: 40, rotate: -8,  opacity: 0.22 },
-    { top: '52%', left: '78%', size: 26, rotate: 6,   opacity: 0.14 },
+    { left: '9%',   size: 20, opacity: 0.52, blur: 0, r0: '18deg',  r1: '-166deg', duration: 31, delay: -6 },
+    { left: '62%',  size: 38, opacity: 0.36, blur: 2, r0: '-12deg', r1: '142deg',  duration: 31, delay: -21.5 },
+    { left: '-4%',  size: 30, opacity: 0.39, blur: 2, r0: '8deg',   r1: '-118deg', duration: 23, delay: -3 },
+    { left: '47%',  size: 16, opacity: 0.50, blur: 0, r0: '-22deg', r1: '214deg',  duration: 23, delay: -14.5 },
+    { left: '84%',  size: 48, opacity: 0.34, blur: 3, r0: '14deg',  r1: '132deg',  duration: 45, delay: -13 },
+    { left: '30%',  size: 14, opacity: 0.55, blur: 0, r0: '-4deg',  r1: '-198deg', duration: 45, delay: -35.5 },
+    { left: '93%',  size: 17, opacity: 0.47, blur: 0, r0: '26deg',  r1: '176deg',  duration: 29, delay: -8 },
+    { left: '38%',  size: 26, opacity: 0.41, blur: 1, r0: '-18deg', r1: '-128deg', duration: 29, delay: -22.5 },
   ],
   [
-    { top: '14%', left: '22%', size: 26, rotate: 10,  opacity: 0.18 },
-    { top: '50%', left: '44%', size: 18, rotate: -16, opacity: 0.13 },
-    { top: '8%',  left: '70%', size: 36, rotate: 4,   opacity: 0.24 },
+    { left: '4%',   size: 26, opacity: 0.39, blur: 1, r0: '10deg',  r1: '-154deg', duration: 35, delay: -9 },
+    { left: '55%',  size: 15, opacity: 0.52, blur: 0, r0: '-14deg', r1: '202deg',  duration: 35, delay: -26.5 },
+    { left: '-2%',  size: 19, opacity: 0.50, blur: 0, r0: '20deg',  r1: '-182deg', duration: 27, delay: -5 },
+    { left: '71%',  size: 44, opacity: 0.34, blur: 3, r0: '-10deg', r1: '136deg',  duration: 27, delay: -18.5 },
+    { left: '88%',  size: 22, opacity: 0.47, blur: 0, r0: '6deg',   r1: '168deg',  duration: 43, delay: -14 },
+    { left: '20%',  size: 36, opacity: 0.36, blur: 2, r0: '-24deg', r1: '-122deg', duration: 43, delay: -35.5 },
+    { left: '40%',  size: 16, opacity: 0.55, blur: 0, r0: '22deg',  r1: '-210deg', duration: 37, delay: -2 },
+    { left: '95%',  size: 30, opacity: 0.41, blur: 2, r0: '-2deg',  r1: '146deg',  duration: 37, delay: -20.5 },
   ],
 ]
+
+// Offset so the three cards never pulse in sync.
+const GLOW_DELAYS = [-4, -11, -19]
+
+const PARTICLE_CSS = `
+@keyframes ordr-pfall { from { transform: translateY(-56px) rotate(var(--r0)); } to { transform: translateY(214px) rotate(var(--r1)); } }
+@keyframes ordr-glow { 0% { transform: translate(-14%, -8%) scale(1); } 50% { transform: translate(16%, 10%) scale(1.22); } 100% { transform: translate(-14%, -8%) scale(1); } }
+.ordr-pfe { position: absolute; top: 0; line-height: 1; pointer-events: none; user-select: none; will-change: transform; animation-name: ordr-pfall; animation-timing-function: linear; animation-iteration-count: infinite; }
+.ordr-glow { position: absolute; inset: -30%; border-radius: 50%; pointer-events: none; animation: ordr-glow 26s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ordr-pfe, .ordr-glow { animation: none !important; } }
+`
 
 const HOW_IT_WORKS = [
   'Order with your phone number',
@@ -60,34 +116,45 @@ function TierCard({ tier, brandColor, emojiChars, pointsPerDollar, isCurrent }) 
       style={isCurrent ? { boxShadow: `0 0 0 2px ${brandColor}` } : undefined}
     >
       <div
-        className="relative overflow-hidden min-h-[96px] px-4 py-4"
-        style={{ backgroundColor: color }}
+        className="relative overflow-hidden min-h-[168px] px-[18px] py-5 flex items-end"
+        style={{ backgroundColor: color, backgroundImage: tierGradient(color) }}
       >
-        {emojiChars.slice(0, 3).map((ch, i) => (
+        <div
+          className="ordr-glow"
+          style={{
+            background: 'radial-gradient(circle at 40% 20%, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 60%)',
+            animationDelay: `${GLOW_DELAYS[(level - 1) % GLOW_DELAYS.length]}s`,
+          }}
+        />
+        {emojiChars.length > 0 && layout.map((p, i) => (
           <span
             key={i}
             aria-hidden="true"
-            className="absolute select-none pointer-events-none leading-none"
+            className="ordr-pfe"
             style={{
-              top: layout[i].top,
-              left: layout[i].left,
-              fontSize: `${layout[i].size}px`,
-              opacity: layout[i].opacity,
-              transform: `rotate(${layout[i].rotate}deg)`,
-              filter: 'grayscale(1) brightness(3)',
+              left: p.left,
+              fontSize: `${p.size}px`,
+              opacity: p.opacity,
+              animationDuration: `${p.duration}s`,
+              animationDelay: `${p.delay}s`,
+              '--r0': p.r0,
+              '--r1': p.r1,
+              filter: p.blur > 0
+                ? `grayscale(1) brightness(1.45) contrast(0.72) blur(${p.blur}px)`
+                : 'grayscale(1) brightness(1.65) contrast(0.85)',
             }}
           >
-            {ch}
+            {emojiChars[i % emojiChars.length]}
           </span>
         ))}
         <div className="relative">
-          <p className="text-[10px] uppercase tracking-[0.14em] text-white/70">Tier {level}</p>
-          <p className="text-xl font-bold text-white">{tier.name}</p>
-          <p className="text-sm text-white/80">{multiplier}× points</p>
+          <p className="text-[10px] uppercase tracking-[0.18em] text-white/55">Tier {level}</p>
+          <p className="text-[26px] font-medium text-white tracking-[-0.01em]">{tier.name}</p>
+          <p className="text-[13px] text-white/70">{multiplier}× points</p>
         </div>
       </div>
 
-      <div className="p-4">
+      <div className="p-4 px-[18px]">
         <p className="text-sm text-gray-500">{explainer}</p>
         {isCurrent && (
           <span
@@ -132,6 +199,8 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
 
   return (
     <div>
+      <style>{PARTICLE_CSS}</style>
+
       {/* ── 1. Header ── */}
       <header className="text-center">
         <p className="text-xs tracking-[0.14em] text-gray-500 uppercase">{restaurant.name}</p>
