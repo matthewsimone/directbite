@@ -37,7 +37,7 @@ export default function CartButton({ itemCount, total, onClick, pointsDelta }) {
   return (
     <button
       onClick={onClick}
-      className={`fixed bottom-5 left-4 right-4 z-40 max-w-lg mx-auto bg-gray-900 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-xl active:scale-[0.98] transition-transform relative ${
+      className={`fixed bottom-5 left-4 right-4 z-40 max-w-lg mx-auto bg-gray-900 text-white rounded-2xl px-5 py-4 flex items-center justify-between shadow-xl active:scale-[0.98] transition-transform ${
         pulse ? 'animate-cart-pulse' : ''
       }`}
     >
