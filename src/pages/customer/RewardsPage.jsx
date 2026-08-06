@@ -108,6 +108,7 @@ export default function RewardsPage() {
         pointsBalance: profile.points_balance ?? 0,
         lifetimePoints: profile.lifetime_points_earned ?? 0,
         tierLevel: profile.tier_level ?? 1,
+        orderCount: profile.order_count ?? 0,
       }
     : null
 

@@ -171,6 +171,9 @@ function TierCard({ tier, brandColor, emojiChars, pointsPerDollar, isCurrent }) 
 
 export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, onSignIn, signInHref }) {
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
+  // Derived once: the headline and the balance block's fallback subline are
+  // the same value, so they can't drift apart.
+  const programName = restaurant.loyalty_program_name || ''
   // Array.from so multi-byte emoji survive — a plain .split('') would tear
   // surrogate pairs in half.
   const emojiChars = Array.from(restaurant.loyalty_emoji || '')
@@ -193,6 +196,13 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
     : Math.max(0, Math.min(100, (lifetime / nextThreshold) * 100))
   const pointsToNext = Math.max(0, nextThreshold - lifetime)
 
+  // Order count is the warmer line, so it wins when we have one; the program
+  // name is the fallback for a customer whose first order hasn't landed yet.
+  const orderCount = Number(customer?.orderCount) || 0
+  const subline = orderCount > 0
+    ? `You've ordered ${orderCount} time${orderCount === 1 ? '' : 's'} with us`
+    : programName ? `Welcome to ${programName}` : 'Welcome'
+
   const ctaLabel = customer ? 'Claim rewards' : 'Sign in to see your points'
   const ctaClassName = 'w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center'
   const ctaStyle = { backgroundColor: brandColor }
@@ -207,7 +217,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             restaurants.name — the legal business name is usually too long to
             work as a program title. */}
         <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mt-1">
-          {restaurant.loyalty_program_name || 'Rewards'}
+          {programName || 'Rewards'}
         </h1>
         <p className="text-gray-500 mt-3">
           Earn points on every order. Redeem them for free food or credit — online or in the shop.
@@ -217,18 +227,19 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
       {/* ── 2. Personal panel (signed in) ── */}
       {customer ? (
         <section className="mt-10">
-          <h2 className="text-2xl font-bold text-gray-900">Hi {customer.displayName || 'there'}</h2>
-          {restaurant.loyalty_welcome_message && (
-            <p className="text-gray-500 mt-1">{restaurant.loyalty_welcome_message}</p>
-          )}
+          {/* Greeting and balance are one solid brand block — as loose text
+              above a tinted card they read as two unrelated things. */}
+          <div className="rounded-2xl px-5 py-5" style={{ backgroundColor: brandColor }}>
+            <p className="text-base font-semibold text-white">Hi {customer.displayName || 'there'}</p>
+            <p className="text-xs text-white/70 mt-0.5">{subline}</p>
 
-          <div
-            className="rounded-2xl p-5 mt-4"
-            style={{ backgroundColor: withAlpha(brandColor, 0.08) }}
-          >
-            <p className="text-xs uppercase tracking-[0.14em] text-gray-500">Available to spend</p>
-            <p className="text-5xl font-bold text-gray-900 mt-1">{formatPoints(customer.pointsBalance)}</p>
-            <p className="text-sm text-gray-500">points</p>
+            <p className="text-[10px] tracking-[0.16em] text-white/70 mt-5">AVAILABLE TO SPEND</p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-5xl font-bold text-white tracking-[-0.03em]">
+                {formatPoints(customer.pointsBalance)}
+              </span>
+              <span className="text-[15px] text-white/85">points</span>
+            </div>
           </div>
 
           {/* Tier progress needs a tier ladder to measure against — with no
@@ -298,7 +309,11 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
           <h2 className="text-xl font-bold text-gray-900 mb-3">Tiers</h2>
 
           {/* Mobile: horizontal scroll */}
-          <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-6 pb-2 -mx-6 px-6">
+          {/* The current-tier card carries a 2px ring, which overflow-x clips.
+              pt-1 gives it room at the top (pb-2 already covers the bottom),
+              and the bleed's padding runs 2px past the page gutter so the
+              first card's ring clears the left edge too. */}
+          <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-[26px] pt-1 pb-2 -mx-6 pl-[26px] pr-6">
             {tiers.map(tier => (
               <div key={tier.id} className="snap-start shrink-0 w-[80%]">
                 <TierCard
@@ -313,7 +328,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
           </div>
 
           {/* Desktop: 3-column grid */}
-          <div className="hidden md:grid md:grid-cols-3 gap-4">
+          <div className="hidden md:grid md:grid-cols-3 gap-4 py-1">
             {tiers.map(tier => (
               <TierCard
                 key={tier.id}
