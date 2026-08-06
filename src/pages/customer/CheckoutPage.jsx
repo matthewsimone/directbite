@@ -15,6 +15,7 @@ import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
+import { calculateLoyaltyPoints, formatPoints } from '../../utils/loyaltyPoints'
 import { haversineDistanceMiles, calculateDeliveryFeeCents } from '../../utils/haversine'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
 import TimePickerModal from '../../components/TimePickerModal'
@@ -657,6 +658,19 @@ export default function CheckoutPage() {
   const taxableAmount = discountedSubtotal + deliveryFee + serviceFee
   const taxAmount = Math.round(taxableAmount * taxRate * 100) / 100
   const total = Math.round((discountedSubtotal + deliveryFee + taxAmount + tip + serviceFee) * 100) / 100
+
+  // Display only — the database awards the real points via the accrual
+  // trigger when the order is written; this is a preview from the same
+  // formula. tierMultiplier is deliberately omitted and defaults to 1,
+  // because checkout does not know the customer's tier. A customer at a
+  // higher tier earns MORE than shown, which is the safe direction to be
+  // wrong.
+  const loyaltyPoints = calculateLoyaltyPoints({
+    restaurant,
+    subtotal: fullSubtotal,
+    discountAmount,
+    totalAmount: total,
+  })
 
   const estimatedTime =
     orderType === 'pickup'
@@ -1533,6 +1547,14 @@ export default function CheckoutPage() {
               <span>Total</span>
               <span>{showPlaceholder ? '—' : formatCurrency(total)}</span>
             </div>
+            {loyaltyPoints > 0 && (
+              <div className="flex justify-between pt-3">
+                <span className="text-gray-500">You'll earn</span>
+                <span className="font-semibold" style={{ color: restaurant?.primary_color || '#16A34A' }}>
+                  {formatPoints(loyaltyPoints)} points
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
