@@ -93,9 +93,9 @@ const PARTICLE_CSS = `
 `
 
 const HOW_IT_WORKS = [
-  'Order with your phone number',
-  'Points add up automatically',
-  'Redeem online or at the counter',
+  { title: 'Order',  detail: 'Use your phone number at checkout' },
+  { title: 'Earn',   detail: 'Points add up automatically' },
+  { title: 'Redeem', detail: 'Online or at the counter' },
 ]
 
 // Rendered once and reused by both the mobile carousel and the desktop grid.
@@ -198,7 +198,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
   const ctaStyle = { backgroundColor: brandColor }
 
   return (
-    <div>
+    <div className="pb-28">
       <style>{PARTICLE_CSS}</style>
 
       {/* ── 1. Header ── */}
@@ -266,11 +266,22 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
       ) : (
         /* ── 3. How it works (signed out) ── */
         <section className="mt-10">
-          <div className="flex flex-col sm:flex-row gap-4">
+          {/* Three across at every breakpoint — the copy is short enough that
+              stacking to a column on mobile would only add scroll. */}
+          <div className="flex gap-2 sm:gap-3">
             {HOW_IT_WORKS.map((step, i) => (
-              <div key={i} className="flex-1 rounded-2xl border border-gray-200 bg-white p-5">
-                <p className="text-sm font-bold" style={{ color: brandColor }}>{i + 1}</p>
-                <p className="text-sm text-gray-700 mt-2">{step}</p>
+              <div
+                key={i}
+                className="flex-1 relative overflow-hidden border border-gray-200 rounded-xl px-2 py-2.5 sm:px-4 sm:py-4 min-h-[62px] sm:min-h-[84px]"
+              >
+                <span
+                  className="absolute right-1 -bottom-3 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
+                  style={{ color: brandColor, opacity: 0.10 }}
+                >
+                  {i + 1}
+                </span>
+                <p className="relative text-[13px] font-semibold text-gray-900 mb-1">{step.title}</p>
+                <p className="relative text-xs text-gray-500 leading-snug">{step.detail}</p>
               </div>
             ))}
           </div>
@@ -353,13 +364,16 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
         </section>
       )}
 
-      {/* ── 6. CTA ── */}
-      <div className="mt-10">
-        {signInHref && !onSignIn ? (
-          <a href={signInHref} className={ctaClassName} style={ctaStyle}>{ctaLabel}</a>
-        ) : (
-          <button onClick={onSignIn} className={ctaClassName} style={ctaStyle}>{ctaLabel}</button>
-        )}
+      {/* ── 6. CTA — fixed to the viewport, matching CartButton in the
+             ordering flow. The wrapper's pb-28 keeps the last section clear. ── */}
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-5 py-3">
+        <div className="max-w-[720px] mx-auto">
+          {signInHref && !onSignIn ? (
+            <a href={signInHref} className={ctaClassName} style={ctaStyle}>{ctaLabel}</a>
+          ) : (
+            <button onClick={onSignIn} className={ctaClassName} style={ctaStyle}>{ctaLabel}</button>
+          )}
+        </div>
       </div>
     </div>
   )
