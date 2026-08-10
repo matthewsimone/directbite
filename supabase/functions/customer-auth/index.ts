@@ -595,6 +595,105 @@ async function handleLogout(body: any): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Action: history
+// ---------------------------------------------------------------------------
+
+async function handleHistory(body: any): Promise<Response> {
+  // Token resolution is duplicated from handleSession rather than extracted.
+  // Folding both onto a shared helper touches a working auth path, which is a
+  // separate change from adding a read-only action.
+  const token = typeof body.token === "string" ? body.token : "";
+  if (!token) {
+    return jsonResponse({ error: "invalid_session" }, 401);
+  }
+
+  if (typeof body.restaurant_id !== "string") {
+    return jsonResponse({ error: "bad_request" }, 400);
+  }
+
+  const tokenHash = await hashToken(token);
+
+  const { data: session, error: sessionErr } = await supabase
+    .from("customer_sessions")
+    .select("id, customer_id, revoked_at, expires_at")
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (sessionErr) {
+    console.error("customer-auth history session lookup failed:", sessionErr.message);
+    return jsonResponse({ error: "server_error" }, 500);
+  }
+
+  // Missing, revoked and expired all collapse to the same response so a
+  // caller cannot tell them apart.
+  if (
+    !session ||
+    session.revoked_at !== null ||
+    new Date(session.expires_at).getTime() < Date.now()
+  ) {
+    return jsonResponse({ error: "invalid_session" }, 401);
+  }
+
+  const { data: identity, error: identityErr } = await supabase
+    .from("customer_identities")
+    .select("id, phone_e164")
+    .eq("id", session.customer_id)
+    .maybeSingle();
+
+  if (identityErr || !identity) {
+    console.error(
+      "customer-auth history identity read failed:",
+      identityErr?.message
+    );
+    return jsonResponse({ error: "invalid_session" }, 401);
+  }
+
+  // This function runs service-role, so RLS is not a backstop here: both the
+  // customer and the restaurant filter are what scope these reads. Neither is
+  // optional.
+  //
+  // base_price and price_charged are deliberately absent from the item and
+  // topping selects — a reorder has to reprice against today's menu, and
+  // shipping the historical price to the client invites using it.
+  const { data: orders, error: ordersErr } = await supabase
+    .from("orders")
+    .select(
+      "id, created_at, order_type, total_amount, status, order_items(id, menu_item_id, item_size_id, item_name, size_name, quantity, special_instructions, order_item_toppings(topping_id, topping_name, placement, placement_type))"
+    )
+    .eq("customer_id", identity.id)
+    .eq("restaurant_id", body.restaurant_id)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (ordersErr) {
+    console.error("customer-auth history orders read failed:", ordersErr.message);
+  }
+
+  const { data: transactions, error: txErr } = await supabase
+    .from("loyalty_transactions")
+    .select("id, created_at, reason, points_delta, order_id")
+    .eq("customer_id", identity.id)
+    .eq("restaurant_id", body.restaurant_id)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (txErr) {
+    console.error("customer-auth history transactions read failed:", txErr.message);
+  }
+
+  // Either side failing degrades to an empty list rather than failing the
+  // request — a partial history beats a broken page.
+  return jsonResponse(
+    {
+      ok: true,
+      orders: orders ?? [],
+      transactions: transactions ?? [],
+    },
+    200
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -626,6 +725,8 @@ serve(async (req: Request) => {
         return await handleVerify(req, body);
       case "session":
         return await handleSession(body);
+      case "history":
+        return await handleHistory(body);
       case "logout":
         return await handleLogout(body);
       default:
