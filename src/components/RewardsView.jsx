@@ -180,33 +180,33 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             {/* Dark gradient overlay — keeps white text legible regardless of image */}
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
 
-            <div className="absolute top-4 right-4 z-10">
+            <div className="absolute top-5 right-5 z-10">
               <LogoFrame
                 logoUrl={logo_url}
                 shape={logo_frame_shape}
                 name={name}
                 brandColor={brandColor}
-                sizePx={52}
+                sizePx={64}
                 marginCls=""
               />
             </div>
 
-            <div className="relative z-10 flex flex-col justify-end min-h-[158px] px-5 pb-5 pt-5">
-              <p className="text-xs text-white/90">
+            <div className="relative z-10 flex flex-col justify-end min-h-[196px] px-6 pb-6 pt-6">
+              <p className="text-sm text-white/95">
                 {[
                   customer.displayName || 'there',
                   orderCount > 0 ? `${orderCount} order${orderCount === 1 ? '' : 's'}` : null,
                 ].filter(Boolean).join(' · ')}
               </p>
-              <div className="flex items-baseline gap-2 mt-0.5">
-                <span className="text-5xl font-bold text-white tracking-[-0.03em]">
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-6xl font-bold text-white tracking-[-0.03em]">
                   {formatPoints(customer.pointsBalance)}
                 </span>
-                <span className="text-[15px] text-white/85">points</span>
+                <span className="text-[17px] text-white/85">points</span>
               </div>
 
               <div
-                className="h-[5px] rounded-full overflow-hidden mt-2"
+                className="h-[6px] rounded-full overflow-hidden mt-3"
                 style={{ backgroundColor: 'rgba(255,255,255,0.32)' }}
               >
                 <div
@@ -215,7 +215,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                 />
               </div>
 
-              <p className="text-xs text-white/95 mt-1.5">
+              <p className="text-sm text-white/95 mt-2">
                 {nextReward
                   ? `${formatPoints(rewardShortfall)} more points for ${nextReward.name}`
                   : readyRewards.length > 0
