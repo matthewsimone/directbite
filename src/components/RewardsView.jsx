@@ -2,6 +2,8 @@
 // context hooks (in particular not useCustomerAuth), so this renders unchanged
 // on a custom domain, where CustomerAuthProvider is not mounted.
 
+import LogoFrame from './LogoFrame'
+
 const DEFAULT_BRAND_COLOR = '#16A34A'
 
 // Tint a #RRGGBB brand color for card fills. Returns the input untouched when
@@ -171,6 +173,9 @@ function TierCard({ tier, brandColor, emojiChars, pointsPerDollar, isCurrent }) 
 
 export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, onSignIn, signInHref }) {
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
+  // The balance card reuses the website hero's photo and logo — useRestaurant
+  // selects '*', so these arrive on the same restaurant row.
+  const { hero_image_url, logo_url, logo_frame_shape, name } = restaurant
   // Derived once: the headline and the balance block's fallback subline are
   // the same value, so they can't drift apart.
   const programName = restaurant.loyalty_program_name || ''
@@ -227,18 +232,43 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
       {/* ── 2. Personal panel (signed in) ── */}
       {customer ? (
         <section className="mt-10">
-          {/* Greeting and balance are one solid brand block — as loose text
-              above a tinted card they read as two unrelated things. */}
-          <div className="rounded-2xl px-5 py-5" style={{ backgroundColor: brandColor }}>
-            <p className="text-base font-semibold text-white">Hi {customer.displayName || 'there'}</p>
-            <p className="text-xs text-white/70 mt-0.5">{subline}</p>
+          {/* Greeting and balance sit on the restaurant's own hero image, under
+              the same overlay the website hero uses, so the two surfaces read
+              as one brand rather than two. */}
+          <div className="relative rounded-2xl overflow-hidden">
+            {/* Background layer — bg-gray-100 is the class-based fallback that
+                shows through when the restaurant has no hero image. */}
+            <div
+              className="absolute inset-0 bg-gray-100 bg-cover bg-center"
+              style={{
+                ...(hero_image_url ? { backgroundImage: `url(${hero_image_url})` } : {}),
+              }}
+            />
+            {/* Dark gradient overlay — keeps white text legible regardless of image */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
 
-            <p className="text-[10px] tracking-[0.16em] text-white/70 mt-5">AVAILABLE TO SPEND</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-5xl font-bold text-white tracking-[-0.03em]">
-                {formatPoints(customer.pointsBalance)}
-              </span>
-              <span className="text-[15px] text-white/85">points</span>
+            <div className="absolute top-4 right-4 z-10">
+              <LogoFrame
+                logoUrl={logo_url}
+                shape={logo_frame_shape}
+                name={name}
+                brandColor={brandColor}
+                sizeCls="w-[84px] h-[52px]"
+                marginCls=""
+              />
+            </div>
+
+            <div className="relative z-10 flex flex-col justify-end min-h-[158px] px-5 pb-5 pt-5">
+              <p className="text-base font-semibold text-white">Hi {customer.displayName || 'there'}</p>
+              <p className="text-xs text-white/70 mt-0.5">{subline}</p>
+
+              <p className="text-[10px] tracking-[0.16em] text-white/70 mt-3">AVAILABLE TO SPEND</p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-5xl font-bold text-white tracking-[-0.03em]">
+                  {formatPoints(customer.pointsBalance)}
+                </span>
+                <span className="text-[15px] text-white/85">points</span>
+              </div>
             </div>
           </div>
 
