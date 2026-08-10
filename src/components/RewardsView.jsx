@@ -485,14 +485,12 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               {/* The program name is entered per restaurant rather than derived from
                   restaurants.name — the legal business name is usually too long to
                   work as a program title. */}
-              {programName && (
-                <p className="text-[11px] tracking-[0.16em] uppercase text-white/80">
-                  {programName}
-                </p>
-              )}
-              <h1 className="text-[26px] sm:text-[30px] font-semibold text-white leading-tight mt-1.5">
-                Earn points on every order. Redeem them for free food or credit — online or in the shop.
+              <h1 className="text-[30px] sm:text-[38px] font-semibold text-white leading-tight">
+                {programName || 'Rewards'}
               </h1>
+              <p className="text-sm sm:text-base text-white/90 mt-2">
+                Earn points on every order. Redeem them for free food or credit — online or in the shop.
+              </p>
             </div>
           </div>
 
