@@ -2,6 +2,8 @@
 // context hooks (in particular not useCustomerAuth), so this renders unchanged
 // on a custom domain, where CustomerAuthProvider is not mounted.
 
+import { useState } from 'react'
+
 import LogoFrame from './LogoFrame'
 
 const DEFAULT_BRAND_COLOR = '#16A34A'
@@ -208,6 +210,15 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
     ? `You've ordered ${orderCount} time${orderCount === 1 ? '' : 's'} with us`
     : programName ? `Welcome to ${programName}` : 'Welcome'
 
+  const [tab, setTab] = useState('rewards')
+  const [tiersOpen, setTiersOpen] = useState(false)
+
+  // Reward split for the signed-in panel — the same balance >= cost test the
+  // signed-out catalog rows use, hoisted so both lists share one comparison.
+  const pointsBalance = Number(customer?.pointsBalance) || 0
+  const readyRewards = rewards.filter(rw => (Number(rw.points_cost) || 0) <= pointsBalance)
+  const keepGoingRewards = rewards.filter(rw => (Number(rw.points_cost) || 0) > pointsBalance)
+
   const ctaLabel = customer ? 'Claim rewards' : 'Sign in to see your points'
   const ctaClassName = 'w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center'
   const ctaStyle = { backgroundColor: brandColor }
@@ -215,19 +226,6 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
   return (
     <div className="pb-28">
       <style>{PARTICLE_CSS}</style>
-
-      {/* ── 1. Header ── */}
-      <header className="text-center">
-        {/* The program name is entered per restaurant rather than derived from
-            restaurants.name — the legal business name is usually too long to
-            work as a program title. */}
-        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mt-1">
-          {programName || 'Rewards'}
-        </h1>
-        <p className="text-gray-500 mt-3">
-          Earn points on every order. Redeem them for free food or credit — online or in the shop.
-        </p>
-      </header>
 
       {/* ── 2. Personal panel (signed in) ── */}
       {customer ? (
@@ -290,151 +288,286 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             </div>
           </div>
 
-          {/* Tier progress needs a tier ladder to measure against — with no
-              tier rows configured there is nothing meaningful to show. */}
-          {tiers.length > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: currentTier?.color || brandColor }}
-                  />
-                  <span className="text-sm font-medium text-gray-900 truncate">
-                    {currentTier?.name || `Tier ${customer.tierLevel}`}
-                  </span>
-                </div>
-                <span className="text-sm text-gray-500 shrink-0">
-                  {atTopTier
-                    ? `${formatPoints(lifetime)} lifetime`
-                    : `${formatPoints(lifetime)} / ${formatPoints(nextThreshold)} lifetime`}
-                </span>
+          <div role="tablist" className="flex gap-2 mt-4">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'rewards'}
+              onClick={() => setTab('rewards')}
+              className={`flex-1 h-10 rounded-full text-sm ${tab === 'rewards' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
+              style={tab === 'rewards' ? { backgroundColor: brandColor } : undefined}
+            >
+              Rewards
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'orders'}
+              onClick={() => setTab('orders')}
+              className={`flex-1 h-10 rounded-full text-sm ${tab === 'orders' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
+              style={tab === 'orders' ? { backgroundColor: brandColor } : undefined}
+            >
+              Orders
+            </button>
+          </div>
+
+          {tab === 'rewards' ? (
+            <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr] gap-5 mt-5">
+              {/* Left: what this balance already covers, then what it doesn't. */}
+              <div>
+                {readyRewards.length > 0 && (
+                  <>
+                    <h2 className="text-[15px] font-medium text-gray-900">Ready to redeem</h2>
+                    <p className="text-xs text-gray-500 mb-2.5">Applied at checkout, one per order.</p>
+                    <div className="space-y-2">
+                      {readyRewards.map(rw => (
+                        <div
+                          key={rw.id}
+                          className="rounded-xl border px-3 py-2.5 flex justify-between items-center"
+                          style={{ borderColor: brandColor }}
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{rw.name}</p>
+                            <p className="text-xs text-gray-500">
+                              {formatPoints(Number(rw.points_cost) || 0)} pts
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-white px-3 py-1.5 rounded-lg"
+                            style={{ backgroundColor: brandColor }}
+                          >
+                            Redeem
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {keepGoingRewards.length > 0 && (
+                  <>
+                    <h2 className="text-[15px] font-medium text-gray-900 mt-5 mb-2.5">Keep going</h2>
+                    <div className="space-y-2">
+                      {keepGoingRewards.map(rw => {
+                        const cost = Number(rw.points_cost) || 0
+                        const shortBy = Math.max(0, cost - pointsBalance)
+                        return (
+                          <div
+                            key={rw.id}
+                            className="rounded-xl border border-gray-200 px-3 py-2.5 flex justify-between items-center"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">{rw.name}</p>
+                              <p className="text-xs text-gray-500">{formatPoints(cost)} pts</p>
+                            </div>
+                            <span className="bg-gray-100 text-gray-600 text-[11px] px-2.5 py-1 rounded-full">
+                              {formatPoints(shortBy)} away
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="h-2 rounded-full bg-gray-200 overflow-hidden mt-2">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${progressPct}%`, backgroundColor: currentTier?.color || brandColor }}
-                />
-              </div>
+              {/* Right: current tier, with the full ladder behind a disclosure. */}
+              <div>
+                <h2 className="text-sm font-medium text-gray-900 mb-2">Your tier</h2>
+                {/* Tier progress needs a tier ladder to measure against — with no
+                    tier rows configured there is nothing meaningful to show. */}
+                {tiers.length > 0 && (
+                  <div className="rounded-xl border border-gray-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: currentTier?.color || brandColor }}
+                        />
+                        <span className="text-sm font-medium text-gray-900 truncate">
+                          {currentTier?.name || `Tier ${customer.tierLevel}`}
+                        </span>
+                      </div>
+                      <span className="text-sm text-gray-500 shrink-0">
+                        {atTopTier
+                          ? `${formatPoints(lifetime)} lifetime`
+                          : `${formatPoints(lifetime)} / ${formatPoints(nextThreshold)} lifetime`}
+                      </span>
+                    </div>
 
-              <p className="text-sm text-gray-500 mt-2">
-                {atTopTier
-                  ? "You've reached the top tier."
-                  : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name} and earn ${Number(nextTier.multiplier) || 1}× on every order.`}
-              </p>
+                    <div className="h-2 rounded-full bg-gray-200 overflow-hidden mt-2">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${progressPct}%`, backgroundColor: currentTier?.color || brandColor }}
+                      />
+                    </div>
+
+                    <p className="text-sm text-gray-500 mt-2">
+                      {atTopTier
+                        ? "You've reached the top tier."
+                        : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name} and earn ${Number(nextTier.multiplier) || 1}× on every order.`}
+                    </p>
+
+                    <div className="border-t border-gray-100 mt-3 pt-3">
+                      <button
+                        type="button"
+                        aria-expanded={tiersOpen}
+                        onClick={() => setTiersOpen(open => !open)}
+                        className="w-full flex items-center justify-between text-xs"
+                        style={{ color: brandColor }}
+                      >
+                        {tiersOpen ? 'Hide tiers' : 'See all tiers'}
+                        <svg
+                          className={`w-4 h-4 shrink-0 transition-transform ${tiersOpen ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {tiersOpen && (
+                        <>
+                          {/* Mobile: horizontal scroll */}
+                          {/* The current-tier card carries a 2px ring, which overflow-x clips.
+                              pt-1 gives it room at the top (pb-2 already covers the bottom),
+                              and the bleed's padding runs 2px past the page gutter so the
+                              first card's ring clears the left edge too. */}
+                          <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-[26px] pt-1 pb-2 -mx-6 pl-[26px] pr-6">
+                            {tiers.map(tier => (
+                              <div key={tier.id} className="snap-start shrink-0 w-[80%]">
+                                <TierCard
+                                  tier={tier}
+                                  brandColor={brandColor}
+                                  emojiChars={emojiChars}
+                                  pointsPerDollar={pointsPerDollar}
+                                  isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Desktop: 3-column grid */}
+                          <div className="hidden md:grid md:grid-cols-3 gap-4 py-1">
+                            {tiers.map(tier => (
+                              <TierCard
+                                key={tier.id}
+                                tier={tier}
+                                brandColor={brandColor}
+                                emojiChars={emojiChars}
+                                pointsPerDollar={pointsPerDollar}
+                                isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
+                              />
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-sm text-gray-500">Your past orders will show up here.</p>
+              <button
+                type="button"
+                className="h-11 px-6 rounded-xl text-white font-medium mt-4"
+                style={{ backgroundColor: brandColor }}
+              >
+                Start an order
+              </button>
             </div>
           )}
         </section>
       ) : (
-        /* ── 3. How it works (signed out) ── */
-        <section className="mt-10">
-          {/* Three across at every breakpoint — the copy is short enough that
-              stacking to a column on mobile would only add scroll. */}
-          <div className="flex gap-2 sm:gap-3">
-            {HOW_IT_WORKS.map((step, i) => (
-              <div
-                key={i}
-                className="flex-1 relative overflow-hidden rounded-xl px-2 py-2.5 sm:px-4 sm:py-4 min-h-[62px] sm:min-h-[84px]"
-                style={{ backgroundColor: brandColor }}
-              >
-                {/* Top-right on a filled card: at the bottom the number sits
-                    under the detail text, which no longer has a white
-                    background to stay legible against. Any bleed past the
-                    card's edge belongs at the bottom, below the text, not
-                    across the top of the digit. */}
-                <span
-                  className="absolute right-2 top-0 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
-                  style={{ color: 'rgba(255,255,255,0.18)' }}
+        <>
+          {/* ── 1. Header (signed out only — the signed-in state leads with the
+                 balance card instead) ── */}
+          <header className="text-center">
+            {/* The program name is entered per restaurant rather than derived from
+                restaurants.name — the legal business name is usually too long to
+                work as a program title. */}
+            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mt-1">
+              {programName || 'Rewards'}
+            </h1>
+            <p className="text-gray-500 mt-3">
+              Earn points on every order. Redeem them for free food or credit — online or in the shop.
+            </p>
+          </header>
+
+          {/* ── 3. How it works (signed out) ── */}
+          <section className="mt-10">
+            {/* Three across at every breakpoint — the copy is short enough that
+                stacking to a column on mobile would only add scroll. */}
+            <div className="flex gap-2 sm:gap-3">
+              {HOW_IT_WORKS.map((step, i) => (
+                <div
+                  key={i}
+                  className="flex-1 relative overflow-hidden rounded-xl px-2 py-2.5 sm:px-4 sm:py-4 min-h-[62px] sm:min-h-[84px]"
+                  style={{ backgroundColor: brandColor }}
                 >
-                  {i + 1}
-                </span>
-                <p className="relative text-[13px] font-semibold text-white mb-1">{step.title}</p>
-                <p className="relative text-xs text-white/75 leading-snug">{step.detail}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── 4. Tiers ── */}
-      {tiers.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-3">Tiers</h2>
-
-          {/* Mobile: horizontal scroll */}
-          {/* The current-tier card carries a 2px ring, which overflow-x clips.
-              pt-1 gives it room at the top (pb-2 already covers the bottom),
-              and the bleed's padding runs 2px past the page gutter so the
-              first card's ring clears the left edge too. */}
-          <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-[26px] pt-1 pb-2 -mx-6 pl-[26px] pr-6">
-            {tiers.map(tier => (
-              <div key={tier.id} className="snap-start shrink-0 w-[80%]">
-                <TierCard
-                  tier={tier}
-                  brandColor={brandColor}
-                  emojiChars={emojiChars}
-                  pointsPerDollar={pointsPerDollar}
-                  isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop: 3-column grid */}
-          <div className="hidden md:grid md:grid-cols-3 gap-4 py-1">
-            {tiers.map(tier => (
-              <TierCard
-                key={tier.id}
-                tier={tier}
-                brandColor={brandColor}
-                emojiChars={emojiChars}
-                pointsPerDollar={pointsPerDollar}
-                isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── 5. Rewards catalog ── */}
-      {rewards.length > 0 && (
-        <section className="mt-10">
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">What you can get</h2>
+                  {/* Top-right on a filled card: at the bottom the number sits
+                      under the detail text, which no longer has a white
+                      background to stay legible against. Any bleed past the
+                      card's edge belongs at the bottom, below the text, not
+                      across the top of the digit. */}
+                  <span
+                    className="absolute right-2 top-0 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
+                    style={{ color: 'rgba(255,255,255,0.18)' }}
+                  >
+                    {i + 1}
+                  </span>
+                  <p className="relative text-[13px] font-semibold text-white mb-1">{step.title}</p>
+                  <p className="relative text-xs text-white/75 leading-snug">{step.detail}</p>
+                </div>
+              ))}
             </div>
-            <div className="divide-y divide-gray-100">
-              {rewards.map(rw => {
-                const cost = Number(rw.points_cost) || 0
-                const balance = Number(customer?.pointsBalance) || 0
-                const canRedeem = Boolean(customer) && balance >= cost
-                const shortBy = Math.max(0, cost - balance)
-                return (
-                  <div key={rw.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{rw.name}</p>
-                      {customer && canRedeem && (
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold mt-1"
-                          style={{ backgroundColor: withAlpha(brandColor, 0.12), color: brandColor }}
-                        >
-                          Available now
+          </section>
+
+          {/* ── 5. Rewards catalog (signed out — the signed-in state splits this
+                 into Ready to redeem / Keep going inside the rewards panel) ── */}
+          {rewards.length > 0 && (
+            <section className="mt-10">
+              <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h2 className="text-base font-semibold text-gray-900">What you can get</h2>
+                </div>
+                <div className="divide-y divide-gray-100">
+                  {rewards.map(rw => {
+                    const cost = Number(rw.points_cost) || 0
+                    const balance = Number(customer?.pointsBalance) || 0
+                    const canRedeem = Boolean(customer) && balance >= cost
+                    const shortBy = Math.max(0, cost - balance)
+                    return (
+                      <div key={rw.id} className="px-5 py-4 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{rw.name}</p>
+                          {customer && canRedeem && (
+                            <span
+                              className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold mt-1"
+                              style={{ backgroundColor: withAlpha(brandColor, 0.12), color: brandColor }}
+                            >
+                              Available now
+                            </span>
+                          )}
+                          {customer && !canRedeem && (
+                            <p className="text-xs text-gray-400 mt-1">{formatPoints(shortBy)} points away</p>
+                          )}
+                        </div>
+                        <span className="text-sm font-semibold shrink-0" style={{ color: brandColor }}>
+                          {formatPoints(cost)} pts
                         </span>
-                      )}
-                      {customer && !canRedeem && (
-                        <p className="text-xs text-gray-400 mt-1">{formatPoints(shortBy)} points away</p>
-                      )}
-                    </div>
-                    <span className="text-sm font-semibold shrink-0" style={{ color: brandColor }}>
-                      {formatPoints(cost)} pts
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </section>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       {/* ── 6. CTA — fixed to the viewport, matching CartButton in the
