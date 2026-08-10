@@ -127,18 +127,15 @@ function RewardThumb({ reward, brandColor, widthCls }) {
     return (
       <div
         className={`${widthCls} shrink-0 flex items-center justify-center`}
-        style={{ backgroundColor: shadeHex(brandColor, 0.88) }}
+        style={{ backgroundColor: brandColor }}
       >
         <span
           className="text-[22px] font-bold"
           style={{
-            backgroundImage: `linear-gradient(160deg, ${shadeHex(brandColor, 0.35)} 0%, ${brandColor} 45%, ${shadeHex(brandColor, -0.3)} 100%)`,
-            WebkitBackgroundClip: 'text',
-            backgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            // drop-shadow follows the glyph's own alpha. textShadow paints
-            // behind the fill, which is transparent here, so it never shows.
-            filter: `drop-shadow(0 1px 1px ${shadeHex(brandColor, -0.4)})`,
+            color: '#ffffff',
+            // textShadow works here because the fill is opaque white — it
+            // paints behind the glyph, which a transparent fill would hide.
+            textShadow: `0 1px 0 ${shadeHex(brandColor, -0.28)}, 0 2px 4px rgba(0,0,0,0.32)`,
           }}
         >
           {`$${Math.round(Number(reward.discount_cents) / 100)}`}
