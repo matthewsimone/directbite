@@ -41,59 +41,13 @@ function tierGradient(hex) {
   return `linear-gradient(155deg, ${shadeHex(hex, 0.22)} 0%, ${hex} 45%, ${shadeHex(hex, -0.38)} 100%)`
 }
 
-// Falling-particle geometry, one layout per tier_level (cycled), so the three
-// headers never read as copies and a re-render never reshuffles them.
-//
-// Depth of field is the whole trick: LARGE particles are blurred and dim (near
-// the lens, out of focus), SMALL ones are sharp and brighter (far away, in
-// focus). Nothing is both large and sharp.
-//
-// Entries are paired — 0/1, 2/3, 4/5, 6/7 — sharing a duration with delays
-// offset by exactly half of it, so each pair keeps one particle on screen at
-// all times and the total count never visibly thins or clumps. Durations are
-// distinct within a layout so the columns don't resynchronise.
-const EMOJI_LAYOUTS = [
-  [
-    { left: '6%',   size: 34, opacity: 0.37, blur: 2, r0: '-8deg',  r1: '172deg',  duration: 27, delay: -2 },
-    { left: '58%',  size: 18, opacity: 0.53, blur: 0, r0: '12deg',  r1: '-148deg', duration: 27, delay: -15.5 },
-    { left: '-3%',  size: 16, opacity: 0.49, blur: 0, r0: '24deg',  r1: '206deg',  duration: 33, delay: -7 },
-    { left: '44%',  size: 42, opacity: 0.34, blur: 3, r0: '-16deg', r1: '124deg',  duration: 33, delay: -23.5 },
-    { left: '78%',  size: 20, opacity: 0.55, blur: 0, r0: '4deg',   r1: '-192deg', duration: 21, delay: -5 },
-    { left: '24%',  size: 15, opacity: 0.47, blur: 0, r0: '-20deg', r1: '158deg',  duration: 21, delay: -15.5 },
-    { left: '91%',  size: 28, opacity: 0.41, blur: 1, r0: '16deg',  r1: '-134deg', duration: 39, delay: -11 },
-    { left: '36%',  size: 22, opacity: 0.51, blur: 0, r0: '-6deg',  r1: '188deg',  duration: 39, delay: -30.5 },
-  ],
-  [
-    { left: '9%',   size: 20, opacity: 0.52, blur: 0, r0: '18deg',  r1: '-166deg', duration: 31, delay: -6 },
-    { left: '62%',  size: 38, opacity: 0.36, blur: 2, r0: '-12deg', r1: '142deg',  duration: 31, delay: -21.5 },
-    { left: '-4%',  size: 30, opacity: 0.39, blur: 2, r0: '8deg',   r1: '-118deg', duration: 23, delay: -3 },
-    { left: '47%',  size: 16, opacity: 0.50, blur: 0, r0: '-22deg', r1: '214deg',  duration: 23, delay: -14.5 },
-    { left: '84%',  size: 48, opacity: 0.34, blur: 3, r0: '14deg',  r1: '132deg',  duration: 45, delay: -13 },
-    { left: '30%',  size: 14, opacity: 0.55, blur: 0, r0: '-4deg',  r1: '-198deg', duration: 45, delay: -35.5 },
-    { left: '93%',  size: 17, opacity: 0.47, blur: 0, r0: '26deg',  r1: '176deg',  duration: 29, delay: -8 },
-    { left: '38%',  size: 26, opacity: 0.41, blur: 1, r0: '-18deg', r1: '-128deg', duration: 29, delay: -22.5 },
-  ],
-  [
-    { left: '4%',   size: 26, opacity: 0.39, blur: 1, r0: '10deg',  r1: '-154deg', duration: 35, delay: -9 },
-    { left: '55%',  size: 15, opacity: 0.52, blur: 0, r0: '-14deg', r1: '202deg',  duration: 35, delay: -26.5 },
-    { left: '-2%',  size: 19, opacity: 0.50, blur: 0, r0: '20deg',  r1: '-182deg', duration: 27, delay: -5 },
-    { left: '71%',  size: 44, opacity: 0.34, blur: 3, r0: '-10deg', r1: '136deg',  duration: 27, delay: -18.5 },
-    { left: '88%',  size: 22, opacity: 0.47, blur: 0, r0: '6deg',   r1: '168deg',  duration: 43, delay: -14 },
-    { left: '20%',  size: 36, opacity: 0.36, blur: 2, r0: '-24deg', r1: '-122deg', duration: 43, delay: -35.5 },
-    { left: '40%',  size: 16, opacity: 0.55, blur: 0, r0: '22deg',  r1: '-210deg', duration: 37, delay: -2 },
-    { left: '95%',  size: 30, opacity: 0.41, blur: 2, r0: '-2deg',  r1: '146deg',  duration: 37, delay: -20.5 },
-  ],
-]
-
 // Offset so the three cards never pulse in sync.
 const GLOW_DELAYS = [-4, -11, -19]
 
 const PARTICLE_CSS = `
-@keyframes ordr-pfall { from { transform: translateY(-56px) rotate(var(--r0)); } to { transform: translateY(214px) rotate(var(--r1)); } }
 @keyframes ordr-glow { 0% { transform: translate(-14%, -8%) scale(1); } 50% { transform: translate(16%, 10%) scale(1.22); } 100% { transform: translate(-14%, -8%) scale(1); } }
-.ordr-pfe { position: absolute; top: 0; line-height: 1; pointer-events: none; user-select: none; will-change: transform; animation-name: ordr-pfall; animation-timing-function: linear; animation-iteration-count: infinite; }
 .ordr-glow { position: absolute; inset: -30%; border-radius: 50%; pointer-events: none; animation: ordr-glow 26s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .ordr-pfe, .ordr-glow { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ordr-glow { animation: none !important; } }
 `
 
 const HOW_IT_WORKS = [
@@ -102,70 +56,43 @@ const HOW_IT_WORKS = [
   { title: 'Redeem', detail: 'Online or at the counter' },
 ]
 
-// Rendered once and reused by both the mobile carousel and the desktop grid.
-function TierCard({ tier, brandColor, emojiChars, pointsPerDollar, isCurrent }) {
+// One row of the tier ladder: the full card's gradient and glow, reduced to a
+// strip that reads at a glance in a narrow column.
+function CompactTierRow({ tier, brandColor, pointsPerDollar, isCurrent }) {
   const level = Number(tier.tier_level) || 1
-  const layout = EMOJI_LAYOUTS[(level - 1) % EMOJI_LAYOUTS.length]
   const color = tier.color || brandColor
   const multiplier = Number(tier.multiplier) || 1
-  const percentFaster = Math.round((multiplier - 1) * 100)
-
-  const explainer = level === 1
-    ? `Everyone starts here. ${pointsPerDollar} point${pointsPerDollar === 1 ? '' : 's'} per dollar.`
-    : `Reach ${formatPoints(tier.threshold_points)} lifetime points and earn ${percentFaster}% faster on every order.`
+  // Round through an integer so 1.1× at 3 pts/$ reads 3.3, not 3.3000000000000003.
+  const rate = Math.round(multiplier * pointsPerDollar * 10) / 10
 
   return (
     <div
-      className="rounded-2xl overflow-hidden border border-gray-200 bg-white"
-      style={isCurrent ? { boxShadow: `0 0 0 2px ${brandColor}` } : undefined}
+      className="relative overflow-hidden rounded-xl px-3.5 py-3"
+      style={{
+        backgroundColor: color,
+        backgroundImage: tierGradient(color),
+        ...(isCurrent ? { boxShadow: `0 0 0 2px ${brandColor}` } : {}),
+      }}
     >
       <div
-        className="relative overflow-hidden min-h-[168px] px-[18px] py-5 flex items-end"
-        style={{ backgroundColor: color, backgroundImage: tierGradient(color) }}
-      >
-        <div
-          className="ordr-glow"
-          style={{
-            background: 'radial-gradient(circle at 40% 20%, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 60%)',
-            animationDelay: `${GLOW_DELAYS[(level - 1) % GLOW_DELAYS.length]}s`,
-          }}
-        />
-        {emojiChars.length > 0 && layout.map((p, i) => (
-          <span
-            key={i}
-            aria-hidden="true"
-            className="ordr-pfe"
-            style={{
-              left: p.left,
-              fontSize: `${p.size}px`,
-              opacity: p.opacity,
-              animationDuration: `${p.duration}s`,
-              animationDelay: `${p.delay}s`,
-              '--r0': p.r0,
-              '--r1': p.r1,
-              filter: p.blur > 0
-                ? `grayscale(1) brightness(1.45) contrast(0.72) blur(${p.blur}px)`
-                : 'grayscale(1) brightness(1.65) contrast(0.85)',
-            }}
-          >
-            {emojiChars[i % emojiChars.length]}
-          </span>
-        ))}
-        <div className="relative">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-white/55">Tier {level}</p>
-          <p className="text-[26px] font-medium text-white tracking-[-0.01em]">{tier.name}</p>
-          <p className="text-[13px] text-white/70">{multiplier}× points</p>
+        className="ordr-glow"
+        style={{
+          background: 'radial-gradient(circle at 40% 20%, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 60%)',
+          animationDelay: `${GLOW_DELAYS[(level - 1) % GLOW_DELAYS.length]}s`,
+        }}
+      />
+      <div className="relative flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[15px] font-medium text-white">{tier.name}</p>
+          <p className="text-[11px] text-white/75">{rate} points per $1</p>
         </div>
-      </div>
-
-      <div className="p-4 px-[18px]">
-        <p className="text-sm text-gray-500">{explainer}</p>
-        {isCurrent && (
-          <span
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold mt-2"
-            style={{ backgroundColor: withAlpha(brandColor, 0.12), color: brandColor }}
-          >
+        {isCurrent ? (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/25 text-white shrink-0">
             You're here
+          </span>
+        ) : (
+          <span className="text-[11px] text-white/75 shrink-0">
+            {formatPoints(tier.threshold_points)} pts
           </span>
         )}
       </div>
@@ -178,12 +105,9 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
   // The balance card reuses the website hero's photo and logo — useRestaurant
   // selects '*', so these arrive on the same restaurant row.
   const { hero_image_url, logo_url, logo_frame_shape, name } = restaurant
-  // Derived once: the headline and the balance block's fallback subline are
-  // the same value, so they can't drift apart.
+  // Entered per restaurant rather than derived from restaurants.name — the
+  // legal business name is usually too long to work as a program title.
   const programName = restaurant.loyalty_program_name || ''
-  // Array.from so multi-byte emoji survive — a plain .split('') would tear
-  // surrogate pairs in half.
-  const emojiChars = Array.from(restaurant.loyalty_emoji || '')
   const pointsPerDollar = Number(restaurant.loyalty_points_per_dollar) || 0
 
   const currentTier = customer
@@ -203,12 +127,9 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
     : Math.max(0, Math.min(100, (lifetime / nextThreshold) * 100))
   const pointsToNext = Math.max(0, nextThreshold - lifetime)
 
-  // Order count is the warmer line, so it wins when we have one; the program
-  // name is the fallback for a customer whose first order hasn't landed yet.
   const orderCount = Number(customer?.orderCount) || 0
-  const subline = orderCount > 0
-    ? `You've ordered ${orderCount} time${orderCount === 1 ? '' : 's'} with us`
-    : programName ? `Welcome to ${programName}` : 'Welcome'
+  // Rounded through an integer so the rate reads 3.3, not 3.3000000000000003.
+  const nextTierRate = Math.round((Number(nextTier?.multiplier) || 1) * pointsPerDollar * 10) / 10
 
   const [tab, setTab] = useState('rewards')
   const [tiersOpen, setTiersOpen] = useState(false)
@@ -224,12 +145,12 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
   const ctaStyle = { backgroundColor: brandColor }
 
   return (
-    <div className="pb-28">
+    <div className={`${customer ? 'pb-10' : 'pb-28'}`}>
       <style>{PARTICLE_CSS}</style>
 
       {/* ── 2. Personal panel (signed in) ── */}
       {customer ? (
-        <section className="mt-10">
+        <section className="mt-2">
           {/* Greeting and balance sit on the restaurant's own hero image, under
               the same overlay the website hero uses, so the two surfaces read
               as one brand rather than two. */}
@@ -392,7 +313,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                       <span className="text-sm text-gray-500 shrink-0">
                         {atTopTier
                           ? `${formatPoints(lifetime)} lifetime`
-                          : `${formatPoints(lifetime)} / ${formatPoints(nextThreshold)} lifetime`}
+                          : `${formatPoints(pointsToNext)} pts to ${nextTier.name}`}
                       </span>
                     </div>
 
@@ -406,7 +327,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                     <p className="text-sm text-gray-500 mt-2">
                       {atTopTier
                         ? "You've reached the top tier."
-                        : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name} and earn ${Number(nextTier.multiplier) || 1}× on every order.`}
+                        : `${nextTier.name} earns ${nextTierRate} points per $1 instead of ${pointsPerDollar}.`}
                     </p>
 
                     <div className="border-t border-gray-100 mt-3 pt-3">
@@ -429,40 +350,17 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                       </button>
 
                       {tiersOpen && (
-                        <>
-                          {/* Mobile: horizontal scroll */}
-                          {/* The current-tier card carries a 2px ring, which overflow-x clips.
-                              pt-1 gives it room at the top (pb-2 already covers the bottom),
-                              and the bleed's padding runs 2px past the page gutter so the
-                              first card's ring clears the left edge too. */}
-                          <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-[26px] pt-1 pb-2 -mx-6 pl-[26px] pr-6">
-                            {tiers.map(tier => (
-                              <div key={tier.id} className="snap-start shrink-0 w-[80%]">
-                                <TierCard
-                                  tier={tier}
-                                  brandColor={brandColor}
-                                  emojiChars={emojiChars}
-                                  pointsPerDollar={pointsPerDollar}
-                                  isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
-                                />
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* Desktop: 3-column grid */}
-                          <div className="hidden md:grid md:grid-cols-3 gap-4 py-1">
-                            {tiers.map(tier => (
-                              <TierCard
-                                key={tier.id}
-                                tier={tier}
-                                brandColor={brandColor}
-                                emojiChars={emojiChars}
-                                pointsPerDollar={pointsPerDollar}
-                                isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
-                              />
-                            ))}
-                          </div>
-                        </>
+                        <div className="space-y-2 mt-3">
+                          {tiers.map(tier => (
+                            <CompactTierRow
+                              key={tier.id}
+                              tier={tier}
+                              brandColor={brandColor}
+                              pointsPerDollar={pointsPerDollar}
+                              isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
+                            />
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -567,20 +465,44 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               </div>
             </section>
           )}
+
+          {/* ── 7. Tier ladder (signed out) ── */}
+          {tiers.length > 0 && (
+            <section className="mt-10">
+              <h2 className="text-xl font-bold text-gray-900 mb-3">Order more, earn faster</h2>
+              <div className="grid grid-cols-3 gap-2">
+                {tiers.map(tier => (
+                  <CompactTierRow
+                    key={tier.id}
+                    tier={tier}
+                    brandColor={brandColor}
+                    pointsPerDollar={pointsPerDollar}
+                    isCurrent={false}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Based on points earned all-time. You never drop a tier.
+              </p>
+            </section>
+          )}
         </>
       )}
 
-      {/* ── 6. CTA — fixed to the viewport, matching CartButton in the
-             ordering flow. The wrapper's pb-28 keeps the last section clear. ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-5 py-3">
-        <div className="max-w-[720px] mx-auto">
-          {signInHref && !onSignIn ? (
-            <a href={signInHref} className={ctaClassName} style={ctaStyle}>{ctaLabel}</a>
-          ) : (
-            <button onClick={onSignIn} className={ctaClassName} style={ctaStyle}>{ctaLabel}</button>
-          )}
+      {/* ── 6. CTA — signed out only: its one job is sign-in, and the wrapper's
+             pb-28 reserves the space it occupies. Fixed to the viewport,
+             matching CartButton in the ordering flow. ── */}
+      {!customer && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-5 py-3">
+          <div className="max-w-[720px] mx-auto">
+            {signInHref && !onSignIn ? (
+              <a href={signInHref} className={ctaClassName} style={ctaStyle}>{ctaLabel}</a>
+            ) : (
+              <button onClick={onSignIn} className={ctaClassName} style={ctaStyle}>{ctaLabel}</button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
