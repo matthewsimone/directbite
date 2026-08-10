@@ -8,6 +8,10 @@ import LogoFrame from './LogoFrame'
 
 const DEFAULT_BRAND_COLOR = '#16A34A'
 
+// Hero.jsx's ramp, deepened for card scale — the same three stops spread
+// across ~200px instead of 80vh, so each has to work harder.
+const CARD_SCRIM = 'absolute inset-0 bg-gradient-to-b from-black/35 via-black/45 to-black/75'
+
 function formatPoints(n) { return Number(n || 0).toLocaleString('en-US') }
 
 // Lighten (amount > 0) or darken (amount < 0) a #RRGGBB color by that fraction
@@ -99,6 +103,53 @@ function CompactTierRow({ tier, brandColor, pointsPerDollar, isCurrent }) {
   )
 }
 
+// Reward art: the linked menu item's photo when there is one, otherwise a
+// brand-gradient dollar figure for discount rewards. Anything else gets no
+// strip, so the row falls back to its original full-width layout.
+function RewardThumb({ reward, brandColor, widthCls }) {
+  const imageUrl = reward.menu_items?.image_url || null
+  const isDiscount = reward.kind === 'discount' && Number(reward.discount_cents) > 0
+
+  if (imageUrl) {
+    return (
+      <div
+        className={`${widthCls} shrink-0`}
+        style={{
+          backgroundImage: `url(${imageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      />
+    )
+  }
+
+  if (isDiscount) {
+    return (
+      <div
+        className={`${widthCls} shrink-0 flex items-center justify-center`}
+        style={{ backgroundColor: shadeHex(brandColor, 0.88) }}
+      >
+        <span
+          className="text-[22px] font-bold"
+          style={{
+            backgroundImage: `linear-gradient(160deg, ${shadeHex(brandColor, 0.35)} 0%, ${brandColor} 45%, ${shadeHex(brandColor, -0.3)} 100%)`,
+            WebkitBackgroundClip: 'text',
+            backgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            // drop-shadow follows the glyph's own alpha. textShadow paints
+            // behind the fill, which is transparent here, so it never shows.
+            filter: `drop-shadow(0 1px 1px ${shadeHex(brandColor, -0.4)})`,
+          }}
+        >
+          {`$${Math.round(Number(reward.discount_cents) / 100)}`}
+        </span>
+      </div>
+    )
+  }
+
+  return null
+}
+
 export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, onSignIn, signInHref }) {
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
   // The balance card reuses the website hero's photo and logo — useRestaurant
@@ -177,7 +228,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               }}
             />
             {/* Dark gradient overlay — keeps white text legible regardless of image */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
+            <div className={CARD_SCRIM} />
 
             <div className="absolute top-5 right-5 z-10">
               <LogoFrame
@@ -261,22 +312,25 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                       {readyRewards.map(rw => (
                         <div
                           key={rw.id}
-                          className="rounded-xl border px-3 py-2.5 flex justify-between items-center"
+                          className="rounded-xl border overflow-hidden flex items-stretch"
                           style={{ borderColor: brandColor }}
                         >
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium">{rw.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {formatPoints(Number(rw.points_cost) || 0)} pts
-                            </p>
+                          <RewardThumb reward={rw} brandColor={brandColor} widthCls="w-[76px]" />
+                          <div className="flex-1 px-3 py-2.5 flex justify-between items-center gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">{rw.name}</p>
+                              <p className="text-xs text-gray-500">
+                                {formatPoints(Number(rw.points_cost) || 0)} pts
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-white px-3 py-1.5 rounded-lg"
+                              style={{ backgroundColor: brandColor }}
+                            >
+                              Redeem
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-white px-3 py-1.5 rounded-lg"
-                            style={{ backgroundColor: brandColor }}
-                          >
-                            Redeem
-                          </button>
                         </div>
                       ))}
                     </div>
@@ -293,15 +347,18 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                         return (
                           <div
                             key={rw.id}
-                            className="rounded-xl border border-gray-200 px-3 py-2.5 flex justify-between items-center"
+                            className="rounded-xl border border-gray-200 overflow-hidden flex items-stretch"
                           >
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium">{rw.name}</p>
-                              <p className="text-xs text-gray-500">{formatPoints(cost)} pts</p>
+                            <RewardThumb reward={rw} brandColor={brandColor} widthCls="w-[76px]" />
+                            <div className="flex-1 px-3 py-2.5 flex justify-between items-center gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium">{rw.name}</p>
+                                <p className="text-xs text-gray-500">{formatPoints(cost)} pts</p>
+                              </div>
+                              <span className="bg-gray-100 text-gray-600 text-[11px] px-2.5 py-1 rounded-full">
+                                {formatPoints(shortBy)} away
+                              </span>
                             </div>
-                            <span className="bg-gray-100 text-gray-600 text-[11px] px-2.5 py-1 rounded-full">
-                              {formatPoints(shortBy)} away
-                            </span>
                           </div>
                         )
                       })}
@@ -411,7 +468,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               }}
             />
             {/* Dark gradient overlay — keeps white text legible regardless of image */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
+            <div className={CARD_SCRIM} />
 
             <div className="absolute top-6 left-0 right-0 flex justify-center z-10">
               <LogoFrame
@@ -451,17 +508,20 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                   {rewards.map(rw => (
                     <div
                       key={rw.id}
-                      className="rounded-xl border border-gray-200 px-3.5 py-3 flex justify-between items-center gap-3"
+                      className="rounded-xl border border-gray-200 overflow-hidden flex items-stretch"
                     >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-900">{rw.name}</p>
-                        {rw.description && (
-                          <p className="text-xs text-gray-500">{rw.description}</p>
-                        )}
+                      <RewardThumb reward={rw} brandColor={brandColor} widthCls="w-[76px]" />
+                      <div className="flex-1 px-3.5 py-3 flex justify-between items-center gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900">{rw.name}</p>
+                          {rw.description && (
+                            <p className="text-xs text-gray-500">{rw.description}</p>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium shrink-0" style={{ color: brandColor }}>
+                          {formatPoints(Number(rw.points_cost) || 0)} pts
+                        </span>
                       </div>
-                      <span className="text-sm font-medium shrink-0" style={{ color: brandColor }}>
-                        {formatPoints(Number(rw.points_cost) || 0)} pts
-                      </span>
                     </div>
                   ))}
                 </div>

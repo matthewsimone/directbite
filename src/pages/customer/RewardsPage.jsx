@@ -48,7 +48,7 @@ export default function RewardsPage() {
         .order('tier_level'),
       supabase
         .from('loyalty_rewards')
-        .select('id, kind, name, description, points_cost, min_subtotal_cents, active, sort_order')
+        .select('id, kind, name, description, points_cost, discount_cents, min_subtotal_cents, active, sort_order, menu_items(image_url)')
         .eq('restaurant_id', restaurantId)
         .eq('active', true)
         .order('sort_order'),
