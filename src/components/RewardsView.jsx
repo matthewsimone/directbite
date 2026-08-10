@@ -400,19 +400,45 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
         </section>
       ) : (
         <>
-          {/* ── 1. Header (signed out only — the signed-in state leads with the
-                 balance card instead) ── */}
-          <header className="text-center">
-            {/* The program name is entered per restaurant rather than derived from
-                restaurants.name — the legal business name is usually too long to
-                work as a program title. */}
-            <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mt-1">
-              {programName || 'Rewards'}
-            </h1>
-            <p className="text-gray-500 mt-3">
-              Earn points on every order. Redeem them for free food or credit — online or in the shop.
-            </p>
-          </header>
+          {/* ── 1. Hero card (signed out only — the signed-in state leads with
+                 the balance card instead) ── */}
+          <div className="relative rounded-2xl overflow-hidden">
+            {/* Background layer — bg-gray-100 is the class-based fallback that
+                shows through when the restaurant has no hero image. */}
+            <div
+              className="absolute inset-0 bg-gray-100 bg-cover bg-center"
+              style={{
+                ...(hero_image_url ? { backgroundImage: `url(${hero_image_url})` } : {}),
+              }}
+            />
+            {/* Dark gradient overlay — keeps white text legible regardless of image */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/60" />
+
+            <div className="absolute top-6 left-0 right-0 flex justify-center z-10">
+              <LogoFrame
+                logoUrl={logo_url}
+                shape={logo_frame_shape}
+                name={name}
+                brandColor={brandColor}
+                sizePx={96}
+                marginCls=""
+              />
+            </div>
+
+            <div className="relative z-10 flex flex-col justify-end min-h-[260px] px-6 pb-7 pt-7 text-center">
+              {/* The program name is entered per restaurant rather than derived from
+                  restaurants.name — the legal business name is usually too long to
+                  work as a program title. */}
+              {programName && (
+                <p className="text-[11px] tracking-[0.16em] uppercase text-white/80">
+                  {programName}
+                </p>
+              )}
+              <h1 className="text-[26px] sm:text-[30px] font-semibold text-white leading-tight mt-1.5">
+                Earn points on every order. Redeem them for free food or credit — online or in the shop.
+              </h1>
+            </div>
+          </div>
 
           {/* ── 3. How it works (signed out) ── */}
           <section className="mt-10">
