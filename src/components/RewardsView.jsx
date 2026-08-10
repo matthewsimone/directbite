@@ -81,13 +81,13 @@ function CompactTierRow({ tier, brandColor, pointsPerDollar, isCurrent }) {
           animationDelay: `${GLOW_DELAYS[(level - 1) % GLOW_DELAYS.length]}s`,
         }}
       />
-      <div className="relative flex items-center justify-between gap-3">
+      <div className="relative flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-[15px] font-medium text-white">{tier.name}</p>
           <p className="text-[11px] text-white/75">{rate} points per $1</p>
         </div>
         {isCurrent ? (
-          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/25 text-white shrink-0">
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/25 text-white shrink-0 ml-2">
             You're here
           </span>
         ) : (
@@ -197,7 +197,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               >
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${progressPct}%`, backgroundColor: brandColor }}
+                  style={{ width: `${progressPct}%`, backgroundColor: '#ffffff' }}
                 />
               </div>
 
