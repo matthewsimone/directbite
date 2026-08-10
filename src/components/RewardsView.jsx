@@ -192,7 +192,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             </div>
 
             <div className="relative z-10 flex flex-col justify-end min-h-[196px] px-6 pb-6 pt-6">
-              <p className="text-sm text-white/95">
+              <p className="text-base font-medium text-white">
                 {[
                   customer.displayName || 'there',
                   orderCount > 0 ? `${orderCount} order${orderCount === 1 ? '' : 's'}` : null,
@@ -207,11 +207,11 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
 
               <div
                 className="h-[6px] rounded-full overflow-hidden mt-3"
-                style={{ backgroundColor: 'rgba(255,255,255,0.32)' }}
+                style={{ backgroundColor: 'rgba(255,255,255,0.55)' }}
               >
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${rewardProgressPct}%`, backgroundColor: '#ffffff' }}
+                  style={{ width: `${rewardProgressPct}%`, backgroundColor: brandColor }}
                 />
               </div>
 
