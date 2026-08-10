@@ -192,7 +192,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             </div>
 
             <div className="relative z-10 flex flex-col justify-end min-h-[196px] px-6 pb-6 pt-6">
-              <p className="text-base font-medium text-white">
+              <p className="text-xl font-semibold text-white">
                 {[
                   customer.displayName || 'there',
                   orderCount > 0 ? `${orderCount} order${orderCount === 1 ? '' : 's'}` : null,
