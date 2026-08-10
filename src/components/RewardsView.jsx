@@ -8,15 +8,6 @@ import LogoFrame from './LogoFrame'
 
 const DEFAULT_BRAND_COLOR = '#16A34A'
 
-// Tint a #RRGGBB brand color for card fills. Returns the input untouched when
-// it isn't a 6-digit hex, so a CSS keyword or rgb() string still renders.
-function withAlpha(hex, alpha) {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
-  if (!m) return hex
-  const n = parseInt(m[1], 16)
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
-}
-
 function formatPoints(n) { return Number(n || 0).toLocaleString('en-US') }
 
 // Lighten (amount > 0) or darken (amount < 0) a #RRGGBB color by that fraction
@@ -54,6 +45,14 @@ const HOW_IT_WORKS = [
   { title: 'Order',  detail: 'Use your phone number at checkout' },
   { title: 'Earn',   detail: 'Points add up automatically' },
   { title: 'Redeem', detail: 'Online or at the counter' },
+]
+
+// Paired with HOW_IT_WORKS by index — phone, bag, gift. Kept separate so the
+// copy above stays a plain content list.
+const HOW_IT_WORKS_ICONS = [
+  'M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M11 18h2',
+  'M6 7h12l-1 13H7L6 7z M9 7V5a3 3 0 0 1 6 0v2',
+  'M20 11v9H4v-9 M2 7h20v4H2z M12 22V7 M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7z M12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z',
 ]
 
 // One row of the tier ladder: the full card's gradient and glow, reduced to a
@@ -440,80 +439,67 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             </div>
           </div>
 
-          {/* ── 3. How it works (signed out) ── */}
-          <section className="mt-10">
-            {/* Three across at every breakpoint — the copy is short enough that
-                stacking to a column on mobile would only add scroll. */}
-            <div className="flex gap-2 sm:gap-3">
-              {HOW_IT_WORKS.map((step, i) => (
-                <div
-                  key={i}
-                  className="flex-1 relative overflow-hidden rounded-xl px-2 py-2.5 sm:px-4 sm:py-4 min-h-[62px] sm:min-h-[84px]"
-                  style={{ backgroundColor: brandColor }}
-                >
-                  {/* Top-right on a filled card: at the bottom the number sits
-                      under the detail text, which no longer has a white
-                      background to stay legible against. Any bleed past the
-                      card's edge belongs at the bottom, below the text, not
-                      across the top of the digit. */}
-                  <span
-                    className="absolute right-2 top-0 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
-                    style={{ color: 'rgba(255,255,255,0.18)' }}
-                  >
-                    {i + 1}
-                  </span>
-                  <p className="relative text-[13px] font-semibold text-white mb-1">{step.title}</p>
-                  <p className="relative text-xs text-white/75 leading-snug">{step.detail}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* ── 5. Rewards catalog (signed out — the signed-in state splits this
-                 into Ready to redeem / Keep going inside the rewards panel) ── */}
-          {rewards.length > 0 && (
-            <section className="mt-10">
-              <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-                <div className="px-5 py-4 border-b border-gray-100">
-                  <h2 className="text-base font-semibold text-gray-900">What you can get</h2>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {rewards.map(rw => {
-                    const cost = Number(rw.points_cost) || 0
-                    const balance = Number(customer?.pointsBalance) || 0
-                    const canRedeem = Boolean(customer) && balance >= cost
-                    const shortBy = Math.max(0, cost - balance)
-                    return (
-                      <div key={rw.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{rw.name}</p>
-                          {customer && canRedeem && (
-                            <span
-                              className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold mt-1"
-                              style={{ backgroundColor: withAlpha(brandColor, 0.12), color: brandColor }}
-                            >
-                              Available now
-                            </span>
-                          )}
-                          {customer && !canRedeem && (
-                            <p className="text-xs text-gray-400 mt-1">{formatPoints(shortBy)} points away</p>
-                          )}
-                        </div>
-                        <span className="text-sm font-semibold shrink-0" style={{ color: brandColor }}>
-                          {formatPoints(cost)} pts
-                        </span>
+          {/* Catalog leads on both axes — first in source so it stacks above
+              how-it-works on mobile, and in the wider column on desktop. */}
+          <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr] gap-6 mt-8">
+            {/* ── 5. Rewards catalog (signed out — the signed-in state splits this
+                   into Ready to redeem / Keep going inside the rewards panel) ── */}
+            {rewards.length > 0 && (
+              <section>
+                <h2 className="text-[15px] font-medium text-gray-900 mb-2.5">What you can get</h2>
+                <div className="space-y-2">
+                  {rewards.map(rw => (
+                    <div
+                      key={rw.id}
+                      className="rounded-xl border border-gray-200 px-3.5 py-3 flex justify-between items-center gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900">{rw.name}</p>
+                        {rw.description && (
+                          <p className="text-xs text-gray-500">{rw.description}</p>
+                        )}
                       </div>
-                    )
-                  })}
+                      <span className="text-sm font-medium shrink-0" style={{ color: brandColor }}>
+                        {formatPoints(Number(rw.points_cost) || 0)} pts
+                      </span>
+                    </div>
+                  ))}
                 </div>
+              </section>
+            )}
+
+            {/* ── 3. How it works (signed out) ── */}
+            <section>
+              <h2 className="text-[15px] font-medium text-gray-900 mb-2.5">How it works</h2>
+              <div className="space-y-3">
+                {HOW_IT_WORKS.map((step, i) => (
+                  <div key={i} className="flex gap-2.5 items-start">
+                    <svg
+                      className="w-[18px] h-[18px] shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      viewBox="0 0 24 24"
+                      style={{ color: brandColor }}
+                    >
+                      <path d={HOW_IT_WORKS_ICONS[i]} />
+                    </svg>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{step.title}</p>
+                      <p className="text-xs text-gray-500">{step.detail}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
-          )}
+          </div>
 
           {/* ── 7. Tier ladder (signed out) ── */}
           {tiers.length > 0 && (
-            <section className="mt-10">
-              <h2 className="text-xl font-bold text-gray-900 mb-3">Order more, earn faster</h2>
+            <section className="mt-8">
+              <h2 className="text-[15px] font-medium text-gray-900 mb-3">Order more, earn faster</h2>
               <div className="grid grid-cols-3 gap-2">
                 {tiers.map(tier => (
                   <CompactTierRow
