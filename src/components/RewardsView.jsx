@@ -2,7 +2,7 @@
 // context hooks (in particular not useCustomerAuth), so this renders unchanged
 // on a custom domain, where CustomerAuthProvider is not mounted.
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 import LogoFrame from './LogoFrame'
 
@@ -103,6 +103,29 @@ function CompactTierRow({ tier, brandColor, pointsPerDollar, isCurrent }) {
   )
 }
 
+// Counts from 0 to target once on mount. requestAnimationFrame rather than
+// an interval so the browser owns the cadence; ease-out so the number
+// sprints then settles.
+function useCountUp(target, duration = 900) {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    const end = Number(target) || 0
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    if (reduced || end === 0) { setValue(end); return }
+    let raf
+    const start = performance.now()
+    const tick = now => {
+      const t = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setValue(Math.round(end * eased))
+      if (t < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return value
+}
+
 // Reward art: the linked menu item's photo when there is one, otherwise a
 // brand-gradient dollar figure for discount rewards. Anything else gets no
 // strip, so the row falls back to its original full-width layout.
@@ -201,6 +224,17 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
     ? Math.max(0, Math.min(100, (pointsBalance / (Number(nextReward.points_cost) || 0)) * 100))
     : 100
 
+  // Hooks can't be called conditionally, so these sit at the top level rather
+  // than inside the signed-in branch that renders them.
+  const animatedPoints = useCountUp(Number(customer?.pointsBalance) || 0)
+  const [barReady, setBarReady] = useState(false)
+  // The first paint has to land at 0 width or the transition has nothing to
+  // animate from; rAF defers the flip to the frame after that paint.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setBarReady(true))
+    return () => cancelAnimationFrame(raf)
+  }, [rewardProgressPct])
+
   const ctaLabel = customer ? 'Claim rewards' : 'Sign in to see your points'
   const ctaClassName = 'w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center'
   const ctaStyle = { backgroundColor: brandColor }
@@ -246,8 +280,8 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                 ].filter(Boolean).join(' · ')}
               </p>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-6xl font-bold text-white tracking-[-0.03em]">
-                  {formatPoints(customer.pointsBalance)}
+                <span className="text-6xl font-bold text-white tracking-[-0.03em] tabular-nums">
+                  {formatPoints(animatedPoints)}
                 </span>
                 <span className="text-[17px] text-white/85">points</span>
               </div>
@@ -257,8 +291,8 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                 style={{ backgroundColor: 'rgba(255,255,255,0.55)' }}
               >
                 <div
-                  className="h-full rounded-full"
-                  style={{ width: `${rewardProgressPct}%`, backgroundColor: brandColor }}
+                  className="h-full rounded-full transition-[width] duration-[900ms] ease-out"
+                  style={{ width: `${barReady ? rewardProgressPct : 0}%`, backgroundColor: brandColor }}
                 />
               </div>
 
