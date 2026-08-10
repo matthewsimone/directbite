@@ -259,16 +259,34 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
             </div>
 
             <div className="relative z-10 flex flex-col justify-end min-h-[158px] px-5 pb-5 pt-5">
-              <p className="text-base font-semibold text-white">Hi {customer.displayName || 'there'}</p>
-              <p className="text-xs text-white/70 mt-0.5">{subline}</p>
-
-              <p className="text-[10px] tracking-[0.16em] text-white/70 mt-3">AVAILABLE TO SPEND</p>
-              <div className="flex items-baseline gap-2 mt-1">
+              <p className="text-xs text-white/90">
+                {[
+                  customer.displayName || 'there',
+                  orderCount > 0 ? `${orderCount} order${orderCount === 1 ? '' : 's'}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+              <div className="flex items-baseline gap-2 mt-0.5">
                 <span className="text-5xl font-bold text-white tracking-[-0.03em]">
                   {formatPoints(customer.pointsBalance)}
                 </span>
                 <span className="text-[15px] text-white/85">points</span>
               </div>
+
+              <div
+                className="h-[5px] rounded-full overflow-hidden mt-2"
+                style={{ backgroundColor: 'rgba(255,255,255,0.32)' }}
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${progressPct}%`, backgroundColor: brandColor }}
+                />
+              </div>
+
+              <p className="text-xs text-white/95 mt-1.5">
+                {atTopTier || !nextTier
+                  ? `${formatPoints(lifetime)} points earned all time`
+                  : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name}`}
+              </p>
             </div>
           </div>
 
