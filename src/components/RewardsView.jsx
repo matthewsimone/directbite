@@ -140,6 +140,20 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
   const readyRewards = rewards.filter(rw => (Number(rw.points_cost) || 0) <= pointsBalance)
   const keepGoingRewards = rewards.filter(rw => (Number(rw.points_cost) || 0) > pointsBalance)
 
+  // The balance card's bar tracks the nearest reward rather than the next tier
+  // — the cheapest thing this balance can't cover yet. Everything in
+  // keepGoingRewards costs more than the balance, so points_cost is always > 0
+  // here and the percentage can't divide by zero.
+  const nextReward = keepGoingRewards.reduce(
+    (cheapest, rw) =>
+      !cheapest || (Number(rw.points_cost) || 0) < (Number(cheapest.points_cost) || 0) ? rw : cheapest,
+    null,
+  )
+  const rewardShortfall = Math.max(0, (Number(nextReward?.points_cost) || 0) - pointsBalance)
+  const rewardProgressPct = nextReward
+    ? Math.max(0, Math.min(100, (pointsBalance / (Number(nextReward.points_cost) || 0)) * 100))
+    : 100
+
   const ctaLabel = customer ? 'Claim rewards' : 'Sign in to see your points'
   const ctaClassName = 'w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center'
   const ctaStyle = { backgroundColor: brandColor }
@@ -197,14 +211,18 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               >
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${progressPct}%`, backgroundColor: '#ffffff' }}
+                  style={{ width: `${rewardProgressPct}%`, backgroundColor: '#ffffff' }}
                 />
               </div>
 
               <p className="text-xs text-white/95 mt-1.5">
-                {atTopTier || !nextTier
-                  ? `${formatPoints(lifetime)} points earned all time`
-                  : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name}`}
+                {nextReward
+                  ? `${formatPoints(rewardShortfall)} more points for ${nextReward.name}`
+                  : readyRewards.length > 0
+                    ? `${formatPoints(readyRewards.length)} reward${readyRewards.length === 1 ? '' : 's'} ready to redeem`
+                    : atTopTier || !nextTier
+                      ? `${formatPoints(lifetime)} points earned all time`
+                      : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name}`}
               </p>
             </div>
           </div>
