@@ -2,16 +2,15 @@
 // context hooks (in particular not useCustomerAuth), so this renders unchanged
 // on a custom domain, where CustomerAuthProvider is not mounted.
 
+import { useState, useEffect } from 'react'
+
+import LogoFrame from './LogoFrame'
+
 const DEFAULT_BRAND_COLOR = '#16A34A'
 
-// Tint a #RRGGBB brand color for card fills. Returns the input untouched when
-// it isn't a 6-digit hex, so a CSS keyword or rgb() string still renders.
-function withAlpha(hex, alpha) {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
-  if (!m) return hex
-  const n = parseInt(m[1], 16)
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
-}
+// Hero.jsx's ramp, deepened for card scale — the same three stops spread
+// across ~200px instead of 80vh, so each has to work harder.
+const CARD_SCRIM = 'absolute inset-0 bg-gradient-to-b from-black/35 via-black/45 to-black/75'
 
 function formatPoints(n) { return Number(n || 0).toLocaleString('en-US') }
 
@@ -37,59 +36,13 @@ function tierGradient(hex) {
   return `linear-gradient(155deg, ${shadeHex(hex, 0.22)} 0%, ${hex} 45%, ${shadeHex(hex, -0.38)} 100%)`
 }
 
-// Falling-particle geometry, one layout per tier_level (cycled), so the three
-// headers never read as copies and a re-render never reshuffles them.
-//
-// Depth of field is the whole trick: LARGE particles are blurred and dim (near
-// the lens, out of focus), SMALL ones are sharp and brighter (far away, in
-// focus). Nothing is both large and sharp.
-//
-// Entries are paired — 0/1, 2/3, 4/5, 6/7 — sharing a duration with delays
-// offset by exactly half of it, so each pair keeps one particle on screen at
-// all times and the total count never visibly thins or clumps. Durations are
-// distinct within a layout so the columns don't resynchronise.
-const EMOJI_LAYOUTS = [
-  [
-    { left: '6%',   size: 34, opacity: 0.37, blur: 2, r0: '-8deg',  r1: '172deg',  duration: 27, delay: -2 },
-    { left: '58%',  size: 18, opacity: 0.53, blur: 0, r0: '12deg',  r1: '-148deg', duration: 27, delay: -15.5 },
-    { left: '-3%',  size: 16, opacity: 0.49, blur: 0, r0: '24deg',  r1: '206deg',  duration: 33, delay: -7 },
-    { left: '44%',  size: 42, opacity: 0.34, blur: 3, r0: '-16deg', r1: '124deg',  duration: 33, delay: -23.5 },
-    { left: '78%',  size: 20, opacity: 0.55, blur: 0, r0: '4deg',   r1: '-192deg', duration: 21, delay: -5 },
-    { left: '24%',  size: 15, opacity: 0.47, blur: 0, r0: '-20deg', r1: '158deg',  duration: 21, delay: -15.5 },
-    { left: '91%',  size: 28, opacity: 0.41, blur: 1, r0: '16deg',  r1: '-134deg', duration: 39, delay: -11 },
-    { left: '36%',  size: 22, opacity: 0.51, blur: 0, r0: '-6deg',  r1: '188deg',  duration: 39, delay: -30.5 },
-  ],
-  [
-    { left: '9%',   size: 20, opacity: 0.52, blur: 0, r0: '18deg',  r1: '-166deg', duration: 31, delay: -6 },
-    { left: '62%',  size: 38, opacity: 0.36, blur: 2, r0: '-12deg', r1: '142deg',  duration: 31, delay: -21.5 },
-    { left: '-4%',  size: 30, opacity: 0.39, blur: 2, r0: '8deg',   r1: '-118deg', duration: 23, delay: -3 },
-    { left: '47%',  size: 16, opacity: 0.50, blur: 0, r0: '-22deg', r1: '214deg',  duration: 23, delay: -14.5 },
-    { left: '84%',  size: 48, opacity: 0.34, blur: 3, r0: '14deg',  r1: '132deg',  duration: 45, delay: -13 },
-    { left: '30%',  size: 14, opacity: 0.55, blur: 0, r0: '-4deg',  r1: '-198deg', duration: 45, delay: -35.5 },
-    { left: '93%',  size: 17, opacity: 0.47, blur: 0, r0: '26deg',  r1: '176deg',  duration: 29, delay: -8 },
-    { left: '38%',  size: 26, opacity: 0.41, blur: 1, r0: '-18deg', r1: '-128deg', duration: 29, delay: -22.5 },
-  ],
-  [
-    { left: '4%',   size: 26, opacity: 0.39, blur: 1, r0: '10deg',  r1: '-154deg', duration: 35, delay: -9 },
-    { left: '55%',  size: 15, opacity: 0.52, blur: 0, r0: '-14deg', r1: '202deg',  duration: 35, delay: -26.5 },
-    { left: '-2%',  size: 19, opacity: 0.50, blur: 0, r0: '20deg',  r1: '-182deg', duration: 27, delay: -5 },
-    { left: '71%',  size: 44, opacity: 0.34, blur: 3, r0: '-10deg', r1: '136deg',  duration: 27, delay: -18.5 },
-    { left: '88%',  size: 22, opacity: 0.47, blur: 0, r0: '6deg',   r1: '168deg',  duration: 43, delay: -14 },
-    { left: '20%',  size: 36, opacity: 0.36, blur: 2, r0: '-24deg', r1: '-122deg', duration: 43, delay: -35.5 },
-    { left: '40%',  size: 16, opacity: 0.55, blur: 0, r0: '22deg',  r1: '-210deg', duration: 37, delay: -2 },
-    { left: '95%',  size: 30, opacity: 0.41, blur: 2, r0: '-2deg',  r1: '146deg',  duration: 37, delay: -20.5 },
-  ],
-]
-
 // Offset so the three cards never pulse in sync.
 const GLOW_DELAYS = [-4, -11, -19]
 
 const PARTICLE_CSS = `
-@keyframes ordr-pfall { from { transform: translateY(-56px) rotate(var(--r0)); } to { transform: translateY(214px) rotate(var(--r1)); } }
 @keyframes ordr-glow { 0% { transform: translate(-14%, -8%) scale(1); } 50% { transform: translate(16%, 10%) scale(1.22); } 100% { transform: translate(-14%, -8%) scale(1); } }
-.ordr-pfe { position: absolute; top: 0; line-height: 1; pointer-events: none; user-select: none; will-change: transform; animation-name: ordr-pfall; animation-timing-function: linear; animation-iteration-count: infinite; }
 .ordr-glow { position: absolute; inset: -30%; border-radius: 50%; pointer-events: none; animation: ordr-glow 26s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) { .ordr-pfe, .ordr-glow { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ordr-glow { animation: none !important; } }
 `
 
 const HOW_IT_WORKS = [
@@ -98,70 +51,51 @@ const HOW_IT_WORKS = [
   { title: 'Redeem', detail: 'Online or at the counter' },
 ]
 
-// Rendered once and reused by both the mobile carousel and the desktop grid.
-function TierCard({ tier, brandColor, emojiChars, pointsPerDollar, isCurrent }) {
+// Paired with HOW_IT_WORKS by index — phone, bag, gift. Kept separate so the
+// copy above stays a plain content list.
+const HOW_IT_WORKS_ICONS = [
+  'M7 3h10a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z M11 18h2',
+  'M6 7h12l-1 13H7L6 7z M9 7V5a3 3 0 0 1 6 0v2',
+  'M20 11v9H4v-9 M2 7h20v4H2z M12 22V7 M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7z M12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z',
+]
+
+// One row of the tier ladder: the full card's gradient and glow, reduced to a
+// strip that reads at a glance in a narrow column.
+function CompactTierRow({ tier, brandColor, pointsPerDollar, isCurrent }) {
   const level = Number(tier.tier_level) || 1
-  const layout = EMOJI_LAYOUTS[(level - 1) % EMOJI_LAYOUTS.length]
   const color = tier.color || brandColor
   const multiplier = Number(tier.multiplier) || 1
-  const percentFaster = Math.round((multiplier - 1) * 100)
-
-  const explainer = level === 1
-    ? `Everyone starts here. ${pointsPerDollar} point${pointsPerDollar === 1 ? '' : 's'} per dollar.`
-    : `Reach ${formatPoints(tier.threshold_points)} lifetime points and earn ${percentFaster}% faster on every order.`
+  // Round through an integer so 1.1× at 3 pts/$ reads 3.3, not 3.3000000000000003.
+  const rate = Math.round(multiplier * pointsPerDollar * 10) / 10
 
   return (
     <div
-      className="rounded-2xl overflow-hidden border border-gray-200 bg-white"
-      style={isCurrent ? { boxShadow: `0 0 0 2px ${brandColor}` } : undefined}
+      className="relative overflow-hidden rounded-xl px-3.5 py-3"
+      style={{
+        backgroundColor: color,
+        backgroundImage: tierGradient(color),
+        ...(isCurrent ? { boxShadow: `0 0 0 2px ${brandColor}` } : {}),
+      }}
     >
       <div
-        className="relative overflow-hidden min-h-[168px] px-[18px] py-5 flex items-end"
-        style={{ backgroundColor: color, backgroundImage: tierGradient(color) }}
-      >
-        <div
-          className="ordr-glow"
-          style={{
-            background: 'radial-gradient(circle at 40% 20%, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 60%)',
-            animationDelay: `${GLOW_DELAYS[(level - 1) % GLOW_DELAYS.length]}s`,
-          }}
-        />
-        {emojiChars.length > 0 && layout.map((p, i) => (
-          <span
-            key={i}
-            aria-hidden="true"
-            className="ordr-pfe"
-            style={{
-              left: p.left,
-              fontSize: `${p.size}px`,
-              opacity: p.opacity,
-              animationDuration: `${p.duration}s`,
-              animationDelay: `${p.delay}s`,
-              '--r0': p.r0,
-              '--r1': p.r1,
-              filter: p.blur > 0
-                ? `grayscale(1) brightness(1.45) contrast(0.72) blur(${p.blur}px)`
-                : 'grayscale(1) brightness(1.65) contrast(0.85)',
-            }}
-          >
-            {emojiChars[i % emojiChars.length]}
-          </span>
-        ))}
-        <div className="relative">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-white/55">Tier {level}</p>
-          <p className="text-[26px] font-medium text-white tracking-[-0.01em]">{tier.name}</p>
-          <p className="text-[13px] text-white/70">{multiplier}× points</p>
+        className="ordr-glow"
+        style={{
+          background: 'radial-gradient(circle at 40% 20%, rgba(255,255,255,0.32) 0%, rgba(255,255,255,0) 60%)',
+          animationDelay: `${GLOW_DELAYS[(level - 1) % GLOW_DELAYS.length]}s`,
+        }}
+      />
+      <div className="relative flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[15px] font-medium text-white">{tier.name}</p>
+          <p className="text-[11px] text-white/75">{rate} points per $1</p>
         </div>
-      </div>
-
-      <div className="p-4 px-[18px]">
-        <p className="text-sm text-gray-500">{explainer}</p>
-        {isCurrent && (
-          <span
-            className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold mt-2"
-            style={{ backgroundColor: withAlpha(brandColor, 0.12), color: brandColor }}
-          >
+        {isCurrent ? (
+          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/25 text-white shrink-0 ml-2">
             You're here
+          </span>
+        ) : (
+          <span className="text-[11px] text-white/75 shrink-0">
+            {formatPoints(tier.threshold_points)} pts
           </span>
         )}
       </div>
@@ -169,14 +103,81 @@ function TierCard({ tier, brandColor, emojiChars, pointsPerDollar, isCurrent }) 
   )
 }
 
+// Counts from 0 to target once on mount. requestAnimationFrame rather than
+// an interval so the browser owns the cadence; ease-out so the number
+// sprints then settles.
+function useCountUp(target, duration = 900) {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    const end = Number(target) || 0
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    if (reduced || end === 0) { setValue(end); return }
+    let raf
+    const start = performance.now()
+    const tick = now => {
+      const t = Math.min(1, (now - start) / duration)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setValue(Math.round(end * eased))
+      if (t < 1) raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [target, duration])
+  return value
+}
+
+// Reward art: the linked menu item's photo when there is one, otherwise a
+// brand-gradient dollar figure for discount rewards. Anything else gets no
+// strip, so the row falls back to its original full-width layout.
+function RewardThumb({ reward, brandColor, widthCls }) {
+  const imageUrl = reward.menu_items?.image_url || null
+  const isDiscount = reward.kind === 'discount' && Number(reward.discount_cents) > 0
+
+  if (imageUrl) {
+    return (
+      <div
+        className={`${widthCls} shrink-0`}
+        style={{
+          backgroundImage: `url(${imageUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      />
+    )
+  }
+
+  if (isDiscount) {
+    return (
+      <div
+        className={`${widthCls} shrink-0 flex items-center justify-center`}
+        style={{ backgroundColor: brandColor }}
+      >
+        <span
+          className="text-[22px] font-bold"
+          style={{
+            color: '#ffffff',
+            // textShadow works here because the fill is opaque white — it
+            // paints behind the glyph, which a transparent fill would hide.
+            textShadow: `0 1px 0 ${shadeHex(brandColor, -0.28)}, 0 2px 4px rgba(0,0,0,0.32)`,
+          }}
+        >
+          {`$${Math.round(Number(reward.discount_cents) / 100)}`}
+        </span>
+      </div>
+    )
+  }
+
+  return null
+}
+
 export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, onSignIn, signInHref }) {
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
-  // Derived once: the headline and the balance block's fallback subline are
-  // the same value, so they can't drift apart.
+  // The balance card reuses the website hero's photo and logo — useRestaurant
+  // selects '*', so these arrive on the same restaurant row.
+  const { hero_image_url, logo_url, logo_frame_shape, name } = restaurant
+  // Entered per restaurant rather than derived from restaurants.name — the
+  // legal business name is usually too long to work as a program title.
   const programName = restaurant.loyalty_program_name || ''
-  // Array.from so multi-byte emoji survive — a plain .split('') would tear
-  // surrogate pairs in half.
-  const emojiChars = Array.from(restaurant.loyalty_emoji || '')
   const pointsPerDollar = Number(restaurant.loyalty_points_per_dollar) || 0
 
   const currentTier = customer
@@ -196,210 +197,431 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
     : Math.max(0, Math.min(100, (lifetime / nextThreshold) * 100))
   const pointsToNext = Math.max(0, nextThreshold - lifetime)
 
-  // Order count is the warmer line, so it wins when we have one; the program
-  // name is the fallback for a customer whose first order hasn't landed yet.
   const orderCount = Number(customer?.orderCount) || 0
-  const subline = orderCount > 0
-    ? `You've ordered ${orderCount} time${orderCount === 1 ? '' : 's'} with us`
-    : programName ? `Welcome to ${programName}` : 'Welcome'
+  // Rounded through an integer so the rate reads 3.3, not 3.3000000000000003.
+  const nextTierRate = Math.round((Number(nextTier?.multiplier) || 1) * pointsPerDollar * 10) / 10
+
+  const [tab, setTab] = useState('rewards')
+  const [tiersOpen, setTiersOpen] = useState(false)
+
+  // Reward split for the signed-in panel — the same balance >= cost test the
+  // signed-out catalog rows use, hoisted so both lists share one comparison.
+  const pointsBalance = Number(customer?.pointsBalance) || 0
+  const readyRewards = rewards.filter(rw => (Number(rw.points_cost) || 0) <= pointsBalance)
+  const keepGoingRewards = rewards.filter(rw => (Number(rw.points_cost) || 0) > pointsBalance)
+
+  // The balance card's bar tracks the nearest reward rather than the next tier
+  // — the cheapest thing this balance can't cover yet. Everything in
+  // keepGoingRewards costs more than the balance, so points_cost is always > 0
+  // here and the percentage can't divide by zero.
+  const nextReward = keepGoingRewards.reduce(
+    (cheapest, rw) =>
+      !cheapest || (Number(rw.points_cost) || 0) < (Number(cheapest.points_cost) || 0) ? rw : cheapest,
+    null,
+  )
+  const rewardShortfall = Math.max(0, (Number(nextReward?.points_cost) || 0) - pointsBalance)
+  const rewardProgressPct = nextReward
+    ? Math.max(0, Math.min(100, (pointsBalance / (Number(nextReward.points_cost) || 0)) * 100))
+    : 100
+
+  // Hooks can't be called conditionally, so these sit at the top level rather
+  // than inside the signed-in branch that renders them.
+  const animatedPoints = useCountUp(Number(customer?.pointsBalance) || 0)
+  const [barReady, setBarReady] = useState(false)
+  // The first paint has to land at 0 width or the transition has nothing to
+  // animate from; rAF defers the flip to the frame after that paint.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setBarReady(true))
+    return () => cancelAnimationFrame(raf)
+  }, [rewardProgressPct])
 
   const ctaLabel = customer ? 'Claim rewards' : 'Sign in to see your points'
   const ctaClassName = 'w-full h-12 rounded-xl text-white font-semibold flex items-center justify-center'
   const ctaStyle = { backgroundColor: brandColor }
 
   return (
-    <div className="pb-28">
+    <div className={`${customer ? 'pb-10' : 'pb-28'}`}>
       <style>{PARTICLE_CSS}</style>
-
-      {/* ── 1. Header ── */}
-      <header className="text-center">
-        {/* The program name is entered per restaurant rather than derived from
-            restaurants.name — the legal business name is usually too long to
-            work as a program title. */}
-        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mt-1">
-          {programName || 'Rewards'}
-        </h1>
-        <p className="text-gray-500 mt-3">
-          Earn points on every order. Redeem them for free food or credit — online or in the shop.
-        </p>
-      </header>
 
       {/* ── 2. Personal panel (signed in) ── */}
       {customer ? (
-        <section className="mt-10">
-          {/* Greeting and balance are one solid brand block — as loose text
-              above a tinted card they read as two unrelated things. */}
-          <div className="rounded-2xl px-5 py-5" style={{ backgroundColor: brandColor }}>
-            <p className="text-base font-semibold text-white">Hi {customer.displayName || 'there'}</p>
-            <p className="text-xs text-white/70 mt-0.5">{subline}</p>
+        <section className="mt-2">
+          {/* Greeting and balance sit on the restaurant's own hero image, under
+              the same overlay the website hero uses, so the two surfaces read
+              as one brand rather than two. */}
+          <div className="relative rounded-2xl overflow-hidden">
+            {/* Background layer — bg-gray-100 is the class-based fallback that
+                shows through when the restaurant has no hero image. */}
+            <div
+              className="absolute inset-0 bg-gray-100 bg-cover bg-center"
+              style={{
+                ...(hero_image_url ? { backgroundImage: `url(${hero_image_url})` } : {}),
+              }}
+            />
+            {/* Dark gradient overlay — keeps white text legible regardless of image */}
+            <div className={CARD_SCRIM} />
 
-            <p className="text-[10px] tracking-[0.16em] text-white/70 mt-5">AVAILABLE TO SPEND</p>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="text-5xl font-bold text-white tracking-[-0.03em]">
-                {formatPoints(customer.pointsBalance)}
-              </span>
-              <span className="text-[15px] text-white/85">points</span>
+            <div className="absolute top-5 right-5 z-10">
+              <LogoFrame
+                logoUrl={logo_url}
+                shape={logo_frame_shape}
+                name={name}
+                brandColor={brandColor}
+                sizePx={64}
+                marginCls=""
+              />
             </div>
-          </div>
 
-          {/* Tier progress needs a tier ladder to measure against — with no
-              tier rows configured there is nothing meaningful to show. */}
-          {tiers.length > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: currentTier?.color || brandColor }}
-                  />
-                  <span className="text-sm font-medium text-gray-900 truncate">
-                    {currentTier?.name || `Tier ${customer.tierLevel}`}
-                  </span>
-                </div>
-                <span className="text-sm text-gray-500 shrink-0">
-                  {atTopTier
-                    ? `${formatPoints(lifetime)} lifetime`
-                    : `${formatPoints(lifetime)} / ${formatPoints(nextThreshold)} lifetime`}
+            <div className="relative z-10 flex flex-col justify-end min-h-[196px] px-6 pb-6 pt-6">
+              <p className="text-xl font-semibold text-white">
+                {[
+                  customer.displayName || 'there',
+                  orderCount > 0 ? `${orderCount} order${orderCount === 1 ? '' : 's'}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-6xl font-bold text-white tracking-[-0.03em] tabular-nums">
+                  {formatPoints(animatedPoints)}
                 </span>
+                <span className="text-[17px] text-white/85">points</span>
               </div>
 
-              <div className="h-2 rounded-full bg-gray-200 overflow-hidden mt-2">
+              <div
+                className="h-[6px] rounded-full overflow-hidden mt-3"
+                style={{ backgroundColor: 'rgba(255,255,255,0.55)' }}
+              >
                 <div
-                  className="h-full rounded-full"
-                  style={{ width: `${progressPct}%`, backgroundColor: currentTier?.color || brandColor }}
+                  className="h-full rounded-full transition-[width] duration-[900ms] ease-out"
+                  style={{ width: `${barReady ? rewardProgressPct : 0}%`, backgroundColor: brandColor }}
                 />
               </div>
 
-              <p className="text-sm text-gray-500 mt-2">
-                {atTopTier
-                  ? "You've reached the top tier."
-                  : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name} and earn ${Number(nextTier.multiplier) || 1}× on every order.`}
+              <p className="text-sm text-white/95 mt-2">
+                {nextReward
+                  ? `${formatPoints(rewardShortfall)} more points for ${nextReward.name}`
+                  : readyRewards.length > 0
+                    ? `${formatPoints(readyRewards.length)} reward${readyRewards.length === 1 ? '' : 's'} ready to redeem`
+                    : atTopTier || !nextTier
+                      ? `${formatPoints(lifetime)} points earned all time`
+                      : `${formatPoints(pointsToNext)} more points to reach ${nextTier.name}`}
               </p>
+            </div>
+          </div>
+
+          <div role="tablist" className="flex gap-2 mt-4">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'rewards'}
+              onClick={() => setTab('rewards')}
+              className={`flex-1 h-10 rounded-full text-sm ${tab === 'rewards' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
+              style={tab === 'rewards' ? { backgroundColor: brandColor } : undefined}
+            >
+              Rewards
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'orders'}
+              onClick={() => setTab('orders')}
+              className={`flex-1 h-10 rounded-full text-sm ${tab === 'orders' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
+              style={tab === 'orders' ? { backgroundColor: brandColor } : undefined}
+            >
+              Orders
+            </button>
+          </div>
+
+          {tab === 'rewards' ? (
+            <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr] gap-5 mt-5">
+              {/* Left: what this balance already covers, then what it doesn't. */}
+              <div>
+                {readyRewards.length > 0 && (
+                  <>
+                    <h2 className="text-[15px] font-medium text-gray-900">Ready to redeem</h2>
+                    <p className="text-xs text-gray-500 mb-2.5">Applied at checkout, one per order.</p>
+                    <div className="space-y-2">
+                      {readyRewards.map(rw => (
+                        <div
+                          key={rw.id}
+                          className="rounded-xl border overflow-hidden flex items-stretch"
+                          style={{ borderColor: brandColor }}
+                        >
+                          <RewardThumb reward={rw} brandColor={brandColor} widthCls="w-[76px]" />
+                          <div className="flex-1 px-3 py-2.5 flex justify-between items-center gap-3">
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium">{rw.name}</p>
+                              <p className="text-xs text-gray-500">
+                                {formatPoints(Number(rw.points_cost) || 0)} pts
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-white px-3 py-1.5 rounded-lg"
+                              style={{ backgroundColor: brandColor }}
+                            >
+                              Redeem
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {keepGoingRewards.length > 0 && (
+                  <>
+                    <h2 className="text-[15px] font-medium text-gray-900 mt-5 mb-2.5">Keep going</h2>
+                    <div className="space-y-2">
+                      {keepGoingRewards.map(rw => {
+                        const cost = Number(rw.points_cost) || 0
+                        const shortBy = Math.max(0, cost - pointsBalance)
+                        return (
+                          <div
+                            key={rw.id}
+                            className="rounded-xl border border-gray-200 overflow-hidden flex items-stretch"
+                          >
+                            <RewardThumb reward={rw} brandColor={brandColor} widthCls="w-[76px]" />
+                            <div className="flex-1 px-3 py-2.5 flex justify-between items-center gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium">{rw.name}</p>
+                                <p className="text-xs text-gray-500">{formatPoints(cost)} pts</p>
+                              </div>
+                              <span className="bg-gray-100 text-gray-600 text-[11px] px-2.5 py-1 rounded-full">
+                                {formatPoints(shortBy)} away
+                              </span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Right: current tier, with the full ladder behind a disclosure. */}
+              <div>
+                <h2 className="text-sm font-medium text-gray-900 mb-2">Your tier</h2>
+                {/* Tier progress needs a tier ladder to measure against — with no
+                    tier rows configured there is nothing meaningful to show. */}
+                {tiers.length > 0 && (
+                  <div className="rounded-xl border border-gray-200 bg-white p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: currentTier?.color || brandColor }}
+                        />
+                        <span className="text-sm font-medium text-gray-900 truncate">
+                          {currentTier?.name || `Tier ${customer.tierLevel}`}
+                        </span>
+                      </div>
+                      <span className="text-sm text-gray-500 shrink-0">
+                        {atTopTier
+                          ? `${formatPoints(lifetime)} lifetime`
+                          : `${formatPoints(pointsToNext)} pts to ${nextTier.name}`}
+                      </span>
+                    </div>
+
+                    <div className="h-2 rounded-full bg-gray-200 overflow-hidden mt-2">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${progressPct}%`, backgroundColor: currentTier?.color || brandColor }}
+                      />
+                    </div>
+
+                    <p className="text-sm text-gray-500 mt-2">
+                      {atTopTier
+                        ? "You've reached the top tier."
+                        : `${nextTier.name} earns ${nextTierRate} points per $1 instead of ${pointsPerDollar}.`}
+                    </p>
+
+                    <div className="border-t border-gray-100 mt-3 pt-3">
+                      <button
+                        type="button"
+                        aria-expanded={tiersOpen}
+                        onClick={() => setTiersOpen(open => !open)}
+                        className="w-full flex items-center justify-between text-xs"
+                        style={{ color: brandColor }}
+                      >
+                        {tiersOpen ? 'Hide tiers' : 'See all tiers'}
+                        <svg
+                          className={`w-4 h-4 shrink-0 transition-transform ${tiersOpen ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+
+                      {tiersOpen && (
+                        <div className="space-y-2 mt-3">
+                          {tiers.map(tier => (
+                            <CompactTierRow
+                              key={tier.id}
+                              tier={tier}
+                              brandColor={brandColor}
+                              pointsPerDollar={pointsPerDollar}
+                              isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-sm text-gray-500">Your past orders will show up here.</p>
+              <button
+                type="button"
+                className="h-11 px-6 rounded-xl text-white font-medium mt-4"
+                style={{ backgroundColor: brandColor }}
+              >
+                Start an order
+              </button>
             </div>
           )}
         </section>
       ) : (
-        /* ── 3. How it works (signed out) ── */
-        <section className="mt-10">
-          {/* Three across at every breakpoint — the copy is short enough that
-              stacking to a column on mobile would only add scroll. */}
-          <div className="flex gap-2 sm:gap-3">
-            {HOW_IT_WORKS.map((step, i) => (
-              <div
-                key={i}
-                className="flex-1 relative overflow-hidden rounded-xl px-2 py-2.5 sm:px-4 sm:py-4 min-h-[62px] sm:min-h-[84px]"
-                style={{ backgroundColor: brandColor }}
-              >
-                {/* Top-right on a filled card: at the bottom the number sits
-                    under the detail text, which no longer has a white
-                    background to stay legible against. Any bleed past the
-                    card's edge belongs at the bottom, below the text, not
-                    across the top of the digit. */}
-                <span
-                  className="absolute right-2 top-0 text-[40px] sm:text-[62px] font-bold leading-none tracking-[-0.04em] pointer-events-none select-none"
-                  style={{ color: 'rgba(255,255,255,0.18)' }}
-                >
-                  {i + 1}
-                </span>
-                <p className="relative text-[13px] font-semibold text-white mb-1">{step.title}</p>
-                <p className="relative text-xs text-white/75 leading-snug">{step.detail}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+        <>
+          {/* ── 1. Hero card (signed out only — the signed-in state leads with
+                 the balance card instead) ── */}
+          <div className="relative rounded-2xl overflow-hidden">
+            {/* Background layer — bg-gray-100 is the class-based fallback that
+                shows through when the restaurant has no hero image. */}
+            <div
+              className="absolute inset-0 bg-gray-100 bg-cover bg-center"
+              style={{
+                ...(hero_image_url ? { backgroundImage: `url(${hero_image_url})` } : {}),
+              }}
+            />
+            {/* Dark gradient overlay — keeps white text legible regardless of image */}
+            <div className={CARD_SCRIM} />
 
-      {/* ── 4. Tiers ── */}
-      {tiers.length > 0 && (
-        <section className="mt-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-3">Tiers</h2>
-
-          {/* Mobile: horizontal scroll */}
-          {/* The current-tier card carries a 2px ring, which overflow-x clips.
-              pt-1 gives it room at the top (pb-2 already covers the bottom),
-              and the bleed's padding runs 2px past the page gutter so the
-              first card's ring clears the left edge too. */}
-          <div className="md:hidden flex gap-4 overflow-x-auto snap-x snap-mandatory scroll-pl-[26px] pt-1 pb-2 -mx-6 pl-[26px] pr-6">
-            {tiers.map(tier => (
-              <div key={tier.id} className="snap-start shrink-0 w-[80%]">
-                <TierCard
-                  tier={tier}
-                  brandColor={brandColor}
-                  emojiChars={emojiChars}
-                  pointsPerDollar={pointsPerDollar}
-                  isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop: 3-column grid */}
-          <div className="hidden md:grid md:grid-cols-3 gap-4 py-1">
-            {tiers.map(tier => (
-              <TierCard
-                key={tier.id}
-                tier={tier}
+            <div className="absolute top-6 left-0 right-0 flex justify-center z-10">
+              <LogoFrame
+                logoUrl={logo_url}
+                shape={logo_frame_shape}
+                name={name}
                 brandColor={brandColor}
-                emojiChars={emojiChars}
-                pointsPerDollar={pointsPerDollar}
-                isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
+                sizePx={96}
+                marginCls=""
               />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── 5. Rewards catalog ── */}
-      {rewards.length > 0 && (
-        <section className="mt-10">
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">What you can get</h2>
             </div>
-            <div className="divide-y divide-gray-100">
-              {rewards.map(rw => {
-                const cost = Number(rw.points_cost) || 0
-                const balance = Number(customer?.pointsBalance) || 0
-                const canRedeem = Boolean(customer) && balance >= cost
-                const shortBy = Math.max(0, cost - balance)
-                return (
-                  <div key={rw.id} className="px-5 py-4 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{rw.name}</p>
-                      {customer && canRedeem && (
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold mt-1"
-                          style={{ backgroundColor: withAlpha(brandColor, 0.12), color: brandColor }}
-                        >
-                          Available now
+
+            <div className="relative z-10 flex flex-col justify-end min-h-[260px] px-6 pb-7 pt-7 text-center">
+              {/* The program name is entered per restaurant rather than derived from
+                  restaurants.name — the legal business name is usually too long to
+                  work as a program title. */}
+              <h1 className="text-[30px] sm:text-[38px] font-semibold text-white leading-tight">
+                {programName || 'Rewards'}
+              </h1>
+              <p className="text-sm sm:text-base text-white/90 mt-2">
+                Earn points on every order. Redeem them for free food or credit — online or in the shop.
+              </p>
+            </div>
+          </div>
+
+          {/* Catalog leads on both axes — first in source so it stacks above
+              how-it-works on mobile, and in the wider column on desktop. */}
+          <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr] gap-6 mt-8">
+            {/* ── 5. Rewards catalog (signed out — the signed-in state splits this
+                   into Ready to redeem / Keep going inside the rewards panel) ── */}
+            {rewards.length > 0 && (
+              <section>
+                <h2 className="text-[15px] font-medium text-gray-900 mb-2.5">What you can get</h2>
+                <div className="space-y-2">
+                  {rewards.map(rw => (
+                    <div
+                      key={rw.id}
+                      className="rounded-xl border border-gray-200 overflow-hidden flex items-stretch"
+                    >
+                      <RewardThumb reward={rw} brandColor={brandColor} widthCls="w-[76px]" />
+                      <div className="flex-1 px-3.5 py-3 flex justify-between items-center gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900">{rw.name}</p>
+                          {rw.description && (
+                            <p className="text-xs text-gray-500">{rw.description}</p>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium shrink-0" style={{ color: brandColor }}>
+                          {formatPoints(Number(rw.points_cost) || 0)} pts
                         </span>
-                      )}
-                      {customer && !canRedeem && (
-                        <p className="text-xs text-gray-400 mt-1">{formatPoints(shortBy)} points away</p>
-                      )}
+                      </div>
                     </div>
-                    <span className="text-sm font-semibold shrink-0" style={{ color: brandColor }}>
-                      {formatPoints(cost)} pts
-                    </span>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* ── 3. How it works (signed out) ── */}
+            <section>
+              <h2 className="text-[15px] font-medium text-gray-900 mb-2.5">How it works</h2>
+              <div className="space-y-3">
+                {HOW_IT_WORKS.map((step, i) => (
+                  <div key={i} className="flex gap-2.5 items-start">
+                    <svg
+                      className="w-[18px] h-[18px] shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      viewBox="0 0 24 24"
+                      style={{ color: brandColor }}
+                    >
+                      <path d={HOW_IT_WORKS_ICONS[i]} />
+                    </svg>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{step.title}</p>
+                      <p className="text-xs text-gray-500">{step.detail}</p>
+                    </div>
                   </div>
-                )
-              })}
-            </div>
+                ))}
+              </div>
+            </section>
           </div>
-        </section>
+
+          {/* ── 7. Tier ladder (signed out) ── */}
+          {tiers.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-[15px] font-medium text-gray-900 mb-3">Order more, earn faster</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {tiers.map(tier => (
+                  <CompactTierRow
+                    key={tier.id}
+                    tier={tier}
+                    brandColor={brandColor}
+                    pointsPerDollar={pointsPerDollar}
+                    isCurrent={false}
+                  />
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Based on points earned all-time. You never drop a tier.
+              </p>
+            </section>
+          )}
+        </>
       )}
 
-      {/* ── 6. CTA — fixed to the viewport, matching CartButton in the
-             ordering flow. The wrapper's pb-28 keeps the last section clear. ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-5 py-3">
-        <div className="max-w-[720px] mx-auto">
-          {signInHref && !onSignIn ? (
-            <a href={signInHref} className={ctaClassName} style={ctaStyle}>{ctaLabel}</a>
-          ) : (
-            <button onClick={onSignIn} className={ctaClassName} style={ctaStyle}>{ctaLabel}</button>
-          )}
+      {/* ── 6. CTA — signed out only: its one job is sign-in, and the wrapper's
+             pb-28 reserves the space it occupies. Fixed to the viewport,
+             matching CartButton in the ordering flow. ── */}
+      {!customer && (
+        <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-5 py-3">
+          <div className="max-w-[720px] mx-auto">
+            {signInHref && !onSignIn ? (
+              <a href={signInHref} className={ctaClassName} style={ctaStyle}>{ctaLabel}</a>
+            ) : (
+              <button onClick={onSignIn} className={ctaClassName} style={ctaStyle}>{ctaLabel}</button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

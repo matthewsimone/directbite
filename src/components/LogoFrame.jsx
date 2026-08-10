@@ -20,16 +20,40 @@ const SHAPE_SIZE = {
   hexagon: 'w-24 h-24 md:w-[120px] md:h-[120px]',
 }
 
-// sizeCls and marginCls are optional overrides for non-hero contexts.
+// The md-breakpoint box each shape's internal values (p-3, stroke widths,
+// box-shadow spreads) were tuned against. sizePx scales against these.
+const SHAPE_BASE_PX = {
+  none: 192,
+  circle: 120,
+  pill_horizontal: 180,
+  pill_vertical: 120,
+  hexagon: 120,
+}
+
+// sizePx and marginCls are optional overrides for non-hero contexts.
 // Omitted, they reproduce the hero's original sizing and spacing exactly.
-export default function LogoFrame({ logoUrl, shape, name, brandColor, sizeCls: sizeClsProp, marginCls = 'mb-6' }) {
+export default function LogoFrame({ logoUrl, shape, name, brandColor, sizePx, marginCls = 'mb-6' }) {
   if (!logoUrl) return null
   const s = SHAPE_SIZE[shape] ? shape : 'none'
-  const sizeCls = sizeClsProp ?? SHAPE_SIZE[s]
+  const scaled = typeof sizePx === 'number'
+  const scale = scaled ? sizePx / SHAPE_BASE_PX[s] : 1
+  // Scaled boxes set width/height inline, so the responsive SHAPE_SIZE class
+  // applies only at the hero's default size. Width is the reference
+  // dimension; height follows each shape's designed ratio.
+  const sizeCls = scaled ? '' : SHAPE_SIZE[s]
+  const sizeStyle = scaled
+    ? {
+        width: `${sizePx}px`,
+        height: `${s === 'pill_horizontal' ? sizePx / 1.5 : s === 'pill_vertical' ? sizePx * 1.5 : sizePx}px`,
+      }
+    : undefined
 
   if (s === 'none') {
     return (
-      <div className={`${marginCls} shrink-0 flex items-center justify-center ${sizeCls}`}>
+      <div
+        className={`${marginCls} shrink-0 flex items-center justify-center ${sizeCls}`}
+        style={sizeStyle}
+      >
         <img src={logoUrl} alt={`${name} logo`} className="w-full h-full object-contain" />
       </div>
     )
@@ -41,7 +65,10 @@ export default function LogoFrame({ logoUrl, shape, name, brandColor, sizeCls: s
     // image's polygon clip and the rounded hex curve, which previously
     // showed as a faint dark fringe along the edge.
     return (
-      <div className={`relative ${marginCls} shrink-0 flex items-center justify-center ${sizeCls}`}>
+      <div
+        className={`relative ${marginCls} shrink-0 flex items-center justify-center ${sizeCls}`}
+        style={sizeStyle}
+      >
         {/* Layer 1: white-filled hex. Defines the visible background the
             image is composited onto. */}
         <svg
@@ -56,8 +83,9 @@ export default function LogoFrame({ logoUrl, shape, name, brandColor, sizeCls: s
         <img
           src={logoUrl}
           alt={`${name} logo`}
-          className="relative w-full h-full object-contain p-3"
+          className="relative w-full h-full object-contain"
           style={{
+            padding: `${12 * scale}px`,
             clipPath:
               'polygon(44.6% 2.7%, 55.4% 2.7%, 94.6% 22.3%, 100% 31%, 100% 69%, 94.6% 77.7%, 55.4% 97.3%, 44.6% 97.3%, 5.4% 77.7%, 0% 69%, 0% 31%, 5.4% 22.3%)',
           }}
@@ -74,7 +102,7 @@ export default function LogoFrame({ logoUrl, shape, name, brandColor, sizeCls: s
             d={ROUNDED_HEXAGON_PATH}
             fill="none"
             stroke="white"
-            strokeWidth="9"
+            strokeWidth={9 * scale}
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
           />
@@ -82,7 +110,7 @@ export default function LogoFrame({ logoUrl, shape, name, brandColor, sizeCls: s
             d={ROUNDED_HEXAGON_PATH}
             fill="none"
             stroke={brandColor}
-            strokeWidth="3"
+            strokeWidth={3 * scale}
             strokeLinejoin="round"
             vectorEffect="non-scaling-stroke"
           />
@@ -99,10 +127,12 @@ export default function LogoFrame({ logoUrl, shape, name, brandColor, sizeCls: s
   // border box and is unaffected by overflow clipping.
   return (
     <div
-      className={`${marginCls} shrink-0 flex items-center justify-center bg-white p-3 overflow-hidden ${sizeCls}`}
+      className={`${marginCls} shrink-0 flex items-center justify-center bg-white overflow-hidden ${sizeCls}`}
       style={{
+        ...sizeStyle,
+        padding: `${12 * scale}px`,
         borderRadius: '50%',
-        boxShadow: `0 0 0 3px ${brandColor}, 0 0 0 6px white`,
+        boxShadow: `0 0 0 ${3 * scale}px ${brandColor}, 0 0 0 ${6 * scale}px white`,
       }}
     >
       <img

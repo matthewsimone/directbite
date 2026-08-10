@@ -19,6 +19,7 @@ export default function RewardsPage() {
   const [tiers, setTiers] = useState([])
   const [rewards, setRewards] = useState([])
   const [profile, setProfile] = useState(null)
+  const [profileLoading, setProfileLoading] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
   const [signInOpen, setSignInOpen] = useState(false)
 
@@ -31,10 +32,17 @@ export default function RewardsPage() {
   // restaurant's rewards can never see another restaurant's balance. The
   // cancelled flag stops a slow response for a previous restaurant from
   // overwriting a newer one.
+  // profile stays null for four different states — unfetched, no row here,
+  // request failed, logged out — so the gate below tracks the request itself
+  // rather than its result. The cleanup deliberately leaves profileLoading
+  // set: a superseded request must not clear a flag the newer one now owns.
   useEffect(() => {
-    if (!restaurant?.id || !isLoggedIn) { setProfile(null); return }
+    if (!restaurant?.id || !isLoggedIn) { setProfile(null); setProfileLoading(false); return }
     let cancelled = false
-    loadProfile(restaurant.id).then(p => { if (!cancelled) setProfile(p) })
+    setProfileLoading(true)
+    loadProfile(restaurant.id).then(p => {
+      if (!cancelled) { setProfile(p); setProfileLoading(false) }
+    })
     return () => { cancelled = true }
   }, [restaurant?.id, isLoggedIn, loadProfile])
 
@@ -48,7 +56,7 @@ export default function RewardsPage() {
         .order('tier_level'),
       supabase
         .from('loyalty_rewards')
-        .select('id, kind, name, description, points_cost, min_subtotal_cents, active, sort_order')
+        .select('id, kind, name, description, points_cost, discount_cents, min_subtotal_cents, active, sort_order, menu_items(image_url)')
         .eq('restaurant_id', restaurantId)
         .eq('active', true)
         .order('sort_order'),
@@ -86,7 +94,7 @@ export default function RewardsPage() {
     )
   }
 
-  if (restLoading || dataLoading || authLoading || !restaurant) {
+  if (restLoading || dataLoading || authLoading || profileLoading || !restaurant) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white px-6">
         <p className="text-gray-400">Loading...</p>
