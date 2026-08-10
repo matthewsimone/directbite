@@ -6,6 +6,17 @@ import LogoFrame from './LogoFrame'
 
 const DEFAULT_BRAND_COLOR = '#16A34A'
 
+// Card-scale logo boxes. Ratios must match LogoFrame's SHAPE_SIZE — the
+// frame SVGs use preserveAspectRatio="none", so a box with a different
+// ratio distorts the shape.
+const CARD_LOGO_SIZE = {
+  none: 'w-[56px] h-[56px]',
+  circle: 'w-[52px] h-[52px]',
+  pill_horizontal: 'w-[78px] h-[52px]',
+  pill_vertical: 'w-[52px] h-[78px]',
+  hexagon: 'w-[52px] h-[52px]',
+}
+
 // Tint a #RRGGBB brand color for card fills. Returns the input untouched when
 // it isn't a 6-digit hex, so a CSS keyword or rgb() string still renders.
 function withAlpha(hex, alpha) {
@@ -253,7 +264,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                 shape={logo_frame_shape}
                 name={name}
                 brandColor={brandColor}
-                sizeCls="w-[84px] h-[52px]"
+                sizeCls={CARD_LOGO_SIZE[logo_frame_shape] || CARD_LOGO_SIZE.none}
                 marginCls=""
               />
             </div>
