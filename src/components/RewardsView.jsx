@@ -555,7 +555,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
           {tiers.length > 0 && (
             <section className="mt-8">
               <h2 className="text-[15px] font-medium text-gray-900 mb-3">Order more, earn faster</h2>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {tiers.map(tier => (
                   <CompactTierRow
                     key={tier.id}
