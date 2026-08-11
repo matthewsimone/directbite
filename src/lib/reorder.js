@@ -11,12 +11,25 @@
 
 const round2 = n => Math.round(n * 100) / 100
 
+// The date-window test usePromotion applies after its query: perpetual promos
+// always count, dated ones only inside an inclusive start/end window.
+function activePromotion(rows) {
+  const promo = rows && rows.length > 0 ? rows[0] : null
+  if (!promo) return null
+  if (promo.is_perpetual) return promo
+  if (promo.start_date && promo.end_date) {
+    const today = new Date().toISOString().split('T')[0]
+    if (today >= promo.start_date && today <= promo.end_date) return promo
+  }
+  return null
+}
+
 export async function resolveOrderToCart(supabase, restaurantId, order) {
   // Same shapes useMenu fetches: item_sizes has no restaurant_id of its own,
   // so it filters through an inner join on menu_items; toppings carries one
   // directly. menu_items has no price column and no discount_exempt column —
   // the flag lives on the category, which is why it arrives nested.
-  const [itemRes, sizeRes, topRes] = await Promise.all([
+  const [itemRes, sizeRes, topRes, promoRes] = await Promise.all([
     supabase
       .from('menu_items')
       .select('id, name, is_available, menu_categories(discount_exempt)')
@@ -29,11 +42,29 @@ export async function resolveOrderToCart(supabase, restaurantId, order) {
       .from('toppings')
       .select('id, name, price, price_half, is_available')
       .eq('restaurant_id', restaurantId),
+    // Same query usePromotion runs; the date window is applied below because
+    // it lives in that hook's JS rather than in the query.
+    supabase
+      .from('promotions')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true)
+      .limit(1),
   ])
 
   if (itemRes.error) throw new Error(itemRes.error.message)
   if (sizeRes.error) throw new Error(sizeRes.error.message)
   if (topRes.error) throw new Error(topRes.error.message)
+
+  // A failed promo lookup must not fail the reorder — no promotion just means
+  // every line prices at full, which checkout recalculates from fullBasePrice
+  // anyway.
+  let promotion = null
+  if (promoRes.error) {
+    console.error('resolveOrderToCart: promotion lookup failed', promoRes.error.message)
+  } else {
+    promotion = activePromotion(promoRes.data)
+  }
 
   const itemsById = new Map((itemRes.data || []).map(r => [r.id, r]))
   const sizesById = new Map((sizeRes.data || []).map(r => [r.id, r]))
@@ -65,6 +96,16 @@ export async function resolveOrderToCart(supabase, restaurantId, order) {
     // sizeless line rebuilds at 0, which is exactly what ItemModal does.
     const basePrice = size ? Number(size.price) : 0
 
+    // ItemModal.jsx:106-109, reproduced: an exempt category or a zero/absent
+    // promo means multiplier 1. fullBasePrice and fullPrice stay undiscounted
+    // — checkout reads those and recalculates the discount itself.
+    const isExempt = menuItem.menu_categories?.discount_exempt === true
+    const hasDiscount =
+      promotion && Number(promotion.discount_percentage) > 0 && !isExempt
+    const discountMultiplier = hasDiscount
+      ? 1 - Number(promotion.discount_percentage) / 100
+      : 1
+
     const toppings = []
     for (const t of row.order_item_toppings || []) {
       const topping = toppingsById.get(t.topping_id)
@@ -80,7 +121,7 @@ export async function resolveOrderToCart(supabase, restaurantId, order) {
         toppingId: topping.id,
         toppingName: topping.name,
         placement: t.placement,
-        price,
+        price: round2(price * discountMultiplier),
         fullPrice: price,
         placementType: t.placement_type || 'pizza',
       })
@@ -91,7 +132,7 @@ export async function resolveOrderToCart(supabase, restaurantId, order) {
       itemSizeId: size ? size.id : null,
       itemName: menuItem.name,
       sizeName: size ? size.name : null,
-      basePrice,
+      basePrice: round2(basePrice * discountMultiplier),
       fullBasePrice: basePrice,
       quantity: Number(row.quantity) || 1,
       discount_exempt: menuItem.menu_categories?.discount_exempt ?? false,
