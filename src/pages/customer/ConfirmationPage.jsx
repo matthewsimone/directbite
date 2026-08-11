@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate, useSearchParams } from 'react-rout
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../hooks/useCart'
 import { formatCurrency, formatPhone } from '../../utils/format'
+import { calculateLoyaltyPoints, formatPoints } from '../../utils/loyaltyPoints'
 import { formatScheduledLabel } from '../../utils/scheduling'
 
 // Fetch a single order (scoped, non-PII) by Stripe payment intent via the
@@ -161,6 +162,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
   const [order, setOrder] = useState(null)
   const [restaurant, setRestaurant] = useState(null)
   const [items, setItems] = useState([])
+  const [loyaltyPointsEarned, setLoyaltyPointsEarned] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -178,6 +180,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
 
         setRestaurant(result.restaurant)
         setItems(result.items || [])
+        setLoyaltyPointsEarned(result.loyalty_points_earned ?? null)
 
         setLoading(false)
       }
@@ -219,6 +222,18 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
     ? restaurant?.estimated_pickup_minutes
     : restaurant?.estimated_delivery_minutes
 
+  // The ledger is the authority once it has a row. It often doesn't yet —
+  // the accrual trigger may not have run when the customer lands — so fall
+  // back to the same estimate CheckoutPage showed a moment earlier.
+  const earnedPoints = Number(loyaltyPointsEarned) > 0
+    ? Number(loyaltyPointsEarned)
+    : calculateLoyaltyPoints({
+        restaurant,
+        subtotal: order.subtotal,
+        discountAmount: order.discount_amount,
+        totalAmount: order.total_amount,
+      })
+
   // Map DB items to display format
   const displayItems = items.map(item => ({
     id: item.id,
@@ -245,6 +260,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
       estimatedTime={estimatedTime}
       items={displayItems}
       subtotal={order.subtotal}
+      loyaltyPointsEarned={restaurant?.loyalty_enabled === true ? earnedPoints : 0}
       discountAmount={order.discount_amount}
       discountPercentage={order.discount_percentage}
       deliveryFee={order.delivery_fee}
@@ -273,6 +289,8 @@ function ConfirmationLayout({
   orderNumber, customerName, orderType, scheduledFor, estimatedTime,
   items, subtotal, discountAmount, discountPercentage,
   deliveryFee, taxAmount, tip, serviceFee, total,
+  // 0 for the navigation-state path, which has no loyalty data to show.
+  loyaltyPointsEarned = 0,
   restaurantName, restaurantPhone, includeUtensils, specialInstructions, slug, navigate,
   // M8: Uber Direct attribution (gated below by showUberSection)
   deliveryFulfillmentMethod = 'in_house',
@@ -502,6 +520,19 @@ function ConfirmationLayout({
                 <span>Total</span>
                 <span>{formatCurrency(total)}</span>
               </div>
+
+              {/* Platform green, matching CheckoutPage's band — the ordering
+                  flow is green throughout and does not use brandColor. */}
+              {loyaltyPointsEarned > 0 && (
+                <div
+                  className="rounded-xl px-4 py-2.5 mt-3 text-center"
+                  style={{ backgroundColor: 'rgba(22, 163, 74, 0.08)' }}
+                >
+                  <p className="text-sm" style={{ color: '#16A34A' }}>
+                    You earned <strong>{formatPoints(loyaltyPointsEarned)} points</strong> with this order
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}
