@@ -14,6 +14,28 @@ const CARD_SCRIM = 'absolute inset-0 bg-gradient-to-b from-black/35 via-black/45
 
 function formatPoints(n) { return Number(n || 0).toLocaleString('en-US') }
 
+// "Sat, Aug 8" — short enough for a row, unambiguous without the year.
+function formatDay(value) {
+  return new Date(value).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
+function titleCase(value) {
+  return String(value || '')
+    .split('_')
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
+
+// 'earn' is the ledger's word for it; "Order" is the customer's.
+function humanizeReason(reason) {
+  return reason === 'earn' ? 'Order' : titleCase(reason)
+}
+
 // Lighten (amount > 0) or darken (amount < 0) a #RRGGBB color by that fraction
 // of the distance to white/black. Returns the input untouched when it isn't a
 // 6-digit hex, so a CSS keyword still renders.
@@ -170,7 +192,7 @@ function RewardThumb({ reward, brandColor, widthCls }) {
   return null
 }
 
-export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, onSignIn, signInHref }) {
+export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, orders = [], transactions = [], historyLoading = false, onSignIn, signInHref }) {
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
   // The balance card reuses the website hero's photo and logo — useRestaurant
   // selects '*', so these arrive on the same restaurant row.
@@ -470,9 +492,43 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                     </div>
                   </div>
                 )}
+
+                {transactions.length > 0 && (
+                  <section className="mt-5">
+                    <h2 className="text-[15px] font-medium text-gray-900 mb-2.5">Recent points</h2>
+                    <div className="rounded-xl border border-gray-200 overflow-hidden">
+                      {transactions.map((t, i) => {
+                        const delta = Number(t.points_delta) || 0
+                        return (
+                          <div
+                            key={t.id}
+                            className={`px-3.5 py-2.5 flex justify-between items-center ${
+                              i < transactions.length - 1 ? 'border-b border-gray-100' : ''
+                            }`}
+                          >
+                            <div className="min-w-0">
+                              <p className="text-[13px] text-gray-900">{humanizeReason(t.reason)}</p>
+                              <p className="text-[11px] text-gray-400">{formatDay(t.created_at)}</p>
+                            </div>
+                            <span
+                              className={`text-[13px] font-medium shrink-0 ${delta > 0 ? '' : 'text-gray-500'}`}
+                              style={delta > 0 ? { color: brandColor } : undefined}
+                            >
+                              {`${delta > 0 ? '+' : ''}${formatPoints(delta)}`}
+                            </span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </section>
+                )}
               </div>
             </div>
-          ) : (
+          ) : historyLoading ? (
+            <div className="text-center py-12">
+              <p className="text-sm text-gray-500">Loading your orders...</p>
+            </div>
+          ) : orders.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-sm text-gray-500">Your past orders will show up here.</p>
               <button
@@ -482,6 +538,42 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
               >
                 Start an order
               </button>
+            </div>
+          ) : (
+            <div className="space-y-2 mt-5">
+              {orders.map(order => {
+                // The ledger row for this order, when the earn landed. Points
+                // are keyed off order_id rather than stored on the order.
+                const earned = transactions.find(
+                  t => t.order_id === order.id && Number(t.points_delta) > 0
+                )
+                return (
+                  <div key={order.id} className="rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-3.5 py-3 flex justify-between items-center">
+                      <p className="text-sm font-medium text-gray-900">{formatDay(order.created_at)}</p>
+                      <p className="text-xs text-gray-500">
+                        {`${titleCase(order.order_type)} · $${Number(order.total_amount || 0).toFixed(2)}`}
+                      </p>
+                    </div>
+
+                    <div className="px-3.5 pb-3 text-xs text-gray-600">
+                      {(order.order_items || []).map(item => (
+                        <p key={item.id}>{`${item.quantity}× ${item.item_name}`}</p>
+                      ))}
+                    </div>
+
+                    <div className="px-3.5 py-2.5 border-t border-gray-100 flex justify-between items-center">
+                      {earned ? (
+                        <span className="text-xs" style={{ color: brandColor }}>
+                          {`+${formatPoints(earned.points_delta)} points`}
+                        </span>
+                      ) : (
+                        <span />
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </section>

@@ -12,7 +12,7 @@ export default function RewardsPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
-  const { loading: authLoading, isLoggedIn, loadProfile } = useCustomerAuth()
+  const { loading: authLoading, isLoggedIn, loadProfile, loadHistory } = useCustomerAuth()
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
   useRestaurantBranding(restaurant, 'ordering')
 
@@ -20,6 +20,7 @@ export default function RewardsPage() {
   const [rewards, setRewards] = useState([])
   const [profile, setProfile] = useState(null)
   const [profileLoading, setProfileLoading] = useState(false)
+  const [history, setHistory] = useState(null)
   const [dataLoading, setDataLoading] = useState(false)
   const [signInOpen, setSignInOpen] = useState(false)
 
@@ -45,6 +46,16 @@ export default function RewardsPage() {
     })
     return () => { cancelled = true }
   }, [restaurant?.id, isLoggedIn, loadProfile])
+
+  // Same scoping as the profile above, but deliberately outside the loading
+  // gate — the page renders without it and the Orders tab shows its own
+  // loading state.
+  useEffect(() => {
+    if (!restaurant?.id || !isLoggedIn) { setHistory(null); return }
+    let cancelled = false
+    loadHistory(restaurant.id).then(h => { if (!cancelled) setHistory(h) })
+    return () => { cancelled = true }
+  }, [restaurant?.id, isLoggedIn, loadHistory])
 
   async function fetchLoyalty(restaurantId) {
     setDataLoading(true)
@@ -143,6 +154,9 @@ export default function RewardsPage() {
           tiers={tiers}
           rewards={rewards}
           customer={customer}
+          orders={history?.orders ?? []}
+          transactions={history?.transactions ?? []}
+          historyLoading={isLoggedIn && history === null}
           onSignIn={() => setSignInOpen(true)}
         />
       </div>

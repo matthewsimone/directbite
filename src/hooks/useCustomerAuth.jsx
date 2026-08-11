@@ -219,6 +219,26 @@ export function CustomerAuthProvider({ children }) {
     }
   }, [])
 
+  // Same contract as loadProfile: per-restaurant, no provider state, null on
+  // any failure. The edge function degrades a failed side to an empty array,
+  // so a non-null result may still carry one empty list.
+  const loadHistory = useCallback(async (restaurantId) => {
+    if (!restaurantId) return null
+    const token = readToken()
+    if (!token) return null
+    try {
+      const { ok, data } = await callCustomerAuth({
+        action: 'history',
+        token,
+        restaurant_id: restaurantId,
+      })
+      if (!ok || !data.ok) return null
+      return { orders: data.orders ?? [], transactions: data.transactions ?? [] }
+    } catch {
+      return null
+    }
+  }, [])
+
   return (
     <CustomerAuthContext.Provider
       value={{
@@ -231,6 +251,7 @@ export function CustomerAuthProvider({ children }) {
         logout,
         refresh: checkSession,
         loadProfile,
+        loadHistory,
       }}
     >
       {children}
