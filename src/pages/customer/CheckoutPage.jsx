@@ -659,6 +659,28 @@ export default function CheckoutPage() {
   const [deliveryApt, setDeliveryApt] = useState('')
   const [deliveryLat, setDeliveryLat] = useState(null)
   const [deliveryLon, setDeliveryLon] = useState(null)
+
+  // Saved details from a verified identity. What the customer has already
+  // typed always wins — this only fills blanks, never overwrites.
+  //
+  // Declared here, with the other hooks, rather than beside customerInfo
+  // further down: everything below the restLoading gate is past an early
+  // return, and a useCallback there changes this component's hook count
+  // between renders (React #310).
+  const handleSavedProfile = useCallback(profile => {
+    if (!profile) return
+    if (!customerName && profile.display_name) setCustomerName(profile.display_name)
+    if (!customerEmail && profile.email) setCustomerEmail(profile.email)
+    // Address only on delivery, and only when they haven't started one.
+    if (orderType === 'delivery' && !deliveryAddress && profile.delivery_address) {
+      setDeliveryAddress(profile.delivery_address)
+      setDeliveryApt(profile.delivery_apt || '')
+      // The saved column is delivery_lng; this page's state is deliveryLon.
+      if (profile.delivery_lat != null) setDeliveryLat(Number(profile.delivery_lat))
+      if (profile.delivery_lng != null) setDeliveryLon(Number(profile.delivery_lng))
+    }
+  }, [customerName, customerEmail, orderType, deliveryAddress])
+
   const [deliveryDistance, setDeliveryDistance] = useState(null)
   const [deliveryFeeCents, setDeliveryFeeCents] = useState(null)
   const [addressError, setAddressError] = useState(null)
@@ -1370,22 +1392,6 @@ export default function CheckoutPage() {
         },
       }
     : null
-
-  // Saved details from a verified identity. What the customer has already
-  // typed always wins — this only fills blanks, never overwrites.
-  const handleSavedProfile = useCallback(profile => {
-    if (!profile) return
-    if (!customerName && profile.display_name) setCustomerName(profile.display_name)
-    if (!customerEmail && profile.email) setCustomerEmail(profile.email)
-    // Address only on delivery, and only when they haven't started one.
-    if (orderType === 'delivery' && !deliveryAddress && profile.delivery_address) {
-      setDeliveryAddress(profile.delivery_address)
-      setDeliveryApt(profile.delivery_apt || '')
-      // The saved column is delivery_lng; this page's state is deliveryLon.
-      if (profile.delivery_lat != null) setDeliveryLat(Number(profile.delivery_lat))
-      if (profile.delivery_lng != null) setDeliveryLon(Number(profile.delivery_lng))
-    }
-  }, [customerName, customerEmail, orderType, deliveryAddress])
 
   const customerInfo = {
     name: customerName,
