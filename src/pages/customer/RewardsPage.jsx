@@ -5,6 +5,8 @@ import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
+import { useCart } from '../../hooks/useCart'
+import { resolveOrderToCart } from '../../lib/reorder'
 import RewardsView from '../../components/RewardsView'
 import SignInSheet from '../../components/SignInSheet'
 
@@ -13,6 +15,7 @@ export default function RewardsPage() {
   const navigate = useNavigate()
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
   const { loading: authLoading, isLoggedIn, loadProfile, loadHistory } = useCustomerAuth()
+  const { addItem } = useCart()
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
   useRestaurantBranding(restaurant, 'ordering')
 
@@ -79,6 +82,32 @@ export default function RewardsPage() {
     setTiers(tierRes.data || [])
     setRewards(rewardRes.data || [])
     setDataLoading(false)
+  }
+
+  // Rebuilds the order against today's menu, then hands off to the ordering
+  // flow. Appends to whatever is already in the cart — the confirm-or-replace
+  // prompt for a non-empty cart is a follow-up.
+  async function handleReorder(order) {
+    try {
+      const { lines, dropped } = await resolveOrderToCart(supabase, restaurant.id, order)
+
+      if (lines.length === 0) {
+        toast.error("Those items aren't available right now")
+        return
+      }
+
+      lines.forEach(addItem)
+
+      if (dropped.length > 0) {
+        toast(
+          `${lines.length} item${lines.length === 1 ? '' : 's'} added · ${dropped.join(', ')} unavailable`
+        )
+      }
+
+      navigate(`/${slug}`)
+    } catch {
+      toast.error('Could not rebuild that order')
+    }
   }
 
   // Restaurant fetch hit the 10s hard deadline — we don't know whether the
@@ -157,6 +186,7 @@ export default function RewardsPage() {
           orders={history?.orders ?? []}
           transactions={history?.transactions ?? []}
           historyLoading={isLoggedIn && history === null}
+          onReorder={handleReorder}
           onSignIn={() => setSignInOpen(true)}
         />
       </div>

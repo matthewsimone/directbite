@@ -192,7 +192,7 @@ function RewardThumb({ reward, brandColor, widthCls }) {
   return null
 }
 
-export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, orders = [], transactions = [], historyLoading = false, onSignIn, signInHref }) {
+export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, orders = [], transactions = [], historyLoading = false, onReorder = () => {}, onSignIn, signInHref }) {
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
   // The balance card reuses the website hero's photo and logo — useRestaurant
   // selects '*', so these arrive on the same restaurant row.
@@ -225,6 +225,8 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
 
   const [tab, setTab] = useState('rewards')
   const [tiersOpen, setTiersOpen] = useState(false)
+  const [expandedOrders, setExpandedOrders] = useState(() => new Set())
+  const [reorderingId, setReorderingId] = useState(null)
 
   // Reward split for the signed-in panel — the same balance >= cost test the
   // signed-out catalog rows use, hoisted so both lists share one comparison.
@@ -547,6 +549,11 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                 const earned = transactions.find(
                   t => t.order_id === order.id && Number(t.points_delta) > 0
                 )
+                const orderItems = order.order_items || []
+                const expanded = expandedOrders.has(order.id)
+                const visibleItems = expanded ? orderItems : orderItems.slice(0, 3)
+                const hiddenCount = orderItems.length - visibleItems.length
+                const reordering = reorderingId === order.id
                 return (
                   <div key={order.id} className="rounded-xl border border-gray-200 overflow-hidden">
                     <div className="px-3.5 py-3 flex justify-between items-center">
@@ -557,9 +564,42 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                     </div>
 
                     <div className="px-3.5 pb-3 text-xs text-gray-600">
-                      {(order.order_items || []).map(item => (
-                        <p key={item.id}>{`${item.quantity}× ${item.item_name}`}</p>
-                      ))}
+                      {visibleItems.map(item => {
+                        const itemToppings = item.order_item_toppings || []
+                        return (
+                          <div key={item.id}>
+                            <p>{`${item.quantity}× ${item.item_name}`}</p>
+                            {itemToppings.length > 0 && (
+                              <p className="text-[11px] text-gray-500">
+                                {itemToppings
+                                  .map(t =>
+                                    t.placement === 'whole'
+                                      ? t.topping_name
+                                      : `${titleCase(t.placement)}: ${t.topping_name}`
+                                  )
+                                  .join(', ')}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {(hiddenCount > 0 || expanded) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedOrders(prev => {
+                              const next = new Set(prev)
+                              if (next.has(order.id)) next.delete(order.id)
+                              else next.add(order.id)
+                              return next
+                            })
+                          }
+                          className="text-xs mt-1"
+                          style={{ color: brandColor }}
+                        >
+                          {expanded ? 'Show less' : `+${hiddenCount} more items`}
+                        </button>
+                      )}
                     </div>
 
                     <div className="px-3.5 py-2.5 border-t border-gray-100 flex justify-between items-center">
@@ -570,6 +610,22 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                       ) : (
                         <span />
                       )}
+                      <button
+                        type="button"
+                        disabled={reordering}
+                        onClick={async () => {
+                          setReorderingId(order.id)
+                          try {
+                            await onReorder(order)
+                          } finally {
+                            setReorderingId(null)
+                          }
+                        }}
+                        className="text-xs font-medium text-white px-3 py-1.5 rounded-lg"
+                        style={{ backgroundColor: brandColor }}
+                      >
+                        {reordering ? 'Adding...' : 'Reorder'}
+                      </button>
                     </div>
                   </div>
                 )
