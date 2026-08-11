@@ -13,6 +13,8 @@ import { useRestaurant } from '../../hooks/useRestaurant'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import { usePromotion } from '../../hooks/usePromotion'
 import { useCart } from '../../hooks/useCart'
+import { useCustomerAuth } from '../../hooks/useCustomerAuth'
+import { useOtpFlow, formatPhone } from '../../hooks/useOtpFlow'
 import { supabase } from '../../lib/supabase'
 import { formatCurrency } from '../../utils/format'
 import { calculateLoyaltyPoints, pointsLabel } from '../../utils/loyaltyPoints'
@@ -157,11 +159,50 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
   const submittedRef = useRef(false)
+
+  const { isLoggedIn, loadSavedProfile } = useCustomerAuth()
+
+  // Pull the identity's saved details and hand them up. Anything short of a
+  // profile — not signed in, nothing saved, action not deployed — is a no-op:
+  // the customer is filling the form out by hand and nothing should interrupt
+  // that.
+  const applySavedProfile = useCallback(async () => {
+    const profile = await loadSavedProfile()
+    if (!profile) {
+      console.warn('[checkout] no saved profile available; leaving the form as typed')
+      return
+    }
+    onSavedProfile(profile)
+  }, [loadSavedProfile, onSavedProfile])
+
+  // Verification is an accelerator, never a gate. A customer who ignores the
+  // code field fills the form in and checks out exactly as before.
+  const otp = useOtpFlow({
+    restaurantId: restaurant?.id,
+    onVerified: applySavedProfile,
+  })
+
+  // The hook owns the digits; customerPhone is what the order payload reads,
+  // so it mirrors them. Only ever writes a non-empty value: that keeps the
+  // mount pass from wiping customerPhone, and keeps this away from a number
+  // the wallet path set through onWalletCustomer.
+  useEffect(() => {
+    if (!otp.phone) return
+    customerInfo.setPhone(otp.phone)
+  }, [otp.phone])
+
+  // Already signed in on arrival — no reason to make them verify again.
+  const prefilledRef = useRef(false)
+  useEffect(() => {
+    if (!isLoggedIn || prefilledRef.current) return
+    prefilledRef.current = true
+    applySavedProfile()
+  }, [isLoggedIn, applySavedProfile])
 
   // Wallet detection via PaymentRequest API — pre-seed from sessionStorage cache
   const [paymentRequest, setPaymentRequest] = useState(null)
@@ -437,14 +478,50 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             placeholder="Full Name"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
-          {/* 3. Phone */}
+          {/* 3. Phone — entering a complete number sends a verification code.
+                 Ignoring the code that follows costs the customer nothing. */}
           <input
             type="tel"
-            value={customerInfo.phone}
-            onChange={e => customerInfo.setPhone(e.target.value)}
+            inputMode="numeric"
+            autoComplete="tel"
+            value={formatPhone(otp.phone)}
+            onChange={otp.handlePhoneChange}
             placeholder="Phone Number"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
+
+          {otp.step === 'code' && !isLoggedIn && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">
+                We texted you a code. Enter it to use your saved details — or skip it and keep going.
+              </p>
+
+              {/* One field, not six boxes — iOS only autofills an SMS code
+                  into a single input carrying autocomplete="one-time-code". */}
+              <input
+                ref={otp.codeInputRef}
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={otp.code}
+                onChange={otp.handleCodeChange}
+                placeholder="6-digit code"
+                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+              />
+
+              {otp.error && <p className="text-sm text-red-600 mt-2">{otp.error}</p>}
+
+              <button
+                type="button"
+                onClick={() => otp.handleSend(otp.phone, { resend: true })}
+                disabled={otp.cooldownSeconds > 0 || otp.sending}
+                className="w-full mt-2 text-sm text-gray-500 disabled:text-gray-400 hover:text-gray-700 transition-colors"
+              >
+                {otp.cooldownSeconds > 0 ? `Resend in ${otp.cooldownSeconds}s` : "Didn't get it? Resend"}
+              </button>
+            </div>
+          )}
 
           {/* 4. Card details — card only */}
           <PaymentElement
@@ -1286,6 +1363,22 @@ export default function CheckoutPage() {
       }
     : null
 
+  // Saved details from a verified identity. What the customer has already
+  // typed always wins — this only fills blanks, never overwrites.
+  const handleSavedProfile = useCallback(profile => {
+    if (!profile) return
+    if (!customerName && profile.display_name) setCustomerName(profile.display_name)
+    if (!customerEmail && profile.email) setCustomerEmail(profile.email)
+    // Address only on delivery, and only when they haven't started one.
+    if (orderType === 'delivery' && !deliveryAddress && profile.delivery_address) {
+      setDeliveryAddress(profile.delivery_address)
+      setDeliveryApt(profile.delivery_apt || '')
+      // The saved column is delivery_lng; this page's state is deliveryLon.
+      if (profile.delivery_lat != null) setDeliveryLat(Number(profile.delivery_lat))
+      if (profile.delivery_lng != null) setDeliveryLon(Number(profile.delivery_lng))
+    }
+  }, [customerName, customerEmail, orderType, deliveryAddress])
+
   const customerInfo = {
     name: customerName,
     phone: customerPhone,
@@ -1611,6 +1704,7 @@ export default function CheckoutPage() {
                 feeCalculating={feeCalculating}
                 needsAddress={needsAddress}
                 showPlaceholder={showPlaceholder}
+                onSavedProfile={handleSavedProfile}
                 onWalletCustomer={async (name, email, phone) => {
                   // Update customer state for confirmation page
                   setCustomerName(name)
