@@ -55,18 +55,44 @@ serve(async (req: Request) => {
       .eq("order_id", order.id)
       .order("created_at");
 
-    // Restaurant display fields (all public via anon_read_restaurants).
+    // Restaurant display fields (all public via anon_read_restaurants). The
+    // loyalty_* columns let the page preview an earn when the customer lands
+    // before the accrual trigger has written the ledger row.
     const { data: restaurant } = await supabase
       .from("restaurants")
-      .select("name, phone, estimated_pickup_minutes, estimated_delivery_minutes")
+      .select(
+        "name, phone, estimated_pickup_minutes, estimated_delivery_minutes, loyalty_enabled, loyalty_points_per_dollar, loyalty_earn_basis"
+      )
       .eq("id", order.restaurant_id)
       .single();
+
+    // What the ledger actually awarded for this order. Null covers both "no
+    // points earned" and "the accrual hasn't landed yet" — the page cannot
+    // tell them apart, and a failure here must never break the confirmation.
+    let loyaltyPointsEarned: number | null = null;
+    const { data: earnRow, error: earnErr } = await supabase
+      .from("loyalty_transactions")
+      .select("points_delta")
+      .eq("order_id", order.id)
+      .gt("points_delta", 0)
+      .maybeSingle();
+
+    if (earnErr) {
+      console.error("get-order-by-pi loyalty read failed:", earnErr.message);
+    } else if (earnRow) {
+      loyaltyPointsEarned = Number(earnRow.points_delta);
+    }
 
     // Strip internal-only ids before returning.
     const { id: _id, restaurant_id: _restaurantId, ...safeOrder } = order;
 
     return new Response(
-      JSON.stringify({ order: safeOrder, items: items || [], restaurant }),
+      JSON.stringify({
+        order: safeOrder,
+        items: items || [],
+        restaurant,
+        loyalty_points_earned: loyaltyPointsEarned,
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
