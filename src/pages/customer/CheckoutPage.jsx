@@ -483,6 +483,12 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
 
+          {/* A failed send leaves step at 'phone', so its error has to render
+              here — the code block below never mounts to show it. */}
+          {otp.step === 'phone' && otp.error && (
+            <p className="text-sm text-red-600">{otp.error}</p>
+          )}
+
           {otp.step === 'code' && !isLoggedIn && (
             <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">
               <div className="flex items-center justify-between">
