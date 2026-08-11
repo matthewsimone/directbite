@@ -470,24 +470,9 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       {/* Card form — contact fields above card, Link signup inline below */}
       {payMethod === 'card' && (
         <div className="space-y-4">
-          {/* 1. Email */}
-          <input
-            type="email"
-            value={customerInfo.email}
-            onChange={e => customerInfo.setEmail(e.target.value)}
-            placeholder="Email Address"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
-          {/* 2. Full Name */}
-          <input
-            type="text"
-            value={customerInfo.name}
-            onChange={e => customerInfo.setName(e.target.value)}
-            placeholder="Full Name"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
-          {/* 3. Phone — entering a complete number sends a verification code.
-                 Ignoring the code that follows costs the customer nothing. */}
+          {/* 1. Phone — first, because the code it triggers is what prefills
+                 the two fields below. Entering a complete number sends that
+                 code; ignoring it costs the customer nothing. */}
           <input
             type="tel"
             inputMode="numeric"
@@ -499,13 +484,27 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           />
 
           {otp.step === 'code' && !isLoggedIn && (
-            <div>
-              <p className="text-xs text-gray-500 mb-2">
-                We texted you a code. Enter it to use your saved details — or skip it and keep going.
+            <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-900">Confirm it's you</p>
+                <button
+                  type="button"
+                  onClick={() => otp.handleSend(otp.phone, { resend: true })}
+                  disabled={otp.cooldownSeconds > 0 || otp.sending}
+                  className="text-xs text-[#16A34A] disabled:text-gray-400"
+                >
+                  {otp.cooldownSeconds > 0 ? `Resend in ${otp.cooldownSeconds}s` : 'Resend code'}
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-500 mt-0.5">
+                Enter the code we sent to verify your mobile number.
               </p>
 
               {/* One field, not six boxes — iOS only autofills an SMS code
-                  into a single input carrying autocomplete="one-time-code". */}
+                  into a single input carrying autocomplete="one-time-code".
+                  Owner uses six boxes and loses that autofill; not copying it
+                  is deliberate. */}
               <input
                 ref={otp.codeInputRef}
                 type="text"
@@ -514,24 +513,32 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
                 maxLength={6}
                 value={otp.code}
                 onChange={otp.handleCodeChange}
-                placeholder="6-digit code"
-                className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                placeholder="······"
+                className="w-full mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-base text-center tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
 
               {otp.error && <p className="text-sm text-red-600 mt-2">{otp.error}</p>}
-
-              <button
-                type="button"
-                onClick={() => otp.handleSend(otp.phone, { resend: true })}
-                disabled={otp.cooldownSeconds > 0 || otp.sending}
-                className="w-full mt-2 text-sm text-gray-500 disabled:text-gray-400 hover:text-gray-700 transition-colors"
-              >
-                {otp.cooldownSeconds > 0 ? `Resend in ${otp.cooldownSeconds}s` : "Didn't get it? Resend"}
-              </button>
             </div>
           )}
 
-          {/* 4. Card details — card only */}
+          {/* 3. Email */}
+          <input
+            type="email"
+            value={customerInfo.email}
+            onChange={e => customerInfo.setEmail(e.target.value)}
+            placeholder="Email Address"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+          {/* 4. Full Name */}
+          <input
+            type="text"
+            value={customerInfo.name}
+            onChange={e => customerInfo.setName(e.target.value)}
+            placeholder="Full Name"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+
+          {/* 5. Card details — card only */}
           <PaymentElement
             options={{
               wallets: { applePay: 'never', googlePay: 'never' },
