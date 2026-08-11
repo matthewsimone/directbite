@@ -219,6 +219,25 @@ export function CustomerAuthProvider({ children }) {
     }
   }, [])
 
+  // The identity's saved contact + address, shared across every restaurant.
+  // Same contract as loadProfile: no provider state, null on any failure —
+  // including when the action isn't deployed yet, which callers must treat as
+  // "nothing saved" rather than an error.
+  const loadSavedProfile = useCallback(async () => {
+    const token = readToken()
+    if (!token) return null
+    try {
+      const { ok, data } = await callCustomerAuth({
+        action: 'profile',
+        token,
+      })
+      if (!ok || !data.ok) return null
+      return data.profile ?? null
+    } catch {
+      return null
+    }
+  }, [])
+
   // Same contract as loadProfile: per-restaurant, no provider state, null on
   // any failure. The edge function degrades a failed side to an empty array,
   // so a non-null result may still carry one empty list.
@@ -252,6 +271,7 @@ export function CustomerAuthProvider({ children }) {
         refresh: checkSession,
         loadProfile,
         loadHistory,
+        loadSavedProfile,
       }}
     >
       {children}
