@@ -520,27 +520,27 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
                 value={otp.code}
                 onChange={otp.handleCodeChange}
                 placeholder="······"
-                className="w-full mt-3 px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-base text-center tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+                className="w-full mt-3 px-4 py-3.5 bg-gray-100 rounded-xl text-base text-center tracking-[0.4em] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
 
               {otp.error && <p className="text-sm text-red-600 mt-2">{otp.error}</p>}
             </div>
           )}
 
-          {/* 3. Email */}
-          <input
-            type="email"
-            value={customerInfo.email}
-            onChange={e => customerInfo.setEmail(e.target.value)}
-            placeholder="Email Address"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
-          {/* 4. Full Name */}
+          {/* 3. Full Name */}
           <input
             type="text"
             value={customerInfo.name}
             onChange={e => customerInfo.setName(e.target.value)}
             placeholder="Full Name"
+            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+          />
+          {/* 4. Email */}
+          <input
+            type="email"
+            value={customerInfo.email}
+            onChange={e => customerInfo.setEmail(e.target.value)}
+            placeholder="Email Address"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
 
