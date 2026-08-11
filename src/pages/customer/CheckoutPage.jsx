@@ -188,11 +188,19 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   })
 
   // The hook owns the digits; customerPhone is what the order payload reads,
-  // so it mirrors them. Only ever writes a non-empty value: that keeps the
-  // mount pass from wiping customerPhone, and keeps this away from a number
-  // the wallet path set through onWalletCustomer.
+  // so it mirrors them — a clear included, or an order could carry a number
+  // the customer deleted. The touched ref is what keeps that safe: it only
+  // flips once this input has been typed into, so the mount pass never wipes
+  // customerPhone and a wallet-supplied number is never reached.
+  const phoneTouchedRef = useRef(false)
+
+  const handlePhoneInput = useCallback(e => {
+    phoneTouchedRef.current = true
+    otp.handlePhoneChange(e)
+  }, [otp.handlePhoneChange])
+
   useEffect(() => {
-    if (!otp.phone) return
+    if (!phoneTouchedRef.current) return
     customerInfo.setPhone(otp.phone)
   }, [otp.phone])
 
@@ -485,7 +493,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             inputMode="numeric"
             autoComplete="tel"
             value={formatPhone(otp.phone)}
-            onChange={otp.handlePhoneChange}
+            onChange={handlePhoneInput}
             placeholder="Phone Number"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
