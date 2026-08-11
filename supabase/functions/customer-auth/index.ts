@@ -694,6 +694,157 @@ async function handleHistory(body: any): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Action: profile
+// ---------------------------------------------------------------------------
+
+// Saved contact + address on the identity. Every column here is written ONLY
+// from a resolved session — the order path resolves customers by phone string
+// equality and cannot tell a verified customer from a guest who typed the
+// same number, so it must never reach these fields (see migration 076).
+const PROFILE_COLUMNS =
+  "id, phone_e164, email, display_name, delivery_address, delivery_apt, delivery_lat, delivery_lng";
+
+const PROFILE_STRING_FIELDS = [
+  "email",
+  "display_name",
+  "delivery_address",
+  "delivery_apt",
+];
+
+const PROFILE_NUMBER_FIELDS = ["delivery_lat", "delivery_lng"];
+
+// Touching any of these stamps address_updated_at.
+const PROFILE_ADDRESS_FIELDS = [
+  "delivery_address",
+  "delivery_apt",
+  "delivery_lat",
+  "delivery_lng",
+];
+
+function profileShape(row: any) {
+  return {
+    phone_e164: row.phone_e164,
+    email: row.email,
+    display_name: row.display_name,
+    delivery_address: row.delivery_address,
+    delivery_apt: row.delivery_apt,
+    delivery_lat: row.delivery_lat,
+    delivery_lng: row.delivery_lng,
+  };
+}
+
+async function handleProfile(body: any): Promise<Response> {
+  // Token resolution is duplicated from handleHistory rather than extracted,
+  // for the same reason: folding these onto a shared helper touches a working
+  // auth path, which is a separate change from adding an action.
+  const token = typeof body.token === "string" ? body.token : "";
+  if (!token) {
+    return jsonResponse({ error: "invalid_session" }, 401);
+  }
+
+  const tokenHash = await hashToken(token);
+
+  const { data: session, error: sessionErr } = await supabase
+    .from("customer_sessions")
+    .select("id, customer_id, revoked_at, expires_at")
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (sessionErr) {
+    console.error("customer-auth profile session lookup failed:", sessionErr.message);
+    return jsonResponse({ error: "server_error" }, 500);
+  }
+
+  // Missing, revoked and expired all collapse to the same response so a
+  // caller cannot tell them apart.
+  if (
+    !session ||
+    session.revoked_at !== null ||
+    new Date(session.expires_at).getTime() < Date.now()
+  ) {
+    return jsonResponse({ error: "invalid_session" }, 401);
+  }
+
+  const { data: identity, error: identityErr } = await supabase
+    .from("customer_identities")
+    .select(PROFILE_COLUMNS)
+    .eq("id", session.customer_id)
+    .maybeSingle();
+
+  if (identityErr || !identity) {
+    console.error(
+      "customer-auth profile identity read failed:",
+      identityErr?.message
+    );
+    return jsonResponse({ error: "invalid_session" }, 401);
+  }
+
+  const updates = body.updates;
+
+  // No updates key at all → read.
+  if (updates === undefined || updates === null) {
+    return jsonResponse({ ok: true, profile: profileShape(identity) }, 200);
+  }
+
+  // Present but not a plain object is a malformed write, not a read.
+  if (typeof updates !== "object" || Array.isArray(updates)) {
+    return jsonResponse({ error: "bad_request" }, 400);
+  }
+
+  // Only the whitelisted keys are read; anything else in the object is
+  // ignored. A key present as '' or null clears that field — a customer
+  // removing their saved address is a legitimate write.
+  const payload: Record<string, unknown> = {};
+
+  for (const key of PROFILE_STRING_FIELDS) {
+    if (!(key in updates)) continue;
+    const value = updates[key];
+    if (value === null) {
+      payload[key] = null;
+      continue;
+    }
+    if (typeof value !== "string") {
+      return jsonResponse({ error: "bad_request" }, 400);
+    }
+    payload[key] = value.trim();
+  }
+
+  for (const key of PROFILE_NUMBER_FIELDS) {
+    if (!(key in updates)) continue;
+    const value = updates[key];
+    if (value === null) {
+      payload[key] = null;
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return jsonResponse({ error: "bad_request" }, 400);
+    }
+    payload[key] = value;
+  }
+
+  const nowIso = new Date().toISOString();
+  if (PROFILE_ADDRESS_FIELDS.some((key) => key in payload)) {
+    payload.address_updated_at = nowIso;
+  }
+  payload.updated_at = nowIso;
+
+  // By id, never by phone: the id came from the session, the phone did not.
+  const { data: updated, error: updateErr } = await supabase
+    .from("customer_identities")
+    .update(payload)
+    .eq("id", identity.id)
+    .select(PROFILE_COLUMNS)
+    .single();
+
+  if (updateErr || !updated) {
+    console.error("customer-auth profile update failed:", updateErr?.message);
+    return jsonResponse({ error: "server_error" }, 500);
+  }
+
+  return jsonResponse({ ok: true, profile: profileShape(updated) }, 200);
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -727,6 +878,8 @@ serve(async (req: Request) => {
         return await handleSession(body);
       case "history":
         return await handleHistory(body);
+      case "profile":
+        return await handleProfile(body);
       case "logout":
         return await handleLogout(body);
       default:
