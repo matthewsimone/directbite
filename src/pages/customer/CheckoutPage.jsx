@@ -28,6 +28,32 @@ import { calcRecoup } from '../../utils/recoup'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
+// The customer's last chosen delivery address, kept on the device so it
+// survives a refresh or a tab close. Global rather than per-restaurant:
+// the identity-level profile already works this way. Every access is
+// wrapped because localStorage throws in private mode on some browsers.
+const ADDRESS_KEY = 'ordr_delivery_address'
+
+function readStoredAddress() {
+  try {
+    const raw = localStorage.getItem(ADDRESS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed.address !== 'string' || !parsed.address) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function writeStoredAddress(address, apt, lat, lng) {
+  try {
+    localStorage.setItem(ADDRESS_KEY, JSON.stringify({ address, apt: apt || '', lat, lng }))
+  } catch {
+    // Storage unavailable — the address simply won't persist.
+  }
+}
+
 // Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
 function withAlpha(hex, alpha) {
   const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
@@ -697,6 +723,7 @@ export default function CheckoutPage() {
   const [savedProfile, setSavedProfile] = useState(null)
   // Set when the customer rejects the saved address and wants to type one.
   const [useNewAddress, setUseNewAddress] = useState(false)
+  const storedApplied = useRef(false)
 
   // The profile usually lands while the order is still pickup, so the
   // address write in handleSavedProfile never runs. Apply it when delivery
@@ -715,6 +742,21 @@ export default function CheckoutPage() {
     if (savedProfile.delivery_lat != null) setDeliveryLat(Number(savedProfile.delivery_lat))
     if (savedProfile.delivery_lng != null) setDeliveryLon(Number(savedProfile.delivery_lng))
   }, [orderType, useNewAddress, deliveryAddress, deliveryLat, deliveryLon, savedProfile])
+
+  // Restore the device-stored address on mount. Runs once; the ref guard
+  // stops it fighting the profile restore or a customer's own selection.
+  useEffect(() => {
+    if (storedApplied.current) return
+    if (orderType !== 'delivery') return
+    if (deliveryAddress) return
+    const stored = readStoredAddress()
+    if (!stored) return
+    storedApplied.current = true
+    setDeliveryAddress(stored.address)
+    setDeliveryApt(stored.apt || '')
+    if (stored.lat != null) setDeliveryLat(Number(stored.lat))
+    if (stored.lng != null) setDeliveryLon(Number(stored.lng))
+  }, [orderType, deliveryAddress])
 
   // Saved details from a verified identity. What the customer has already
   // typed always wins — this only fills blanks, never overwrites.
@@ -1022,6 +1064,12 @@ export default function CheckoutPage() {
         setDeliveryAddress(place.formatted_address || '')
         setDeliveryLat(place.geometry.location.lat())
         setDeliveryLon(place.geometry.location.lng())
+        writeStoredAddress(
+          place.formatted_address || '',
+          deliveryApt,
+          place.geometry.location.lat(),
+          place.geometry.location.lng()
+        )
         setAddressError(null)
       } else {
         setAddressError('Could not verify this address. Please try a different one.')
