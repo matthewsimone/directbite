@@ -730,14 +730,19 @@ export default function CheckoutPage() {
     if (!customerPhone && profile.phone_e164) setCustomerPhone(profile.phone_e164)
     if (!customerEmail && profile.email) setCustomerEmail(profile.email)
     // Address only on delivery, and only when they haven't started one.
-    if (orderType === 'delivery' && !deliveryAddress && profile.delivery_address) {
+    //
+    // useNewAddress means the customer deliberately rejected the saved
+    // address. This callback re-runs whenever the profile reloads — including
+    // on tab focus, via useRestaurant's visibilitychange refetch — so without
+    // this check it silently restores an address they just dismissed.
+    if (orderType === 'delivery' && !useNewAddress && !deliveryAddress && profile.delivery_address) {
       setDeliveryAddress(profile.delivery_address)
       setDeliveryApt(profile.delivery_apt || '')
       // The saved column is delivery_lng; this page's state is deliveryLon.
       if (profile.delivery_lat != null) setDeliveryLat(Number(profile.delivery_lat))
       if (profile.delivery_lng != null) setDeliveryLon(Number(profile.delivery_lng))
     }
-  }, [customerName, customerPhone, customerEmail, orderType, deliveryAddress])
+  }, [customerName, customerPhone, customerEmail, orderType, useNewAddress, deliveryAddress])
 
   const [deliveryDistance, setDeliveryDistance] = useState(null)
   const [deliveryFeeCents, setDeliveryFeeCents] = useState(null)
