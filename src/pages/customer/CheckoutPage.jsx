@@ -698,6 +698,21 @@ export default function CheckoutPage() {
   // Set when the customer rejects the saved address and wants to type one.
   const [useNewAddress, setUseNewAddress] = useState(false)
 
+  // The profile usually lands while the order is still pickup, so the
+  // address write in handleSavedProfile never runs. Apply it when delivery
+  // is chosen instead. Guarded so it cannot overwrite a typed address or
+  // fight the "use a different address" choice.
+  useEffect(() => {
+    if (orderType !== 'delivery') return
+    if (useNewAddress) return
+    if (deliveryAddress) return
+    if (!savedProfile?.delivery_address) return
+    setDeliveryAddress(savedProfile.delivery_address)
+    setDeliveryApt(savedProfile.delivery_apt || '')
+    if (savedProfile.delivery_lat != null) setDeliveryLat(Number(savedProfile.delivery_lat))
+    if (savedProfile.delivery_lng != null) setDeliveryLon(Number(savedProfile.delivery_lng))
+  }, [orderType, useNewAddress, deliveryAddress, savedProfile])
+
   // Saved details from a verified identity. What the customer has already
   // typed always wins — this only fills blanks, never overwrites.
   //
