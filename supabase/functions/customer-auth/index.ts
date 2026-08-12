@@ -59,8 +59,8 @@ const DEFAULT_CONSENT_TEXT =
 // retention policy that purges old rows from that table will also reset
 // these counters for the phones and IPs it touches.
 const COOLDOWN_SECONDS = 60;
-const MAX_PER_PHONE_HOUR = 3;
-const MAX_PER_PHONE_DAY = 10;
+const MAX_PER_PHONE_HOUR = 5;
+const MAX_PER_PHONE_DAY = 15;
 const MAX_PER_IP_HOUR = 10;
 
 // ---------------------------------------------------------------------------
