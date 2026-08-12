@@ -733,6 +733,9 @@ export default function CheckoutPage() {
   )
   const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
+  // Non-null only when the payment intent reused an existing Stripe Customer;
+  // it is what lets the Payment Element redisplay their saved cards.
+  const [customerSessionSecret, setCustomerSessionSecret] = useState(null)
   const [paymentIntentId, setPaymentIntentId] = useState(null)
   const [stripeAccount, setStripeAccount] = useState(null)
   const [initError, setInitError] = useState(null)
@@ -1230,6 +1233,7 @@ export default function CheckoutPage() {
 
         const data = await res.json()
         setClientSecret(data.clientSecret)
+        setCustomerSessionSecret(data.customerSessionClientSecret || null)
         setPaymentIntentId(data.paymentIntentId)
         setStripeAccount(data.stripeAccount)
       } catch (err) {
@@ -1410,6 +1414,10 @@ export default function CheckoutPage() {
   const stripeOptions = clientSecret
     ? {
         clientSecret,
+        // Absent entirely when null — Stripe rejects the key set to null.
+        ...(customerSessionSecret
+          ? { customerSessionClientSecret: customerSessionSecret }
+          : {}),
         appearance: {
           theme: 'stripe',
           variables: {
