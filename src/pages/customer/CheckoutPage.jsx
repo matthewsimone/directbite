@@ -1529,7 +1529,7 @@ export default function CheckoutPage() {
           </h3>
           <div className="flex gap-3">
             <button
-              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setDeliveryLat(null); setDeliveryLon(null); setDeliveryFeeCents(null); setDeliveryDistance(null); setDeliveryAddress(''); setAddressError(null) }}
+              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setAddressError(null) }}
               className={`flex-1 py-4 rounded-xl font-semibold text-base transition-colors ${
                 orderType === 'pickup'
                   ? 'bg-[#16A34A] text-white'
@@ -1654,12 +1654,12 @@ export default function CheckoutPage() {
             {quoteLoading && (
               <p className="mt-2 text-sm text-gray-500 italic">Calculating delivery fee...</p>
             )}
-            {!quoteLoading && resolvedMode === 'uber_direct' && uberCustomerFeeCents != null && deliveryLat && !addressError && (
+            {orderType === 'delivery' && !quoteLoading && resolvedMode === 'uber_direct' && uberCustomerFeeCents != null && deliveryLat && !addressError && (
               <p className="mt-2 text-sm text-gray-600">
                 Delivery fee: {formatCurrency(deliveryFee)} (via Uber Direct)
               </p>
             )}
-            {!quoteLoading && resolvedMode !== 'uber_direct' && deliveryDistance != null && deliveryLat && !addressError && (
+            {orderType === 'delivery' && !quoteLoading && resolvedMode !== 'uber_direct' && deliveryDistance != null && deliveryLat && !addressError && (
               <p className="mt-2 text-sm text-gray-600">
                 Distance: {deliveryDistance} mi — Delivery fee: {formatCurrency(deliveryFee)}
               </p>
