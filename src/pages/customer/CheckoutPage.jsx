@@ -1618,12 +1618,16 @@ export default function CheckoutPage() {
                 ref={inputRef}
                 type="text"
                 placeholder="Search for your address..."
-                onChange={() => {
+                value={deliveryAddress}
+                onChange={e => {
+                  // React owns this text now. Places writes through
+                  // setDeliveryAddress in its place_changed listener, so both
+                  // typing and selection land in the same place.
+                  setDeliveryAddress(e.target.value)
+                  // Typing after a selection invalidates it: the coordinates and
+                  // quote belong to the old address and must not survive into the
+                  // order. Mirrors the place_changed callback's cleanup.
                   if (deliveryLat) {
-                    // M6.5: Clear uber state on address change — prevents fee
-                    // flip during the uber-quote async window. Mirrors the
-                    // place_changed callback's cleanup so manual edits and
-                    // dropdown selections behave identically.
                     setUberQuoteId(null)
                     setUberQuotedFeeCents(null)
                     setUberCustomerFeeCents(null)
@@ -1633,7 +1637,6 @@ export default function CheckoutPage() {
                     setDeliveryLon(null)
                     setDeliveryDistance(null)
                     setDeliveryFeeCents(null)
-                    setDeliveryAddress('')
                     setAddressError(null)
                   }
                 }}
