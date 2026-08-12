@@ -46,6 +46,10 @@ function readStoredAddress() {
   }
 }
 
+function hasStoredAddress() {
+  return readStoredAddress() !== null
+}
+
 function writeStoredAddress(address, apt, lat, lng) {
   try {
     localStorage.setItem(ADDRESS_KEY, JSON.stringify({ address, apt: apt || '', lat, lng }))
@@ -737,6 +741,7 @@ export default function CheckoutPage() {
     // alone would leave a displayed address the button can never accept.
     if (deliveryAddress && deliveryLat != null && deliveryLon != null) return
     if (!savedProfile?.delivery_address) return
+    if (hasStoredAddress()) return
     setDeliveryAddress(savedProfile.delivery_address)
     setDeliveryApt(savedProfile.delivery_apt || '')
     if (savedProfile.delivery_lat != null) setDeliveryLat(Number(savedProfile.delivery_lat))
@@ -777,7 +782,9 @@ export default function CheckoutPage() {
     // address. This callback re-runs whenever the profile reloads — including
     // on tab focus, via useRestaurant's visibilitychange refetch — so without
     // this check it silently restores an address they just dismissed.
-    if (orderType === 'delivery' && !useNewAddress && !deliveryAddress && profile.delivery_address) {
+    // A device-stored address is the customer's most recent explicit
+    // choice and outranks the profile, which may be older.
+    if (orderType === 'delivery' && !useNewAddress && !deliveryAddress && !hasStoredAddress() && profile.delivery_address) {
       setDeliveryAddress(profile.delivery_address)
       setDeliveryApt(profile.delivery_apt || '')
       // The saved column is delivery_lng; this page's state is deliveryLon.
