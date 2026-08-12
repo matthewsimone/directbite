@@ -705,13 +705,16 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (orderType !== 'delivery') return
     if (useNewAddress) return
-    if (deliveryAddress) return
+    // Bail only when the address is present AND usable. The pickup toggle
+    // clears the coordinates but not the string, so checking the string
+    // alone would leave a displayed address the button can never accept.
+    if (deliveryAddress && deliveryLat != null && deliveryLon != null) return
     if (!savedProfile?.delivery_address) return
     setDeliveryAddress(savedProfile.delivery_address)
     setDeliveryApt(savedProfile.delivery_apt || '')
     if (savedProfile.delivery_lat != null) setDeliveryLat(Number(savedProfile.delivery_lat))
     if (savedProfile.delivery_lng != null) setDeliveryLon(Number(savedProfile.delivery_lng))
-  }, [orderType, useNewAddress, deliveryAddress, savedProfile])
+  }, [orderType, useNewAddress, deliveryAddress, deliveryLat, deliveryLon, savedProfile])
 
   // Saved details from a verified identity. What the customer has already
   // typed always wins — this only fills blanks, never overwrites.
