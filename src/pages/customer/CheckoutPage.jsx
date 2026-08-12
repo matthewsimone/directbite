@@ -1006,7 +1006,7 @@ export default function CheckoutPage() {
       }
     })
     autocompleteRef.current = ac
-  }, [mapsLoaded, orderType])
+  }, [mapsLoaded, orderType, useNewAddress])
 
   // Log restaurant delivery config when it loads
   useEffect(() => {
@@ -1507,7 +1507,7 @@ export default function CheckoutPage() {
           </h3>
           <div className="flex gap-3">
             <button
-              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setDeliveryLat(null); setDeliveryLon(null); setDeliveryFeeCents(null); setAddressError(null) }}
+              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setDeliveryLat(null); setDeliveryLon(null); setDeliveryFeeCents(null); setDeliveryDistance(null); setDeliveryAddress(''); setAddressError(null) }}
               className={`flex-1 py-4 rounded-xl font-semibold text-base transition-colors ${
                 orderType === 'pickup'
                   ? 'bg-[#16A34A] text-white'
