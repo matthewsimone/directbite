@@ -631,6 +631,9 @@ export default function CheckoutPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, hours, isOpen, loading: restLoading } = useRestaurant(slug)
+  // Sent with the CREATE call only, so a returning signed-in customer's
+  // existing Stripe Customer is reused rather than duplicated.
+  const { getSessionTokenForPayment } = useCustomerAuth()
 
   // Title / favicon / manifest for the checkout screen. Without it, navigating
   // menu → checkout runs MenuPage's branding cleanup on unmount, which RESTORES
@@ -1196,6 +1199,9 @@ export default function CheckoutPage() {
               amount: Math.round(total * 100),
               order_data: buildOrderData(),
               idempotency_key: idempotencyKey.current,
+              // Top level, never inside order_data — that object is persisted
+              // wholesale into pending_orders.
+              session_token: getSessionTokenForPayment(),
             }),
           }
         )

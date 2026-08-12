@@ -280,6 +280,12 @@ export function CustomerAuthProvider({ children }) {
     }
   }, [])
 
+  // The one place the raw token leaves this module. create-payment-intent
+  // needs it to find the customer's existing Stripe Customer, and it must
+  // travel as a top-level field — never inside order_data, which is persisted
+  // wholesale. Deliberately narrow so readToken itself stays unexported.
+  const getSessionTokenForPayment = useCallback(() => readToken(), [])
+
   return (
     <CustomerAuthContext.Provider
       value={{
@@ -295,6 +301,7 @@ export function CustomerAuthProvider({ children }) {
         loadHistory,
         loadSavedProfile,
         linkPaymentCustomer,
+        getSessionTokenForPayment,
       }}
     >
       {children}

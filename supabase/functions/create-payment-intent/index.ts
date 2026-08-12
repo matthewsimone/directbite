@@ -16,6 +16,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Duplicated from customer-auth (its lines 91-99) rather than imported —
+// edge functions do not share a module here. MUST stay identical: a
+// different digest would never match a stored token_hash.
+async function hashToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token)
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -23,7 +36,10 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { restaurant_id, amount, order_data, payment_intent_id, idempotency_key } = await req.json();
+    // session_token is TOP LEVEL, never inside order_data: order_data is
+    // persisted wholesale into pending_orders, and a session token written
+    // there would be a 365-day credential sitting in plaintext.
+    const { restaurant_id, amount, order_data, payment_intent_id, idempotency_key, session_token } = await req.json();
 
     if (!restaurant_id || !amount) {
       return new Response(
@@ -319,28 +335,89 @@ serve(async (req: Request) => {
 
     pending_order_id = pendingOrder.id;
 
-    // Create a Stripe Customer on the connected account so the payment method
-    // can be reused for post-completion adjustment charges. NON-FATAL: if this
-    // fails we fall through to a customerless PaymentIntent (pre-change
-    // behavior) rather than blocking checkout.
     let customerId: string | null = null;
-    try {
-      const cd = order_data || {};
-      const customer = await stripe.customers.create(
-        {
-          name: cd.customer_name || undefined,
-          email: cd.customer_email || undefined,
-          phone: cd.customer_phone || undefined,
-          metadata: { restaurant_id, pending_order_id },
-        },
-        { stripeAccount: restaurant.stripe_account_id }
-      );
-      customerId = customer.id;
-    } catch (custErr: any) {
-      console.error(
-        "[create-payment-intent] customer create failed (non-fatal)",
-        custErr.message
-      );
+
+    // A verified session lets us reuse the Stripe Customer this person already
+    // has at this restaurant, so their saved card is offered again. Entirely
+    // best-effort: any miss, any failure, and we fall through to the create
+    // block below exactly as before. No session token means byte-identical
+    // behaviour to the guest path.
+    if (typeof session_token === "string" && session_token.trim()) {
+      try {
+        const tokenHash = await hashToken(session_token);
+
+        const { data: session } = await supabase
+          .from("customer_sessions")
+          .select("customer_id, revoked_at, expires_at")
+          .eq("token_hash", tokenHash)
+          .maybeSingle();
+
+        if (
+          session &&
+          session.revoked_at === null &&
+          new Date(session.expires_at).getTime() >= Date.now()
+        ) {
+          const { data: profile } = await supabase
+            .from("restaurant_customers")
+            .select("stripe_customer_id")
+            .eq("restaurant_id", restaurant_id)
+            .eq("customer_id", session.customer_id)
+            .maybeSingle();
+
+          const savedId = profile?.stripe_customer_id || null;
+
+          if (savedId) {
+            // A Customer deleted on the connected account still leaves its id
+            // in our table. Handing a deleted id to paymentIntents.create
+            // throws — and that call sits OUTSIDE the non-fatal catch below,
+            // so the throw would break checkout outright. Retrieve first and
+            // treat any failure, or a deleted flag, as no saved customer.
+            try {
+              const existing = await stripe.customers.retrieve(savedId, {
+                stripeAccount: restaurant.stripe_account_id,
+              });
+              if (!(existing as any).deleted) {
+                customerId = savedId;
+              }
+            } catch (retrieveErr: any) {
+              console.error(
+                "[create-payment-intent] saved customer retrieve failed (non-fatal)",
+                retrieveErr.message
+              );
+            }
+          }
+        }
+      } catch (sessionErr: any) {
+        console.error(
+          "[create-payment-intent] session customer lookup failed (non-fatal)",
+          sessionErr.message
+        );
+      }
+    }
+
+    if (!customerId) {
+      // Create a Stripe Customer on the connected account so the payment method
+      // can be reused for post-completion adjustment charges. NON-FATAL: if this
+      // fails we fall through to a customerless PaymentIntent (pre-change
+      // behavior) rather than blocking checkout.
+      try {
+        const cd = order_data || {};
+        const customer = await stripe.customers.create(
+          {
+            name: cd.customer_name || undefined,
+            email: cd.customer_email || undefined,
+            phone: cd.customer_phone || undefined,
+            metadata: { restaurant_id, pending_order_id },
+          },
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+        customerId = customer.id;
+      } catch (custErr: any) {
+        console.error(
+          "[create-payment-intent] customer create failed (non-fatal)",
+          custErr.message
+        );
+      }
     }
 
     // Create PaymentIntent directly on the connected account (direct charges)
