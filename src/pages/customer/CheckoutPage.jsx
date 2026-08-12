@@ -1643,12 +1643,12 @@ export default function CheckoutPage() {
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
               Delivery Address
             </h3>
-            {savedProfile?.delivery_address && !useNewAddress ? (
+            {deliveryAddress && !useNewAddress ? (
               <div>
                 <div className="rounded-xl border border-gray-200 px-4 py-3.5">
-                  <p className="text-base text-gray-900">{savedProfile.delivery_address}</p>
-                  {savedProfile.delivery_apt && (
-                    <p className="text-sm text-gray-500 mt-0.5">Apt {savedProfile.delivery_apt}</p>
+                  <p className="text-base text-gray-900">{deliveryAddress}</p>
+                  {deliveryApt && (
+                    <p className="text-sm text-gray-500 mt-0.5">Apt {deliveryApt}</p>
                   )}
                 </div>
                 <button
