@@ -167,6 +167,12 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
   const { isLoggedIn, loadSavedProfile } = useCustomerAuth()
 
+  // Two independent reasons not to run the flow: the restaurant hasn't been
+  // switched on (false for every live one), or this customer already has a
+  // session and would gain nothing from an SMS. Off, the phone field is the
+  // plain input it has always been.
+  const signinEnabled = restaurant?.checkout_signin_enabled === true && !isLoggedIn
+
   // Pull the identity's saved details and hand them up. Anything short of a
   // profile — not signed in, nothing saved, action not deployed — is a no-op:
   // the customer is filling the form out by hand and nothing should interrupt
@@ -470,26 +476,26 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       {/* Card form — contact fields above card, Link signup inline below */}
       {payMethod === 'card' && (
         <div className="space-y-4">
-          {/* 1. Phone — first, because the code it triggers is what prefills
-                 the two fields below. Entering a complete number sends that
-                 code; ignoring it costs the customer nothing. */}
+          {/* 1. Phone — first, because when sign-in is on, the code it
+                 triggers is what prefills the two fields below. With the flag
+                 off this is the plain input it has always been: no
+                 formatting, no send, writing straight to customerInfo. */}
           <input
             type="tel"
-            inputMode="numeric"
-            autoComplete="tel"
-            value={formatPhone(otp.phone)}
-            onChange={handlePhoneInput}
+            {...(signinEnabled ? { inputMode: 'numeric', autoComplete: 'tel' } : {})}
+            value={signinEnabled ? formatPhone(otp.phone) : customerInfo.phone}
+            onChange={signinEnabled ? handlePhoneInput : e => customerInfo.setPhone(e.target.value)}
             placeholder="Phone Number"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
 
           {/* A failed send leaves step at 'phone', so its error has to render
               here — the code block below never mounts to show it. */}
-          {otp.step === 'phone' && otp.error && (
+          {signinEnabled && otp.step === 'phone' && otp.error && (
             <p className="text-sm text-red-600">{otp.error}</p>
           )}
 
-          {otp.step === 'code' && !isLoggedIn && (
+          {signinEnabled && otp.step === 'code' && (
             <div className="rounded-xl border border-gray-200 bg-white px-4 py-3.5">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-900">Confirm it's you</p>
