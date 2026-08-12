@@ -1311,6 +1311,9 @@ export default function CheckoutPage() {
         tip,
         serviceFee,
         total,
+        // The confirmation page shows this rather than refetching it — the
+        // ledger figure is the same number in every case but a tier bump.
+        loyaltyPoints,
         restaurantName: restaurant.name,
         restaurantPhone: restaurant.phone,
         includeUtensils,

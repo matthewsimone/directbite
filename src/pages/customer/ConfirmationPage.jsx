@@ -96,6 +96,8 @@ function ConfirmationWithState({ state, slug, navigate }) {
     tip,
     serviceFee,
     total,
+    // Computed by checkout for its own earn band and forwarded here.
+    loyaltyPoints,
     restaurantName,
     restaurantPhone,
     includeUtensils,
@@ -135,6 +137,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
       estimatedTime={estimatedTime}
       items={items}
       subtotal={subtotal}
+      loyaltyPointsEarned={loyaltyPoints || 0}
       discountAmount={discountAmount}
       discountPercentage={discountPercentage}
       deliveryFee={deliveryFee}
