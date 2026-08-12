@@ -96,6 +96,8 @@ function ConfirmationWithState({ state, slug, navigate }) {
     tip,
     serviceFee,
     total,
+    // Computed by checkout for its own earn band and forwarded here.
+    loyaltyPoints,
     restaurantName,
     restaurantPhone,
     includeUtensils,
@@ -106,10 +108,6 @@ function ConfirmationWithState({ state, slug, navigate }) {
   } = state
 
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
-  // This path navigates with router state, which carries no loyalty data —
-  // both of these come from the same poll that resolves the order number.
-  const [loyaltyPointsEarned, setLoyaltyPointsEarned] = useState(null)
-  const [loyaltyRestaurant, setLoyaltyRestaurant] = useState(null)
 
   useEffect(() => {
     if (orderNumber || !state?.paymentIntentId || !supabase) return
@@ -118,11 +116,6 @@ function ConfirmationWithState({ state, slug, navigate }) {
     const interval = setInterval(async () => {
       attempts++
       const result = await fetchOrderByPi(state.paymentIntentId)
-
-      // Captured before the order-number check: the ledger row and the order
-      // number are written by different steps, so either can land first.
-      if (result?.loyalty_points_earned != null) setLoyaltyPointsEarned(result.loyalty_points_earned)
-      if (result?.restaurant) setLoyaltyRestaurant(result.restaurant)
 
       if (result?.order?.order_number) {
         setOrderNumber(result.order.order_number)
@@ -135,17 +128,6 @@ function ConfirmationWithState({ state, slug, navigate }) {
     return () => clearInterval(interval)
   }, [orderNumber, state?.paymentIntentId])
 
-  // Mirrors ConfirmationFromStripe: the ledger is the authority once it has a
-  // row, otherwise fall back to the same estimate checkout showed.
-  const earnedPoints = Number(loyaltyPointsEarned) > 0
-    ? Number(loyaltyPointsEarned)
-    : calculateLoyaltyPoints({
-        restaurant: loyaltyRestaurant,
-        subtotal,
-        discountAmount,
-        totalAmount: total,
-      })
-
   return (
     <ConfirmationLayout
       orderNumber={orderNumber}
@@ -155,7 +137,7 @@ function ConfirmationWithState({ state, slug, navigate }) {
       estimatedTime={estimatedTime}
       items={items}
       subtotal={subtotal}
-      loyaltyPointsEarned={loyaltyRestaurant?.loyalty_enabled === true ? earnedPoints : 0}
+      loyaltyPointsEarned={loyaltyPoints || 0}
       discountAmount={discountAmount}
       discountPercentage={discountPercentage}
       deliveryFee={deliveryFee}
