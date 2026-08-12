@@ -32,6 +32,11 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { encode as base64Encode } from "https://deno.land/std@0.177.0/encoding/base64.ts";
+// Constructed exactly as create-payment-intent does (its lines 3 and 7):
+// same pinned library version, same env var, no apiVersion option.
+import Stripe from "https://esm.sh/stripe@17.7.0";
+
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -845,6 +850,175 @@ async function handleProfile(body: any): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Action: link_payment_customer
+// ---------------------------------------------------------------------------
+
+// Called from the confirmation screen after an order completes, to record the
+// Stripe Customer that order's PaymentIntent was charged against.
+//
+// NOTHING HERE MAY FAIL LOUDLY. Every path — bad token, missing order, phone
+// mismatch, no Stripe customer, a thrown Stripe error — returns
+// { ok: true, linked: false }. The customer is looking at a confirmed order;
+// an error here would be noise about something they never asked for.
+const NOT_LINKED = { ok: true, linked: false };
+
+// Digits only, last ten. Strips +1, spaces, dashes and parens so a number
+// typed at checkout compares equal to the E.164 form on the identity.
+function lastTenDigits(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value.replace(/\D/g, "").slice(-10);
+}
+
+async function handleLinkPaymentCustomer(body: any): Promise<Response> {
+  try {
+    // --- 1. Session validation. Same sequence as handleSession, minus the
+    // last_seen_at touch, and reusing the same hashToken. ---
+    // The confirmation screen has neither an order id nor a restaurant id —
+    // it holds the Stripe payment intent and the slug from the URL. Both are
+    // resolved to ids below rather than trusted from the body.
+    const token = typeof body.token === "string" ? body.token : "";
+    const slug = typeof body.slug === "string" ? body.slug : "";
+    const payment_intent_id =
+      typeof body.payment_intent_id === "string" ? body.payment_intent_id : "";
+    if (!token || !slug || !payment_intent_id) {
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    const tokenHash = await hashToken(token);
+
+    const { data: session, error: sessionErr } = await supabase
+      .from("customer_sessions")
+      .select("id, customer_id, revoked_at, expires_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (sessionErr) {
+      console.error(
+        "customer-auth link session lookup failed:",
+        sessionErr.message
+      );
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    if (
+      !session ||
+      session.revoked_at !== null ||
+      new Date(session.expires_at).getTime() < Date.now()
+    ) {
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    const { data: identity, error: identityErr } = await supabase
+      .from("customer_identities")
+      .select("id, phone_e164")
+      .eq("id", session.customer_id)
+      .maybeSingle();
+
+    if (identityErr || !identity) {
+      console.error(
+        "customer-auth link identity read failed:",
+        identityErr?.message
+      );
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    // --- 2a. Resolve the restaurant from the slug. This is also the source of
+    // the connected account used for the Stripe retrieve below. ---
+    const { data: restaurant, error: restErr } = await supabase
+      .from("restaurants")
+      .select("id, stripe_account_id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (restErr) {
+      console.error("customer-auth link restaurant read failed:", restErr.message);
+      return jsonResponse(NOT_LINKED, 200);
+    }
+    if (!restaurant?.id || !restaurant.stripe_account_id) {
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    const restaurant_id = restaurant.id;
+
+    // --- 2b. The order, by payment intent. Both filters are required: the
+    // payment intent alone would let a caller reach an order at another
+    // restaurant. ---
+    const { data: order, error: orderErr } = await supabase
+      .from("orders")
+      .select("id, restaurant_id, customer_phone, stripe_payment_intent_id")
+      .eq("stripe_payment_intent_id", payment_intent_id)
+      .eq("restaurant_id", restaurant_id)
+      .maybeSingle();
+
+    if (orderErr) {
+      console.error("customer-auth link order read failed:", orderErr.message);
+      return jsonResponse(NOT_LINKED, 200);
+    }
+    if (!order || !order.stripe_payment_intent_id) {
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    const order_id = order.id;
+
+    // --- 3. SECURITY GATE. The session proves who the caller is; this proves
+    // the order is theirs. Without it any valid session could name any
+    // order_id and attach a stranger's card to its own profile. ---
+    const orderDigits = lastTenDigits(order.customer_phone);
+    const identityDigits = lastTenDigits(identity.phone_e164);
+    if (!orderDigits || orderDigits !== identityDigits) {
+      console.warn(
+        "customer-auth link phone mismatch; refusing to link",
+        { order_id, restaurant_id }
+      );
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    // --- 4. Connected account: already resolved in 2a. ---
+
+    // --- 5. The Stripe Customer, read off the order's own PaymentIntent —
+    // the same way admin-approve-adjustment locates it (its lines 194-204).
+    // Stripe is the system of record; nothing here trusts a client value. ---
+    const pi = await stripe.paymentIntents.retrieve(
+      order.stripe_payment_intent_id,
+      { stripeAccount: restaurant.stripe_account_id }
+    );
+
+    const stripeCustomerId =
+      typeof pi.customer === "string" ? pi.customer : null;
+
+    if (!stripeCustomerId) {
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    // --- 6. Upsert: a first-time customer at this restaurant has no profile
+    // row yet, so an UPDATE would silently match nothing. Keyed on the
+    // unique (restaurant_id, customer_id) from 062_customer_accounts_schema.
+    const { error: upsertErr } = await supabase
+      .from("restaurant_customers")
+      .upsert(
+        {
+          restaurant_id,
+          customer_id: identity.id,
+          stripe_customer_id: stripeCustomerId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "restaurant_id,customer_id" }
+      );
+
+    if (upsertErr) {
+      console.error("customer-auth link upsert failed:", upsertErr.message);
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    // --- 7. ---
+    return jsonResponse({ ok: true, linked: true }, 200);
+  } catch (err: any) {
+    console.error("customer-auth link_payment_customer failed:", err?.message);
+    return jsonResponse(NOT_LINKED, 200);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -880,6 +1054,8 @@ serve(async (req: Request) => {
         return await handleHistory(body);
       case "profile":
         return await handleProfile(body);
+      case "link_payment_customer":
+        return await handleLinkPaymentCustomer(body);
       case "logout":
         return await handleLogout(body);
       default:

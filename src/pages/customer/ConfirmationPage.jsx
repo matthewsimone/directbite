@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../hooks/useCart'
+import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { formatCurrency, formatPhone } from '../../utils/format'
 import { calculateLoyaltyPoints, formatPoints } from '../../utils/loyaltyPoints'
 import { formatScheduledLabel } from '../../utils/scheduling'
@@ -108,6 +109,8 @@ function ConfirmationWithState({ state, slug, navigate }) {
   } = state
 
   const [orderNumber, setOrderNumber] = useState(initialOrderNumber || null)
+  const { isLoggedIn, linkPaymentCustomer } = useCustomerAuth()
+  const linkFired = useRef(false)
 
   useEffect(() => {
     if (orderNumber || !state?.paymentIntentId || !supabase) return
@@ -127,6 +130,19 @@ function ConfirmationWithState({ state, slug, navigate }) {
 
     return () => clearInterval(interval)
   }, [orderNumber, state?.paymentIntentId])
+
+  // Records the Stripe Customer behind this order against the signed-in
+  // identity, so the card is offered on their next order here. Fires once,
+  // only after the poll has resolved an order number — which proves the
+  // order row exists. Result is ignored: a failure must be invisible.
+  useEffect(() => {
+    if (linkFired.current) return
+    if (!isLoggedIn) return
+    if (!orderNumber) return
+    if (!slug || !state?.paymentIntentId) return
+    linkFired.current = true
+    linkPaymentCustomer(slug, state.paymentIntentId)
+  }, [isLoggedIn, orderNumber, slug, state?.paymentIntentId, linkPaymentCustomer])
 
   return (
     <ConfirmationLayout

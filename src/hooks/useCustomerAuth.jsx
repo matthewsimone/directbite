@@ -258,6 +258,28 @@ export function CustomerAuthProvider({ children }) {
     }
   }, [])
 
+  // Records the Stripe Customer behind an order against this identity, so a
+  // later charge can find the card. Called from the confirmation screen, which
+  // holds a payment intent and a slug rather than ids. Resolves to
+  // { linked: false } on every failure and never throws — the customer is
+  // looking at a confirmed order and must not see anything about this.
+  const linkPaymentCustomer = useCallback(async (slug, paymentIntentId) => {
+    const token = readToken()
+    if (!token) return { linked: false }
+    try {
+      const { ok, data } = await callCustomerAuth({
+        action: 'link_payment_customer',
+        token,
+        slug,
+        payment_intent_id: paymentIntentId,
+      })
+      if (!ok || !data.ok) return { linked: false }
+      return { linked: data.linked === true }
+    } catch {
+      return { linked: false }
+    }
+  }, [])
+
   return (
     <CustomerAuthContext.Provider
       value={{
@@ -272,6 +294,7 @@ export function CustomerAuthProvider({ children }) {
         loadProfile,
         loadHistory,
         loadSavedProfile,
+        linkPaymentCustomer,
       }}
     >
       {children}
