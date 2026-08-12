@@ -796,23 +796,6 @@ export default function CheckoutPage() {
   const [deliveryDistance, setDeliveryDistance] = useState(null)
   const [deliveryFeeCents, setDeliveryFeeCents] = useState(null)
   const [addressError, setAddressError] = useState(null)
-
-  // TEMP diagnostic — remove. Placed below the address state rather than
-  // beside the effects above because deliveryDistance is declared at 742;
-  // referencing it in a dep array any earlier is a TDZ error at render.
-  useEffect(() => {
-    console.log('[ADDR]', {
-      orderType,
-      useNewAddress,
-      deliveryAddress,
-      deliveryLat,
-      deliveryLon,
-      deliveryDistance,
-      savedProfileAddr: savedProfile?.delivery_address ?? null,
-      at: new Date().toISOString().slice(11, 23),
-    })
-  }, [orderType, useNewAddress, deliveryAddress, deliveryLat, deliveryLon, deliveryDistance, savedProfile])
-
   // M5c — Uber Direct quote state (only populated when delivery_fulfillment != 'in_house')
   const [resolvedMode, setResolvedMode] = useState(null) // null | 'in_house' | 'uber_direct'
   const [uberQuoteId, setUberQuoteId] = useState(null)
