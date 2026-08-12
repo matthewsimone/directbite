@@ -1700,7 +1700,16 @@ export default function CheckoutPage() {
               <input
                 type="text"
                 value={deliveryApt}
-                onChange={e => setDeliveryApt(e.target.value)}
+                onChange={e => {
+                  const next = e.target.value
+                  setDeliveryApt(next)
+                  // The apt is usually typed after the address is chosen, so the write in
+                  // place_changed captures an empty value. Persist it as it changes.
+                  const stored = readStoredAddress()
+                  if (stored) {
+                    writeStoredAddress(stored.address, next, stored.lat, stored.lng)
+                  }
+                }}
                 placeholder="Apt/Unit (optional)"
                 className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
