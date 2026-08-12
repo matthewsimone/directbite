@@ -1629,12 +1629,12 @@ export default function CheckoutPage() {
             {quoteLoading && (
               <p className="mt-2 text-sm text-gray-500 italic">Calculating delivery fee...</p>
             )}
-            {!quoteLoading && resolvedMode === 'uber_direct' && uberCustomerFeeCents != null && !addressError && (
+            {!quoteLoading && resolvedMode === 'uber_direct' && uberCustomerFeeCents != null && deliveryLat && !addressError && (
               <p className="mt-2 text-sm text-gray-600">
                 Delivery fee: {formatCurrency(deliveryFee)} (via Uber Direct)
               </p>
             )}
-            {!quoteLoading && resolvedMode !== 'uber_direct' && deliveryDistance != null && !addressError && (
+            {!quoteLoading && resolvedMode !== 'uber_direct' && deliveryDistance != null && deliveryLat && !addressError && (
               <p className="mt-2 text-sm text-gray-600">
                 Distance: {deliveryDistance} mi — Delivery fee: {formatCurrency(deliveryFee)}
               </p>
