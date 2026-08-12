@@ -159,7 +159,7 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -476,6 +476,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       {/* Card form — contact fields above card, Link signup inline below */}
       {payMethod === 'card' && (
         <div className="space-y-4">
+          {contactCollapsed ? (
+            // Everything below is already known, so asking again is friction.
+            // Quiet text rather than a card: it is a receipt of what we hold,
+            // not a control.
+            <p className="text-sm text-gray-500">
+              {customerInfo.name} · {formatPhone(String(customerInfo.phone).replace(/\D/g, '').slice(-10))}
+            </p>
+          ) : (
+            <>
           {/* 1. Phone — first, because when sign-in is on, the code it
                  triggers is what prefills the two fields below. With the flag
                  off this is the plain input it has always been: no
@@ -549,6 +558,8 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             placeholder="Email Address"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
+            </>
+          )}
 
           {/* 5. Card details — card only */}
           <PaymentElement
@@ -681,6 +692,11 @@ export default function CheckoutPage() {
   const [deliveryApt, setDeliveryApt] = useState('')
   const [deliveryLat, setDeliveryLat] = useState(null)
   const [deliveryLon, setDeliveryLon] = useState(null)
+  // What the identity had saved, kept so the form can collapse to a summary
+  // instead of asking for details we already hold.
+  const [savedProfile, setSavedProfile] = useState(null)
+  // Set when the customer rejects the saved address and wants to type one.
+  const [useNewAddress, setUseNewAddress] = useState(false)
 
   // Saved details from a verified identity. What the customer has already
   // typed always wins — this only fills blanks, never overwrites.
@@ -691,7 +707,9 @@ export default function CheckoutPage() {
   // between renders (React #310).
   const handleSavedProfile = useCallback(profile => {
     if (!profile) return
+    setSavedProfile(profile)
     if (!customerName && profile.display_name) setCustomerName(profile.display_name)
+    if (!customerPhone && profile.phone_e164) setCustomerPhone(profile.phone_e164)
     if (!customerEmail && profile.email) setCustomerEmail(profile.email)
     // Address only on delivery, and only when they haven't started one.
     if (orderType === 'delivery' && !deliveryAddress && profile.delivery_address) {
@@ -701,7 +719,7 @@ export default function CheckoutPage() {
       if (profile.delivery_lat != null) setDeliveryLat(Number(profile.delivery_lat))
       if (profile.delivery_lng != null) setDeliveryLon(Number(profile.delivery_lng))
     }
-  }, [customerName, customerEmail, orderType, deliveryAddress])
+  }, [customerName, customerPhone, customerEmail, orderType, deliveryAddress])
 
   const [deliveryDistance, setDeliveryDistance] = useState(null)
   const [deliveryFeeCents, setDeliveryFeeCents] = useState(null)
@@ -841,6 +859,16 @@ export default function CheckoutPage() {
     : null
 
   // Build order_data to pass to edge function (and ultimately to webhook)
+  // Collapse the contact fields only when we actually have all three values.
+  // Gating on isLoggedIn alone would strand a signed-in customer whose
+  // profile is incomplete with a form they cannot fill or submit.
+  const contactCollapsed = Boolean(
+    savedProfile &&
+    customerName.trim() &&
+    customerPhone.trim() &&
+    customerEmail.trim()
+  )
+
   const buildOrderData = useCallback(() => ({
     restaurant_id: restaurant?.id,
     order_type: orderType,
@@ -1520,6 +1548,31 @@ export default function CheckoutPage() {
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
               Delivery Address
             </h3>
+            {savedProfile?.delivery_address && !useNewAddress ? (
+              <div>
+                <div className="rounded-xl border border-gray-200 px-4 py-3.5">
+                  <p className="text-base text-gray-900">{savedProfile.delivery_address}</p>
+                  {savedProfile.delivery_apt && (
+                    <p className="text-sm text-gray-500 mt-0.5">Apt {savedProfile.delivery_apt}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Clear the selection as well as revealing the input — a
+                    // stale address must not survive into the order payload.
+                    setUseNewAddress(true)
+                    setDeliveryAddress('')
+                    setDeliveryApt('')
+                    setDeliveryLat(null)
+                    setDeliveryLon(null)
+                  }}
+                  className="mt-2 text-sm text-[#16A34A]"
+                >
+                  Use a different address
+                </button>
+              </div>
+            ) : (
             <div className="space-y-3">
               <input
                 ref={inputRef}
@@ -1554,6 +1607,7 @@ export default function CheckoutPage() {
                 className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
             </div>
+            )}
             {quoteLoading && (
               <p className="mt-2 text-sm text-gray-500 italic">Calculating delivery fee...</p>
             )}
@@ -1755,6 +1809,7 @@ export default function CheckoutPage() {
                 needsAddress={needsAddress}
                 showPlaceholder={showPlaceholder}
                 onSavedProfile={handleSavedProfile}
+                contactCollapsed={contactCollapsed}
                 onWalletCustomer={async (name, email, phone) => {
                   // Update customer state for confirmation page
                   setCustomerName(name)
