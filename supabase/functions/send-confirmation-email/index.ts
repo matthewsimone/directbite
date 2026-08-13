@@ -70,7 +70,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
         <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
           <strong>${item.quantity}x ${item.item_name}${item.size_name ? ` (${item.size_name})` : ""}</strong>
           <span style="float:right;font-weight:bold;">${formatMoney(lineTotal)}</span>
-          ${Number(order.discount_percentage) > 0 && item.discount_exempt === true ? `<div style="font-size:12px;color:#999;">*already discounted*</div>` : ""}
+          ${Number(order.discount_percentage) > 0 && item.discount_exempt === true && !item.loyalty_redemption_id ? `<div style="font-size:12px;color:#999;">*already discounted*</div>` : ""}
           ${item.loyalty_redemption_id ? `<div style="font-size:12px;color:#16a34a;font-weight:bold;">** LOYALTY REWARD - ${Number(order.loyalty_points_spent || 0)} PTS **</div>` : ""}
     `;
 

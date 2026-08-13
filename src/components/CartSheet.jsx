@@ -113,7 +113,7 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
                           </div>
                         )}
 
-                        {promotion && item.discount_exempt === true && (
+                        {promotion && item.discount_exempt === true && !item.loyaltyRedemptionId && (
                           <div className="text-[11px] text-gray-400">*already discounted*</div>
                         )}
 

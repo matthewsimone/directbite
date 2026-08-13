@@ -429,7 +429,7 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
                 bold(false)
               }
 
-              if (Number(order.discount_percentage) > 0 && item.discount_exempt === true) {
+              if (Number(order.discount_percentage) > 0 && item.discount_exempt === true && !item.loyalty_redemption_id) {
                 printer.addText('        *already discounted*\n')
               }
 

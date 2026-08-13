@@ -952,7 +952,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               <p className="font-bold text-base">
                 {item.quantity}x {item.item_name}{item.size_name ? ` (${item.size_name})` : ''}
               </p>
-              {Number(order.discount_percentage) > 0 && item.discount_exempt === true && (
+              {Number(order.discount_percentage) > 0 && item.discount_exempt === true && !item.loyalty_redemption_id && (
                 <p className="pl-6 text-[11px] text-gray-400">*already discounted*</p>
               )}
               {item.loyalty_redemption_id && (

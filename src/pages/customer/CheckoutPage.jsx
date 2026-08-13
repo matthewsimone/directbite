@@ -1824,8 +1824,13 @@ export default function CheckoutPage() {
                       {formatCurrency(lineTotal)}
                     </span>
                   </div>
-                  {promotion && item.discount_exempt === true && (
+                  {promotion && item.discount_exempt === true && !item.loyaltyRedemptionId && (
                     <div className="text-[11px] text-gray-400">*already discounted*</div>
+                  )}
+                  {item.loyaltyRedemptionId && (
+                    <div className="text-[11px] font-semibold text-[#16A34A] mt-0.5">
+                      ** LOYALTY REWARD — {item.loyaltyPointsSpent} PTS **
+                    </div>
                   )}
                   {item.toppings?.map((t, i) => (
                     <div key={i} className="flex justify-between text-sm text-gray-500 ml-4 mt-0.5">
