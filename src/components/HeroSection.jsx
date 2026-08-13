@@ -5,7 +5,11 @@ import { formatPoints } from './rewardsShared'
 // Hand-written — there is no icon library in package.json and no existing
 // crown asset. Filled rather than stroked: at 14px a 2px outline closes up the
 // valleys and the shape stops reading as a crown. Same 0 0 24 24 grid as the
-// repo's other inline icons; currentColor inherits the pill's text colour.
+// repo's other inline icons.
+//
+// The colour is set on the svg rather than inherited: currentColor resolves
+// against this element's own text colour, so the class below makes the glyph
+// platform green while the pill's label and border stay grey.
 //
 // The body is one closed path — up the left side to the outer peak, down to a
 // valley, up to the centre peak, down to the second valley, up to the right
@@ -15,7 +19,7 @@ import { formatPoints } from './rewardsShared'
 function CrownIcon() {
   return (
     <svg
-      className="w-3.5 h-3.5 shrink-0"
+      className="w-3.5 h-3.5 shrink-0 text-[#16A34A]"
       fill="currentColor"
       viewBox="0 0 24 24"
       aria-hidden="true"
@@ -26,14 +30,14 @@ function CrownIcon() {
   )
 }
 
-// Same conventions as CrownIcon: filled silhouette on the 0 0 24 24 grid,
-// currentColor, no stroke. Head is a plain circle; the shoulders are a
-// rounded-corner block so the two shapes read as one figure at 14px rather
-// than a dot above a slab.
+// Same conventions as CrownIcon: filled silhouette on the 0 0 24 24 grid, no
+// stroke, and the same self-set green rather than an inherited colour. Head is
+// a plain circle; the shoulders are a rounded-corner block so the two shapes
+// read as one figure at 14px rather than a dot above a slab.
 function PersonIcon() {
   return (
     <svg
-      className="w-3.5 h-3.5 shrink-0"
+      className="w-3.5 h-3.5 shrink-0 text-[#16A34A]"
       fill="currentColor"
       viewBox="0 0 24 24"
       aria-hidden="true"
