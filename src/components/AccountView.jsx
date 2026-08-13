@@ -1,7 +1,7 @@
 // The signed-in account surface. Presentational only — every value arrives as
-// a prop, and this calls NO context hooks (in particular not useCustomerAuth),
-// matching RewardsView so both can render on a custom domain where
-// CustomerAuthProvider is not mounted.
+// a prop and this calls no context hooks, matching RewardsView. The caller
+// owns the data and the side effects; this file owns the markup, so it can be
+// rendered and reasoned about without a provider around it.
 //
 // Two configurations off one component:
 //   loyaltyEnabled true  — the full rewards surface: points hero, Rewards |

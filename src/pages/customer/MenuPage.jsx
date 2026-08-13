@@ -6,6 +6,7 @@ import { useMenu } from '../../hooks/useMenu'
 import { usePromotion } from '../../hooks/usePromotion'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
 import { useCart } from '../../hooks/useCart'
+import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { calculateLoyaltyPoints } from '../../utils/loyaltyPoints'
 import { useWalletDetection } from '../../hooks/useWalletDetection'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
@@ -15,6 +16,7 @@ import CategoryTabs from '../../components/CategoryTabs'
 import MenuSearch from '../../components/MenuSearch'
 import MenuItemCard from '../../components/MenuItemCard'
 import CartButton from '../../components/CartButton'
+import SignInSheet from '../../components/SignInSheet'
 
 // Interaction-gated — kept out of the initial bundle via React.lazy. ItemModal
 // mounts on item tap (or ?item= deep-link); CartSheet mounts when the cart
@@ -99,12 +101,18 @@ export default function MenuPage() {
   } = useMenu(restaurant?.id)
   const { promotion } = usePromotion(restaurant?.id)
   const { addItem, itemCount, subtotal } = useCart()
+  const { isLoggedIn, loadProfile } = useCustomerAuth()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState(null)
   const [selectedItem, setSelectedItem] = useState(null)
   const [showCart, setShowCart] = useState(false)
   const [pointsDelta, setPointsDelta] = useState(null)
+  const [signInOpen, setSignInOpen] = useState(false)
+  // Powers the hero button's label only. Deliberately NOT part of any loading
+  // gate below — the menu paints on its own schedule and the label fills in
+  // when this lands, so a slow profile read can never delay the food.
+  const [heroProfile, setHeroProfile] = useState(null)
 
   const prevPointsRef = useRef(0)
   const sectionRefs = useRef({})
@@ -122,6 +130,20 @@ export default function MenuPage() {
     }
     prevPointsRef.current = next
   }, [subtotal, restaurant])
+
+  // The hero button's name and balance. Gated on isLoggedIn so a signed-out
+  // visitor makes no request at all, and scoped to THIS restaurant — the
+  // profile is per-restaurant and the provider caches nothing, by design
+  // (useCustomerAuth.jsx:201-204). The cancelled flag stops a slow response
+  // for a previous restaurant from labelling this one.
+  useEffect(() => {
+    if (!restaurant?.id || !isLoggedIn) { setHeroProfile(null); return }
+    let cancelled = false
+    loadProfile(restaurant.id).then(p => {
+      if (!cancelled) setHeroProfile(p)
+    })
+    return () => { cancelled = true }
+  }, [restaurant?.id, isLoggedIn, loadProfile])
 
   // Set initial active category
   useEffect(() => {
@@ -301,7 +323,17 @@ export default function MenuPage() {
     <div className="min-h-screen bg-white pb-24">
       {restaurant && <PromotionBanner promotion={promotion} />}
       {restaurant ? (
-        <HeroSection restaurant={restaurant} isOpen={isOpen} nextOpenTime={nextOpenTime} hoursUnknown={hoursUnknown} />
+        <HeroSection
+          restaurant={restaurant}
+          isOpen={isOpen}
+          nextOpenTime={nextOpenTime}
+          hoursUnknown={hoursUnknown}
+          isLoggedIn={isLoggedIn}
+          profile={heroProfile}
+          onSignIn={() => setSignInOpen(true)}
+          onAccount={() => navigate(`/${slug}/account`)}
+          onRewards={() => navigate(`/${slug}/rewards`)}
+        />
       ) : (
         <HeroSkeleton />
       )}
@@ -436,6 +468,20 @@ export default function MenuPage() {
             }}
           />
         </Suspense>
+      )}
+
+      {/* Sign-in sheet. onSuccess takes no arguments — verifyCode sets the
+          provider's identity directly, isLoggedIn flips, and the profile
+          effect above re-runs on that dep to fill in the label. The customer
+          stays on the menu. */}
+      {restaurant && (
+        <SignInSheet
+          open={signInOpen}
+          onClose={() => setSignInOpen(false)}
+          onSuccess={() => {}}
+          restaurantId={restaurant.id}
+          brandColor={restaurant.primary_color || '#16A34A'}
+        />
       )}
 
       {/* Cart sheet */}

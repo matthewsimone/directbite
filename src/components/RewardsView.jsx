@@ -1,7 +1,7 @@
-// Signed-out marketing for a restaurant's loyalty program. Presentational only
-// — every value arrives as a prop. Deliberately calls NO context hooks (in
-// particular not useCustomerAuth), so this renders unchanged on a custom
-// domain, where CustomerAuthProvider is not mounted.
+// Signed-out marketing for a restaurant's loyalty program. Presentational
+// only — every value arrives as a prop and this calls no context hooks. The
+// caller owns the data and the side effects; this file owns the markup, so it
+// can be rendered and reasoned about without a provider around it.
 //
 // The signed-in surface used to live here behind a `customer` ternary; it is
 // now AccountView, on its own route. This file only ever renders for a
