@@ -1,64 +1,39 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
-import { useCart } from '../../hooks/useCart'
-import { resolveOrderToCart } from '../../lib/reorder'
 import RewardsView from '../../components/RewardsView'
 import SignInSheet from '../../components/SignInSheet'
 
+// Signed-out marketing for the loyalty program. The signed-in surface lives at
+// /:slug/account — this page's only jobs are to sell the program to a visitor
+// who has no account yet, and to get them signed in.
 export default function RewardsPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
-  const { loading: authLoading, isLoggedIn, loadProfile, loadHistory, redeemReward } = useCustomerAuth()
-  const { addItem } = useCart()
+  const { loading: authLoading, isLoggedIn } = useCustomerAuth()
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
   useRestaurantBranding(restaurant, 'ordering')
 
   const [tiers, setTiers] = useState([])
   const [rewards, setRewards] = useState([])
-  const [profile, setProfile] = useState(null)
-  const [profileLoading, setProfileLoading] = useState(false)
-  const [history, setHistory] = useState(null)
   const [dataLoading, setDataLoading] = useState(false)
   const [signInOpen, setSignInOpen] = useState(false)
 
+  const loyaltyEnabled = restaurant?.loyalty_enabled === true
+
+  // A restaurant with loyalty off redirects below, so there is nothing to
+  // fetch for one — and RLS would return empty sets anyway
+  // (070_loyalty_public_read scopes both anon policies on the flag).
   useEffect(() => {
     if (!restaurant?.id) return
+    if (!loyaltyEnabled) { setTiers([]); setRewards([]); return }
     fetchLoyalty(restaurant.id)
-  }, [restaurant?.id])
-
-  // The profile is scoped to THIS page's restaurant, so a customer viewing one
-  // restaurant's rewards can never see another restaurant's balance. The
-  // cancelled flag stops a slow response for a previous restaurant from
-  // overwriting a newer one.
-  // profile stays null for four different states — unfetched, no row here,
-  // request failed, logged out — so the gate below tracks the request itself
-  // rather than its result. The cleanup deliberately leaves profileLoading
-  // set: a superseded request must not clear a flag the newer one now owns.
-  useEffect(() => {
-    if (!restaurant?.id || !isLoggedIn) { setProfile(null); setProfileLoading(false); return }
-    let cancelled = false
-    setProfileLoading(true)
-    loadProfile(restaurant.id).then(p => {
-      if (!cancelled) { setProfile(p); setProfileLoading(false) }
-    })
-    return () => { cancelled = true }
-  }, [restaurant?.id, isLoggedIn, loadProfile])
-
-  // Same scoping as the profile above, but deliberately outside the loading
-  // gate — the page renders without it and the Orders tab shows its own
-  // loading state.
-  useEffect(() => {
-    if (!restaurant?.id || !isLoggedIn) { setHistory(null); return }
-    let cancelled = false
-    loadHistory(restaurant.id).then(h => { if (!cancelled) setHistory(h) })
-    return () => { cancelled = true }
-  }, [restaurant?.id, isLoggedIn, loadHistory])
+  }, [restaurant?.id, loyaltyEnabled])
 
   async function fetchLoyalty(restaurantId) {
     setDataLoading(true)
@@ -84,73 +59,6 @@ export default function RewardsPage() {
     setDataLoading(false)
   }
 
-  // Rebuilds the order against today's menu, then hands off to the ordering
-  // flow. Appends to whatever is already in the cart — the confirm-or-replace
-  // prompt for a non-empty cart is a follow-up.
-  async function handleReorder(order) {
-    try {
-      const { lines, dropped } = await resolveOrderToCart(supabase, restaurant.id, order)
-
-      if (lines.length === 0) {
-        toast.error("Those items aren't available right now")
-        return
-      }
-
-      lines.forEach(addItem)
-
-      if (dropped.length > 0) {
-        toast(
-          `${lines.length} item${lines.length === 1 ? '' : 's'} added · ${dropped.join(', ')} unavailable`
-        )
-      }
-
-      navigate(`/${slug}`)
-    } catch {
-      toast.error('Could not rebuild that order')
-    }
-  }
-
-  const handleRedeem = useCallback(async (reward) => {
-    if (!reward?.id || !slug) return
-    const res = await redeemReward(slug, reward.id)
-    if (!res.ok) {
-      const messages = {
-        redemption_in_progress: 'You already have a reward in your cart. Remove it to choose a different one.',
-        insufficient_points: 'Not enough points for that reward yet.',
-        reward_unavailable: "That reward isn't available right now.",
-        loyalty_disabled: 'Rewards are not available at this restaurant.',
-        unauthorized: 'Please sign in again.',
-      }
-      toast.error(messages[res.error] || 'Could not apply that reward. Please try again.')
-      return
-    }
-
-    // An item reward becomes a cart line at zero. A discount reward carries
-    // no menu item, so it becomes a marker line — priced at zero, with the
-    // money coming off once in the totals, driven by the redemption row the
-    // server reads at payment time.
-    const rw = res.reward || {}
-    addItem({
-      menuItemId: rw.menu_item_id || null,
-      itemSizeId: rw.item_size_id || null,
-      itemName: rw.name || 'Reward',
-      sizeName: null,
-      basePrice: 0,
-      fullBasePrice: 0,
-      quantity: 1,
-      discount_exempt: true,
-      specialInstructions: null,
-      toppings: [],
-      loyaltyRedemptionId: res.redemption_id,
-      loyaltyPointsSpent: rw.points_cost || 0,
-      loyaltyRewardKind: rw.kind || null,
-      loyaltyDiscountCents: rw.discount_cents || 0,
-      loyaltyMinSubtotalCents: rw.min_subtotal_cents || 0,
-    })
-
-    navigate(`/${slug}`)
-  }, [slug, redeemReward, addItem, navigate])
-
   // Restaurant fetch hit the 10s hard deadline — we don't know whether the
   // restaurant exists, so offer a retry rather than a misleading "not found".
   if (restFailed && !restaurant) {
@@ -175,7 +83,7 @@ export default function RewardsPage() {
     )
   }
 
-  if (restLoading || dataLoading || authLoading || profileLoading || !restaurant) {
+  if (restLoading || dataLoading || authLoading || !restaurant) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white px-6">
         <p className="text-gray-400">Loading...</p>
@@ -183,23 +91,23 @@ export default function RewardsPage() {
     )
   }
 
-  if (!restaurant.loyalty_enabled) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white px-6 text-center">
-        <p className="text-gray-500">This restaurant doesn't have a rewards program yet.</p>
-      </div>
-    )
+  // Both redirects are only reachable once auth has settled — authLoading is
+  // part of the gate above. That ordering is what keeps this page and
+  // /:slug/account from pointing at each other: /account sends a visitor here
+  // only when isLoggedIn is false, and this sends them there only when it is
+  // true, so the two conditions can never hold at the same moment. Both routes
+  // read one provider value (CustomerAuthProvider is mounted above the router
+  // in App.jsx), so there is no window where they disagree. `replace` leaves
+  // no history entry to walk back into.
+  if (isLoggedIn) {
+    return <Navigate to={`/${slug}/account`} replace />
   }
 
-  const customer = isLoggedIn && profile
-    ? {
-        displayName: (profile.display_name || '').split(' ')[0] || '',
-        pointsBalance: profile.points_balance ?? 0,
-        lifetimePoints: profile.lifetime_points_earned ?? 0,
-        tierLevel: profile.tier_level ?? 1,
-        orderCount: profile.order_count ?? 0,
-      }
-    : null
+  // No button links here for a restaurant without a program, but a typed URL
+  // or a stale bookmark must not render an empty program page.
+  if (!loyaltyEnabled) {
+    return <Navigate to={`/${slug}`} replace />
+  }
 
   return (
     <div className="min-h-screen bg-white">
@@ -223,12 +131,6 @@ export default function RewardsPage() {
           restaurant={restaurant}
           tiers={tiers}
           rewards={rewards}
-          customer={customer}
-          orders={history?.orders ?? []}
-          transactions={history?.transactions ?? []}
-          historyLoading={isLoggedIn && history === null}
-          onReorder={handleReorder}
-          onRedeem={handleRedeem}
           onSignIn={() => setSignInOpen(true)}
         />
       </div>
@@ -236,10 +138,11 @@ export default function RewardsPage() {
       <SignInSheet
         open={signInOpen}
         onClose={() => setSignInOpen(false)}
-        // No explicit refetch: the profile effect above depends on isLoggedIn,
-        // which flips true on a successful verify, so the profile for this
-        // restaurant reloads on its own.
-        onSuccess={() => {}}
+        // A successful verify flips isLoggedIn, which the redirect above would
+        // catch on the next render anyway — but going explicitly means the
+        // customer lands on their account rather than watching this page
+        // rearrange itself first.
+        onSuccess={() => navigate(`/${slug}/account`)}
         restaurantId={restaurant.id}
         brandColor={restaurant.primary_color || '#16A34A'}
       />
