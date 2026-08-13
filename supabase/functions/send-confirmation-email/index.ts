@@ -71,6 +71,7 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
           <strong>${item.quantity}x ${item.item_name}${item.size_name ? ` (${item.size_name})` : ""}</strong>
           <span style="float:right;font-weight:bold;">${formatMoney(lineTotal)}</span>
           ${Number(order.discount_percentage) > 0 && item.discount_exempt === true ? `<div style="font-size:12px;color:#999;">*already discounted*</div>` : ""}
+          ${item.loyalty_redemption_id ? `<div style="font-size:12px;color:#16a34a;font-weight:bold;">** LOYALTY REWARD - ${Number(order.loyalty_points_spent || 0)} PTS **</div>` : ""}
     `;
 
     const qty = item.quantity || 1;
@@ -120,6 +121,10 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
 
   if (Number(order.discount_amount) > 0) {
     pricingHtml += `<tr><td style="padding:4px 0;color:#16a34a;">Discount (${order.discount_percentage}%)</td><td style="text-align:right;padding:4px 0;color:#16a34a;">-${formatMoney(order.discount_amount)}</td></tr>`;
+  }
+
+  if (Number(order.loyalty_discount_amount) > 0) {
+    pricingHtml += `<tr><td style="padding:4px 0;color:#16a34a;">Loyalty Reward</td><td style="text-align:right;padding:4px 0;color:#16a34a;">-${formatMoney(order.loyalty_discount_amount)}</td></tr>`;
   }
 
   if (order.order_type === "delivery" && Number(order.delivery_fee) > 0) {

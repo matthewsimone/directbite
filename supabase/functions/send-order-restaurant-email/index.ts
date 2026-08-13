@@ -56,6 +56,7 @@ function buildRestaurantHtml(order: any, restaurant: any, items: any[]): string 
         <td style="padding:8px 0;border-bottom:1px solid #f3f4f6;">
           <strong>${item.quantity}x ${item.item_name}${item.size_name ? ` (${item.size_name})` : ""}</strong>
           <span style="float:right;font-weight:bold;">${formatMoney(lineTotal)}</span>
+          ${item.loyalty_redemption_id ? `<div style="font-size:12px;color:#16a34a;font-weight:bold;">** LOYALTY REWARD - ${Number(order.loyalty_points_spent || 0)} PTS **</div>` : ""}
     `;
 
     const qty = item.quantity || 1;

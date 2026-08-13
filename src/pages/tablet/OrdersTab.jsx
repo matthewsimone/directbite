@@ -955,6 +955,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
               {Number(order.discount_percentage) > 0 && item.discount_exempt === true && (
                 <p className="pl-6 text-[11px] text-gray-400">*already discounted*</p>
               )}
+              {item.loyalty_redemption_id && (
+                <p className="pl-6 text-[11px] text-[#16A34A] font-semibold">
+                  ** LOYALTY REWARD - {Number(order.loyalty_points_spent || 0)} PTS **
+                </p>
+              )}
               {item.order_item_toppings?.map(t => (
                 <p key={t.id} className="pl-6 text-sm text-gray-600">
                   {t.placement_type === 'addon'
@@ -979,6 +984,9 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           <Row label="Subtotal" value={formatMoney(order.subtotal)} />
           {Number(order.discount_amount) > 0 && (
             <Row label={`Discount (${order.discount_percentage}%)`} value={`-${formatMoney(order.discount_amount)}`} className="text-green-600" />
+          )}
+          {Number(order.loyalty_discount_amount) > 0 && (
+            <Row label="Loyalty Reward" value={`-${formatMoney(order.loyalty_discount_amount)}`} className="text-green-600" />
           )}
           {isDelivery && Number(order.delivery_fee) > 0 && (
             <Row label="Delivery Fee" value={formatMoney(order.delivery_fee)} />
