@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { formatCurrency } from '../utils/format'
 import { calculateLoyaltyPoints, pointsLabel } from '../utils/loyaltyPoints'
 import { useCart } from '../hooks/useCart'
+// Safe to call here: CartSheet mounts only inside MenuPage, which routes at
+// /:slug under CustomerAuthProvider. It never renders on a custom domain.
+import { useCustomerAuth } from '../hooks/useCustomerAuth'
 
 // Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
 function withAlpha(hex, alpha) {
@@ -13,6 +16,10 @@ function withAlpha(hex, alpha) {
 
 export default function CartSheet({ onClose, onCheckout, promotion, restaurant }) {
   const { items, removeItem, updateQuantity } = useCart()
+  const { cancelRedemption } = useCustomerAuth()
+  // The restaurant row is selected with '*', so the slug the cancel call needs
+  // is already here — no new prop for every caller to thread through.
+  const slug = restaurant?.slug || null
   const [visible, setVisible] = useState(false)
 
   useEffect(() => {
@@ -83,6 +90,15 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
                           {item.quantity}x {item.itemName}{item.sizeName ? ` (${item.sizeName})` : ''}
                         </span>
 
+                        {/* A reward line is paid for with points, so it has to
+                            announce itself — a $0.00 line with no explanation
+                            reads as a pricing bug. */}
+                        {item.loyaltyRedemptionId && (
+                          <div className="text-[11px] font-semibold text-[#16A34A] mt-0.5">
+                            ** LOYALTY REWARD — {item.loyaltyPointsSpent} PTS **
+                          </div>
+                        )}
+
                         {promotion && item.discount_exempt === true && (
                           <div className="text-[11px] text-gray-400">*already discounted*</div>
                         )}
@@ -110,7 +126,32 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
                       </span>
                     </div>
 
-                    {/* Quantity controls */}
+                    {/* Quantity controls. A reward line is one redemption, so
+                        it gets a remove control only — incrementing it would
+                        imply a second reward the customer has not paid points
+                        for. */}
+                    {item.loyaltyRedemptionId ? (
+                      <div className="flex items-center gap-3 mt-2">
+                        <button
+                          onClick={async () => {
+                            // Remove the line first so the cart responds immediately; the points
+                            // return on the server's own timing. If the cancel fails the expiry
+                            // sweep reclaims them within the TTL, so a failure here costs the
+                            // customer nothing.
+                            const redemptionId = item.loyaltyRedemptionId
+                            updateQuantity(item.id, 0)
+                            if (redemptionId && slug) {
+                              await cancelRedemption(slug, redemptionId)
+                            }
+                          }}
+                          className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-500 hover:border-gray-400"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
                     <div className="flex items-center gap-3 mt-2">
                       <button
                         onClick={() => updateQuantity(item.id, item.quantity - 1)}
@@ -138,6 +179,7 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
                         </svg>
                       </button>
                     </div>
+                    )}
                   </div>
                 )
               })}

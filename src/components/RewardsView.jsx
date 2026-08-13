@@ -192,7 +192,7 @@ function RewardThumb({ reward, brandColor, widthCls }) {
   return null
 }
 
-export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, orders = [], transactions = [], historyLoading = false, onReorder = () => {}, onSignIn, signInHref }) {
+export default function RewardsView({ restaurant, tiers = [], rewards = [], customer = null, orders = [], transactions = [], historyLoading = false, onReorder = () => {}, onRedeem = () => {}, onSignIn, signInHref }) {
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
   // The balance card reuses the website hero's photo and logo — useRestaurant
   // selects '*', so these arrive on the same restaurant row.
@@ -227,6 +227,9 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
   const [tiersOpen, setTiersOpen] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState(() => new Set())
   const [reorderingId, setReorderingId] = useState(null)
+  // Holds the reward id currently being redeemed. Local in-flight state only —
+  // the redemption itself belongs to the caller via onRedeem.
+  const [redeeming, setRedeeming] = useState(null)
 
   // Reward split for the signed-in panel — the same balance >= cost test the
   // signed-out catalog rows use, hoisted so both lists share one comparison.
@@ -380,10 +383,16 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], cust
                             </div>
                             <button
                               type="button"
+                              onClick={async () => {
+                                if (redeeming) return
+                                setRedeeming(rw.id)
+                                try { await onRedeem(rw) } finally { setRedeeming(null) }
+                              }}
+                              disabled={redeeming === rw.id}
                               className="text-xs font-medium text-white px-3 py-1.5 rounded-lg"
                               style={{ backgroundColor: brandColor }}
                             >
-                              Redeem
+                              {redeeming === rw.id ? 'Adding…' : 'Redeem'}
                             </button>
                           </div>
                         </div>

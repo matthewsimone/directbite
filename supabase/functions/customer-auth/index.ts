@@ -1019,6 +1019,257 @@ async function handleLinkPaymentCustomer(body: any): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Action: redeem_reward
+// ---------------------------------------------------------------------------
+
+// Spending points. The arithmetic lives entirely in the redeem_reward RPC
+// (migration 078) — this handler only proves who the caller is, resolves the
+// slug to a restaurant id, and passes both to Postgres. Nothing about the
+// price or the point cost is trusted from the body.
+//
+// Unlike link_payment_customer, the failure modes here are NOT silent. The RPC
+// raises named exceptions — insufficient_points, reward_unavailable,
+// loyalty_disabled, unknown_customer — and the customer is mid-interaction and
+// waiting on an answer, so the name is passed through for the client to map to
+// a message. Every response is still a 200; `ok` carries the outcome.
+async function handleRedeemReward(body: any): Promise<Response> {
+  try {
+    // --- 1. Session validation. Same sequence as handleLinkPaymentCustomer,
+    // minus the last_seen_at touch, and reusing the same hashToken. ---
+    const token = typeof body.token === "string" ? body.token : "";
+    const slug = typeof body.slug === "string" ? body.slug : "";
+    const reward_id = typeof body.reward_id === "string" ? body.reward_id : "";
+    if (!token || !slug || !reward_id) {
+      return jsonResponse({ ok: false, error: "unauthorized" }, 200);
+    }
+
+    const tokenHash = await hashToken(token);
+
+    const { data: session, error: sessionErr } = await supabase
+      .from("customer_sessions")
+      .select("id, customer_id, revoked_at, expires_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (sessionErr) {
+      console.error(
+        "customer-auth redeem session lookup failed:",
+        sessionErr.message
+      );
+      return jsonResponse({ ok: false, error: "unauthorized" }, 200);
+    }
+
+    if (
+      !session ||
+      session.revoked_at !== null ||
+      new Date(session.expires_at).getTime() < Date.now()
+    ) {
+      return jsonResponse({ ok: false, error: "unauthorized" }, 200);
+    }
+
+    const { data: identity, error: identityErr } = await supabase
+      .from("customer_identities")
+      .select("id, phone_e164")
+      .eq("id", session.customer_id)
+      .maybeSingle();
+
+    if (identityErr || !identity) {
+      console.error(
+        "customer-auth redeem identity read failed:",
+        identityErr?.message
+      );
+      return jsonResponse({ ok: false, error: "unauthorized" }, 200);
+    }
+
+    // --- 2. Resolve the restaurant from the slug. The body never names a
+    // restaurant id directly. ---
+    const { data: restaurant, error: restErr } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (restErr) {
+      console.error(
+        "customer-auth redeem restaurant read failed:",
+        restErr.message
+      );
+      return jsonResponse({ ok: false, error: "not_found" }, 200);
+    }
+    if (!restaurant?.id) {
+      return jsonResponse({ ok: false, error: "not_found" }, 200);
+    }
+
+    const restaurant_id = restaurant.id;
+
+    // --- 3. The RPC does the balance check, the lock, the ledger row and the
+    // pending redemption in one transaction. ---
+    const { data: redemptionId, error: rpcErr } = await supabase.rpc(
+      "redeem_reward",
+      {
+        p_restaurant_id: restaurant_id,
+        p_customer_id: identity.id,
+        p_reward_id: reward_id,
+        p_channel: "online",
+      }
+    );
+
+    // --- 4. Pass the raised name through rather than a generic code: the
+    // client shows a different message for each. ---
+    if (rpcErr) {
+      console.error("customer-auth redeem_reward rpc failed:", rpcErr.message);
+      // Only the RPC's own named raises are passed through; anything else is
+      // a database-level failure whose text must not reach the browser.
+      const known = [
+        "redemption_in_progress",
+        "insufficient_points",
+        "reward_unavailable",
+        "loyalty_disabled",
+        "unknown_customer",
+        "invalid_channel",
+      ];
+      const msg = String(rpcErr.message || "");
+      const code = known.find((k) => msg.includes(k)) || "redeem_failed";
+      return jsonResponse({ ok: false, error: code }, 200);
+    }
+
+    // --- 5/6. The reward's details, so the caller can build the cart line
+    // without a second round trip. The points are already spent at this
+    // point, so a failed read degrades to reward: null rather than an error —
+    // losing the convenience must not look like losing the redemption. ---
+    const { data: reward, error: rewardErr } = await supabase
+      .from("loyalty_rewards")
+      .select("kind, name, points_cost, menu_item_id, item_size_id, discount_cents")
+      .eq("id", reward_id)
+      .maybeSingle();
+
+    if (rewardErr) {
+      console.error(
+        "customer-auth redeem reward read failed:",
+        rewardErr.message
+      );
+    }
+
+    return jsonResponse(
+      {
+        ok: true,
+        redemption_id: redemptionId,
+        reward: rewardErr ? null : reward ?? null,
+      },
+      200
+    );
+  } catch (err: any) {
+    console.error("customer-auth redeem_reward failed:", err?.message);
+    return jsonResponse({ ok: false, error: "server_error" }, 200);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action: cancel_redemption
+// ---------------------------------------------------------------------------
+
+// Returning the points when the reward line leaves the cart. The mirror image
+// of redeem_reward's error discipline: nothing here is worth surfacing. A
+// stale click, an expired session, a redemption already flipped to 'applied'
+// — all of them come back as { ok: true, cancelled: false }, matching the
+// cancel_redemption RPC (migration 079), which returns false rather than
+// raising for exactly the same reason.
+async function handleCancelRedemption(body: any): Promise<Response> {
+  const NOT_CANCELLED = { ok: true, cancelled: false };
+
+  try {
+    // --- 1. Session validation. Identical to the redeem path. ---
+    const token = typeof body.token === "string" ? body.token : "";
+    const slug = typeof body.slug === "string" ? body.slug : "";
+    const redemption_id =
+      typeof body.redemption_id === "string" ? body.redemption_id : "";
+    if (!token || !slug || !redemption_id) {
+      return jsonResponse(NOT_CANCELLED, 200);
+    }
+
+    const tokenHash = await hashToken(token);
+
+    const { data: session, error: sessionErr } = await supabase
+      .from("customer_sessions")
+      .select("id, customer_id, revoked_at, expires_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (sessionErr) {
+      console.error(
+        "customer-auth cancel session lookup failed:",
+        sessionErr.message
+      );
+      return jsonResponse(NOT_CANCELLED, 200);
+    }
+
+    if (
+      !session ||
+      session.revoked_at !== null ||
+      new Date(session.expires_at).getTime() < Date.now()
+    ) {
+      return jsonResponse(NOT_CANCELLED, 200);
+    }
+
+    const { data: identity, error: identityErr } = await supabase
+      .from("customer_identities")
+      .select("id, phone_e164")
+      .eq("id", session.customer_id)
+      .maybeSingle();
+
+    if (identityErr || !identity) {
+      console.error(
+        "customer-auth cancel identity read failed:",
+        identityErr?.message
+      );
+      return jsonResponse(NOT_CANCELLED, 200);
+    }
+
+    // --- 2. Resolve the restaurant from the slug. ---
+    const { data: restaurant, error: restErr } = await supabase
+      .from("restaurants")
+      .select("id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (restErr) {
+      console.error(
+        "customer-auth cancel restaurant read failed:",
+        restErr.message
+      );
+      return jsonResponse(NOT_CANCELLED, 200);
+    }
+    if (!restaurant?.id) {
+      return jsonResponse(NOT_CANCELLED, 200);
+    }
+
+    // --- 3. The RPC scopes the update to this customer at this restaurant,
+    // so a redemption belonging to someone else simply returns false. ---
+    const { data: cancelled, error: rpcErr } = await supabase.rpc(
+      "cancel_redemption",
+      {
+        p_restaurant_id: restaurant.id,
+        p_customer_id: identity.id,
+        p_redemption_id: redemption_id,
+      }
+    );
+
+    if (rpcErr) {
+      console.error(
+        "customer-auth cancel_redemption rpc failed:",
+        rpcErr.message
+      );
+      return jsonResponse(NOT_CANCELLED, 200);
+    }
+
+    return jsonResponse({ ok: true, cancelled: cancelled === true }, 200);
+  } catch (err: any) {
+    console.error("customer-auth cancel_redemption failed:", err?.message);
+    return jsonResponse(NOT_CANCELLED, 200);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -1056,6 +1307,10 @@ serve(async (req: Request) => {
         return await handleProfile(body);
       case "link_payment_customer":
         return await handleLinkPaymentCustomer(body);
+      case "redeem_reward":
+        return await handleRedeemReward(body);
+      case "cancel_redemption":
+        return await handleCancelRedemption(body);
       case "logout":
         return await handleLogout(body);
       default:

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
@@ -14,7 +14,7 @@ export default function RewardsPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
-  const { loading: authLoading, isLoggedIn, loadProfile, loadHistory } = useCustomerAuth()
+  const { loading: authLoading, isLoggedIn, loadProfile, loadHistory, redeemReward } = useCustomerAuth()
   const { addItem } = useCart()
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
   useRestaurantBranding(restaurant, 'ordering')
@@ -110,6 +110,45 @@ export default function RewardsPage() {
     }
   }
 
+  const handleRedeem = useCallback(async (reward) => {
+    if (!reward?.id || !slug) return
+    const res = await redeemReward(slug, reward.id)
+    if (!res.ok) {
+      const messages = {
+        redemption_in_progress: 'You already have a reward in your cart. Remove it to choose a different one.',
+        insufficient_points: 'Not enough points for that reward yet.',
+        reward_unavailable: "That reward isn't available right now.",
+        loyalty_disabled: 'Rewards are not available at this restaurant.',
+        unauthorized: 'Please sign in again.',
+      }
+      toast.error(messages[res.error] || 'Could not apply that reward. Please try again.')
+      return
+    }
+
+    // An item reward becomes a cart line at zero. A discount reward carries
+    // no menu item, so it becomes a marker line — priced at zero, with the
+    // money coming off once in the totals, driven by the redemption row the
+    // server reads at payment time.
+    const rw = res.reward || {}
+    addItem({
+      menuItemId: rw.menu_item_id || null,
+      itemSizeId: rw.item_size_id || null,
+      itemName: rw.name || 'Reward',
+      sizeName: null,
+      basePrice: 0,
+      fullBasePrice: 0,
+      quantity: 1,
+      discount_exempt: true,
+      specialInstructions: null,
+      toppings: [],
+      loyaltyRedemptionId: res.redemption_id,
+      loyaltyPointsSpent: rw.points_cost || 0,
+      loyaltyRewardKind: rw.kind || null,
+    })
+
+    navigate(`/${slug}`)
+  }, [slug, redeemReward, addItem, navigate])
+
   // Restaurant fetch hit the 10s hard deadline — we don't know whether the
   // restaurant exists, so offer a retry rather than a misleading "not found".
   if (restFailed && !restaurant) {
@@ -187,6 +226,7 @@ export default function RewardsPage() {
           transactions={history?.transactions ?? []}
           historyLoading={isLoggedIn && history === null}
           onReorder={handleReorder}
+          onRedeem={handleRedeem}
           onSignIn={() => setSignInOpen(true)}
         />
       </div>

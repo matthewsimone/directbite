@@ -286,6 +286,55 @@ export function CustomerAuthProvider({ children }) {
   // wholesale. Deliberately narrow so readToken itself stays unexported.
   const getSessionTokenForPayment = useCallback(() => readToken(), [])
 
+  // Spends points on a reward. The deliberate opposite of linkPaymentCustomer's
+  // silence: the customer tapped Redeem and is waiting on an answer, so the
+  // edge function's error code is passed through for the caller to turn into a
+  // message. Same slug-not-id argument as linkPaymentCustomer — the rewards
+  // page holds the slug from the URL, and the server resolves it.
+  const redeemReward = useCallback(async (slug, rewardId) => {
+    const token = readToken()
+    if (!token) return { ok: false, error: 'unauthorized' }
+    try {
+      const { ok, data } = await callCustomerAuth({
+        action: 'redeem_reward',
+        token,
+        slug,
+        reward_id: rewardId,
+      })
+      if (!ok || !data.ok) {
+        return { ok: false, error: data.error || 'redeem_failed' }
+      }
+      return {
+        ok: true,
+        redemption_id: data.redemption_id ?? null,
+        reward: data.reward ?? null,
+      }
+    } catch {
+      return { ok: false, error: 'network' }
+    }
+  }, [])
+
+  // Returns the points when the reward leaves the cart. Back to
+  // linkPaymentCustomer's contract: resolves to { cancelled: false } on every
+  // failure and never throws. Removing a line from a cart is not a place to
+  // put an error in front of a customer.
+  const cancelRedemption = useCallback(async (slug, redemptionId) => {
+    const token = readToken()
+    if (!token) return { cancelled: false }
+    try {
+      const { ok, data } = await callCustomerAuth({
+        action: 'cancel_redemption',
+        token,
+        slug,
+        redemption_id: redemptionId,
+      })
+      if (!ok || !data.ok) return { cancelled: false }
+      return { cancelled: data.cancelled === true }
+    } catch {
+      return { cancelled: false }
+    }
+  }, [])
+
   return (
     <CustomerAuthContext.Provider
       value={{
@@ -302,6 +351,8 @@ export function CustomerAuthProvider({ children }) {
         loadSavedProfile,
         linkPaymentCustomer,
         getSessionTokenForPayment,
+        redeemReward,
+        cancelRedemption,
       }}
     >
       {children}
