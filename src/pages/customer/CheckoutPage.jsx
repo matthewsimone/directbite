@@ -879,14 +879,16 @@ export default function CheckoutPage() {
   const feeCalculating = quoteLoading && orderType === 'delivery'
   // The reward's floor, checked here so the customer sees the gap while they
   // shop rather than discovering it when they tap Pay. The binding
-  // enforcement is create-payment-intent's redemption_below_minimum — this
-  // is the courtesy version of the same rule. It compares against
-  // fullSubtotal, not discountedSubtotal, because the server checks
-  // order_data.subtotal — which is fullSubtotal. The two must agree or a
-  // promotion would let the customer qualify here and be rejected at Pay.
+  // enforcement is create-payment-intent's redemption_below_minimum.
+  //
+  // Measured against discountedSubtotal — after any promotion, before the
+  // reward itself. A restaurant setting a $2 minimum means two dollars of
+  // revenue, not two dollars of menu prices. create-payment-intent computes
+  // the same figure from order_data.subtotal minus order_data.discount_amount;
+  // the two must agree or a customer qualifies here and is rejected at Pay.
   const loyaltyMinCents = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyMinSubtotalCents || 0) : 0
   const loyaltyShortfall = loyaltyMinCents > 0
-    ? Math.max(0, Math.round((loyaltyMinCents / 100 - fullSubtotal) * 100) / 100)
+    ? Math.max(0, Math.round((loyaltyMinCents / 100 - discountedSubtotal) * 100) / 100)
     : 0
   // M6.5 refinement: distinguish "no address yet" from "quote in flight".
   // Without an address, deliveryFee falls to defaultFeeCents/100 — a

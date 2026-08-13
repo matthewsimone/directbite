@@ -181,7 +181,14 @@ serve(async (req: Request) => {
 
       const minCents = Number(rewardRow?.min_subtotal_cents || 0);
       if (minCents > 0) {
-        const paidSubtotalCents = Math.round(Number(order_data?.subtotal || 0) * 100);
+        // After any promotion, before the reward itself — the restaurant's
+        // minimum is a revenue floor, not a menu-price floor. CheckoutPage
+        // computes the same figure as discountedSubtotal; the two must agree.
+        const paidSubtotalCents = Math.max(
+          0,
+          Math.round(Number(order_data?.subtotal || 0) * 100) -
+            Math.round(Number(order_data?.discount_amount || 0) * 100)
+        );
         if (paidSubtotalCents < minCents) {
           return validationError(
             "redemption_below_minimum",
