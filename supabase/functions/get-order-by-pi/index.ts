@@ -34,7 +34,7 @@ serve(async (req: Request) => {
     const { data: order, error: orderErr } = await supabase
       .from("orders")
       .select(
-        "id, restaurant_id, order_number, order_type, scheduled_for, subtotal, discount_amount, discount_percentage, delivery_fee, tax_amount, tip_amount, service_fee, total_amount, include_utensils, special_instructions, customer_name, delivery_fulfillment_method, uber_status, uber_tracking_url, uber_courier_info"
+        "id, restaurant_id, order_number, order_type, scheduled_for, subtotal, discount_amount, discount_percentage, delivery_fee, tax_amount, tip_amount, service_fee, total_amount, include_utensils, special_instructions, customer_name, delivery_fulfillment_method, uber_status, uber_tracking_url, uber_courier_info, loyalty_discount_amount, loyalty_points_spent"
       )
       .eq("stripe_payment_intent_id", payment_intent_id)
       .single();
@@ -50,7 +50,7 @@ serve(async (req: Request) => {
     const { data: items } = await supabase
       .from("order_items")
       .select(
-        "id, item_name, size_name, base_price, quantity, special_instructions, order_item_toppings(topping_name, placement, price_charged, placement_type)"
+        "id, item_name, size_name, base_price, quantity, special_instructions, loyalty_redemption_id, order_item_toppings(topping_name, placement, price_charged, placement_type)"
       )
       .eq("order_id", order.id)
       .order("created_at");

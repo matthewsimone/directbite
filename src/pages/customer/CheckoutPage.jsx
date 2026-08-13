@@ -1471,6 +1471,12 @@ export default function CheckoutPage() {
         // The confirmation page shows this rather than refetching it — the
         // ledger figure is the same number in every case but a tier bump.
         loyaltyPoints,
+        // The reward's money and point cost, so the confirmation receipt can
+        // show a Loyalty Reward row and a badge without refetching. Any reward
+        // line carries the points; loyaltyRewardItem is discount-only, so it
+        // would report 0 for an item reward.
+        loyaltyDiscount,
+        loyaltyPointsSpent: items.find(i => i.loyaltyRedemptionId)?.loyaltyPointsSpent || 0,
         restaurantName: restaurant.name,
         restaurantPhone: restaurant.phone,
         includeUtensils,
