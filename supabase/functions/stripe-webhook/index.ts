@@ -255,6 +255,7 @@ async function writeOrder(orderData: any, paymentIntentId: string, chargeId: str
         quantity: item.quantity || 1,
         discount_exempt: item.discount_exempt === true,
         special_instructions: item.special_instructions || null,
+        loyalty_redemption_id: item.loyalty_redemption_id || null,
       })
       .select()
       .single();
@@ -369,6 +370,69 @@ serve(async (req: Request) => {
 
         // Clean up pending order
         await supabase.from("pending_orders").delete().eq("id", pendingOrderId);
+
+        // Apply the redemption before items_written_at is stamped. That stamp
+        // fires the accrual trigger, which reads loyalty_discount_amount to
+        // work out the earn basis — so these columns must already be on the
+        // row or the customer earns points on the part they did not pay for.
+        //
+        // Entirely non-fatal. The payment has succeeded and the order exists;
+        // a failure here must never throw, because there is no retry that
+        // would not duplicate the order. A redemption left pending is
+        // reclaimed by the expiry sweep, which returns the points — the
+        // customer is made whole, and we find it in the logs.
+        const claimedRedemptionId = orderData?.loyalty_redemption_id || null;
+        if (claimedRedemptionId) {
+          try {
+            const { data: redemption, error: redReadErr } = await supabase
+              .from("loyalty_redemptions")
+              .select("id, points_spent, reward_kind, discount_cents, status")
+              .eq("id", claimedRedemptionId)
+              .eq("status", "pending")
+              .maybeSingle();
+
+            if (redReadErr) {
+              console.error("[stripe-webhook] redemption read failed", claimedRedemptionId, redReadErr);
+            } else if (!redemption) {
+              console.warn("[stripe-webhook] no pending redemption to apply", claimedRedemptionId, "order", order.id);
+            } else {
+              const discountDollars =
+                redemption.reward_kind === "discount"
+                  ? Number(redemption.discount_cents || 0) / 100
+                  : 0;
+
+              const { error: applyErr } = await supabase
+                .from("loyalty_redemptions")
+                .update({
+                  status: "applied",
+                  order_id: order.id,
+                  applied_at: new Date().toISOString(),
+                })
+                .eq("id", claimedRedemptionId)
+                .eq("status", "pending");
+
+              if (applyErr) {
+                console.error("[stripe-webhook] failed to apply redemption", claimedRedemptionId, applyErr);
+              } else {
+                const { error: orderLoyaltyErr } = await supabase
+                  .from("orders")
+                  .update({
+                    loyalty_discount_amount: discountDollars,
+                    loyalty_points_spent: redemption.points_spent || 0,
+                  })
+                  .eq("id", order.id);
+
+                if (orderLoyaltyErr) {
+                  console.error("[stripe-webhook] failed to write loyalty totals", order.id, orderLoyaltyErr);
+                } else {
+                  console.log("[stripe-webhook] redemption applied", claimedRedemptionId, "order", order.id, "points", redemption.points_spent);
+                }
+              }
+            }
+          } catch (err) {
+            console.error("[stripe-webhook] redemption apply threw", claimedRedemptionId, err);
+          }
+        }
 
         // Print-race fix (B2): mark the order fully written AFTER all items + toppings
         // are persisted. The tablet auto-print gate keys on this, so a poll can never

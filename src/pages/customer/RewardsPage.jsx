@@ -144,6 +144,8 @@ export default function RewardsPage() {
       loyaltyRedemptionId: res.redemption_id,
       loyaltyPointsSpent: rw.points_cost || 0,
       loyaltyRewardKind: rw.kind || null,
+      loyaltyDiscountCents: rw.discount_cents || 0,
+      loyaltyMinSubtotalCents: rw.min_subtotal_cents || 0,
     })
 
     navigate(`/${slug}`)

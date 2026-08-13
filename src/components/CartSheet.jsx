@@ -42,6 +42,20 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
     return sum + ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
   }, 0)
 
+  // The reward's floor is measured pre-promotion, matching
+  // create-payment-intent's check against order_data.subtotal. cartSubtotal
+  // above is post-promotion and would overstate the gap.
+  const fullSubtotal = items.reduce((sum, item) => {
+    const toppingsTotal = (item.toppings || []).reduce((t, top) => t + (parseFloat(top.fullPrice ?? top.price) || 0), 0)
+    return sum + ((parseFloat(item.fullBasePrice ?? item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
+  }, 0)
+
+  const loyaltyRewardItem = items.find(i => i.loyaltyRedemptionId && i.loyaltyRewardKind === 'discount')
+  const loyaltyMinCents = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyMinSubtotalCents || 0) : 0
+  const loyaltyShortfall = loyaltyMinCents > 0
+    ? Math.max(0, Math.round((loyaltyMinCents / 100 - fullSubtotal) * 100) / 100)
+    : 0
+
   // The cart only knows the food subtotal, so this previews the base earn on
   // that figure. Tax, fees and tip are not yet known, and the tier multiplier
   // is not applied — a customer at a higher tier earns MORE than shown, which
@@ -186,6 +200,14 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
             </div>
           )}
         </div>
+
+        {loyaltyShortfall > 0 && (
+          <div className="px-5 py-2.5 text-center bg-amber-50">
+            <p className="text-sm text-amber-700">
+              Add {formatCurrency(loyaltyShortfall)} more to use your reward
+            </p>
+          </div>
+        )}
 
         {/* The ordering flow is platform green throughout, so this does NOT
             use the restaurant's brand colour — a red band on a green page

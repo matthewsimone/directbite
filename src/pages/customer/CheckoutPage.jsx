@@ -847,6 +847,14 @@ export default function CheckoutPage() {
   }, 0)
   const discountAmount = Math.round(discountableSubtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = fullSubtotal - discountAmount
+  // A discount reward reduces the taxable base the same way a promotion
+  // does. Clamped to the discounted subtotal so a reward larger than the
+  // order can never produce a negative line — the reward's own
+  // min_subtotal_cents is what stops that happening in the first place.
+  const loyaltyRewardItem = items.find(i => i.loyaltyRedemptionId && i.loyaltyRewardKind === 'discount')
+  const loyaltyDiscountRaw = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyDiscountCents || 0) / 100 : 0
+  const loyaltyDiscount = Math.min(loyaltyDiscountRaw, discountedSubtotal)
+  const netSubtotal = Math.round((discountedSubtotal - loyaltyDiscount) * 100) / 100
   const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
   // M6.5b: Restructured to keep uber_direct path exclusive of in_house
   // fallbacks. Prevents the deliveryFee from flashing the in_house default
@@ -869,6 +877,17 @@ export default function CheckoutPage() {
   // the math and Stripe amounts stay correct underneath; the UI just
   // renders "—" / "Calculating..." while feeCalculating is true.
   const feeCalculating = quoteLoading && orderType === 'delivery'
+  // The reward's floor, checked here so the customer sees the gap while they
+  // shop rather than discovering it when they tap Pay. The binding
+  // enforcement is create-payment-intent's redemption_below_minimum — this
+  // is the courtesy version of the same rule. It compares against
+  // fullSubtotal, not discountedSubtotal, because the server checks
+  // order_data.subtotal — which is fullSubtotal. The two must agree or a
+  // promotion would let the customer qualify here and be rejected at Pay.
+  const loyaltyMinCents = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyMinSubtotalCents || 0) : 0
+  const loyaltyShortfall = loyaltyMinCents > 0
+    ? Math.max(0, Math.round((loyaltyMinCents / 100 - fullSubtotal) * 100) / 100)
+    : 0
   // M6.5 refinement: distinguish "no address yet" from "quote in flight".
   // Without an address, deliveryFee falls to defaultFeeCents/100 — a
   // wrong-but-non-null number that would silently power a Pay button with
@@ -876,18 +895,18 @@ export default function CheckoutPage() {
   // UI, but render distinct button labels ("Enter Address" vs
   // "Calculating...") so the customer knows what to do next.
   const needsAddress = orderType === 'delivery' && !deliveryLat
-  const showPlaceholder = needsAddress || feeCalculating
+  const showPlaceholder = needsAddress || feeCalculating || loyaltyShortfall > 0
   const taxRate = Number(restaurant?.tax_rate || 0)
   // Migration 061: opt-in per-restaurant credit-processing recoup, folded into
   // the customer-facing Service Fee line. Flag OFF (every restaurant by
   // default) => amount 0 and serviceFee 1.50, making every line below
   // byte-identical to pre-061 behavior. Base excludes tax by design — see
   // src/utils/recoup.js design note #1.
-  const recoup = calcRecoup({ restaurant, discountedSubtotal, deliveryFee, tip })
+  const recoup = calcRecoup({ restaurant, discountedSubtotal: netSubtotal, deliveryFee, tip })
   const serviceFee = recoup.serviceFee
-  const taxableAmount = discountedSubtotal + deliveryFee + serviceFee
+  const taxableAmount = netSubtotal + deliveryFee + serviceFee
   const taxAmount = Math.round(taxableAmount * taxRate * 100) / 100
-  const total = Math.round((discountedSubtotal + deliveryFee + taxAmount + tip + serviceFee) * 100) / 100
+  const total = Math.round((netSubtotal + deliveryFee + taxAmount + tip + serviceFee) * 100) / 100
 
   // Display only — the database awards the real points via the accrual
   // trigger when the order is written; this is a preview from the same
@@ -966,6 +985,10 @@ export default function CheckoutPage() {
     total_amount: total,
     include_utensils: includeUtensils,
     special_instructions: specialInstructions.trim() || null,
+    // The pending redemption this order claims. create-payment-intent reads
+    // the row server-side — the id is a claim, not an amount, and nothing
+    // about the discount is trusted from here.
+    loyalty_redemption_id: items.find(i => i.loyaltyRedemptionId)?.loyaltyRedemptionId || null,
     // M5c: Uber Direct fields. NULL when in_house — stripe-webhook (M5d)
     // writes these to orders.delivery_fulfillment_method / uber_quote_id /
     // uber_quoted_fee / uber_environment on payment success.
@@ -984,6 +1007,7 @@ export default function CheckoutPage() {
       quantity: item.quantity,
       discount_exempt: item.discount_exempt === true,
       special_instructions: item.specialInstructions || null,
+      loyalty_redemption_id: item.loyaltyRedemptionId || null,
       toppings: (item.toppings || []).map(t => ({
         topping_id: t.toppingId,
         topping_name: t.toppingName,
@@ -1003,6 +1027,23 @@ export default function CheckoutPage() {
       toast.error('This order is below the delivery minimum. Add more items or switch to pickup.')
       return // do NOT reset quote state — re-quoting won't help; the fix is adding items
     }
+
+    // Reward failures, handled before the quote path below. The delivery quote
+    // is fine in these cases — resetting it would re-fetch a price the
+    // customer already accepted and tell them the wrong thing about why.
+    const redemptionMessages = {
+      redemption_below_minimum: 'Add a little more to your order to use that reward.',
+      redemption_not_pending: 'That reward is no longer available. Please remove it and try again.',
+      redemption_expired: 'That reward expired. Please remove it and choose it again.',
+      redemption_not_found: 'That reward is no longer available. Please remove it and try again.',
+      redemption_wrong_restaurant: 'That reward is no longer available. Please remove it and try again.',
+      redemption_read_error: 'Could not check that reward. Please try again.',
+    }
+    if (redemptionMessages[reason]) {
+      toast.error(redemptionMessages[reason])
+      return // do NOT reset quote state — the quote is not what failed
+    }
+
     toast.error('Delivery quote changed. Please try again.')
     setResolvedMode(null)
     setUberQuoteId(null)
@@ -1832,6 +1873,12 @@ export default function CheckoutPage() {
                 <span>-{formatCurrency(discountAmount)}</span>
               </div>
             )}
+            {loyaltyDiscount > 0 && (
+              <div className="flex justify-between text-[#16A34A] font-medium">
+                <span>Loyalty Reward</span>
+                <span>-{formatCurrency(loyaltyDiscount)}</span>
+              </div>
+            )}
             {tip > 0 && (
               <div className="flex justify-between text-gray-600">
                 <span>Tip</span>
@@ -1842,6 +1889,18 @@ export default function CheckoutPage() {
               <span>Total</span>
               <span>{showPlaceholder ? '—' : formatCurrency(total)}</span>
             </div>
+            {/* Guidance, not an error — the reward is still claimable, the
+                order just isn't large enough for it yet. It lives here rather
+                than by the pay button because PaymentForm only mounts once a
+                client secret exists, and this gate is one of the things that
+                stops that happening. */}
+            {loyaltyShortfall > 0 && (
+              <div className="rounded-xl px-4 py-2.5 mt-3 text-center bg-amber-50">
+                <p className="text-sm text-amber-700">
+                  Add {formatCurrency(loyaltyShortfall)} more to use your reward
+                </p>
+              </div>
+            )}
             {/* The ordering flow is platform green throughout, so this does
                 NOT use the restaurant's brand colour — a red band on a green
                 page reads as inconsistent. If the flow is ever rebranded per
@@ -1878,10 +1937,22 @@ export default function CheckoutPage() {
               </button>
             </div>
           ) : !clientSecret ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
-              <span className="ml-3 text-sm text-gray-500">Loading payment...</span>
-            </div>
+            loyaltyShortfall > 0 ? (
+              // Not a loading state. create-payment-intent rejects with
+              // redemption_below_minimum while the reward's floor is unmet, so
+              // clientSecret never arrives and a spinner would promise progress
+              // that cannot happen until the customer adds more.
+              <div className="rounded-xl px-4 py-2.5 text-center bg-amber-50">
+                <p className="text-sm text-amber-700">
+                  Payment options appear once your order meets the reward minimum.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
+                <span className="ml-3 text-sm text-gray-500">Loading payment...</span>
+              </div>
+            )
           ) : (
             <Elements stripe={stripePromise} options={stripeOptions}>
               <PaymentForm

@@ -133,6 +133,71 @@ serve(async (req: Request) => {
     const isPlatform = (restaurant.uber_billing_mode ?? "self") === "platform";
     let applicationFeeCents = 150;
 
+    // Set by the validation block below when a discount reward is claimed.
+    // Item rewards are already free in the line items, so they contribute
+    // nothing here.
+    let loyaltyDiscountCents = 0;
+
+    // -------- Loyalty redemption validation --------
+    // The client sends only an id. Everything about the discount is read
+    // from the row: the amount, the point cost, and whether it is still
+    // claimable. A forged or foreign id fails here rather than producing
+    // a cheap order.
+    const claimedRedemptionId = order_data?.loyalty_redemption_id;
+    if (claimedRedemptionId) {
+      const { data: redemption, error: redErr } = await supabase
+        .from("loyalty_redemptions")
+        .select("id, restaurant_id, customer_id, status, points_spent, reward_kind, discount_cents, reward_id, code_expires_at")
+        .eq("id", claimedRedemptionId)
+        .maybeSingle();
+
+      if (redErr) {
+        return validationError("redemption_read_error", redErr.message);
+      }
+      if (!redemption) {
+        return validationError("redemption_not_found");
+      }
+      if (redemption.restaurant_id !== restaurant_id) {
+        return validationError("redemption_wrong_restaurant");
+      }
+      if (redemption.status !== "pending") {
+        return validationError("redemption_not_pending", redemption.status);
+      }
+      if (
+        redemption.code_expires_at &&
+        new Date(redemption.code_expires_at).getTime() < Date.now()
+      ) {
+        return validationError("redemption_expired");
+      }
+
+      // The reward's own floor, evaluated against the paid subtotal. The
+      // reward line itself prices at zero, so "spend $20 to use this" means
+      // twenty dollars of other food.
+      const { data: rewardRow } = await supabase
+        .from("loyalty_rewards")
+        .select("min_subtotal_cents")
+        .eq("id", redemption.reward_id)
+        .maybeSingle();
+
+      const minCents = Number(rewardRow?.min_subtotal_cents || 0);
+      if (minCents > 0) {
+        const paidSubtotalCents = Math.round(Number(order_data?.subtotal || 0) * 100);
+        if (paidSubtotalCents < minCents) {
+          return validationError(
+            "redemption_below_minimum",
+            `subtotal=${paidSubtotalCents} min=${minCents}`
+          );
+        }
+      }
+
+      // Only a discount reward moves money at this level. An item reward's
+      // value is already expressed as a zero-priced line.
+      if (redemption.reward_kind === "discount") {
+        loyaltyDiscountCents = Number(redemption.discount_cents || 0);
+      }
+    }
+    // -------- End loyalty redemption validation --------
+
     if (!isPickup && serverResolvedMode === "uber_direct") {
       // Server says uber_direct. Client must have a uber_quote_id; if not, reject.
       const clientQuoteId: string | undefined = order_data?.uber_quote_id;
@@ -215,7 +280,8 @@ serve(async (req: Request) => {
         Math.round(Number(od.tip_amount || 0) * 100) +
         Math.round(Number(od.service_fee || 1.5) * 100) +
         serverValidatedFeeCents -
-        Math.round(Number(od.discount_amount || 0) * 100);
+        Math.round(Number(od.discount_amount || 0) * 100) -
+        loyaltyDiscountCents;
 
       if (Math.abs(Number(amount) - expectedAmountCents) > 2) {
         return validationError(

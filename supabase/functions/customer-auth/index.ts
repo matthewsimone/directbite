@@ -1139,7 +1139,7 @@ async function handleRedeemReward(body: any): Promise<Response> {
     // losing the convenience must not look like losing the redemption. ---
     const { data: reward, error: rewardErr } = await supabase
       .from("loyalty_rewards")
-      .select("kind, name, points_cost, menu_item_id, item_size_id, discount_cents")
+      .select("kind, name, points_cost, menu_item_id, item_size_id, discount_cents, min_subtotal_cents")
       .eq("id", reward_id)
       .maybeSingle();
 
