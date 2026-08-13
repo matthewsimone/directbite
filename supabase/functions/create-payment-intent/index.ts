@@ -336,6 +336,9 @@ serve(async (req: Request) => {
     pending_order_id = pendingOrder.id;
 
     let customerId: string | null = null;
+    // True only when we resolved a PRE-EXISTING Customer. A freshly created
+    // one has no saved cards to redisplay, so it gets no Customer Session.
+    let reusedExistingCustomer = false;
 
     // A verified session lets us reuse the Stripe Customer this person already
     // has at this restaurant, so their saved card is offered again. Entirely
@@ -378,6 +381,7 @@ serve(async (req: Request) => {
               });
               if (!(existing as any).deleted) {
                 customerId = savedId;
+                reusedExistingCustomer = true;
               }
             } catch (retrieveErr: any) {
               console.error(
@@ -440,11 +444,47 @@ serve(async (req: Request) => {
       }
     );
 
+    // A Customer Session lets the Payment Element redisplay the cards this
+    // customer already has. Deliberately AFTER paymentIntents.create: the
+    // payment intent must exist regardless, so a failure here can only cost
+    // the saved-card list, never the payment.
+    //
+    // NOTE: no payment_method_save / payment_method_save_usage here. The
+    // PaymentIntent above already sets setup_future_usage, and Stripe rejects
+    // the combination with an IntegrationError.
+    let customerSessionClientSecret: string | null = null;
+    if (reusedExistingCustomer && customerId) {
+      try {
+        const customerSession = await stripe.customerSessions.create(
+          {
+            customer: customerId,
+            components: {
+              payment_element: {
+                enabled: true,
+                features: {
+                  payment_method_redisplay: "enabled",
+                  payment_method_allow_redisplay_filters: ["always", "unspecified"],
+                },
+              },
+            },
+          },
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+        customerSessionClientSecret = customerSession.client_secret;
+      } catch (csErr: any) {
+        console.error(
+          "[create-payment-intent] customer session create failed (non-fatal)",
+          csErr.message
+        );
+      }
+    }
+
     return new Response(
       JSON.stringify({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
         stripeAccount: restaurant.stripe_account_id,
+        customerSessionClientSecret,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

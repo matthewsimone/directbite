@@ -28,6 +28,36 @@ import { calcRecoup } from '../../utils/recoup'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
+// The customer's last chosen delivery address, kept on the device so it
+// survives a refresh or a tab close. Global rather than per-restaurant:
+// the identity-level profile already works this way. Every access is
+// wrapped because localStorage throws in private mode on some browsers.
+const ADDRESS_KEY = 'ordr_delivery_address'
+
+function readStoredAddress() {
+  try {
+    const raw = localStorage.getItem(ADDRESS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed.address !== 'string' || !parsed.address) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function hasStoredAddress() {
+  return readStoredAddress() !== null
+}
+
+function writeStoredAddress(address, apt, lat, lng) {
+  try {
+    localStorage.setItem(ADDRESS_KEY, JSON.stringify({ address, apt: apt || '', lat, lng }))
+  } catch {
+    // Storage unavailable — the address simply won't persist.
+  }
+}
+
 // Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
 function withAlpha(hex, alpha) {
   const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
@@ -159,7 +189,7 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -476,6 +506,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       {/* Card form — contact fields above card, Link signup inline below */}
       {payMethod === 'card' && (
         <div className="space-y-4">
+          {contactCollapsed ? (
+            // Everything below is already known, so asking again is friction.
+            // Quiet text rather than a card: it is a receipt of what we hold,
+            // not a control.
+            <p className="text-sm text-gray-500">
+              {customerInfo.name} · {formatPhone(String(customerInfo.phone).replace(/\D/g, '').slice(-10))}
+            </p>
+          ) : (
+            <>
           {/* 1. Phone — first, because when sign-in is on, the code it
                  triggers is what prefills the two fields below. With the flag
                  off this is the plain input it has always been: no
@@ -549,6 +588,8 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             placeholder="Email Address"
             className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
           />
+            </>
+          )}
 
           {/* 5. Card details — card only */}
           <PaymentElement
@@ -681,6 +722,46 @@ export default function CheckoutPage() {
   const [deliveryApt, setDeliveryApt] = useState('')
   const [deliveryLat, setDeliveryLat] = useState(null)
   const [deliveryLon, setDeliveryLon] = useState(null)
+  // What the identity had saved, kept so the form can collapse to a summary
+  // instead of asking for details we already hold.
+  const [savedProfile, setSavedProfile] = useState(null)
+  // Set when the customer rejects the saved address and wants to type one.
+  const [useNewAddress, setUseNewAddress] = useState(false)
+  const storedApplied = useRef(false)
+
+  // The profile usually lands while the order is still pickup, so the
+  // address write in handleSavedProfile never runs. Apply it when delivery
+  // is chosen instead. Guarded so it cannot overwrite a typed address or
+  // fight the "use a different address" choice.
+  useEffect(() => {
+    if (orderType !== 'delivery') return
+    if (useNewAddress) return
+    // Bail only when the address is present AND usable. The pickup toggle
+    // clears the coordinates but not the string, so checking the string
+    // alone would leave a displayed address the button can never accept.
+    if (deliveryAddress && deliveryLat != null && deliveryLon != null) return
+    if (!savedProfile?.delivery_address) return
+    if (hasStoredAddress()) return
+    setDeliveryAddress(savedProfile.delivery_address)
+    setDeliveryApt(savedProfile.delivery_apt || '')
+    if (savedProfile.delivery_lat != null) setDeliveryLat(Number(savedProfile.delivery_lat))
+    if (savedProfile.delivery_lng != null) setDeliveryLon(Number(savedProfile.delivery_lng))
+  }, [orderType, useNewAddress, deliveryAddress, deliveryLat, deliveryLon, savedProfile])
+
+  // Restore the device-stored address on mount. Runs once; the ref guard
+  // stops it fighting the profile restore or a customer's own selection.
+  useEffect(() => {
+    if (storedApplied.current) return
+    if (orderType !== 'delivery') return
+    if (deliveryAddress) return
+    const stored = readStoredAddress()
+    if (!stored) return
+    storedApplied.current = true
+    setDeliveryAddress(stored.address)
+    setDeliveryApt(stored.apt || '')
+    if (stored.lat != null) setDeliveryLat(Number(stored.lat))
+    if (stored.lng != null) setDeliveryLon(Number(stored.lng))
+  }, [orderType, deliveryAddress])
 
   // Saved details from a verified identity. What the customer has already
   // typed always wins — this only fills blanks, never overwrites.
@@ -691,17 +772,26 @@ export default function CheckoutPage() {
   // between renders (React #310).
   const handleSavedProfile = useCallback(profile => {
     if (!profile) return
+    setSavedProfile(profile)
     if (!customerName && profile.display_name) setCustomerName(profile.display_name)
+    if (!customerPhone && profile.phone_e164) setCustomerPhone(profile.phone_e164)
     if (!customerEmail && profile.email) setCustomerEmail(profile.email)
     // Address only on delivery, and only when they haven't started one.
-    if (orderType === 'delivery' && !deliveryAddress && profile.delivery_address) {
+    //
+    // useNewAddress means the customer deliberately rejected the saved
+    // address. This callback re-runs whenever the profile reloads — including
+    // on tab focus, via useRestaurant's visibilitychange refetch — so without
+    // this check it silently restores an address they just dismissed.
+    // A device-stored address is the customer's most recent explicit
+    // choice and outranks the profile, which may be older.
+    if (orderType === 'delivery' && !useNewAddress && !deliveryAddress && !hasStoredAddress() && profile.delivery_address) {
       setDeliveryAddress(profile.delivery_address)
       setDeliveryApt(profile.delivery_apt || '')
       // The saved column is delivery_lng; this page's state is deliveryLon.
       if (profile.delivery_lat != null) setDeliveryLat(Number(profile.delivery_lat))
       if (profile.delivery_lng != null) setDeliveryLon(Number(profile.delivery_lng))
     }
-  }, [customerName, customerEmail, orderType, deliveryAddress])
+  }, [customerName, customerPhone, customerEmail, orderType, useNewAddress, deliveryAddress])
 
   const [deliveryDistance, setDeliveryDistance] = useState(null)
   const [deliveryFeeCents, setDeliveryFeeCents] = useState(null)
@@ -733,6 +823,9 @@ export default function CheckoutPage() {
   )
   const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
+  // Non-null only when the payment intent reused an existing Stripe Customer;
+  // it is what lets the Payment Element redisplay their saved cards.
+  const [customerSessionSecret, setCustomerSessionSecret] = useState(null)
   const [paymentIntentId, setPaymentIntentId] = useState(null)
   const [stripeAccount, setStripeAccount] = useState(null)
   const [initError, setInitError] = useState(null)
@@ -838,6 +931,16 @@ export default function CheckoutPage() {
     : null
 
   // Build order_data to pass to edge function (and ultimately to webhook)
+  // Collapse the contact fields only when we actually have all three values.
+  // Gating on isLoggedIn alone would strand a signed-in customer whose
+  // profile is incomplete with a form they cannot fill or submit.
+  const contactCollapsed = Boolean(
+    savedProfile &&
+    customerName.trim() &&
+    customerPhone.trim() &&
+    customerEmail.trim()
+  )
+
   const buildOrderData = useCallback(() => ({
     restaurant_id: restaurant?.id,
     order_type: orderType,
@@ -951,13 +1054,19 @@ export default function CheckoutPage() {
         setDeliveryAddress(place.formatted_address || '')
         setDeliveryLat(place.geometry.location.lat())
         setDeliveryLon(place.geometry.location.lng())
+        writeStoredAddress(
+          place.formatted_address || '',
+          deliveryApt,
+          place.geometry.location.lat(),
+          place.geometry.location.lng()
+        )
         setAddressError(null)
       } else {
         setAddressError('Could not verify this address. Please try a different one.')
       }
     })
     autocompleteRef.current = ac
-  }, [mapsLoaded, orderType])
+  }, [mapsLoaded, orderType, useNewAddress])
 
   // Log restaurant delivery config when it loads
   useEffect(() => {
@@ -1230,6 +1339,7 @@ export default function CheckoutPage() {
 
         const data = await res.json()
         setClientSecret(data.clientSecret)
+        setCustomerSessionSecret(data.customerSessionClientSecret || null)
         setPaymentIntentId(data.paymentIntentId)
         setStripeAccount(data.stripeAccount)
       } catch (err) {
@@ -1410,6 +1520,10 @@ export default function CheckoutPage() {
   const stripeOptions = clientSecret
     ? {
         clientSecret,
+        // Absent entirely when null — Stripe rejects the key set to null.
+        ...(customerSessionSecret
+          ? { customerSessionClientSecret: customerSessionSecret }
+          : {}),
         appearance: {
           theme: 'stripe',
           variables: {
@@ -1453,7 +1567,7 @@ export default function CheckoutPage() {
           </h3>
           <div className="flex gap-3">
             <button
-              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setDeliveryLat(null); setDeliveryLon(null); setDeliveryFeeCents(null); setAddressError(null) }}
+              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setAddressError(null) }}
               className={`flex-1 py-4 rounded-xl font-semibold text-base transition-colors ${
                 orderType === 'pickup'
                   ? 'bg-[#16A34A] text-white'
@@ -1512,17 +1626,46 @@ export default function CheckoutPage() {
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
               Delivery Address
             </h3>
+            {deliveryAddress && !useNewAddress ? (
+              <div>
+                <div className="rounded-xl border border-gray-200 px-4 py-3.5">
+                  <p className="text-base text-gray-900">{deliveryAddress}</p>
+                  {deliveryApt && (
+                    <p className="text-sm text-gray-500 mt-0.5">Apt {deliveryApt}</p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Clear the selection as well as revealing the input — a
+                    // stale address must not survive into the order payload.
+                    setUseNewAddress(true)
+                    setDeliveryAddress('')
+                    setDeliveryApt('')
+                    setDeliveryLat(null)
+                    setDeliveryLon(null)
+                  }}
+                  className="mt-2 text-sm text-[#16A34A]"
+                >
+                  Use a different address
+                </button>
+              </div>
+            ) : (
             <div className="space-y-3">
               <input
                 ref={inputRef}
                 type="text"
                 placeholder="Search for your address..."
-                onChange={() => {
+                value={deliveryAddress}
+                onChange={e => {
+                  // React owns this text now. Places writes through
+                  // setDeliveryAddress in its place_changed listener, so both
+                  // typing and selection land in the same place.
+                  setDeliveryAddress(e.target.value)
+                  // Typing after a selection invalidates it: the coordinates and
+                  // quote belong to the old address and must not survive into the
+                  // order. Mirrors the place_changed callback's cleanup.
                   if (deliveryLat) {
-                    // M6.5: Clear uber state on address change — prevents fee
-                    // flip during the uber-quote async window. Mirrors the
-                    // place_changed callback's cleanup so manual edits and
-                    // dropdown selections behave identically.
                     setUberQuoteId(null)
                     setUberQuotedFeeCents(null)
                     setUberCustomerFeeCents(null)
@@ -1532,7 +1675,6 @@ export default function CheckoutPage() {
                     setDeliveryLon(null)
                     setDeliveryDistance(null)
                     setDeliveryFeeCents(null)
-                    setDeliveryAddress('')
                     setAddressError(null)
                   }
                 }}
@@ -1541,20 +1683,30 @@ export default function CheckoutPage() {
               <input
                 type="text"
                 value={deliveryApt}
-                onChange={e => setDeliveryApt(e.target.value)}
+                onChange={e => {
+                  const next = e.target.value
+                  setDeliveryApt(next)
+                  // The apt is usually typed after the address is chosen, so the write in
+                  // place_changed captures an empty value. Persist it as it changes.
+                  const stored = readStoredAddress()
+                  if (stored) {
+                    writeStoredAddress(stored.address, next, stored.lat, stored.lng)
+                  }
+                }}
                 placeholder="Apt/Unit (optional)"
                 className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
               />
             </div>
+            )}
             {quoteLoading && (
               <p className="mt-2 text-sm text-gray-500 italic">Calculating delivery fee...</p>
             )}
-            {!quoteLoading && resolvedMode === 'uber_direct' && uberCustomerFeeCents != null && !addressError && (
+            {orderType === 'delivery' && !quoteLoading && resolvedMode === 'uber_direct' && uberCustomerFeeCents != null && deliveryLat && !addressError && (
               <p className="mt-2 text-sm text-gray-600">
                 Delivery fee: {formatCurrency(deliveryFee)} (via Uber Direct)
               </p>
             )}
-            {!quoteLoading && resolvedMode !== 'uber_direct' && deliveryDistance != null && !addressError && (
+            {orderType === 'delivery' && !quoteLoading && resolvedMode !== 'uber_direct' && deliveryDistance != null && deliveryLat && !addressError && (
               <p className="mt-2 text-sm text-gray-600">
                 Distance: {deliveryDistance} mi — Delivery fee: {formatCurrency(deliveryFee)}
               </p>
@@ -1747,6 +1899,7 @@ export default function CheckoutPage() {
                 needsAddress={needsAddress}
                 showPlaceholder={showPlaceholder}
                 onSavedProfile={handleSavedProfile}
+                contactCollapsed={contactCollapsed}
                 onWalletCustomer={async (name, email, phone) => {
                   // Update customer state for confirmation page
                   setCustomerName(name)
