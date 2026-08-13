@@ -42,18 +42,15 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
     return sum + ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
   }, 0)
 
-  // The reward's floor is measured pre-promotion, matching
-  // create-payment-intent's check against order_data.subtotal. cartSubtotal
-  // above is post-promotion and would overstate the gap.
-  const fullSubtotal = items.reduce((sum, item) => {
-    const toppingsTotal = (item.toppings || []).reduce((t, top) => t + (parseFloat(top.fullPrice ?? top.price) || 0), 0)
-    return sum + ((parseFloat(item.fullBasePrice ?? item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
-  }, 0)
-
+  // Measured against cartSubtotal — after any promotion, before the
+  // reward. Matches CheckoutPage's discountedSubtotal and
+  // create-payment-intent's order_data.subtotal minus discount_amount.
+  // The three must agree or the customer sees a different gap on each
+  // screen.
   const loyaltyRewardItem = items.find(i => i.loyaltyRedemptionId && i.loyaltyRewardKind === 'discount')
   const loyaltyMinCents = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyMinSubtotalCents || 0) : 0
   const loyaltyShortfall = loyaltyMinCents > 0
-    ? Math.max(0, Math.round((loyaltyMinCents / 100 - fullSubtotal) * 100) / 100)
+    ? Math.max(0, Math.round((loyaltyMinCents / 100 - cartSubtotal) * 100) / 100)
     : 0
 
   // The cart only knows the food subtotal, so this previews the base earn on
