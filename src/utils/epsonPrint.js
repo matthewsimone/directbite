@@ -433,6 +433,17 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
                 printer.addText('        *already discounted*\n')
               }
 
+              // A reward line prints at 0.00, which reads as a mistake without
+              // a reason next to it. Bold like the size/modifier/note lines
+              // above — the unbold *already discounted* line is the outlier.
+              // Points come from the order row, not the item: one redemption
+              // per order is enforced by idx_lrd_one_per_order.
+              if (item.loyalty_redemption_id) {
+                bold(true)
+                printer.addText(`        ** LOYALTY REWARD - ${Number(order.loyalty_points_spent || 0)} PTS **\n`)
+                bold(false)
+              }
+
               // Dotted divider between items.
               if (idx < items.length - 1) {
                 printer.addText(dotSep + '\n')
@@ -476,6 +487,12 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             printer.addText(pad('Subtotal', fmt(order.subtotal)) + '\n')
             if (Number(order.discount_amount) > 0) {
               printer.addText(pad(`Discount (${order.discount_percentage}% off)`, `-${fmt(order.discount_amount)}`) + '\n')
+            }
+            // Without this the printed lines do not sum to TOTAL when a
+            // discount reward is applied, and a restaurant reconciling the
+            // ticket would find a dollar missing.
+            if (Number(order.loyalty_discount_amount) > 0) {
+              printer.addText(pad('Loyalty Reward', `-${fmt(order.loyalty_discount_amount)}`) + '\n')
             }
             if (Number(order.delivery_fee) > 0) {
               printer.addText(pad('Delivery', fmt(order.delivery_fee)) + '\n')
