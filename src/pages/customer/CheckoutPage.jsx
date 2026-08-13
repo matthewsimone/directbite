@@ -848,13 +848,16 @@ export default function CheckoutPage() {
   const discountAmount = Math.round(discountableSubtotal * (discountPercentage / 100) * 100) / 100
   const discountedSubtotal = fullSubtotal - discountAmount
   // A discount reward reduces the taxable base the same way a promotion
-  // does. Clamped to the discounted subtotal so a reward larger than the
-  // order can never produce a negative line — the reward's own
-  // min_subtotal_cents is what stops that happening in the first place.
+  // does. It displays at face value: clamping it to the order would show a
+  // $1 reward as -$0.55 on a 55c cart, telling the customer their reward is
+  // worth less than they redeemed. The reward's own min_subtotal_cents is
+  // what keeps an over-large reward from reaching payment, and
+  // create-payment-intent holds the authoritative figure.
+  //
+  // netSubtotal stays clamped so the totals arithmetic can never invert.
   const loyaltyRewardItem = items.find(i => i.loyaltyRedemptionId && i.loyaltyRewardKind === 'discount')
-  const loyaltyDiscountRaw = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyDiscountCents || 0) / 100 : 0
-  const loyaltyDiscount = Math.min(loyaltyDiscountRaw, discountedSubtotal)
-  const netSubtotal = Math.round((discountedSubtotal - loyaltyDiscount) * 100) / 100
+  const loyaltyDiscount = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyDiscountCents || 0) / 100 : 0
+  const netSubtotal = Math.max(0, Math.round((discountedSubtotal - loyaltyDiscount) * 100) / 100)
   const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
   // M6.5b: Restructured to keep uber_direct path exclusive of in_house
   // fallbacks. Prevents the deliveryFee from flashing the in_house default
@@ -1949,23 +1952,24 @@ export default function CheckoutPage() {
                 Try again
               </button>
             </div>
+          ) : loyaltyShortfall > 0 ? (
+            // Takes precedence over clientSecret. An intent from an earlier
+            // attempt makes the !clientSecret arm unreachable, which would
+            // leave the payment selector on screen with a disabled Pay button
+            // beside a price the customer cannot pay. Not a loading state
+            // either: create-payment-intent rejects with
+            // redemption_below_minimum until the floor is met, so no spinner
+            // can promise progress here.
+            <div className="rounded-xl px-4 py-2.5 text-center bg-amber-50">
+              <p className="text-sm text-amber-700">
+                Payment options appear once your order meets the reward minimum.
+              </p>
+            </div>
           ) : !clientSecret ? (
-            loyaltyShortfall > 0 ? (
-              // Not a loading state. create-payment-intent rejects with
-              // redemption_below_minimum while the reward's floor is unmet, so
-              // clientSecret never arrives and a spinner would promise progress
-              // that cannot happen until the customer adds more.
-              <div className="rounded-xl px-4 py-2.5 text-center bg-amber-50">
-                <p className="text-sm text-amber-700">
-                  Payment options appear once your order meets the reward minimum.
-                </p>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center py-8">
-                <div className="w-6 h-6 border-2 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
-                <span className="ml-3 text-sm text-gray-500">Loading payment...</span>
-              </div>
-            )
+            <div className="flex items-center justify-center py-8">
+              <div className="w-6 h-6 border-2 border-[#16A34A] border-t-transparent rounded-full animate-spin" />
+              <span className="ml-3 text-sm text-gray-500">Loading payment...</span>
+            </div>
           ) : (
             <Elements stripe={stripePromise} options={stripeOptions}>
               <PaymentForm
