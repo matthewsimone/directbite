@@ -99,6 +99,9 @@ function ConfirmationWithState({ state, slug, navigate }) {
     total,
     // Computed by checkout for its own earn band and forwarded here.
     loyaltyPoints,
+    // The redeemed reward's money and point cost, forwarded by checkout.
+    loyaltyDiscount = 0,
+    loyaltyPointsSpent = 0,
     restaurantName,
     restaurantPhone,
     includeUtensils,
@@ -154,6 +157,8 @@ function ConfirmationWithState({ state, slug, navigate }) {
       items={items}
       subtotal={subtotal}
       loyaltyPointsEarned={loyaltyPoints || 0}
+      loyaltyDiscount={loyaltyDiscount}
+      loyaltyPointsSpent={loyaltyPointsSpent}
       discountAmount={discountAmount}
       discountPercentage={discountPercentage}
       deliveryFee={deliveryFee}
@@ -262,6 +267,7 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
     quantity: item.quantity,
     discount_exempt: item.discount_exempt === true,
     specialInstructions: item.special_instructions,
+    loyaltyRedemptionId: item.loyalty_redemption_id,
     toppings: (item.order_item_toppings || []).map(t => ({
       toppingName: t.topping_name,
       placement: t.placement,
@@ -280,6 +286,8 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
       items={displayItems}
       subtotal={order.subtotal}
       loyaltyPointsEarned={restaurant?.loyalty_enabled === true ? earnedPoints : 0}
+      loyaltyDiscount={order.loyalty_discount_amount || 0}
+      loyaltyPointsSpent={order.loyalty_points_spent || 0}
       discountAmount={order.discount_amount}
       discountPercentage={order.discount_percentage}
       deliveryFee={order.delivery_fee}
@@ -310,6 +318,10 @@ function ConfirmationLayout({
   deliveryFee, taxAmount, tip, serviceFee, total,
   // 0 for the navigation-state path, which has no loyalty data to show.
   loyaltyPointsEarned = 0,
+  // The redeemed reward. Points are order-level, not per item — one
+  // redemption per order is enforced by idx_lrd_one_per_order.
+  loyaltyDiscount = 0,
+  loyaltyPointsSpent = 0,
   restaurantName, restaurantPhone, includeUtensils, specialInstructions, slug, navigate,
   // M8: Uber Direct attribution (gated below by showUberSection)
   deliveryFulfillmentMethod = 'in_house',
@@ -473,8 +485,13 @@ function ConfirmationLayout({
                         {formatCurrency(lineTotal)}
                       </span>
                     </div>
-                    {Number(discountPercentage) > 0 && item.discount_exempt === true && (
+                    {Number(discountPercentage) > 0 && item.discount_exempt === true && !item.loyaltyRedemptionId && (
                       <div className="text-[11px] text-gray-400 mt-0.5">*already discounted*</div>
+                    )}
+                    {item.loyaltyRedemptionId && (
+                      <div className="text-[11px] font-semibold text-[#16A34A] mt-0.5">
+                        ** LOYALTY REWARD — {loyaltyPointsSpent} PTS **
+                      </div>
                     )}
                     {item.toppings?.map((t, i) => {
                       const tFullPrice = parseFloat(t.fullPrice ?? t.price) || 0
@@ -527,6 +544,12 @@ function ConfirmationLayout({
                 <div className="flex justify-between text-[#16A34A] font-medium">
                   <span>Discount ({discountPercentage}%)</span>
                   <span>-{formatCurrency(discountAmount)}</span>
+                </div>
+              )}
+              {Number(loyaltyDiscount) > 0 && (
+                <div className="flex justify-between text-[#16A34A] font-medium">
+                  <span>Loyalty Reward</span>
+                  <span>-{formatCurrency(loyaltyDiscount)}</span>
                 </div>
               )}
               {Number(tip) > 0 && (
