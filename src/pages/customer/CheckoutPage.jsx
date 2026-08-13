@@ -433,6 +433,17 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             email: customerInfo.email.trim() || undefined,
             phone: customerInfo.phone.trim() || undefined,
           },
+          // Nothing in this codebase set allow_redisplay before, so a card
+          // entered here took Stripe.js's default of 'limited'. The Customer
+          // Session in create-payment-intent filters redisplay on
+          // ["always", "unspecified"], and 'always' is the value that matches
+          // it. Terms of Service §6 (Post-Order Charges) covers storing the
+          // method and showing it back to the customer.
+          //
+          // This is not known to explain why a saved card redisplays at one
+          // connected account and not another — that difference is still
+          // unexplained.
+          allow_redisplay: 'always',
         },
       },
       redirect: 'if_required',

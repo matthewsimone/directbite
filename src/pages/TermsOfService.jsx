@@ -8,7 +8,7 @@ export default function TermsOfService() {
       </header>
       <div className="max-w-[720px] mx-auto px-6 py-12">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms of Service</h1>
-        <p className="text-sm text-gray-500 mb-8">Last updated: August 5, 2026</p>
+        <p className="text-sm text-gray-500 mb-8">Last updated: August 13, 2026</p>
 
         <div className="prose prose-sm max-w-none text-gray-700 space-y-6">
           <section>
@@ -41,7 +41,7 @@ export default function TermsOfService() {
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">6. Refunds</h2>
             <p>Refunds are subject to the individual restaurant's refund policy. Payment disputes are handled through Stripe's dispute resolution process. Ordr may facilitate refunds on behalf of restaurants when appropriate.</p>
-            <p><strong>Post-Order Charges.</strong> When you place an order, your payment method is stored by our payment processor (Stripe) so that the restaurant can charge it again if your order is adjusted after it has been placed. This applies to additional items, substitutions, or corrections — including requests you enter in special instructions. Any such charge is a one-time charge for that specific order, not a recurring payment, and is initiated by the restaurant. By submitting an order, you authorize these charges.</p>
+            <p><strong>Post-Order Charges.</strong> When you place an order, your payment method is stored by our payment processor (Stripe) so that the restaurant can charge it again if your order is adjusted after it has been placed. This applies to additional items, substitutions, or corrections — including requests you enter in special instructions. Any such charge is a one-time charge for that specific order, not a recurring payment, and is initiated by the restaurant. By submitting an order, you authorize these charges. If you have an Ordr account, the card you used may also be shown back to you when you order again from the same restaurant, so you can pay with it without re-entering the details; you can choose a different card at any time.</p>
           </section>
 
           <section>
