@@ -1069,19 +1069,27 @@ export default function CheckoutPage() {
 
   // Reasons that must reach the customer even on the very first createIntent.
   //
-  // The M6.5 suppression below exists because "Delivery quote changed" is
-  // nonsense when no quote existed yet. That argument does not extend to these
-  // two: they are true on a fresh load, they are not about a stale quote, and
-  // suppressing them leaves the customer looking at an amber band and a dead
-  // payment section with nothing telling them a reward is the reason.
+  // The M6.5 suppression below exists for one specific sentence: "Delivery
+  // quote changed. Please try again." is nonsense when no quote existed to
+  // change from. That argument is about quoting, and it does not reach any
+  // reward failure — those are equally true on a fresh load, and a customer who
+  // arrives at checkout with a reward already dead in their cart hits this on
+  // the FIRST attempt every time. Suppressed, they get an amber band and a held
+  // payment section with nothing naming the reward as the cause, and no reason
+  // to think removing it would help.
   //
-  // Scoped to the two new codes deliberately. The same reasoning arguably
-  // applies to the other four redemption_* reasons, but widening the
-  // suppression is a change to behaviour customers see today and belongs in its
-  // own commit, not folded into this gate.
+  // Non-redemption reasons keep the original first-attempt suppression.
   const ALWAYS_SURFACE_REASONS = new Set([
     'redemption_requires_signin',
     'redemption_not_yours',
+    'redemption_expired',
+    'redemption_not_found',
+    'redemption_wrong_restaurant',
+    'redemption_not_pending',
+    'redemption_below_minimum',
+    // Newly reachable on a first load: the ownership gate returns this when the
+    // session lookup itself fails, which can happen before any quote exists.
+    'redemption_read_error',
   ])
 
   // M6: handle quote_validation_failed errors from create-payment-intent.
@@ -1446,9 +1454,9 @@ export default function CheckoutPage() {
             // from". Only show toast on subsequent failures (e.g., after
             // the customer had a valid quote that then went stale).
             //
-            // The reward-ownership reasons are exempt: see
-            // ALWAYS_SURFACE_REASONS. They are the customer's to act on and
-            // are just as true on the first attempt as the tenth.
+            // The reward reasons are exempt: see ALWAYS_SURFACE_REASONS.
+            // They are the customer's to act on and are just as true on the
+            // first attempt as the tenth.
             if (paymentIntentId || ALWAYS_SURFACE_REASONS.has(errData.reason)) {
               handleQuoteValidationFailure(errData.reason)
             } else {
