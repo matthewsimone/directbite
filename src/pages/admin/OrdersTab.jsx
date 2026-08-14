@@ -192,6 +192,15 @@ function OrderDetailPanel({ order, onClose, onRefresh }) {
               <p className="text-sm font-semibold">
                 {item.quantity}x {item.item_name}{item.size_name ? ` — ${item.size_name}` : ''} <span className="text-gray-500 font-normal">{formatMoney(item.base_price * item.quantity)}</span>
               </p>
+              {/* Mirrors tablet/OrdersTab.jsx:958-962. A reward line prices at
+                  zero, so without this the item reads as free with no reason
+                  given. points_spent lives on the order, not the item — there
+                  is at most one redemption per order. */}
+              {item.loyalty_redemption_id && (
+                <p className="pl-4 text-[11px] text-[#16A34A] font-semibold">
+                  ** LOYALTY REWARD - {Number(order.loyalty_points_spent || 0)} PTS **
+                </p>
+              )}
               {item.order_item_toppings?.map(t => (
                 <p key={t.id} className="text-xs text-gray-500 pl-4">
                   {t.placement_type === 'addon'
@@ -207,6 +216,13 @@ function OrderDetailPanel({ order, onClose, onRefresh }) {
         <div className="text-sm space-y-1 border-t pt-3">
           <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{formatMoney(order.subtotal)}</span></div>
           {Number(order.discount_amount) > 0 && <div className="flex justify-between text-green-600"><span>Discount ({order.discount_percentage}%)</span><span>-{formatMoney(order.discount_amount)}</span></div>}
+          {/* After the promotional discount, before the delivery fee — the same
+              position as tablet/OrdersTab.jsx:988-990, so the two surfaces read
+              identically for one order. total_amount already has this deducted;
+              without the row the breakdown simply does not add up to it, which
+              matters most on the partial-refund path above, where the operator
+              types a figure while reading these numbers. */}
+          {Number(order.loyalty_discount_amount) > 0 && <div className="flex justify-between text-green-600"><span>Loyalty Reward</span><span>-{formatMoney(order.loyalty_discount_amount)}</span></div>}
           {isDelivery && Number(order.delivery_fee) > 0 && <div className="flex justify-between"><span className="text-gray-500">Delivery Fee</span><span>{formatMoney(order.delivery_fee)}</span></div>}
           <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{formatMoney(order.tax_amount)}</span></div>
           {Number(order.tip_amount) > 0 && <div className="flex justify-between"><span className="text-gray-500">Tip</span><span>{formatMoney(order.tip_amount)}</span></div>}
