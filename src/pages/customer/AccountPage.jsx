@@ -9,6 +9,14 @@ import { useCart } from '../../hooks/useCart'
 import { resolveOrderToCart } from '../../lib/reorder'
 import AccountView from '../../components/AccountView'
 
+// How long sign-out waits on the redemption cancel before giving up on it.
+// callCustomerAuth sets no timeout of its own (useCustomerAuth.jsx:36-51), and
+// this cancel is awaited ahead of the revoke, so without a bound a hung request
+// would hold someone signed in indefinitely on a page that has already
+// navigated away. Three seconds is long enough for a slow mobile round trip and
+// short enough not to read as a stuck button.
+const SIGN_OUT_CANCEL_TIMEOUT_MS = 3000
+
 // The signed-in surface, for both loyalty configurations. Deliberately NOT
 // gated on loyalty_enabled: a restaurant can run customer accounts without a
 // points program, and those customers still have order history to reorder from.
@@ -16,8 +24,8 @@ export default function AccountPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
-  const { loading: authLoading, isLoggedIn, loadProfile, loadHistory, redeemReward, logout } = useCustomerAuth()
-  const { addItem } = useCart()
+  const { loading: authLoading, isLoggedIn, loadProfile, loadHistory, redeemReward, cancelRedemption, logout } = useCustomerAuth()
+  const { addItem, items, updateQuantity } = useCart()
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
   useRestaurantBranding(restaurant, 'ordering')
 
@@ -288,8 +296,32 @@ export default function AccountPage() {
   // the state clear both complete after we have left.
   const handleSignOut = useCallback(async () => {
     navigate(`/${slug}`)
+
+    // Release the pending redemption while the token is still valid. logout()
+    // revokes it at useCustomerAuth.jsx:193, and from that instant
+    // cancelRedemption returns { cancelled: false } WITHOUT issuing a request
+    // (:322-323) — so this has to sit ahead of the await below, not after it.
+    // Signing out with a reward in the cart used to leave the row pending,
+    // locking the customer out of redeeming for the rest of the 30-minute TTL.
+    //
+    // The line leaves the cart whether or not the cancel succeeded. A failed
+    // cancel still means this customer is leaving, and a reward line carrying a
+    // redemption id nobody can act on poisons checkout for whoever holds the
+    // device next — cart storage is keyed by restaurant, not by customer
+    // (useCart.jsx:21). Only the reward line goes; the food stays.
+    const rewardLine = items.find(i => i.loyaltyRedemptionId)
+    if (rewardLine) {
+      if (slug) {
+        await Promise.race([
+          cancelRedemption(slug, rewardLine.loyaltyRedemptionId),
+          new Promise(resolve => setTimeout(resolve, SIGN_OUT_CANCEL_TIMEOUT_MS)),
+        ])
+      }
+      updateQuantity(rewardLine.id, 0)
+    }
+
     await logout()
-  }, [logout, navigate, slug])
+  }, [logout, navigate, slug, items, updateQuantity, cancelRedemption])
 
   // Restaurant fetch hit the 10s hard deadline — we don't know whether the
   // restaurant exists, so offer a retry rather than a misleading "not found".
