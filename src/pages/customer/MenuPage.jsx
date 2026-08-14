@@ -480,7 +480,9 @@ export default function MenuPage() {
           onClose={() => setSignInOpen(false)}
           onSuccess={() => {}}
           restaurantId={restaurant.id}
-          brandColor={restaurant.primary_color || '#16A34A'}
+          // Platform green, not primary_color — the sheet is ordering-flow
+          // chrome and matches the hero buttons that open it.
+          brandColor="#16A34A"
         />
       )}
 

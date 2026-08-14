@@ -32,7 +32,13 @@ const HOW_IT_WORKS_ICONS = [
 ]
 
 export default function RewardsView({ restaurant, tiers = [], rewards = [], onSignIn }) {
-  const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
+  // Platform green, not the restaurant's primary_color. The ordering flow is
+  // green throughout and says so in three places — CartSheet, CheckoutPage and
+  // ConfirmationPage all carry the same note — and a red accent on a green
+  // page reads as inconsistent. This surface and AccountView were the last two
+  // reading primary_color; both now match the flow they sit in. The name stays
+  // brandColor so the usages below are unchanged.
+  const brandColor = DEFAULT_BRAND_COLOR
   // The hero card reuses the website hero's photo and logo — useRestaurant
   // selects '*', so these arrive on the same restaurant row.
   const { hero_image_url, logo_url, logo_frame_shape, name } = restaurant

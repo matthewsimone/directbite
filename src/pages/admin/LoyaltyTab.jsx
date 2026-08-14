@@ -15,8 +15,14 @@ const EARN_BASIS_OPTIONS = [
 // Seeded by "Create default tiers" when a restaurant has no tier rows yet.
 // tier_level 1 is the floor every customer starts at, so its multiplier is
 // 1.000 and its threshold is 0.
+//
+// Standard is the platform green — it is the tier every customer sits in, so
+// it carries the accent the rest of the ordering flow uses. Plus and Premium
+// stay gold and near-black: those are earned, and reading as different from
+// the default is the point. Changing this moves NEW seeds only; rows already
+// written keep whatever colour they were seeded with.
 const DEFAULT_TIERS = [
-  { tier_level: 1, name: 'Standard', color: '#A9B0BA', multiplier: 1.000, threshold_points: 0 },
+  { tier_level: 1, name: 'Standard', color: '#16A34A', multiplier: 1.000, threshold_points: 0 },
   { tier_level: 2, name: 'Plus', color: '#C9A227', multiplier: 1.150, threshold_points: 5000 },
   { tier_level: 3, name: 'Premium', color: '#171C27', multiplier: 1.250, threshold_points: 20000 },
 ]

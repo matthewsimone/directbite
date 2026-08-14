@@ -66,16 +66,16 @@ function HeroAuthButtons({ isLoggedIn, profile, loyaltyEnabled, onSignIn, onAcco
   if (isLoggedIn) {
     // Points are only meaningful with a program running, and a customer who
     // has never given a name has nothing to be greeted by — either way the
-    // label falls back to "Account" rather than rendering an empty pill.
+    // label falls back to "My Account" rather than rendering an empty pill.
     // display_name is rendered as stored; nothing here transforms it.
     const firstName = (profile?.display_name || '').trim().split(' ')[0] || ''
     const points = Number(profile?.points_balance) || 0
     let label
-    if (!profile) label = 'Account'
+    if (!profile) label = 'My Account'
     else if (loyaltyEnabled && firstName) label = `${firstName} · ${formatPoints(points)} pts`
     else if (loyaltyEnabled) label = `${formatPoints(points)} pts`
     else if (firstName) label = firstName
-    else label = 'Account'
+    else label = 'My Account'
 
     // min-w-0 on the flex row is what actually lets the button shrink below
     // its content width; without it a long name plus a five-figure balance

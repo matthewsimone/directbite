@@ -144,7 +144,9 @@ export default function RewardsPage() {
         // rearrange itself first.
         onSuccess={() => navigate(`/${slug}/account`)}
         restaurantId={restaurant.id}
-        brandColor={restaurant.primary_color || '#16A34A'}
+        // Platform green, not primary_color — the sheet is ordering-flow
+        // chrome and matches RewardsView behind it.
+        brandColor="#16A34A"
       />
     </div>
   )
