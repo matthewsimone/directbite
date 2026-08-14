@@ -34,6 +34,8 @@ export default function AccountView({
   orders = [],
   transactions = [],
   historyLoading = false,
+  historyFailed = false,
+  onRetryHistory = () => {},
   onReorder = () => {},
   onRedeem = () => {},
   onStartOrder = () => {},
@@ -123,6 +125,23 @@ export default function AccountView({
     historyLoading ? (
       <div className="text-center py-12">
         <p className="text-sm text-gray-500">Loading your orders...</p>
+      </div>
+    ) : historyFailed ? (
+      // Above the empty check on purpose: a failed fetch leaves orders at [],
+      // so the empty branch would swallow it and a network error would read as
+      // "you have never ordered here". Same wording as the restaurant-level
+      // failure screen on this page, so the two sound like one product.
+      <div className="text-center py-12">
+        <p className="text-sm text-gray-500">Couldn't load your orders.</p>
+        <p className="text-sm text-gray-500 mt-1">Your connection looks unstable.</p>
+        <button
+          type="button"
+          onClick={onRetryHistory}
+          className="h-11 px-6 rounded-xl text-white font-medium mt-4"
+          style={{ backgroundColor: brandColor }}
+        >
+          Try again
+        </button>
       </div>
     ) : orders.length === 0 ? (
       <div className="text-center py-12">
@@ -409,7 +428,16 @@ export default function AccountView({
                     heading sits inside the guard with the card it labels — a
                     restaurant with no tier rows gets neither. */}
                 <div>
-                  {tiers.length > 0 && (
+                  {/* Guarded on customer as well as tiers. The two arrive from
+                      independent fetches, and on a cold load the tier query can
+                      resolve while the profile is still in flight — so this
+                      rendered with tiers present and customer null, and the
+                      reads below are what crashed. currentTier and nextTier are
+                      both null without a customer, and atTopTier is false, so
+                      every branch in here fell through to a bare property
+                      access on null. Click-through navigation had the profile
+                      warm already, which is why it only showed on refresh. */}
+                  {customer && tiers.length > 0 && (
                     <>
                       <h2 className="text-sm font-medium text-gray-900 mb-2">Your tier</h2>
                       <div className="rounded-xl border border-gray-200 bg-white p-3">

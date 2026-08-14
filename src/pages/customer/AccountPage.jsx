@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
@@ -27,6 +27,7 @@ export default function AccountPage() {
   const [profileLoading, setProfileLoading] = useState(false)
   const [history, setHistory] = useState(null)
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyFailed, setHistoryFailed] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
 
   const loyaltyEnabled = restaurant?.loyalty_enabled === true
@@ -59,22 +60,53 @@ export default function AccountPage() {
     return () => { cancelled = true }
   }, [restaurant?.id, isLoggedIn, loadProfile])
 
-  // Same scoping as the profile above, and the same reason for a separate
-  // flag rather than inferring from the result: loadHistory resolves to null
-  // on ANY failure (useCustomerAuth.jsx:254, :257), which is indistinguishable
-  // from "not fetched yet". Inferring would leave a failed request showing
-  // "Loading your orders..." forever — and with loyalty off that message is
-  // the whole page, not one tab. Deliberately outside the page's load gate:
-  // the rest of the page renders without it.
-  useEffect(() => {
-    if (!restaurant?.id || !isLoggedIn) { setHistory(null); setHistoryLoading(false); return }
-    let cancelled = false
+  // Monotonic id for the in-flight history request. A retry, a restaurant
+  // change and the initial load all share one fetch function, so the counter
+  // is what decides which result owns the state — the cancelled-flag closure
+  // this replaces could only see its own effect run, not a retry racing it.
+  const historyReqRef = useRef(0)
+
+  // Same scoping as the profile above, and the same reason for separate flags
+  // rather than inferring from the result: loadHistory resolves to null on ANY
+  // failure (useCustomerAuth.jsx:283, :286), which is indistinguishable both
+  // from "not fetched yet" and from a genuinely empty account. Two booleans
+  // carry what the null cannot — one for in-flight, one for failed — because
+  // "no orders yet" and "we could not load your orders" need different copy
+  // and only one of them deserves a retry.
+  //
+  // historyFailed resets on entry so a second failure re-enters the error
+  // state cleanly rather than sticking on the first one's value.
+  const loadHistoryFor = useCallback(async (restaurantId) => {
+    const reqId = ++historyReqRef.current
+    setHistoryFailed(false)
     setHistoryLoading(true)
-    loadHistory(restaurant.id).then(h => {
-      if (!cancelled) { setHistory(h); setHistoryLoading(false) }
-    })
-    return () => { cancelled = true }
-  }, [restaurant?.id, isLoggedIn, loadHistory])
+    const h = await loadHistory(restaurantId)
+    // A newer request has taken ownership; this result is stale.
+    if (historyReqRef.current !== reqId) return
+    setHistory(h)
+    setHistoryFailed(h === null)
+    setHistoryLoading(false)
+  }, [loadHistory])
+
+  // Deliberately outside the page's load gate: the rest of the page renders
+  // without it.
+  useEffect(() => {
+    if (!restaurant?.id || !isLoggedIn) {
+      // Invalidate anything in flight so its result cannot land after this.
+      historyReqRef.current++
+      setHistory(null)
+      setHistoryLoading(false)
+      setHistoryFailed(false)
+      return
+    }
+    loadHistoryFor(restaurant.id)
+  }, [restaurant?.id, isLoggedIn, loadHistoryFor])
+
+  // Same shape as useRestaurant's retry (useRestaurant.js:152) — zero-arg, so
+  // it hands straight to an onClick without a wrapper at the call site.
+  const retryHistory = useCallback(() => {
+    if (restaurant?.id) loadHistoryFor(restaurant.id)
+  }, [restaurant?.id, loadHistoryFor])
 
   async function fetchLoyalty(restaurantId) {
     setDataLoading(true)
@@ -254,6 +286,8 @@ export default function AccountPage() {
           orders={history?.orders ?? []}
           transactions={history?.transactions ?? []}
           historyLoading={historyLoading}
+          historyFailed={historyFailed}
+          onRetryHistory={retryHistory}
           onReorder={handleReorder}
           onRedeem={handleRedeem}
           onStartOrder={() => navigate(`/${slug}`)}
