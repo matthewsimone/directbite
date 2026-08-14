@@ -42,23 +42,52 @@ export default function AccountPage() {
     fetchLoyalty(restaurant.id)
   }, [restaurant?.id, loyaltyEnabled])
 
-  // The profile is scoped to THIS page's restaurant, so a customer viewing one
-  // restaurant's account can never see another restaurant's balance. The
-  // cancelled flag stops a slow response for a previous restaurant from
-  // overwriting a newer one.
+  // Monotonic id for the in-flight profile request, for the same reason as
+  // historyReqRef below: the initial load and a post-redemption refresh share
+  // one fetch function, so the counter is what decides which result owns the
+  // state. The cancelled-flag closure this replaces could only see its own
+  // effect run, not a refresh racing it.
+  const profileReqRef = useRef(0)
+
   // profile stays null for four different states — unfetched, no row here,
-  // request failed, logged out — so the gate below tracks the request itself
-  // rather than its result. The cleanup deliberately leaves profileLoading
-  // set: a superseded request must not clear a flag the newer one now owns.
+  // request failed, logged out — so the gate tracks the request itself rather
+  // than its result.
+  //
+  // `silent` controls only whether the flag is RAISED, never whether it is
+  // lowered. profileLoading is part of the whole-page load gate below, so a
+  // background refresh that raised it would blank a rendered page back to
+  // "Loading..." for one round trip. Lowering it is unconditional because the
+  // request holding the current id owns the flag either way: a silent refresh
+  // that supersedes an in-flight initial load inherits the responsibility for
+  // clearing what that load raised.
+  const loadProfileFor = useCallback(async (restaurantId, { silent = false } = {}) => {
+    const reqId = ++profileReqRef.current
+    if (!silent) setProfileLoading(true)
+    const p = await loadProfile(restaurantId)
+    // A newer request has taken ownership; this result is stale.
+    if (profileReqRef.current !== reqId) return
+    setProfile(p)
+    setProfileLoading(false)
+  }, [loadProfile])
+
+  // The profile is scoped to THIS page's restaurant, so a customer viewing one
+  // restaurant's account can never see another restaurant's balance.
   useEffect(() => {
-    if (!restaurant?.id || !isLoggedIn) { setProfile(null); setProfileLoading(false); return }
-    let cancelled = false
-    setProfileLoading(true)
-    loadProfile(restaurant.id).then(p => {
-      if (!cancelled) { setProfile(p); setProfileLoading(false) }
-    })
-    return () => { cancelled = true }
-  }, [restaurant?.id, isLoggedIn, loadProfile])
+    if (!restaurant?.id || !isLoggedIn) {
+      // Invalidate anything in flight so its result cannot land after this.
+      profileReqRef.current++
+      setProfile(null)
+      setProfileLoading(false)
+      return
+    }
+    loadProfileFor(restaurant.id)
+  }, [restaurant?.id, isLoggedIn, loadProfileFor])
+
+  // Re-read the balance after the client itself has moved it. Silent, because
+  // the page is already painted by the time anything calls this.
+  const refreshProfile = useCallback(() => {
+    if (restaurant?.id && isLoggedIn) loadProfileFor(restaurant.id, { silent: true })
+  }, [restaurant?.id, isLoggedIn, loadProfileFor])
 
   // Monotonic id for the in-flight history request. A retry, a restaurant
   // change and the initial load all share one fetch function, so the counter
@@ -173,6 +202,20 @@ export default function AccountPage() {
       return
     }
 
+    // The RPC has already deducted the points, so the balance on screen is now
+    // one redemption out of date. Not awaited: the redemption succeeded
+    // server-side regardless, and holding the cart insert on a read would slow
+    // the button for no gain.
+    //
+    // Only this page and the CartSheet cancel move the balance from the
+    // client, and the cancel is deliberately left alone — CartSheet has no
+    // profile and no loadProfile, so wiring it would mean either caching the
+    // profile in the provider (rejected: it would have to be keyed per
+    // restaurant and invalidated on every trigger below) or threading a
+    // callback down through MenuPage. Its staleness lands on the hero pill and
+    // clears on the next mount.
+    refreshProfile()
+
     // An item reward becomes a cart line at zero. A discount reward carries
     // no menu item, so it becomes a marker line — priced at zero, with the
     // money coming off once in the totals, driven by the redemption row the
@@ -197,7 +240,7 @@ export default function AccountPage() {
     })
 
     navigate(`/${slug}`)
-  }, [slug, redeemReward, addItem, navigate])
+  }, [slug, redeemReward, addItem, navigate, refreshProfile])
 
   // Navigate BEFORE revoking. logout clears customerId, which re-renders this
   // page into its signed-out redirect below — on a loyalty restaurant that
