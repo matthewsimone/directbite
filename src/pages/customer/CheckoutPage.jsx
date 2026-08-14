@@ -1769,7 +1769,15 @@ export default function CheckoutPage() {
             <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
               Delivery Address
             </h3>
-            {deliveryAddress && !useNewAddress ? (
+            {/* Keyed on the coordinates, NOT the address string. The input
+                below is controlled by deliveryAddress, so keying this on that
+                string meant the first typed character flipped this ternary and
+                unmounted the field mid-keystroke — a customer with no saved
+                address could type exactly one letter and then had nothing left
+                to type into. Coordinates only exist once Places has resolved a
+                selection, which is the real "an address is confirmed" signal,
+                and the same test the prefill effect above already uses. */}
+            {deliveryLat != null && !useNewAddress ? (
               <div>
                 <div className="rounded-xl border border-gray-200 px-4 py-3.5">
                   <p className="text-base text-gray-900">{deliveryAddress}</p>
