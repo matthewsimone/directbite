@@ -49,6 +49,11 @@ export default function AccountPage() {
   // effect run, not a refresh racing it.
   const profileReqRef = useRef(0)
 
+  // Whether a profile request is outstanding. profileLoading cannot answer
+  // this any more: a silent refresh never raises it. Only the refocus refetch
+  // reads this, to avoid stacking a second request on a slow first one.
+  const profileInFlightRef = useRef(false)
+
   // profile stays null for four different states — unfetched, no row here,
   // request failed, logged out — so the gate tracks the request itself rather
   // than its result.
@@ -62,10 +67,13 @@ export default function AccountPage() {
   // clearing what that load raised.
   const loadProfileFor = useCallback(async (restaurantId, { silent = false } = {}) => {
     const reqId = ++profileReqRef.current
+    profileInFlightRef.current = true
     if (!silent) setProfileLoading(true)
     const p = await loadProfile(restaurantId)
-    // A newer request has taken ownership; this result is stale.
+    // A newer request has taken ownership; this result is stale. Leaving the
+    // in-flight ref set is correct — the newer request is still outstanding.
     if (profileReqRef.current !== reqId) return
+    profileInFlightRef.current = false
     setProfile(p)
     setProfileLoading(false)
   }, [loadProfile])
@@ -75,7 +83,12 @@ export default function AccountPage() {
   useEffect(() => {
     if (!restaurant?.id || !isLoggedIn) {
       // Invalidate anything in flight so its result cannot land after this.
+      // Clearing the in-flight ref alongside the counter is what stops it
+      // sticking: the invalidated request returns down the stale path, which
+      // deliberately leaves the ref set for whoever superseded it — and here
+      // nobody did, so this branch has to release it.
       profileReqRef.current++
+      profileInFlightRef.current = false
       setProfile(null)
       setProfileLoading(false)
       return
@@ -87,6 +100,32 @@ export default function AccountPage() {
   // the page is already painted by the time anything calls this.
   const refreshProfile = useCallback(() => {
     if (restaurant?.id && isLoggedIn) loadProfileFor(restaurant.id, { silent: true })
+  }, [restaurant?.id, isLoggedIn, loadProfileFor])
+
+  // Backgrounded → returned: re-read the balance. Same shape as useRestaurant's
+  // refetch (useRestaurant.js:161-167) and here for the same reason — the
+  // server moved while we weren't looking.
+  //
+  // This is the only cover for the four changes that have no client event at
+  // all: the accrual trigger when an order's items land, the refund reversal
+  // (081), expire_stale_redemptions returning points from an abandoned cart,
+  // and a cancel from CartSheet. A customer who orders, gets the confirmation
+  // and comes back sees the points they just earned.
+  //
+  // Registration is gated on isLoggedIn, not just the handler, so a signed-out
+  // visitor never attaches a listener at all — the profile endpoint costs
+  // three queries and a last_seen_at write, and refocus is frequent on mobile.
+  // The in-flight guard keeps a slow request from collecting a queue of
+  // duplicates behind it when someone flicks between apps.
+  useEffect(() => {
+    if (!restaurant?.id || !isLoggedIn) return
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      if (profileInFlightRef.current) return
+      loadProfileFor(restaurant.id, { silent: true })
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [restaurant?.id, isLoggedIn, loadProfileFor])
 
   // Monotonic id for the in-flight history request. A retry, a restaurant

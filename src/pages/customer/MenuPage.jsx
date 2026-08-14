@@ -145,6 +145,47 @@ export default function MenuPage() {
     return () => { cancelled = true }
   }, [restaurant?.id, isLoggedIn, loadProfile])
 
+  // Backgrounded → returned: re-read the balance behind the hero pill, the
+  // same way useRestaurant re-reads the restaurant (useRestaurant.js:161-167).
+  // Every event that moves a balance without the client's knowledge — the
+  // accrual trigger, the refund reversal, an expired redemption, a cancel from
+  // the cart — leaves this figure stale until the page remounts, and on the
+  // menu a customer can sit here a long time without that happening.
+  //
+  // No loading flag: the pill renders whatever it last had and swaps the
+  // number in when the read lands, which is the same progressive fill the
+  // initial fetch above already does.
+  //
+  // Registration is gated on isLoggedIn so a signed-out visitor never attaches
+  // a listener. inFlight stops a slow request from stacking duplicates behind
+  // it when someone flicks between apps; it is a plain closure variable rather
+  // than state because flipping it must not re-render the menu, and rather
+  // than a ref because it belongs to this effect run and dies with it.
+  //
+  // cancelled is here for the same reason as the fetch above: /:slug
+  // re-renders across restaurants instead of remounting, so a refocus request
+  // still in flight when the slug changes would otherwise land the previous
+  // restaurant's balance in the pill.
+  useEffect(() => {
+    if (!restaurant?.id || !isLoggedIn) return
+    let inFlight = false
+    let cancelled = false
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      if (inFlight) return
+      inFlight = true
+      loadProfile(restaurant.id).then(p => {
+        inFlight = false
+        if (!cancelled) setHeroProfile(p)
+      })
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [restaurant?.id, isLoggedIn, loadProfile])
+
   // Set initial active category
   useEffect(() => {
     if (categories.length > 0 && !activeCategory) {
