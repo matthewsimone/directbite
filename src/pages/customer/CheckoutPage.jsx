@@ -978,11 +978,10 @@ export default function CheckoutPage() {
   const total = Math.round((netSubtotal + deliveryFee + taxAmount + tip + serviceFee) * 100) / 100
 
   // Display only — the database awards the real points via the accrual
-  // trigger when the order is written; this is a preview from the same
-  // formula. tierMultiplier is deliberately omitted and defaults to 1,
-  // because checkout does not know the customer's tier. A customer at a
-  // higher tier earns MORE than shown, which is the safe direction to be
-  // wrong.
+  // trigger when the order is written; this is a preview at the base rate,
+  // with no tier multiplier, because checkout does not know the customer's
+  // lifetime points. A customer above tier 1 earns MORE than shown, which is
+  // the safe direction to be wrong. See the header of utils/loyaltyPoints.js.
   const loyaltyPoints = calculateLoyaltyPoints({
     restaurant,
     subtotal: fullSubtotal,

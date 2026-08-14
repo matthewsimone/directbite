@@ -1,10 +1,27 @@
-// Client-side mirror of the server's loyalty math.
+// Client-side preview of the server's loyalty math — a deliberate LOWER
+// BOUND, not a mirror.
 //
-// ⚠️  THIS MIRRORS SQL. Any change here requires the IDENTICAL change there,
-// and vice versa:
-//   • calculate_loyalty_points  — supabase/migrations/063_loyalty_foundation.sql
-//   • orders_accrue_loyalty     — supabase/migrations/063_loyalty_foundation.sql,
-//                                 last modified by 068_loyalty_rewards.sql
+// The divergence is the tier ladder. calculate_loyalty_points
+// (supabase/migrations/083_tier_promotion.sql:79) walks it: it starts from the
+// customer's lifetime points, applies each tier's multiplier to the slice of
+// the order earned while standing on that tier, and rolls onto the next tier
+// as the order carries them across a threshold. This file applies no
+// multiplier at all — it computes the base points and stops, which is the
+// ladder walk with every multiplier pinned to 1.
+//
+// It has no choice. All four callers — the cart, the checkout summary, the
+// add-to-cart float and the confirmation page — render without the customer's
+// lifetime points, and that figure is the ladder's entry point; without it
+// there is no tier to multiply by and no threshold to detect a crossing
+// against. Guessing would be worse than not multiplying, because multipliers
+// are >= 1: the base figure can only be too low, never too high. So the
+// customer is shown a number the ledger meets or beats, which is the safe
+// direction to be wrong — a preview that overshot would read as points going
+// missing.
+//
+// The rest — the earn basis, the loyalty-redeemed deduction, the floor — does
+// mirror the SQL, and a change to any of those on either side needs the
+// identical change on the other.
 //
 // The database is the authority: it awards the points, this file only
 // previews them. Every customer-facing surface that shows a points figure
@@ -21,7 +38,6 @@
  * @param {number} [args.discountAmount]       promotional discount, dollars
  * @param {number} [args.totalAmount]          order grand total, dollars
  * @param {number} [args.loyaltyDiscountAmount] portion paid with points, dollars
- * @param {number} [args.tierMultiplier]       the customer's tier multiplier
  * @returns {number} integer points, 0 when nothing would be earned
  */
 export function calculateLoyaltyPoints({
@@ -30,7 +46,6 @@ export function calculateLoyaltyPoints({
   discountAmount = 0,
   totalAmount = 0,
   loyaltyDiscountAmount = 0,
-  tierMultiplier = 1,
 }) {
   if (!restaurant || restaurant.loyalty_enabled !== true) return 0
 
@@ -62,7 +77,7 @@ export function calculateLoyaltyPoints({
 
   // FLOOR, not round — the SQL floors, and rounding up here would show the
   // customer a point they will never actually receive on most orders.
-  const points = Math.floor((basisCents / 100) * rate * num(tierMultiplier))
+  const points = Math.floor((basisCents / 100) * rate)
 
   if (!Number.isFinite(points) || points <= 0) return 0
   return points

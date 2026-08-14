@@ -53,17 +53,42 @@ export default function AccountView({
   const { hero_image_url, logo_url, logo_frame_shape, name } = restaurant
   const pointsPerDollar = Number(restaurant.loyalty_points_per_dollar) || 0
 
+  const lifetime = Number(customer?.lifetimePoints) || 0
+
+  // Derived from lifetime points rather than the stored customer.tierLevel,
+  // which is only as fresh as the last accrual wrote it. These are the same
+  // rules resolve_tier_level applies server-side
+  // (083_tier_promotion.sql:47): the highest threshold at or below the
+  // lifetime total, ordered by threshold_points desc then tier_level desc so
+  // two tiers sharing a threshold resolve deterministically, falling back to
+  // tier 1 when nothing qualifies. Ordering by threshold and not by
+  // tier_level is deliberate — nothing constrains the ladder to be monotonic,
+  // and the threshold is what the customer actually crossed.
   const currentTier = customer
-    ? tiers.find(t => Number(t.tier_level) === Number(customer.tierLevel)) || null
+    ? [...tiers]
+        .filter(t => (Number(t.threshold_points) || 0) <= lifetime)
+        .sort(
+          (a, b) =>
+            (Number(b.threshold_points) || 0) - (Number(a.threshold_points) || 0) ||
+            (Number(b.tier_level) || 0) - (Number(a.tier_level) || 0),
+        )[0] ||
+      tiers.find(t => Number(t.tier_level) === 1) ||
+      null
     : null
-  // tiers arrive ordered by tier_level, so the first one above the customer's
-  // level is the next one they'll reach.
+  // The cheapest threshold still ahead of them, by the same ordering. The
+  // current tier is excluded so a ladder whose lowest threshold sits above 0
+  // can't offer the customer the tier they are already on.
   const nextTier = customer
-    ? tiers.find(t => Number(t.tier_level) > Number(customer.tierLevel)) || null
+    ? [...tiers]
+        .filter(t => (Number(t.threshold_points) || 0) > lifetime && t.id !== currentTier?.id)
+        .sort(
+          (a, b) =>
+            (Number(a.threshold_points) || 0) - (Number(b.threshold_points) || 0) ||
+            (Number(a.tier_level) || 0) - (Number(b.tier_level) || 0),
+        )[0] || null
     : null
   const atTopTier = Boolean(customer) && tiers.length > 0 && !nextTier
 
-  const lifetime = Number(customer?.lifetimePoints) || 0
   const nextThreshold = Number(nextTier?.threshold_points) || 0
   const progressPct = atTopTier || !nextThreshold
     ? 100
@@ -448,7 +473,7 @@ export default function AccountView({
                               style={{ backgroundColor: currentTier?.color || brandColor }}
                             />
                             <span className="text-sm font-medium text-gray-900 truncate">
-                              {currentTier?.name || `Tier ${customer.tierLevel}`}
+                              {currentTier?.name || `Tier ${currentTier?.tier_level ?? 1}`}
                             </span>
                           </div>
                           <span className="text-sm text-gray-500 shrink-0">
@@ -498,7 +523,7 @@ export default function AccountView({
                                   tier={tier}
                                   brandColor={brandColor}
                                   pointsPerDollar={pointsPerDollar}
-                                  isCurrent={Boolean(customer) && Number(tier.tier_level) === Number(customer.tierLevel)}
+                                  isCurrent={Boolean(currentTier) && tier.id === currentTier.id}
                                 />
                               ))}
                             </div>
