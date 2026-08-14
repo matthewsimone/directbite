@@ -851,7 +851,9 @@ export default function CheckoutPage() {
   const quoteAbortController = useRef(null)
   const [mapsLoaded, setMapsLoaded] = useState(false)
   const autocompleteRef = useRef(null)
-  const inputRef = useRef(null)
+  // The live address input node. State, not a ref, so the Autocomplete effect
+  // can depend on it and re-attach every time a fresh node mounts.
+  const [addressInputEl, setAddressInputEl] = useState(null)
   // Key the minimum to the restaurant's CONFIGURED mode (known at page load) so
   // the "minimum order" message shows the moment Delivery is selected — not after
   // an address resolves the Uber quote. For 'both', assume Uber Direct until a
@@ -1145,12 +1147,35 @@ export default function CheckoutPage() {
     }).then(() => setMapsLoaded(true)).catch(err => console.error('[Maps] Load failed:', err))
   }, [orderType, restaurant?.delivery_available])
 
-  // Attach Places Autocomplete when Maps loaded and input exists
+  // Attach Places Autocomplete to whatever input node is currently mounted.
+  //
+  // Keyed on the NODE, not on the state that used to imply a node. The old deps
+  // were [mapsLoaded, orderType, useNewAddress], and none of those change when
+  // the input remounts underneath them: selecting an address flips the ternary
+  // below and unmounts the field, and clicking "Use a different address" a
+  // second time sets useNewAddress to true when it is ALREADY true — no state
+  // change, no effect re-run — while React mounts a brand-new input element.
+  // The result was a live field with no Autocomplete bound to it at all: typing
+  // produced no dropdown, permanently, until a reload. Every click after the
+  // first was dead.
+  //
+  // addressInputEl is state rather than a ref because an effect cannot depend
+  // on a ref's .current — the whole point is to re-run when the node changes.
+  // setAddressInputEl is passed straight to the input's ref: useState setters
+  // are referentially stable, so React calls it only on real mount/unmount. An
+  // inline arrow would be a new function every render, which React detaches and
+  // reattaches each time, and setting state from that would loop.
   useEffect(() => {
-    if (!mapsLoaded || !inputRef.current || orderType !== 'delivery') return
-    // Reset autocomplete if input element changed (pickup→delivery remount)
-    autocompleteRef.current = null
-    const ac = new window.google.maps.places.Autocomplete(inputRef.current, {
+    if (!mapsLoaded || !addressInputEl || orderType !== 'delivery') return
+
+    // Which .pac-container nodes already existed. Google appends one to
+    // document.body per instance, LAZILY — usually on first keystroke, not at
+    // construction — so the only reliable way to identify ours is to diff
+    // against this snapshot at cleanup time, once it definitely exists.
+    // Checkout mounts exactly one Autocomplete, so anything new by then is ours.
+    const containersBefore = new Set(document.querySelectorAll('.pac-container'))
+
+    const ac = new window.google.maps.places.Autocomplete(addressInputEl, {
       componentRestrictions: { country: 'us' },
       types: ['address'],
       fields: ['formatted_address', 'geometry'],
@@ -1194,7 +1219,22 @@ export default function CheckoutPage() {
       }
     })
     autocompleteRef.current = ac
-  }, [mapsLoaded, orderType, useNewAddress])
+
+    // No cleanup previously existed, so every rebuild leaked an instance, its
+    // place_changed listener, and a detached dropdown container.
+    // AddressAutocomplete.jsx:34 avoids this by never rebuilding at all
+    // (acRef.current guard); this effect has to rebuild whenever the node
+    // changes, so it tears down instead. That also makes double-attachment
+    // impossible without a separate guard — React runs the cleanup before the
+    // next run.
+    return () => {
+      window.google?.maps?.event?.clearInstanceListeners(ac)
+      if (autocompleteRef.current === ac) autocompleteRef.current = null
+      document.querySelectorAll('.pac-container').forEach(node => {
+        if (!containersBefore.has(node)) node.remove()
+      })
+    }
+  }, [mapsLoaded, orderType, addressInputEl])
 
   // Log restaurant delivery config when it loads
   useEffect(() => {
@@ -1804,7 +1844,10 @@ export default function CheckoutPage() {
             ) : (
             <div className="space-y-3">
               <input
-                ref={inputRef}
+                // Stable setter straight from useState — see the Autocomplete
+                // effect. React calls it with the node on mount and null on
+                // unmount, which is exactly the signal that effect needs.
+                ref={setAddressInputEl}
                 type="text"
                 placeholder="Search for your address..."
                 value={deliveryAddress}
