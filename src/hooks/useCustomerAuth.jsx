@@ -238,6 +238,35 @@ export function CustomerAuthProvider({ children }) {
     }
   }, [])
 
+  // Writes the identity's saved contact + address — the same record
+  // loadSavedProfile reads, global to the customer rather than per-restaurant.
+  // The 'profile' action treats a present `updates` key as a write and an
+  // absent one as a read, so the two share an endpoint.
+  //
+  // Only the server's whitelist is honoured (email, display_name,
+  // delivery_address, delivery_apt, delivery_lat, delivery_lng); anything else
+  // in the object is ignored, and a key sent as '' or null clears that field.
+  //
+  // Same failure contract as the loaders: null on any failure, never throws.
+  // A caller saving in the background must not be able to surface an error
+  // over whatever the customer is actually doing.
+  const saveProfile = useCallback(async (updates) => {
+    if (!updates || typeof updates !== 'object') return null
+    const token = readToken()
+    if (!token) return null
+    try {
+      const { ok, data } = await callCustomerAuth({
+        action: 'profile',
+        token,
+        updates,
+      })
+      if (!ok || !data.ok) return null
+      return data.profile ?? null
+    } catch {
+      return null
+    }
+  }, [])
+
   // Same contract as loadProfile: per-restaurant, no provider state, null on
   // any failure. The edge function degrades a failed side to an empty array,
   // so a non-null result may still carry one empty list.
@@ -349,6 +378,7 @@ export function CustomerAuthProvider({ children }) {
         loadProfile,
         loadHistory,
         loadSavedProfile,
+        saveProfile,
         linkPaymentCustomer,
         getSessionTokenForPayment,
         redeemReward,

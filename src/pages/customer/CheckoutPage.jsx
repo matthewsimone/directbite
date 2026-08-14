@@ -685,7 +685,40 @@ export default function CheckoutPage() {
   const { restaurant, hours, isOpen, loading: restLoading } = useRestaurant(slug)
   // Sent with the CREATE call only, so a returning signed-in customer's
   // existing Stripe Customer is reused rather than duplicated.
-  const { getSessionTokenForPayment } = useCustomerAuth()
+  const { getSessionTokenForPayment, isLoggedIn, saveProfile } = useCustomerAuth()
+
+  // place_changed lives in an effect keyed on [mapsLoaded, orderType,
+  // useNewAddress], so a listener closing over isLoggedIn would hold whatever
+  // it was when the Autocomplete was built — stale for anyone who verifies at
+  // checkout after the field mounts. A ref keeps the check current without
+  // rebuilding the Autocomplete every time auth state changes.
+  const isLoggedInRef = useRef(isLoggedIn)
+  useEffect(() => { isLoggedInRef.current = isLoggedIn }, [isLoggedIn])
+
+  // Mirrors writeStoredAddress: the device copy is the customer's most recent
+  // explicit choice, this is the one that follows them to another device.
+  // Written at selection rather than after the order, because the confirmation
+  // page never receives the address — get-order-by-pi excludes it as PII and
+  // the navigate state does not carry it.
+  //
+  // Fire and forget. Nothing awaits it, nothing toasts on failure: the address
+  // field must not wait on a round trip, and a failed save costs nothing
+  // because writeStoredAddress has already kept it on this device.
+  // saveProfile resolves null rather than throwing, so the floating promise
+  // cannot reject.
+  const persistAddressToProfile = useCallback((address, apt, lat, lng) => {
+    if (!isLoggedInRef.current) return
+    // The server rejects non-numeric coordinates with a 400, and a stored
+    // value that has been through JSON could be anything.
+    if (typeof lat !== 'number' || typeof lng !== 'number') return
+    saveProfile({
+      delivery_address: address || '',
+      delivery_apt: apt || '',
+      delivery_lat: lat,
+      // The page calls it deliveryLon; the column is delivery_lng.
+      delivery_lng: lng,
+    })
+  }, [saveProfile])
 
   // Title / favicon / manifest for the checkout screen. Without it, navigating
   // menu → checkout runs MenuPage's branding cleanup on unmount, which RESTORES
@@ -1112,6 +1145,12 @@ export default function CheckoutPage() {
         setDeliveryLat(place.geometry.location.lat())
         setDeliveryLon(place.geometry.location.lng())
         writeStoredAddress(
+          place.formatted_address || '',
+          deliveryApt,
+          place.geometry.location.lat(),
+          place.geometry.location.lng()
+        )
+        persistAddressToProfile(
           place.formatted_address || '',
           deliveryApt,
           place.geometry.location.lat(),
@@ -1754,6 +1793,7 @@ export default function CheckoutPage() {
                   const stored = readStoredAddress()
                   if (stored) {
                     writeStoredAddress(stored.address, next, stored.lat, stored.lng)
+                    persistAddressToProfile(stored.address, next, stored.lat, stored.lng)
                   }
                 }}
                 placeholder="Apt/Unit (optional)"
