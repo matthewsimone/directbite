@@ -1067,6 +1067,23 @@ export default function CheckoutPage() {
     })),
   }), [restaurant?.id, orderType, scheduledFor, customerName, customerPhone, customerEmail, fullDeliveryAddress, deliveryLat, deliveryLon, fullSubtotal, discountAmount, discountPercentage, deliveryFee, taxAmount, tip, serviceFee, recoup.amount, recoup.rate, total, includeUtensils, specialInstructions, items, resolvedMode, uberQuoteId, uberQuotedFeeCents, uberEnvironment])
 
+  // Reasons that must reach the customer even on the very first createIntent.
+  //
+  // The M6.5 suppression below exists because "Delivery quote changed" is
+  // nonsense when no quote existed yet. That argument does not extend to these
+  // two: they are true on a fresh load, they are not about a stale quote, and
+  // suppressing them leaves the customer looking at an amber band and a dead
+  // payment section with nothing telling them a reward is the reason.
+  //
+  // Scoped to the two new codes deliberately. The same reasoning arguably
+  // applies to the other four redemption_* reasons, but widening the
+  // suppression is a change to behaviour customers see today and belongs in its
+  // own commit, not folded into this gate.
+  const ALWAYS_SURFACE_REASONS = new Set([
+    'redemption_requires_signin',
+    'redemption_not_yours',
+  ])
+
   // M6: handle quote_validation_failed errors from create-payment-intent.
   // Reset uber quote state so the existing fee-computation useEffect re-fires
   // and fetches a fresh quote. The customer sees the new price and can re-Pay.
@@ -1087,6 +1104,13 @@ export default function CheckoutPage() {
       redemption_not_found: 'That reward is no longer available. Please remove it and try again.',
       redemption_wrong_restaurant: 'That reward is no longer available. Please remove it and try again.',
       redemption_read_error: 'Could not check that reward. Please try again.',
+      // These two are the only reward failures with a remedy other than
+      // "remove it", which is why they read differently from the rest. A
+      // redemption belongs to the customer who spent the points, and the cart
+      // line carrying it can outlive that session or be inherited by whoever
+      // holds the device next.
+      redemption_requires_signin: 'Please sign in again to use that reward, or remove it to continue.',
+      redemption_not_yours: 'That reward belongs to a different account. Please remove it to continue.',
     }
     if (redemptionMessages[reason]) {
       toast.error(redemptionMessages[reason])
@@ -1421,7 +1445,11 @@ export default function CheckoutPage() {
             // on first attempt, meaning no prior quote existed to "change
             // from". Only show toast on subsequent failures (e.g., after
             // the customer had a valid quote that then went stale).
-            if (paymentIntentId) {
+            //
+            // The reward-ownership reasons are exempt: see
+            // ALWAYS_SURFACE_REASONS. They are the customer's to act on and
+            // are just as true on the first attempt as the tenth.
+            if (paymentIntentId || ALWAYS_SURFACE_REASONS.has(errData.reason)) {
               handleQuoteValidationFailure(errData.reason)
             } else {
               console.warn('[Checkout] initial createIntent rejected; suppressing toast', { reason: errData.reason })
@@ -1483,6 +1511,11 @@ export default function CheckoutPage() {
               amount: Math.round(total * 100),
               order_data: buildOrderData(),
               payment_intent_id: paymentIntentId,
+              // Required on EVERY call that carries order_data, not just the
+              // first: the update path re-runs the same validation block,
+              // including the redemption ownership gate, so omitting the token
+              // here would reject a signed-in customer's own reward.
+              session_token: getSessionTokenForPayment(),
             }),
           }
         )
@@ -2055,6 +2088,12 @@ export default function CheckoutPage() {
                       amount: Math.round(total * 100),
                       order_data: { ...buildOrderData(), customer_name: name, customer_email: email, customer_phone: phone },
                       payment_intent_id: paymentIntentId,
+                      // Same reason as the update path above — this carries
+                      // order_data through the full validation block. Without
+                      // it a wallet payer with a reward would silently fail to
+                      // record their name against the order, since this call's
+                      // response is never inspected.
+                      session_token: getSessionTokenForPayment(),
                     }),
                   })
                 }}

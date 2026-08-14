@@ -29,6 +29,58 @@ async function hashToken(token: string): Promise<string> {
     .join("");
 }
 
+// Resolves the customer behind a session token, for the redemption ownership
+// check below.
+//
+// Tri-state on purpose. "No valid session" and "we could not tell" must not
+// collapse into one answer: the first is the customer's problem to fix by
+// signing in, the second is ours, and telling a signed-in customer to sign in
+// because a database read blipped would be a lie they cannot act on.
+//
+// This duplicates the session validation in the Stripe Customer block further
+// down rather than sharing it. That block is deliberately non-fatal — it
+// swallows every failure and falls through to a guest checkout — which is the
+// opposite posture from a gate that must reject. Merging them would mean one of
+// the two behaviours quietly changing.
+type SessionLookup =
+  | { status: "ok"; customerId: string }
+  | { status: "no_session" }
+  | { status: "read_error"; message: string };
+
+async function resolveSessionCustomer(
+  sessionToken: unknown
+): Promise<SessionLookup> {
+  if (typeof sessionToken !== "string" || !sessionToken.trim()) {
+    return { status: "no_session" };
+  }
+
+  try {
+    const tokenHash = await hashToken(sessionToken);
+    const { data: session, error } = await supabase
+      .from("customer_sessions")
+      .select("customer_id, revoked_at, expires_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (error) return { status: "read_error", message: error.message };
+
+    // Missing, revoked and expired are one answer to the caller — the same
+    // collapse customer-auth makes, so a caller cannot probe for which tokens
+    // exist.
+    if (
+      !session ||
+      session.revoked_at !== null ||
+      new Date(session.expires_at).getTime() < Date.now()
+    ) {
+      return { status: "no_session" };
+    }
+
+    return { status: "ok", customerId: session.customer_id };
+  } catch (err: any) {
+    return { status: "read_error", message: err?.message || "lookup threw" };
+  }
+}
+
 serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -160,6 +212,33 @@ serve(async (req: Request) => {
       if (redemption.restaurant_id !== restaurant_id) {
         return validationError("redemption_wrong_restaurant");
       }
+
+      // Ownership, checked before status or expiry because it is the more
+      // fundamental failure: there is no point telling someone their reward
+      // expired when it was never theirs to spend.
+      //
+      // A redemption is points already deducted from one customer's balance,
+      // but the cart line carrying its id outlives the session that created it
+      // — cart storage is keyed by restaurant with a two-hour TTL, never by
+      // customer (useCart.jsx:10, :21). Without this gate a browser with no
+      // session at all could still spend that reward for the remainder of the
+      // 30-minute redemption TTL.
+      //
+      // Two codes because the remedies differ: signing in fixes the first,
+      // only removing the line fixes the second. A read failure reuses the
+      // existing redemption_read_error rather than blaming the customer for an
+      // outage on our side.
+      const sessionLookup = await resolveSessionCustomer(session_token);
+      if (sessionLookup.status === "read_error") {
+        return validationError("redemption_read_error", sessionLookup.message);
+      }
+      if (sessionLookup.status === "no_session") {
+        return validationError("redemption_requires_signin");
+      }
+      if (sessionLookup.customerId !== redemption.customer_id) {
+        return validationError("redemption_not_yours");
+      }
+
       if (redemption.status !== "pending") {
         return validationError("redemption_not_pending", redemption.status);
       }
