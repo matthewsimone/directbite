@@ -6,6 +6,7 @@ import { useRestaurant } from '../../hooks/useRestaurant'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import { useCart } from '../../hooks/useCart'
+import { useRewardLineReconcile } from '../../hooks/useRewardLineReconcile'
 import { resolveOrderToCart } from '../../lib/reorder'
 import AccountView from '../../components/AccountView'
 
@@ -24,8 +25,9 @@ export default function AccountPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
-  const { loading: authLoading, isLoggedIn, loadProfile, loadHistory, redeemReward, cancelRedemption, logout } = useCustomerAuth()
+  const { loading: authLoading, isLoggedIn, loadSessionState, loadHistory, redeemReward, cancelRedemption, logout } = useCustomerAuth()
   const { addItem, items, updateQuantity } = useCart()
+  const reconcileRewardLine = useRewardLineReconcile()
   // Per-restaurant tab branding + Add-to-Home-Screen manifest.
   useRestaurantBranding(restaurant, 'ordering')
 
@@ -73,18 +75,28 @@ export default function AccountPage() {
   // request holding the current id owns the flag either way: a silent refresh
   // that supersedes an in-flight initial load inherits the responsibility for
   // clearing what that load raised.
-  const loadProfileFor = useCallback(async (restaurantId, { silent = false } = {}) => {
+  // `reconcile` is separate from `silent` because the two answer different
+  // questions, and only one read may act on the redemption id. The mount read
+  // is authoritative: nothing else is touching the cart at that moment. The
+  // post-redemption refresh is NOT — handleRedeem calls it and then adds the
+  // reward line, so a reconcile on that response races its own addItem. The
+  // refocus refetch is left out for the same reason, more weakly: nothing there
+  // needs it, and a read that can only ever delete should run where its
+  // preconditions are plainly true.
+  const loadProfileFor = useCallback(async (restaurantId, { silent = false, reconcile = false } = {}) => {
     const reqId = ++profileReqRef.current
     profileInFlightRef.current = true
     if (!silent) setProfileLoading(true)
-    const p = await loadProfile(restaurantId)
+    const state = await loadSessionState(restaurantId)
     // A newer request has taken ownership; this result is stale. Leaving the
     // in-flight ref set is correct — the newer request is still outstanding.
     if (profileReqRef.current !== reqId) return
     profileInFlightRef.current = false
-    setProfile(p)
+    setProfile(state ? state.profile : null)
     setProfileLoading(false)
-  }, [loadProfile])
+    // A null state is a failed read, not an answer — see loadSessionState.
+    if (reconcile && state) reconcileRewardLine(state.pendingRedemptionId)
+  }, [loadSessionState, reconcileRewardLine])
 
   // The profile is scoped to THIS page's restaurant, so a customer viewing one
   // restaurant's account can never see another restaurant's balance.
@@ -101,7 +113,12 @@ export default function AccountPage() {
       setProfileLoading(false)
       return
     }
-    loadProfileFor(restaurant.id)
+    // The authoritative read: this is the one that may drop a stale reward
+    // line, and it runs on mount as well as on the sign-in transition. Both
+    // are needed — a customer can sign in and then reload the tab, which
+    // restores the session with no transition to hook but the previous
+    // customer's cart still in localStorage.
+    loadProfileFor(restaurant.id, { reconcile: true })
   }, [restaurant?.id, isLoggedIn, loadProfileFor])
 
   // Re-read the balance after the client itself has moved it. Silent, because

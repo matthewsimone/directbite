@@ -198,11 +198,24 @@ export function CustomerAuthProvider({ children }) {
     }
   }, [])
 
-  // Per-restaurant profile fetch for the caller's own use. Deliberately sets
-  // no provider state — the result belongs to the page that asked for it, so
-  // two pages on different restaurants cannot overwrite each other. Returns
-  // the profile object, or null on any failure.
-  const loadProfile = useCallback(async (restaurantId) => {
+  // Everything the session endpoint knows about this customer AT this
+  // restaurant. Deliberately sets no provider state — the result belongs to the
+  // page that asked for it, so two pages on different restaurants cannot
+  // overwrite each other.
+  //
+  // Returns null for every failure: no restaurant, no token, a rejected
+  // response, a thrown request. A null return means "we learned nothing", and
+  // callers must treat it as no-op rather than as an answer.
+  //
+  // pendingRedemptionId is passed through UNCOERCED, and that is the whole
+  // point of this function existing separately from loadProfile. The server
+  // omits the key when it could not determine the value, so:
+  //   undefined -> unknown, change nothing
+  //   null      -> authoritative: this customer has no pending redemption
+  //   string    -> authoritative: this is the one
+  // A `?? null` anywhere in this path would collapse the first case into the
+  // second and start deleting reward lines whenever the read failed.
+  const loadSessionState = useCallback(async (restaurantId) => {
     if (!restaurantId) return null
     const token = readToken()
     if (!token) return null
@@ -213,11 +226,21 @@ export function CustomerAuthProvider({ children }) {
         restaurant_id: restaurantId,
       })
       if (!ok || !data.ok) return null
-      return data.profile ?? null
+      return {
+        profile: data.profile ?? null,
+        pendingRedemptionId: data.pending_redemption_id,
+      }
     } catch {
       return null
     }
   }, [])
+
+  // Unchanged contract: the profile object, or null on any failure. Kept as a
+  // thin delegate so the many existing callers stay as they are.
+  const loadProfile = useCallback(async (restaurantId) => {
+    const state = await loadSessionState(restaurantId)
+    return state ? state.profile : null
+  }, [loadSessionState])
 
   // The identity's saved contact + address, shared across every restaurant.
   // Same contract as loadProfile: no provider state, null on any failure —
@@ -376,6 +399,7 @@ export function CustomerAuthProvider({ children }) {
         logout,
         refresh: checkSession,
         loadProfile,
+        loadSessionState,
         loadHistory,
         loadSavedProfile,
         saveProfile,

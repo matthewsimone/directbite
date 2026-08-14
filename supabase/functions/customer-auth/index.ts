@@ -543,6 +543,16 @@ async function handleSession(body: any): Promise<Response> {
 
   let profile: Record<string, unknown> | null = null;
 
+  // Deliberately tri-state. A string or null is an ANSWER the client acts on;
+  // undefined means we could not determine it, and JSON.stringify drops the key
+  // entirely (jsonResponse:76) so the client can tell the two apart. That
+  // matters because the client's only use for this is deciding whether to
+  // DELETE a cart line — reporting "no pending redemption" after a failed read
+  // would throw away a legitimate reward over a transient database error.
+  // Undefined is also what an older deployment of this function returns, which
+  // is what makes the client half of this safe to ship first.
+  let pendingRedemptionId: string | null | undefined = undefined;
+
   if (body.restaurant_id) {
     // restaurant_customers.tier was dropped by migration 063 in favour of
     // tier_level; lifetime_points_earned drives tier progress and order_count
@@ -562,6 +572,33 @@ async function handleSession(body: any): Promise<Response> {
     } else {
       profile = profileRow;
     }
+
+    // At most one pending redemption per customer per restaurant
+    // (080_one_pending_redemption.sql), so this is a scalar rather than a list.
+    // The client compares it against the reward line in its cart: cart storage
+    // is keyed by restaurant, not by customer (useCart.jsx:21), so a second
+    // customer signing in on a shared device inherits the first one's reward
+    // line — and its redemption id, which cancel_redemption scopes by
+    // customer_id and would therefore refuse to release for them.
+    //
+    // A read error leaves this undefined rather than null, on purpose: see the
+    // declaration above.
+    const { data: pendingRow, error: pendingErr } = await supabase
+      .from("loyalty_redemptions")
+      .select("id")
+      .eq("restaurant_id", body.restaurant_id)
+      .eq("customer_id", identity.id)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (pendingErr) {
+      console.error(
+        "customer-auth session pending redemption read failed:",
+        pendingErr.message
+      );
+    } else {
+      pendingRedemptionId = pendingRow?.id ?? null;
+    }
   }
 
   return jsonResponse(
@@ -570,6 +607,9 @@ async function handleSession(body: any): Promise<Response> {
       customer_id: identity.id,
       phone_e164: identity.phone_e164,
       profile,
+      // Dropped from the payload entirely when undefined — that absence is the
+      // "could not determine" signal.
+      pending_redemption_id: pendingRedemptionId,
     },
     200
   );

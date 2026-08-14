@@ -7,6 +7,7 @@ import { usePromotion } from '../../hooks/usePromotion'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
 import { useCart } from '../../hooks/useCart'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
+import { useRewardLineReconcile } from '../../hooks/useRewardLineReconcile'
 import { calculateLoyaltyPoints } from '../../utils/loyaltyPoints'
 import { useWalletDetection } from '../../hooks/useWalletDetection'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
@@ -101,7 +102,8 @@ export default function MenuPage() {
   } = useMenu(restaurant?.id)
   const { promotion } = usePromotion(restaurant?.id)
   const { addItem, itemCount, subtotal } = useCart()
-  const { isLoggedIn, loadProfile } = useCustomerAuth()
+  const { isLoggedIn, loadProfile, loadSessionState } = useCustomerAuth()
+  const reconcileRewardLine = useRewardLineReconcile()
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState(null)
@@ -136,14 +138,23 @@ export default function MenuPage() {
   // profile is per-restaurant and the provider caches nothing, by design
   // (useCustomerAuth.jsx:201-204). The cancelled flag stops a slow response
   // for a previous restaurant from labelling this one.
+  //
+  // This is also the authoritative read that drops a reward line belonging to
+  // a different customer — see useRewardLineReconcile. It runs on mount as
+  // well as on the sign-in transition, because a customer can sign in and then
+  // reload the tab: the session is restored with no transition to hook, while
+  // the previous customer's cart is still in localStorage under the same
+  // per-restaurant key. A null state is a failed read and changes nothing.
   useEffect(() => {
     if (!restaurant?.id || !isLoggedIn) { setHeroProfile(null); return }
     let cancelled = false
-    loadProfile(restaurant.id).then(p => {
-      if (!cancelled) setHeroProfile(p)
+    loadSessionState(restaurant.id).then(state => {
+      if (cancelled) return
+      setHeroProfile(state ? state.profile : null)
+      if (state) reconcileRewardLine(state.pendingRedemptionId)
     })
     return () => { cancelled = true }
-  }, [restaurant?.id, isLoggedIn, loadProfile])
+  }, [restaurant?.id, isLoggedIn, loadSessionState, reconcileRewardLine])
 
   // Backgrounded → returned: re-read the balance behind the hero pill, the
   // same way useRestaurant re-reads the restaurant (useRestaurant.js:161-167).
