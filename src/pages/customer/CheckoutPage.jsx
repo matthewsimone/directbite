@@ -772,6 +772,13 @@ export default function CheckoutPage() {
   // Set when the customer rejects the saved address and wants to type one.
   const [useNewAddress, setUseNewAddress] = useState(false)
   const storedApplied = useRef(false)
+  // Whether the customer has typed into the address field at any point. A ref,
+  // not state: nothing renders from it, and it must be readable by the effect
+  // below on the same tick it is set, without scheduling a render.
+  //
+  // Never reset. Once someone has typed their own address, no later arrival of
+  // profile data should be allowed to replace it for the rest of the visit.
+  const addressTouchedRef = useRef(false)
 
   // The profile usually lands while the order is still pickup, so the
   // address write in handleSavedProfile never runs. Apply it when delivery
@@ -780,9 +787,20 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (orderType !== 'delivery') return
     if (useNewAddress) return
+    // Never overwrite something the customer typed. deliveryAddress is in this
+    // effect's deps, so it re-runs on every keystroke — and the coordinate test
+    // below cannot stand in for this, because a half-typed address has no
+    // coordinates and so fails to bail. That is the race: a signed-in customer
+    // with no stored address starts typing before loadSavedProfile resolves,
+    // the profile lands, and their text is replaced mid-word with the saved
+    // address plus coordinates — which then collapses the field entirely.
+    if (addressTouchedRef.current) return
     // Bail only when the address is present AND usable. The pickup toggle
     // clears the coordinates but not the string, so checking the string
     // alone would leave a displayed address the button can never accept.
+    // This is why the touch check above is a separate ref rather than just
+    // dropping the coordinate test: that test exists to REPAIR an address
+    // stripped of its coordinates, which is still wanted for an untouched one.
     if (deliveryAddress && deliveryLat != null && deliveryLon != null) return
     if (!savedProfile?.delivery_address) return
     if (hasStoredAddress()) return
@@ -1852,6 +1870,11 @@ export default function CheckoutPage() {
                 placeholder="Search for your address..."
                 value={deliveryAddress}
                 onChange={e => {
+                  // Marks the field as the customer's. Set before the state
+                  // write so a profile that resolves on this same tick cannot
+                  // win the race. Only real typing sets it — Places writes
+                  // through setDeliveryAddress directly and must not.
+                  addressTouchedRef.current = true
                   // React owns this text now. Places writes through
                   // setDeliveryAddress in its place_changed listener, so both
                   // typing and selection land in the same place.
