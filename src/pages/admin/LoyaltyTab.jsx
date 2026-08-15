@@ -33,6 +33,30 @@ const DEFAULT_TIERS = [
   { tier_level: 3, name: 'Premium', color: '#171C27', multiplier: 1.250, threshold_points: 5000 },
 ]
 
+// Seeded by "Create standard rewards" when a restaurant has no DISCOUNT reward
+// yet. Deliberately not editable defaults — a restaurant that wants different
+// amounts edits the rows after seeding, the same as the tiers.
+//
+// Discount rewards only, so every row carries a discount_cents and no item:
+// lr_shape_valid (068:36-41) rejects any row holding both or neither. The
+// insert supplies menu_item_id/item_size_id explicitly as null rather than
+// omitting them, so the shape is readable here rather than inferred from a
+// column default.
+//
+// min_subtotal_cents is a floor on OTHER food — the reward line itself prices
+// at zero, so "$25 minimum" means twenty-five dollars of paid subtotal beside
+// it (create-payment-intent/index.ts:252-277). Each step keeps the discount
+// between a tenth and a quarter of that floor.
+//
+// Ordered cheapest first; the seed offsets sort_order past whatever the
+// restaurant already has.
+const DEFAULT_REWARDS = [
+  { kind: 'discount', name: '$1 off',  points_cost: 150,  discount_cents: 100,  min_subtotal_cents: 1000 },
+  { kind: 'discount', name: '$5 off',  points_cost: 600,  discount_cents: 500,  min_subtotal_cents: 2500 },
+  { kind: 'discount', name: '$10 off', points_cost: 1200, discount_cents: 1000, min_subtotal_cents: 4000 },
+  { kind: 'discount', name: '$20 off', points_cost: 2400, discount_cents: 2000, min_subtotal_cents: 7500 },
+]
+
 // Field-level errors for the tier editor, keyed by tier id:
 //   { [id]: { name?, multiplier?, threshold_points? } }
 //
@@ -431,6 +455,7 @@ export default function LoyaltyTab() {
   const [savingConfig, setSavingConfig] = useState(false)
   const [savingTiers, setSavingTiers] = useState(false)
   const [creatingTiers, setCreatingTiers] = useState(false)
+  const [creatingRewards, setCreatingRewards] = useState(false)
 
   // null = closed, 'new' = adding, object = editing that reward.
   const [editingReward, setEditingReward] = useState(null)
@@ -547,6 +572,34 @@ export default function LoyaltyTab() {
     }
     toast.success('Default tiers created')
     setTiers([...(data || [])].sort((a, b) => a.tier_level - b.tier_level))
+  }
+
+  async function handleCreateDefaultRewards() {
+    setCreatingRewards(true)
+    // Appended, never merged: sort_order continues past the existing catalog so
+    // the four land after whatever is already there, cheapest first among
+    // themselves. The button only appears when there are no discount rewards
+    // (:812), so the rows it lands beside can only be item rewards.
+    const { data, error } = await supabase
+      .from('loyalty_rewards')
+      .insert(
+        DEFAULT_REWARDS.map((rw, i) => ({
+          restaurant_id: selectedRestaurant,
+          menu_item_id: null,
+          item_size_id: null,
+          active: true,
+          sort_order: rewards.length + i,
+          ...rw,
+        }))
+      )
+      .select('id, kind, name, description, points_cost, menu_item_id, item_size_id, discount_cents, min_subtotal_cents, active, sort_order')
+    setCreatingRewards(false)
+    if (error) {
+      toast.error(`Reward create failed: ${error.message}`)
+      return
+    }
+    toast.success('Standard rewards created')
+    setRewards([...rewards, ...(data || [])].sort((a, b) => a.sort_order - b.sort_order))
   }
 
   function updateTier(index, patch) {
@@ -789,7 +842,23 @@ export default function LoyaltyTab() {
               <div className="bg-white rounded-lg border border-gray-200">
                 <div className="bg-gray-50 border-b px-4 py-3 flex items-center justify-between">
                   <span className="text-sm font-semibold text-gray-900">Rewards catalog</span>
-                  <button onClick={() => setEditingReward('new')} className="text-xs text-[#16A34A] font-semibold">Add reward</button>
+                  <div className="flex items-center gap-3">
+                    {/* Gated on there being no DISCOUNT reward rather than an
+                        empty catalog: a restaurant running only free-item
+                        rewards still has the whole discount ladder to gain,
+                        and one that already has discounts is the only case
+                        where seeding would need a merge rule. */}
+                    {!rewards.some(rw => rw.kind === 'discount') && (
+                      <button
+                        onClick={handleCreateDefaultRewards}
+                        disabled={creatingRewards}
+                        className="text-xs text-[#16A34A] font-semibold disabled:opacity-50"
+                      >
+                        {creatingRewards ? 'Creating...' : 'Create standard rewards'}
+                      </button>
+                    )}
+                    <button onClick={() => setEditingReward('new')} className="text-xs text-[#16A34A] font-semibold">Add reward</button>
+                  </div>
                 </div>
                 <div className="p-4">
                   {rewards.length === 0 ? (
