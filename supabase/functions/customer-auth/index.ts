@@ -130,6 +130,36 @@ function twilioAuthHeader(): string {
   );
 }
 
+// The name the customer answers to, resolved for the per-restaurant profile
+// the verify and session actions return.
+//
+// customer_identities.display_name is the authority. It is written on payment
+// success from what the customer typed at checkout, so it is both global and
+// current. restaurant_customers.display_name is neither: the accrual trigger
+// fills it once from the first order that carried a name
+// (083_tier_promotion.sql:215 coalesces on a blank) and never revises it, so a
+// customer who typed a placeholder on their first order is greeted by it
+// forever.
+//
+// The fallback to the stale column is what makes this deployable on its own.
+// Every customer predating the identity write has a null identity name, and
+// keeps seeing exactly what they saw before until their next order writes one
+// — no backfill, and no window where a greeting goes blank.
+//
+// A null row is passed through untouched rather than synthesised from the
+// name: the client treats a present profile as "points and tier are known"
+// (HeroSection.jsx:74), and a profile carrying nothing but a name would read
+// as a zero balance.
+function withIdentityName(
+  profileRow: Record<string, unknown> | null,
+  identityName: unknown
+): Record<string, unknown> | null {
+  if (!profileRow) return profileRow;
+  const name = typeof identityName === "string" ? identityName.trim() : "";
+  if (!name) return profileRow;
+  return { ...profileRow, display_name: name };
+}
+
 // ---------------------------------------------------------------------------
 // Action: send
 // ---------------------------------------------------------------------------
@@ -385,7 +415,7 @@ async function handleVerify(req: Request, body: any): Promise<Response> {
       { phone_e164: phone, phone_verified_at: nowIso, updated_at: nowIso },
       { onConflict: "phone_e164" }
     )
-    .select("id, phone_e164")
+    .select("id, phone_e164, display_name")
     .single();
 
   if (identityErr || !identity) {
@@ -452,7 +482,7 @@ async function handleVerify(req: Request, body: any): Promise<Response> {
           profileErr.message
         );
       } else {
-        profile = profileRow;
+        profile = withIdentityName(profileRow, identity.display_name);
       }
     }
   }
@@ -529,7 +559,7 @@ async function handleSession(body: any): Promise<Response> {
 
   const { data: identity, error: identityErr } = await supabase
     .from("customer_identities")
-    .select("id, phone_e164")
+    .select("id, phone_e164, display_name")
     .eq("id", session.customer_id)
     .maybeSingle();
 
@@ -570,7 +600,7 @@ async function handleSession(body: any): Promise<Response> {
         profileErr.message
       );
     } else {
-      profile = profileRow;
+      profile = withIdentityName(profileRow, identity.display_name);
     }
 
     // At most one pending redemption per customer per restaurant
