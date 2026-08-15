@@ -1052,11 +1052,20 @@ export default function CheckoutPage() {
   // Collapse the contact fields only when we actually have all three values.
   // Gating on isLoggedIn alone would strand a signed-in customer whose
   // profile is incomplete with a form they cannot fill or submit.
+  //
+  // Read off the SAVED PROFILE, never off the live field values. The fields
+  // are behind this flag (:518-527), so testing what is currently in them
+  // makes typing able to unmount the input being typed into: a new customer
+  // whose profile carries only a phone would arm the first two terms, and then
+  // the first character of their email satisfied the third and collapsed the
+  // form around it — leaving customerEmail as that single character, invisible
+  // in the collapsed summary and impossible to edit, until Stripe rejected it
+  // as email_invalid. Nothing the customer types changes savedProfile, so this
+  // can now only flip when a profile arrives.
   const contactCollapsed = Boolean(
-    savedProfile &&
-    customerName.trim() &&
-    customerPhone.trim() &&
-    customerEmail.trim()
+    savedProfile?.display_name?.trim() &&
+    savedProfile?.phone_e164?.trim() &&
+    savedProfile?.email?.trim()
   )
 
   const buildOrderData = useCallback(() => ({
