@@ -720,6 +720,37 @@ export default function CheckoutPage() {
     })
   }, [saveProfile])
 
+  // The name and email the customer checked out with, saved to the identity so
+  // the next order prefills them. Nothing else writes these columns: the
+  // accrual trigger's display_name write (083_tier_promotion.sql:215) lands on
+  // restaurant_customers, which is a different row from the one
+  // loadSavedProfile reads, so without this the checkout prefill at :838-840
+  // has nothing to find and the fields are blank on every order.
+  //
+  // Global to the identity rather than per-restaurant, matching the address
+  // above — a customer's name doesn't change because they ordered somewhere
+  // else.
+  //
+  // Only non-empty values are sent. The whitelist treats a key sent as '' as a
+  // clear (useCustomerAuth.jsx:271), so passing the fields through unfiltered
+  // would let a customer who empties the name field wipe the stored one.
+  //
+  // Fire and forget, exactly like persistAddressToProfile: this runs on the
+  // way to the confirmation screen and must not delay it or raise an error
+  // over it. saveProfile resolves null rather than throwing, and sends no
+  // abort signal, so the request outlives this page unmounting.
+  const persistContactToProfile = useCallback((nameValue, emailValue) => {
+    if (!isLoggedInRef.current) return
+    const updates = {}
+    const name = (nameValue || '').trim()
+    const email = (emailValue || '').trim()
+    if (name) updates.display_name = name
+    if (email) updates.email = email
+    // Both blank: the write would carry no fields and only touch updated_at.
+    if (Object.keys(updates).length === 0) return
+    saveProfile(updates)
+  }, [saveProfile])
+
   // Title / favicon / manifest for the checkout screen. Without it, navigating
   // menu → checkout runs MenuPage's branding cleanup on unmount, which RESTORES
   // the shell's <title>Ordr</title> — so the tab reads "Ordr" on a client's own
@@ -1604,6 +1635,11 @@ export default function CheckoutPage() {
   }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, includeUtensils, specialInstructions, buildOrderData])
 
   function handlePaymentSuccess(piId) {
+    // On success, not on submit: a declined or abandoned attempt shouldn't
+    // rewrite the saved contact details. Reads the same two values the
+    // navigate state below carries, so the profile can't record a name the
+    // confirmation screen doesn't show.
+    persistContactToProfile(customerName, customerEmail)
     // Navigate FIRST, then clear cart — otherwise the empty-cart guard redirects to menu
     navigate(`/${slug}/confirmation`, {
       state: {
