@@ -21,10 +21,16 @@ const EARN_BASIS_OPTIONS = [
 // stay gold and near-black: those are earned, and reading as different from
 // the default is the point. Changing this moves NEW seeds only; rows already
 // written keep whatever colour they were seeded with.
+//
+// The thresholds were 5000 and 20000. At the default 10 points per dollar and
+// a $42 median order, a customer earns ~420 points an order, so Premium sat 47
+// orders out — a tier nobody would ever see, which is the same as not having
+// it. 2000 is about five orders and 5000 about twelve: the first is reachable
+// inside a month of ordering, the second is a real goal rather than a wall.
 const DEFAULT_TIERS = [
   { tier_level: 1, name: 'Standard', color: '#16A34A', multiplier: 1.000, threshold_points: 0 },
-  { tier_level: 2, name: 'Plus', color: '#C9A227', multiplier: 1.150, threshold_points: 5000 },
-  { tier_level: 3, name: 'Premium', color: '#171C27', multiplier: 1.250, threshold_points: 20000 },
+  { tier_level: 2, name: 'Plus', color: '#C9A227', multiplier: 1.150, threshold_points: 2000 },
+  { tier_level: 3, name: 'Premium', color: '#171C27', multiplier: 1.250, threshold_points: 5000 },
 ]
 
 // Catalog subtitle. Reads from the already-loaded menu_items array rather than
