@@ -307,11 +307,19 @@ export default function AccountView({
 
           {loyaltyEnabled ? (
             <div className="relative z-10 flex flex-col justify-end min-h-[196px] px-6 pb-6 pt-6">
+              {/* With a name this is the identity line — "Matthew · 292
+                  orders", or just "Matthew" at zero. Without one, the join had
+                  nothing to join and rendered the bare word "there", so that
+                  case takes the greeting instead and drops the count. Reuses
+                  `greeting` rather than repeating the string; only its no-name
+                  form is reachable here. */}
               <p className="text-xl font-semibold text-white">
-                {[
-                  firstName || 'there',
-                  orderCount > 0 ? `${orderCount} order${orderCount === 1 ? '' : 's'}` : null,
-                ].filter(Boolean).join(' · ')}
+                {firstName
+                  ? [
+                      firstName,
+                      orderCount > 0 ? `${orderCount} order${orderCount === 1 ? '' : 's'}` : null,
+                    ].filter(Boolean).join(' · ')
+                  : greeting}
               </p>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-6xl font-bold text-white tracking-[-0.03em] tabular-nums">
