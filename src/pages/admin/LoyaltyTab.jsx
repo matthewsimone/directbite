@@ -33,6 +33,86 @@ const DEFAULT_TIERS = [
   { tier_level: 3, name: 'Premium', color: '#171C27', multiplier: 1.250, threshold_points: 5000 },
 ]
 
+// Field-level errors for the tier editor, keyed by tier id:
+//   { [id]: { name?, multiplier?, threshold_points? } }
+//
+// One function feeds both the inline messages and the save gate, so what the
+// admin reads and what blocks the write cannot disagree.
+//
+// The ladder rules compare each tier with the one below it in tier_level order,
+// on a sorted copy — the rows arrive ordered (:398) but sorting here means the
+// rules do not quietly depend on that staying true.
+//
+// BOTH ladders are strictly increasing. Equal thresholds would give two tiers
+// the same entry point; equal multipliers are worse, because the multiplier is
+// the only benefit a tier confers — a customer reaching the higher one would
+// find their earn rate unchanged, which is a tier that does nothing.
+//
+// Coerced through Number/parseInt on every read: updateTier stores raw input
+// strings (:472-474), so state holds '2000' mid-edit, not 2000.
+function validateTiers(tiers) {
+  const errors = {}
+  // First message per field wins. A blank multiplier already reads as a range
+  // error, and stacking "must be above Standard" underneath it is noise.
+  const setError = (id, field, message) => {
+    if (!errors[id]) errors[id] = {}
+    if (!errors[id][field]) errors[id][field] = message
+  }
+
+  for (const t of tiers) {
+    if (!t.name || !String(t.name).trim()) {
+      setError(t.id, 'name', 'Name is required')
+    }
+    // Number('') is 0, not NaN, so an emptied field fails the range test
+    // rather than slipping through as non-finite.
+    const multiplier = Number(t.multiplier)
+    if (!Number.isFinite(multiplier) || multiplier < 1 || multiplier > 10) {
+      setError(t.id, 'multiplier', 'Must be between 1.000 and 10.000')
+    }
+    const threshold = parseInt(t.threshold_points, 10)
+    if (!Number.isFinite(threshold) || threshold < 0) {
+      setError(t.id, 'threshold_points', 'Must be 0 or more')
+    }
+  }
+
+  const ordered = [...tiers].sort((a, b) => Number(a.tier_level) - Number(b.tier_level))
+  for (let i = 1; i < ordered.length; i++) {
+    const below = ordered[i - 1]
+    const tier = ordered[i]
+    const belowName = String(below.name || '').trim() || `Tier ${below.tier_level}`
+
+    const threshold = parseInt(tier.threshold_points, 10)
+    const belowThreshold = parseInt(below.threshold_points, 10)
+    if (
+      Number.isFinite(threshold) &&
+      Number.isFinite(belowThreshold) &&
+      threshold <= belowThreshold
+    ) {
+      setError(tier.id, 'threshold_points', `Must be above ${belowName} (${belowThreshold})`)
+    }
+
+    const multiplier = Number(tier.multiplier)
+    const belowMultiplier = Number(below.multiplier)
+    if (
+      Number.isFinite(multiplier) &&
+      Number.isFinite(belowMultiplier) &&
+      multiplier <= belowMultiplier
+    ) {
+      setError(tier.id, 'multiplier', `Must be above ${belowName} (${belowMultiplier.toFixed(3)})`)
+    }
+  }
+
+  return errors
+}
+
+// Shared by the three validated tier inputs so an errored field is outlined as
+// well as captioned — the caption alone is easy to miss in a three-column grid.
+function tierFieldClass(hasError) {
+  return `w-full h-9 px-3 border rounded-lg text-sm focus:outline-none focus:ring-2 ${
+    hasError ? 'border-red-400 focus:ring-red-300' : 'border-gray-300 focus:ring-[#16A34A]'
+  }`
+}
+
 // Catalog subtitle. Reads from the already-loaded menu_items array rather than
 // re-querying — a reward whose item was deleted (menu_item_id goes null via
 // ON DELETE SET NULL) falls back to a placeholder instead of blanking out.
@@ -474,47 +554,55 @@ export default function LoyaltyTab() {
   }
 
   async function handleSaveTiers() {
-    // Validated here rather than left to the column CHECK constraints, so a
-    // bad value reads as a field error instead of a raw Postgres message.
-    for (const t of tiers) {
-      if (!t.name || !String(t.name).trim()) {
-        toast.error(`Tier ${t.tier_level}: name is required`)
-        return
-      }
-      const multiplier = Number(t.multiplier)
-      if (!Number.isFinite(multiplier) || multiplier < 1 || multiplier > 10) {
-        toast.error(`Tier ${t.tier_level}: multiplier must be between 1.000 and 10.000`)
-        return
-      }
-      const threshold = parseInt(t.threshold_points, 10)
-      if (!Number.isFinite(threshold) || threshold < 0) {
-        toast.error(`Tier ${t.tier_level}: threshold must be 0 or more`)
-        return
-      }
+    // Validated here rather than left to the column CHECK constraints, so a bad
+    // value reads as a field error instead of a raw Postgres message — and the
+    // ladder rules have no constraint to fall back on at all.
+    //
+    // The same call the inline messages render from. The fields are already
+    // captioned and outlined by the time this runs, so the toast only says
+    // which way to look.
+    const errors = validateTiers(tiers)
+    if (Object.keys(errors).length > 0) {
+      toast.error('Fix the highlighted tier fields before saving')
+      return
     }
 
     setSavingTiers(true)
-    const results = await Promise.all(
-      tiers.map(t =>
-        supabase
-          .from('restaurant_loyalty_tiers')
-          .update({
-            name: String(t.name).trim(),
-            color: t.color,
-            multiplier: Number(t.multiplier),
-            threshold_points: parseInt(t.threshold_points, 10),
-          })
-          .eq('id', t.id)
+    // ONE upsert, not an update per row. Three concurrent updates can partially
+    // fail, and a ladder half-written is exactly the state this validation
+    // exists to prevent — a valid form producing an invalid ladder, with no
+    // rollback and the editor still showing the values it thought it saved.
+    // A single statement writes all three rows or none.
+    //
+    // restaurant_id and tier_level are carried because an upsert may insert:
+    // both are NOT NULL (063:23-24), and tier_level is half of the
+    // (restaurant_id, tier_level) unique key.
+    const { error } = await supabase
+      .from('restaurant_loyalty_tiers')
+      .upsert(
+        tiers.map(t => ({
+          id: t.id,
+          restaurant_id: selectedRestaurant,
+          tier_level: t.tier_level,
+          name: String(t.name).trim(),
+          color: t.color,
+          multiplier: Number(t.multiplier),
+          threshold_points: parseInt(t.threshold_points, 10),
+        })),
+        { onConflict: 'id' }
       )
-    )
     setSavingTiers(false)
-    const failedIndex = results.findIndex(r => r.error)
-    if (failedIndex !== -1) {
-      toast.error(`Tier ${tiers[failedIndex].tier_level} save failed: ${results[failedIndex].error.message}`)
+    if (error) {
+      toast.error(`Tier save failed: ${error.message}`)
       return
     }
     toast.success('Tiers saved')
   }
+
+  // Derived, never state: recomputed each render, so a corrected field clears
+  // its own message as it is typed and there is no error state to keep in sync
+  // with the values it describes.
+  const tierErrors = validateTiers(tiers)
 
   return (
     <div className="h-full flex">
@@ -636,8 +724,11 @@ export default function LoyaltyTab() {
                                 type="text"
                                 value={t.name || ''}
                                 onChange={e => updateTier(i, { name: e.target.value })}
-                                className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                                className={tierFieldClass(tierErrors[t.id]?.name)}
                               />
+                              {tierErrors[t.id]?.name && (
+                                <p className="text-xs text-red-600 mt-1">{tierErrors[t.id].name}</p>
+                              )}
                             </div>
                             <div>
                               <label className="text-xs text-gray-500">Color</label>
@@ -648,15 +739,21 @@ export default function LoyaltyTab() {
                                 className="w-full h-9 px-1 border border-gray-300 rounded-lg"
                               />
                             </div>
-                            <div className="flex gap-2">
+                            {/* items-start, not the default stretch: an error
+                                caption under one field would otherwise stretch
+                                its sibling input to match the taller column. */}
+                            <div className="flex gap-2 items-start">
                               <div className="flex-1">
                                 <label className="text-xs text-gray-500">Multiplier</label>
                                 <input
                                   type="number" step="0.001" min="1" max="10"
                                   value={t.multiplier ?? ''}
                                   onChange={e => updateTier(i, { multiplier: e.target.value })}
-                                  className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                                  className={tierFieldClass(tierErrors[t.id]?.multiplier)}
                                 />
+                                {tierErrors[t.id]?.multiplier && (
+                                  <p className="text-xs text-red-600 mt-1">{tierErrors[t.id].multiplier}</p>
+                                )}
                               </div>
                               <div className="flex-1">
                                 <label className="text-xs text-gray-500">Threshold Points</label>
@@ -664,8 +761,11 @@ export default function LoyaltyTab() {
                                   type="number" step="1" min="0"
                                   value={t.threshold_points ?? ''}
                                   onChange={e => updateTier(i, { threshold_points: e.target.value })}
-                                  className="w-full h-9 px-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#16A34A]"
+                                  className={tierFieldClass(tierErrors[t.id]?.threshold_points)}
                                 />
+                                {tierErrors[t.id]?.threshold_points && (
+                                  <p className="text-xs text-red-600 mt-1">{tierErrors[t.id].threshold_points}</p>
+                                )}
                               </div>
                             </div>
                           </div>
