@@ -695,6 +695,18 @@ export default function CheckoutPage() {
   const isLoggedInRef = useRef(isLoggedIn)
   useEffect(() => { isLoggedInRef.current = isLoggedIn }, [isLoggedIn])
 
+  // The payer details a wallet handed over, captured synchronously beside the
+  // setState calls that record the same values.
+  //
+  // Those setters are asynchronous, and handlePaymentSuccess reads their state.
+  // Today two network round trips sit in between — the pending-order update
+  // inside onWalletCustomer, then confirmCardPayment (:352, :362) — so React
+  // has always committed by the time success fires, and the ref changes
+  // nothing. But that ordering is incidental: nothing enforces it, and removing
+  // an await would silently start writing an empty name to the profile and the
+  // confirmation screen. The ref does not depend on a render happening.
+  const walletContactRef = useRef(null)
+
   // Mirrors writeStoredAddress: the device copy is the customer's most recent
   // explicit choice, this is the one that follows them to another device.
   // Written at selection rather than after the order, because the confirmation
@@ -1679,14 +1691,24 @@ export default function CheckoutPage() {
   }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, includeUtensils, specialInstructions, buildOrderData])
 
   function handlePaymentSuccess(piId) {
+    // The wallet's values when a wallet supplied them, the form's otherwise.
+    // Resolved ONCE and used for both the profile write and the navigate state
+    // below: the confirmation screen reads the same closure this does, so
+    // anything that made one of them stale would make the other stale too, and
+    // the saved profile must never disagree with the receipt the customer is
+    // looking at.
+    const wallet = walletContactRef.current
+    const resolvedName = (wallet?.name || '').trim() || customerName
+    const resolvedEmail = (wallet?.email || '').trim() || customerEmail
+
     // On success, not on submit: a declined or abandoned attempt shouldn't
     // rewrite the saved details. Every value is the one that went on the order
-    // — the same customerName the navigate state below carries, and the same
-    // address buildOrderData sent — so the profile cannot record something the
-    // order didn't have.
+    // — the same name the navigate state below carries, and the same address
+    // buildOrderData sent — so the profile cannot record something the order
+    // didn't have.
     persistOrderProfile({
-      name: customerName,
-      email: customerEmail,
+      name: resolvedName,
+      email: resolvedEmail,
       isDelivery: orderType === 'delivery',
       address: deliveryAddress,
       apt: deliveryApt,
@@ -1697,7 +1719,7 @@ export default function CheckoutPage() {
     navigate(`/${slug}/confirmation`, {
       state: {
         orderNumber: null, // Will show "Processing..." until webhook writes it
-        customerName: customerName.trim(),
+        customerName: resolvedName.trim(),
         orderType,
         scheduledFor,
         estimatedTime,
@@ -2243,6 +2265,8 @@ export default function CheckoutPage() {
                 onSavedProfile={handleSavedProfile}
                 contactCollapsed={contactCollapsed}
                 onWalletCustomer={async (name, email, phone) => {
+                  // Synchronous, so success cannot outrun it. See walletContactRef.
+                  walletContactRef.current = { name, email }
                   // Update customer state for confirmation page
                   setCustomerName(name)
                   setCustomerEmail(email)
