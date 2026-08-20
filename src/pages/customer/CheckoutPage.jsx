@@ -720,33 +720,68 @@ export default function CheckoutPage() {
     })
   }, [saveProfile])
 
-  // The name and email the customer checked out with, saved to the identity so
-  // the next order prefills them. Nothing else writes these columns: the
-  // accrual trigger's display_name write (083_tier_promotion.sql:215) lands on
-  // restaurant_customers, which is a different row from the one
-  // loadSavedProfile reads, so without this the checkout prefill at :838-840
-  // has nothing to find and the fields are blank on every order.
+  // Everything the customer gave us on THIS order, written to the identity in
+  // one call so the next order can ask for none of it. Nothing else writes
+  // these columns: the accrual trigger's display_name write
+  // (083_tier_promotion.sql:215) lands on restaurant_customers, a different row
+  // from the one loadSavedProfile reads, so without this the checkout prefill
+  // at :838-840 has nothing to find.
   //
-  // Global to the identity rather than per-restaurant, matching the address
-  // above — a customer's name doesn't change because they ordered somewhere
-  // else.
+  // Global to the identity rather than per-restaurant — a customer's name and
+  // address do not change because they ordered somewhere else.
+  //
+  // WHY AT PAYMENT SUCCESS, and why every value is passed in rather than read
+  // off state here: this is the one moment where nothing is still in flight.
+  // isLoggedIn is final — they have verified if they were ever going to — and
+  // the values are the ones that went on the order, whatever their origin:
+  // typed, restored from localStorage, restored from the profile, or handed
+  // over by a wallet. The eager address write in persistAddressToProfile reads
+  // isLoggedInRef at the instant of place_changed, which is why an address
+  // chosen BEFORE verifying was silently dropped and never retried, and why an
+  // address restored from localStorage — which fires no place_changed at all —
+  // was never written by anyone. That write stays as a fast path so an
+  // abandoned checkout still saves an address; this one is the guarantee.
   //
   // Only non-empty values are sent. The whitelist treats a key sent as '' as a
-  // clear (useCustomerAuth.jsx:271), so passing the fields through unfiltered
-  // would let a customer who empties the name field wipe the stored one.
+  // clear (useCustomerAuth.jsx:271), so passing fields through unfiltered would
+  // let an emptied name field wipe the stored one.
   //
-  // Fire and forget, exactly like persistAddressToProfile: this runs on the
-  // way to the confirmation screen and must not delay it or raise an error
-  // over it. saveProfile resolves null rather than throwing, and sends no
-  // abort signal, so the request outlives this page unmounting.
-  const persistContactToProfile = useCallback((nameValue, emailValue) => {
+  // Fire and forget, like persistAddressToProfile: this runs on the way to the
+  // confirmation screen and must not delay it or raise an error over it.
+  // saveProfile resolves null rather than throwing, and sends no abort signal,
+  // so the request outlives this page unmounting.
+  const persistOrderProfile = useCallback(({ name, email, isDelivery, address, apt, lat, lng }) => {
     if (!isLoggedInRef.current) return
     const updates = {}
-    const name = (nameValue || '').trim()
-    const email = (emailValue || '').trim()
-    if (name) updates.display_name = name
-    if (email) updates.email = email
-    // Both blank: the write would carry no fields and only touch updated_at.
+
+    const trimmedName = (name || '').trim()
+    const trimmedEmail = (email || '').trim()
+    if (trimmedName) updates.display_name = trimmedName
+    if (trimmedEmail) updates.email = trimmedEmail
+
+    // Address only on a delivery order, and only with coordinates. A pickup
+    // order's address state is empty or left over from an earlier delivery
+    // attempt, and sending either would clear a good saved address. The
+    // coordinate test also rejects a half-typed address that never resolved
+    // through Places — the same reason persistAddressToProfile checks it.
+    const trimmedAddress = (address || '').trim()
+    if (
+      isDelivery &&
+      trimmedAddress &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lng)
+    ) {
+      updates.delivery_address = trimmedAddress
+      // Sent even when blank, unlike every other field here: the apt belongs to
+      // the address, so replacing one must replace the other. Omitting it would
+      // leave a previous address's apt number attached to a new address.
+      updates.delivery_apt = (apt || '').trim()
+      updates.delivery_lat = lat
+      updates.delivery_lng = lng
+    }
+
+    // Nothing worth sending: the write would carry no fields and only touch
+    // updated_at.
     if (Object.keys(updates).length === 0) return
     saveProfile(updates)
   }, [saveProfile])
@@ -1645,10 +1680,19 @@ export default function CheckoutPage() {
 
   function handlePaymentSuccess(piId) {
     // On success, not on submit: a declined or abandoned attempt shouldn't
-    // rewrite the saved contact details. Reads the same two values the
-    // navigate state below carries, so the profile can't record a name the
-    // confirmation screen doesn't show.
-    persistContactToProfile(customerName, customerEmail)
+    // rewrite the saved details. Every value is the one that went on the order
+    // — the same customerName the navigate state below carries, and the same
+    // address buildOrderData sent — so the profile cannot record something the
+    // order didn't have.
+    persistOrderProfile({
+      name: customerName,
+      email: customerEmail,
+      isDelivery: orderType === 'delivery',
+      address: deliveryAddress,
+      apt: deliveryApt,
+      lat: deliveryLat,
+      lng: deliveryLon,
+    })
     // Navigate FIRST, then clear cart — otherwise the empty-cart guard redirects to menu
     navigate(`/${slug}/confirmation`, {
       state: {
