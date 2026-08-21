@@ -603,6 +603,33 @@ async function handleSession(body: any): Promise<Response> {
       profile = withIdentityName(profileRow, identity.display_name);
     }
 
+    // Sweep this customer's stale holds BEFORE reading the pending row below.
+    //
+    // expire_stale_redemptions is a self-heal on read, not a scheduled job
+    // (078_loyalty_redemption_rpc.sql:17-19), and until now redeem_reward was
+    // its only caller — so a hold was released when the customer next tapped
+    // Redeem and at no other time. That is the wrong moment: the one-pending
+    // check is what blocks them, so the stale row locked them out of the very
+    // call that would have cleared it, and with no reward line in the cart
+    // there was nothing to cancel. One survived two days against a 30-minute
+    // TTL. Session is the right place because it runs on every page load for a
+    // signed-in customer, is already scoped to this customer and restaurant,
+    // and needs no scheduler.
+    //
+    // Failure is non-fatal and deliberately unreported: the read below still
+    // returns whatever is there, which is exactly the pre-sweep behaviour.
+    const { error: sweepErr } = await supabase.rpc("expire_stale_redemptions", {
+      p_restaurant_id: body.restaurant_id,
+      p_customer_id: identity.id,
+    });
+
+    if (sweepErr) {
+      console.error(
+        "customer-auth session redemption sweep failed:",
+        sweepErr.message
+      );
+    }
+
     // At most one pending redemption per customer per restaurant
     // (080_one_pending_redemption.sql), so this is a scalar rather than a list.
     // The client compares it against the reward line in its cart: cart storage
@@ -737,6 +764,27 @@ async function handleHistory(body: any): Promise<Response> {
     )
     .eq("customer_id", identity.id)
     .eq("restaurant_id", body.restaurant_id)
+    // This list exists to be reordered from, and neither a cancelled nor a
+    // fully refunded order is something a customer would repeat.
+    //
+    // Only 'cancelled' is excluded by status. The other five all describe an
+    // order that happened or is happening — 'scheduled' is placed but not yet
+    // started and 'self_delivering' is a live delivery the restaurant took over
+    // from Uber (042_stuck_pending_self_deliver.sql:38), so both read like end
+    // states and are neither.
+    //
+    // Refunds are a separate column, so a fully refunded order still reads
+    // 'complete' in status and has to be excluded on its own terms. Only
+    // 'completed' goes: 'partial' means they were refunded for part and paid
+    // for the rest, and 'failed' means the refund never went through
+    // (admin-refund/index.ts:199) — both are orders the customer paid for.
+    //
+    // Written as .or rather than .not("refund_status","eq","completed"):
+    // NOT (refund_status = 'completed') evaluates to NULL for a NULL
+    // refund_status, which is almost every row, and PostgREST would drop the
+    // entire unrefunded history.
+    .neq("status", "cancelled")
+    .or("refund_status.is.null,refund_status.neq.completed")
     .order("created_at", { ascending: false })
     .limit(10);
 
