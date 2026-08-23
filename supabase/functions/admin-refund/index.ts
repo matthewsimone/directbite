@@ -5,6 +5,10 @@ import Stripe from "https://esm.sh/stripe@17.7.0";
 // Uber delivery BEFORE refunding Stripe (ordering is load-bearing — see
 // _shared/uberCancel.ts). In-process import, no function-to-function hop.
 import { cancelUberDelivery } from "../_shared/uberCancel.ts";
+// Platform-billing fee correction. When the Uber leg above is cancelled,
+// DirectBite never pays Uber — so the fronted portion of the application fee
+// must go back to the restaurant. Never throws; see the module header.
+import { refundUberAppFee } from "../_shared/refundUberAppFee.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
@@ -233,6 +237,21 @@ serve(async (req: Request) => {
       .eq("id", order_id);
 
     console.log(`Refund processed: ${refund.id} for order #${order.order_number} (${type})`);
+
+    // Platform billing: the Uber delivery was released above, so DirectBite
+    // owes Uber nothing beyond any cancellation fee. Walk the fronted portion
+    // of the application fee back to the connected account. Deliberately AFTER
+    // the orders update and NOT gated to the response: this helper never
+    // throws, and a failure here must not turn an already-completed customer
+    // refund into a 500. Self mode / in_house no-op inside the helper.
+    // `cancelResult?.success &&` is required for narrowing — cancelResult is
+    // the union type again outside the uber_direct block above.
+    await refundUberAppFee(
+      stripe,
+      order,
+      restaurant,
+      cancelResult?.success ? cancelResult.uberFee : undefined
+    );
 
     // M9c: when the order was uber_direct, the Uber delivery was already
     // released above (cancelUberDelivery returned success). Surface that in

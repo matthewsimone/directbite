@@ -34,7 +34,12 @@
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
+import Stripe from "https://esm.sh/stripe@17.7.0";
 import { cancelUberDelivery } from "../_shared/uberCancel.ts";
+// Platform-billing fee correction. The customer is NOT refunded on this path,
+// but DirectBite still fronted the Uber fee + tip through the application fee
+// and now never pays Uber — that money belongs to the restaurant delivering it.
+import { refundUberAppFee } from "../_shared/refundUberAppFee.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +50,9 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+// PLATFORM key (same secret admin-refund uses) — required to read and refund
+// the ApplicationFee, which lives on the platform, not the connected account.
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -94,9 +102,10 @@ serve(async (req: Request) => {
     .from("orders")
     .select(`
       id, status, delivery_fulfillment_method, uber_status, uber_delivery_id,
-      restaurant_id,
+      stripe_charge_id, restaurant_id,
       restaurants:restaurant_id (
-        id, uber_customer_id, uber_environment, uber_billing_mode, tablet_email
+        id, uber_customer_id, uber_environment, uber_billing_mode,
+        stripe_account_id, tablet_email
       )
     `)
     .eq("id", order_id)
@@ -156,6 +165,26 @@ serve(async (req: Request) => {
       500
     );
   }
+
+  // TEMP (remove after Test Pizza verification): prove the helper's guards
+  // receive real values, not undefined. `restaurant` is the unwrapped to-one
+  // FK embed from line 125 — the same object cancelUberDelivery already uses.
+  console.log("[uber-self-deliver] refundUberAppFee inputs", {
+    order_id,
+    uber_billing_mode: restaurant?.uber_billing_mode,
+    stripe_charge_id: (order as any)?.stripe_charge_id,
+    delivery_fulfillment_method: (order as any)?.delivery_fulfillment_method,
+    stripe_account_id: restaurant?.stripe_account_id,
+    uber_cancellation_fee_cents: cancel.uberFee,
+  });
+
+  // Platform billing: the Uber delivery is released and the restaurant is now
+  // driving it themselves. DirectBite fronted the Uber fee + upfront tip via
+  // the application fee and will never pay Uber, so that portion goes back to
+  // the connected account. Never throws and never gates the response — the
+  // order is already 'self_delivering' and the operator must not see a failure.
+  // Self mode no-ops inside the helper.
+  await refundUberAppFee(stripe, order as any, restaurant, cancel.uberFee);
 
   console.log("[uber-self-deliver] order set to self_delivering", { order_id });
   return jsonResponse({ success: true });
