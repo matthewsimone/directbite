@@ -237,17 +237,53 @@ serve(async (req: Request) => {
     // --- ORDERS BREAKDOWN (DB; SELECTED range, trust created_at). ---
     const selStartIso = new Date(selectedStartUnix * 1000).toISOString();
     const selEndIso = new Date(selectedEndUnix * 1000).toISOString();
-    const { data: ordersData, error: ordersErr } = await supabase
-      .from("orders")
-      .select(
-        "status, subtotal, discount_amount, loyalty_discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status, recoup_amount, recoup_rate"
-      )
-      .eq("restaurant_id", restaurant_id)
-      .gte("created_at", selStartIso)
-      .lt("created_at", selEndIso);
-    if (ordersErr) throw new Error(`orders fetch failed: ${ordersErr.message}`);
-
-    const orders = ordersData || [];
+    // PostgREST silently caps a single select at 1000 rows. A short read here
+    // under-reports EVERY breakdown figure below (measured: Pazza Jul 24-Aug 22
+    // returned exactly 1000 of 1589 orders, reading food $68,438 against a true
+    // $108,712). Pull the range in 1000-row .range() pages until a short/empty
+    // page marks the end — same filters and select list as the single-shot read
+    // it replaces, plus a stable (created_at, id) sort so a page boundary
+    // cannot skip or repeat a row when two orders share a created_at.
+    //
+    // Unlike RevenueTab.jsx:65-85 (which breaks on a page error to keep the UI
+    // responsive), a page error THROWS here, matching the balance-transaction
+    // guard above: this function must never return a number that looks complete
+    // but is short.
+    const ORDERS_PAGE = 1000;
+    const ORDERS_MAX_PAGES = 100;
+    const orders: any[] = [];
+    let ordersComplete = false;
+    for (let page = 0; page < ORDERS_MAX_PAGES; page++) {
+      const from = page * ORDERS_PAGE;
+      const { data: ordersData, error: ordersErr } = await supabase
+        .from("orders")
+        .select(
+          "status, subtotal, discount_amount, loyalty_discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status, recoup_amount, recoup_rate"
+        )
+        .eq("restaurant_id", restaurant_id)
+        .gte("created_at", selStartIso)
+        .lt("created_at", selEndIso)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + ORDERS_PAGE - 1);
+      if (ordersErr) {
+        throw new Error(
+          `orders fetch failed (page ${page}, from ${from}): ${ordersErr.message}`
+        );
+      }
+      const rows = ordersData || [];
+      orders.push(...rows);
+      // A short page is the only proof we reached the end of the range.
+      if (rows.length < ORDERS_PAGE) {
+        ordersComplete = true;
+        break;
+      }
+    }
+    if (!ordersComplete) {
+      throw new Error(
+        `orders pagination exhausted the ${ORDERS_MAX_PAGES}-page cap at ${orders.length} rows with a full final page — the breakdown would be short, refusing to report`
+      );
+    }
     const nonCancelled = orders.filter((o: any) => o.status !== "cancelled");
     const cancelledOrders = orders.filter((o: any) => o.status === "cancelled");
     const udOrders = nonCancelled.filter(
@@ -342,17 +378,45 @@ serve(async (req: Request) => {
     //     attribution, not new money. Any consumer must add these to the
     //     DB-side breakdown to make the Sales section foot — and must NOT add
     //     them to Gross Charged, which already includes them. ---
-    const { data: adjData, error: adjErr } = await supabase
-      .from("adjustment_requests")
-      .select("type, amount, approved_at, stripe_charge_intent_id, stripe_refund_id")
-      .eq("restaurant_id", restaurant_id)
-      .eq("status", "approved")
-      .not("approved_at", "is", null)
-      .gte("approved_at", selStartIso)
-      .lt("approved_at", selEndIso);
-    if (adjErr) throw new Error(`adjustments fetch failed: ${adjErr.message}`);
-
-    const adjRows = adjData || [];
+    // Same 1000-row PostgREST cap as the orders read above. Not yet wrong in
+    // production (~118 approved rows fleet-wide) but structurally the identical
+    // latent bug, so it gets the identical treatment: 1000-row .range() pages,
+    // a stable (approved_at, id) sort, and a throw rather than a short return.
+    // Filters and the downstream _cents/_count computations are unchanged.
+    const ADJ_PAGE = 1000;
+    const ADJ_MAX_PAGES = 100;
+    const adjRows: any[] = [];
+    let adjComplete = false;
+    for (let page = 0; page < ADJ_MAX_PAGES; page++) {
+      const from = page * ADJ_PAGE;
+      const { data: adjData, error: adjErr } = await supabase
+        .from("adjustment_requests")
+        .select("type, amount, approved_at, stripe_charge_intent_id, stripe_refund_id")
+        .eq("restaurant_id", restaurant_id)
+        .eq("status", "approved")
+        .not("approved_at", "is", null)
+        .gte("approved_at", selStartIso)
+        .lt("approved_at", selEndIso)
+        .order("approved_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + ADJ_PAGE - 1);
+      if (adjErr) {
+        throw new Error(
+          `adjustments fetch failed (page ${page}, from ${from}): ${adjErr.message}`
+        );
+      }
+      const rows = adjData || [];
+      adjRows.push(...rows);
+      if (rows.length < ADJ_PAGE) {
+        adjComplete = true;
+        break;
+      }
+    }
+    if (!adjComplete) {
+      throw new Error(
+        `adjustments pagination exhausted the ${ADJ_MAX_PAGES}-page cap at ${adjRows.length} rows with a full final page — the breakdown would be short, refusing to report`
+      );
+    }
     const adjCharges = adjRows.filter(
       (a: any) => a.type === "charge" && a.stripe_charge_intent_id != null
     );
