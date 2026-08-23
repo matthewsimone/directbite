@@ -56,6 +56,111 @@ function formatUnixDay(unixSeconds, withTime = false) {
   }).format(new Date(unixSeconds * 1000))
 }
 
+// ===== CSV EXPORT (Activity summary) =====
+
+// RFC 4180: quote any field holding a comma, quote or newline, doubling
+// embedded quotes.
+function csvEscape(value) {
+  const s = String(value ?? '')
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+// cents -> bare "12.34" / "-12.34". Deliberately an ASCII hyphen, not the
+// U+2212 the screen uses -- a spreadsheet won't read U+2212 as a number.
+function csvAmount(cents) {
+  return ((cents || 0) / 100).toFixed(2)
+}
+
+// The rows the Activity screen is currently rendering, in screen order, with
+// the screen's conditionals. Sign follows what is DISPLAYED, not the payload:
+// a row the screen prefixes with - exports negative.
+function activityCsvRows(data) {
+  const a = data.activity || {}
+  const b = data.breakdown || {}
+  const adj = data.adjustments || {}
+  const collected =
+    (b.food_cents || 0) + (b.tax_cents || 0) + (b.tips_cents || 0) + (b.delivery_cents || 0)
+
+  const rows = [
+    ['Food', csvAmount(b.food_cents)],
+    ['Tax', csvAmount(b.tax_cents)],
+    ['Tips', csvAmount(b.tips_cents)],
+    ['Delivery Charges', csvAmount(b.delivery_cents)],
+    ['Collected from customers', csvAmount(collected)],
+    ['Ordr (added at checkout)', csvAmount(b.ordr_fee_cents)],
+  ]
+  if ((b.ud_fee_fronted_cents || 0) > 0)
+    rows.push(['Uber Delivery Costs', csvAmount(b.ud_fee_fronted_cents)])
+  if ((b.ud_tip_fronted_cents || 0) > 0)
+    rows.push(['Uber Driver Tips', csvAmount(b.ud_tip_fronted_cents)])
+  if ((adj.charges_cents || 0) > 0)
+    rows.push([`Adjustments + (${adj.charges_count || 0})`, csvAmount(adj.charges_cents)])
+  if ((adj.refunds_cents || 0) > 0)
+    rows.push([`Adjustments − (${adj.refunds_count || 0})`, csvAmount(-(adj.refunds_cents || 0))])
+  if ((b.recoup_cents || 0) > 0)
+    rows.push([
+      b.recoup_rate
+        ? `Service Fee Recoup (${String(Number((b.recoup_rate * 100).toFixed(4)))}%)`
+        : 'Service Fee Recoup',
+      csvAmount(b.recoup_cents),
+    ])
+  rows.push(['Gross Charged', csvAmount(a.gross_charged)])
+
+  rows.push(['Stripe Processing (actual)', csvAmount(-(a.stripe_fees_actual || 0))])
+  rows.push([`Refunds (${a.refund_count || 0})`, csvAmount(a.refunds_amount)])
+  rows.push(['Net Activity', csvAmount(a.net_activity)])
+
+  if (b.ud_count > 0) {
+    rows.push(['Deliveries', String(b.ud_count)])
+    rows.push(['Uber delivery cost', csvAmount(-(b.ud_uber_charged_cents || 0))])
+    rows.push(['Covered by customer', csvAmount(b.ud_customer_paid_cents)])
+    rows.push(['Your net delivery cost', csvAmount(-(b.ud_net_cost_cents || 0))])
+    rows.push([
+      'Customer tips on Uber orders',
+      csvAmount((b.ud_tips_to_driver_cents || 0) + (b.ud_tip_kept_cents || 0)),
+    ])
+    rows.push(['Paid to Uber drivers', csvAmount(-(b.ud_tips_to_driver_cents || 0))])
+    rows.push(['Kept by you (over $5 cap)', csvAmount(b.ud_tip_kept_cents)])
+  }
+
+  rows.push(['Completed', String(b.completed_count || 0)])
+  rows.push(['Cancelled', String(b.cancelled_count || 0)])
+
+  return rows
+}
+
+function downloadActivityCsv({ data, restaurant, startKey, endKey }) {
+  const generated = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date())
+
+  const csv = [
+    ['Restaurant', restaurant?.name || ''],
+    ['Period', formatRangeLabel(startKey, endKey)],
+    ['Generated', generated],
+    [],
+    ['Line', 'Amount'],
+    ...activityCsvRows(data),
+  ]
+    .map(cols => cols.map(csvEscape).join(','))
+    .join('\r\n')
+
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+  const slug = restaurant?.slug || restaurant?.id || 'report'
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `ordr-report-${slug}-${startKey}-to-${endKey}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
 export default function ReportsView({ restaurant, onBack }) {
   const initialKey = getNyDateKey(new Date())
   const [preset, setPreset] = useState('today')
@@ -236,7 +341,14 @@ export default function ReportsView({ restaurant, onBack }) {
             </button>
           </div>
         ) : !data ? null : view === 'activity' ? (
-          <ActivityView data={data} detailOpen={detailOpen} setDetailOpen={setDetailOpen} />
+          <ActivityView
+            data={data}
+            restaurant={restaurant}
+            startKey={startKey}
+            endKey={endKey}
+            detailOpen={detailOpen}
+            setDetailOpen={setDetailOpen}
+          />
         ) : (
           <PayoutsView data={data} />
         )}
@@ -246,7 +358,7 @@ export default function ReportsView({ restaurant, onBack }) {
 }
 
 // ===== ACTIVITY VIEW — "all charges in this date range" =====
-function ActivityView({ data, detailOpen, setDetailOpen }) {
+function ActivityView({ data, restaurant, startKey, endKey, detailOpen, setDetailOpen }) {
   const a = data.activity || {}
   const b = data.breakdown || {}
   const adj = data.adjustments || {}
@@ -256,6 +368,16 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
 
   return (
     <div className="max-w-md mx-auto space-y-6">
+      {/* EXPORT */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => downloadActivityCsv({ data, restaurant, startKey, endKey })}
+          className="h-9 px-4 rounded-lg bg-[#16A34A] text-white text-sm font-semibold hover:bg-[#15803D] transition-colors"
+        >
+          Export CSV
+        </button>
+      </div>
+
       {/* SALES */}
       <section>
         <SectionLabel>Sales (what customers ordered)</SectionLabel>
