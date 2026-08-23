@@ -321,7 +321,6 @@ serve(async (req: Request) => {
     // those fields. Positive-match on 'delivered' — canceled / null / failed /
     // returned / in-flight all fall to non-delivered.
     const delivered = udOrders.filter((o: any) => o.uber_status === "delivered");
-    const nonDelivered = udOrders.filter((o: any) => o.uber_status !== "delivered");
 
     const ud_count = delivered.length;
     // Option A: a delivered order with a null actual fee contributes $0 — no
@@ -341,11 +340,21 @@ serve(async (req: Request) => {
       (s: number, o: any) => s + Math.min(Math.round(Number(o.tip_amount || 0) * 100), 500),
       0
     );
-    // Kept = the over-$5 portion of DELIVERED tips (stays in the restaurant's
-    // balance) PLUS the FULL tip of every non-delivered order (no driver got it).
-    const ud_tip_kept_cents =
-      delivered.reduce((s: number, o: any) => s + Math.max(Math.round(Number(o.tip_amount || 0) * 100) - 500, 0), 0) +
-      nonDelivered.reduce((s: number, o: any) => s + Math.round(Number(o.tip_amount || 0) * 100), 0);
+    // Kept = the over-$5 portion of DELIVERED tips only — the remainder above
+    // what dispatch fronted to Uber, which stays in the restaurant's balance.
+    //
+    // Non-delivered orders are deliberately NOT counted here. They never
+    // fronted a tip to Uber, so their tips are ordinary restaurant tips already
+    // included in tips_cents — not "kept over the cap," and adding them here
+    // would double-count them. Under platform billing it is also affirmatively
+    // wrong: the fronted portion of a non-delivered order's tip sits in the
+    // PLATFORM's account, not the restaurant's, so counting it told the
+    // restaurant it kept money it does not have.
+    const ud_tip_kept_cents = delivered.reduce(
+      (s: number, o: any) =>
+        s + Math.max(Math.round(Number(o.tip_amount || 0) * 100) - 500, 0),
+      0
+    );
 
     const breakdown = {
       food_cents,
