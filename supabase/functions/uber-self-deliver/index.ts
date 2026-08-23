@@ -166,18 +166,6 @@ serve(async (req: Request) => {
     );
   }
 
-  // TEMP (remove after Test Pizza verification): prove the helper's guards
-  // receive real values, not undefined. `restaurant` is the unwrapped to-one
-  // FK embed from line 125 — the same object cancelUberDelivery already uses.
-  console.log("[uber-self-deliver] refundUberAppFee inputs", {
-    order_id,
-    uber_billing_mode: restaurant?.uber_billing_mode,
-    stripe_charge_id: (order as any)?.stripe_charge_id,
-    delivery_fulfillment_method: (order as any)?.delivery_fulfillment_method,
-    stripe_account_id: restaurant?.stripe_account_id,
-    uber_cancellation_fee_cents: cancel.uberFee,
-  });
-
   // Platform billing: the Uber delivery is released and the restaurant is now
   // driving it themselves. DirectBite fronted the Uber fee + upfront tip via
   // the application fee and will never pay Uber, so that portion goes back to
