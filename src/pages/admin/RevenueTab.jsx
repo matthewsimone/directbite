@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { getRangeForPreset } from '../../utils/scheduling'
 
 function formatMoney(v) { return `$${Number(v || 0).toFixed(2)}` }
 
@@ -40,58 +39,12 @@ function computeStats(orders) {
   return { count, volume, earned }
 }
 
-// America/New_York UTC offset in ms at a given instant, via Intl — never a
-// hardcoded -4/-5, so EDT and EST both come out right.
-//
-// etOffsetMs and etMidnightMs below are duplicated from
-// supabase/functions/stripe-settlement-report/index.ts:44-71 (that copy returns
-// unix SECONDS; this one returns epoch ms — the only intended difference). The
-// edge function runs in Deno and cannot import from src/, so a shared module
-// isn't available; this is a copy on purpose. THE TWO COPIES MUST STAY IN SYNC.
-// Admin and the tablet agreeing depends on both computing identical instants
-// for the same ET date key — change one and you must change the other.
-function etOffsetMs(utcMs) {
-  const parts = {}
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-    hour12: false,
-  })
-  for (const p of fmt.formatToParts(new Date(utcMs))) parts[p.type] = p.value
-  const asUtc = Date.UTC(
-    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
-    Number(parts.hour) % 24, Number(parts.minute), Number(parts.second)
-  )
-  return asUtc - utcMs
-}
-
-// Epoch ms at 00:00:00 America/New_York on an ET date key ("YYYY-MM-DD"),
-// optionally dayOffset days later. Two passes: the offset is sampled at the
-// naive guess, then re-sampled at the corrected instant so a DST boundary
-// falling inside the guess resolves.
-function etMidnightMs(dateKey, dayOffset = 0) {
-  const [y, m, d] = String(dateKey).split('-').map(Number)
-  const naive = Date.UTC(y, m - 1, d + dayOffset, 0, 0, 0)
-  const firstPass = naive - etOffsetMs(naive)
-  return naive - etOffsetMs(firstPass)
-}
-
-// The card/filter periods are ET calendar windows, not rolling hour counts.
-// 'week' and 'month' now mean the last 7 and last 30 ET CALENDAR DAYS INCLUDING
-// TODAY, mapped onto the tablet's last7/last30 presets — not the rolling
-// 168-hour and one-calendar-month spans they used to mean. The period keys stay
-// 'week'/'month' because filterDate state and the UI depend on them; only the
-// definitions changed. Returns { start, end } as epoch ms, end EXCLUSIVE (00:00
-// ET the day after endKey), matching stripe-settlement-report's
-// selectedStartUnix/selectedEndUnix.
-const PERIOD_PRESETS = { today: 'today', week: 'last7', month: 'last30' }
-
 function getDateRange(period) {
-  const preset = PERIOD_PRESETS[period]
-  if (!preset) return null
-  const { startKey, endKey } = getRangeForPreset(preset)
-  return { start: etMidnightMs(startKey), end: etMidnightMs(endKey, 1) }
+  const now = new Date()
+  if (period === 'today') return new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  if (period === 'week') { const d = new Date(now); d.setDate(d.getDate() - 7); return d }
+  if (period === 'month') { const d = new Date(now); d.setMonth(d.getMonth() - 1); return d }
+  return null
 }
 
 export default function RevenueTab() {
@@ -142,12 +95,9 @@ export default function RevenueTab() {
   }
 
   function filterOrders(period) {
-    const range = getDateRange(period)
-    if (!range) return orders
-    return orders.filter(o => {
-      const t = new Date(o.created_at).getTime()
-      return t >= range.start && t < range.end
-    })
+    const start = getDateRange(period)
+    if (!start) return orders
+    return orders.filter(o => new Date(o.created_at) >= start)
   }
 
   const todayStats = computeStats(filterOrders('today'))
@@ -196,8 +146,8 @@ export default function RevenueTab() {
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 mb-6">
         <SummaryCard title="Today" {...todayStats} />
-        <SummaryCard title="Last 7 Days" {...weekStats} />
-        <SummaryCard title="Last 30 Days" {...monthStats} />
+        <SummaryCard title="This Week" {...weekStats} />
+        <SummaryCard title="This Month" {...monthStats} />
       </div>
 
       {/* Per restaurant breakdown */}
@@ -206,8 +156,8 @@ export default function RevenueTab() {
         <select value={filterDate} onChange={e => setFilterDate(e.target.value)}
           className="h-11 sm:h-9 px-3 border border-gray-300 rounded-lg text-sm bg-white">
           <option value="today">Today</option>
-          <option value="week">Last 7 Days</option>
-          <option value="month">Last 30 Days</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
           <option value="all">All Time</option>
         </select>
       </div>
