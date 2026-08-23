@@ -81,7 +81,7 @@ function activityCsvRows(data) {
   const collected =
     (b.food_cents || 0) + (b.tax_cents || 0) + (b.tips_cents || 0) + (b.delivery_cents || 0)
 
-  const rows = [
+  const sales = [
     ['Food', csvAmount(b.food_cents)],
     ['Tax', csvAmount(b.tax_cents)],
     ['Tips', csvAmount(b.tips_cents)],
@@ -90,42 +90,63 @@ function activityCsvRows(data) {
     ['Ordr (added at checkout)', csvAmount(b.ordr_fee_cents)],
   ]
   if ((b.ud_fee_fronted_cents || 0) > 0)
-    rows.push(['Uber Delivery Costs', csvAmount(b.ud_fee_fronted_cents)])
+    sales.push(['Uber Delivery Costs', csvAmount(b.ud_fee_fronted_cents)])
   if ((b.ud_tip_fronted_cents || 0) > 0)
-    rows.push(['Uber Driver Tips', csvAmount(b.ud_tip_fronted_cents)])
+    sales.push(['Uber Driver Tips', csvAmount(b.ud_tip_fronted_cents)])
   if ((adj.charges_cents || 0) > 0)
-    rows.push([`Adjustments + (${adj.charges_count || 0})`, csvAmount(adj.charges_cents)])
+    sales.push([`Adjustments + (${adj.charges_count || 0})`, csvAmount(adj.charges_cents)])
   if ((adj.refunds_cents || 0) > 0)
-    rows.push([`Adjustments − (${adj.refunds_count || 0})`, csvAmount(-(adj.refunds_cents || 0))])
+    sales.push([`Adjustments - (${adj.refunds_count || 0})`, csvAmount(-(adj.refunds_cents || 0))])
   if ((b.recoup_cents || 0) > 0)
-    rows.push([
+    sales.push([
       b.recoup_rate
         ? `Service Fee Recoup (${String(Number((b.recoup_rate * 100).toFixed(4)))}%)`
         : 'Service Fee Recoup',
       csvAmount(b.recoup_cents),
     ])
-  rows.push(['Gross Charged', csvAmount(a.gross_charged)])
+  sales.push(['Gross Charged', csvAmount(a.gross_charged)])
 
-  rows.push(['Stripe Processing (actual)', csvAmount(-(a.stripe_fees_actual || 0))])
-  rows.push([`Refunds (${a.refund_count || 0})`, csvAmount(a.refunds_amount)])
-  rows.push(['Net Activity', csvAmount(a.net_activity)])
+  const fees = [
+    ['Stripe Processing (actual)', csvAmount(-(a.stripe_fees_actual || 0))],
+    [`Refunds (${a.refund_count || 0})`, csvAmount(a.refunds_amount)],
+    ['Net Activity', csvAmount(a.net_activity)],
+  ]
 
+  const uber = []
   if (b.ud_count > 0) {
-    rows.push(['Deliveries', String(b.ud_count)])
-    rows.push(['Uber delivery cost', csvAmount(-(b.ud_uber_charged_cents || 0))])
-    rows.push(['Covered by customer', csvAmount(b.ud_customer_paid_cents)])
-    rows.push(['Your net delivery cost', csvAmount(-(b.ud_net_cost_cents || 0))])
-    rows.push([
+    uber.push(['Deliveries', String(b.ud_count)])
+    uber.push(['Uber delivery cost', csvAmount(-(b.ud_uber_charged_cents || 0))])
+    uber.push(['Covered by customer', csvAmount(b.ud_customer_paid_cents)])
+    uber.push(['Your net delivery cost', csvAmount(-(b.ud_net_cost_cents || 0))])
+    uber.push([
       'Customer tips on Uber orders',
       csvAmount((b.ud_tips_to_driver_cents || 0) + (b.ud_tip_kept_cents || 0)),
     ])
-    rows.push(['Paid to Uber drivers', csvAmount(-(b.ud_tips_to_driver_cents || 0))])
-    rows.push(['Kept by you (over $5 cap)', csvAmount(b.ud_tip_kept_cents)])
+    uber.push(['Paid to Uber drivers', csvAmount(-(b.ud_tips_to_driver_cents || 0))])
+    uber.push(['Kept by you (over $5 cap)', csvAmount(b.ud_tip_kept_cents)])
   }
 
-  rows.push(['Completed', String(b.completed_count || 0)])
-  rows.push(['Cancelled', String(b.cancelled_count || 0)])
+  const orders = [
+    ['Completed', String(b.completed_count || 0)],
+    ['Cancelled', String(b.cancelled_count || 0)],
+  ]
 
+  // Blank spacer + label-only header, emitted only for a section that actually
+  // has rows -- an all-conditional section (Uber) never leaves a lone header.
+  // The spacer is skipped for the first emitted section: the metadata block
+  // already ends with a blank line.
+  const rows = []
+  for (const [title, section] of [
+    ['SALES - WHAT CUSTOMERS ORDERED', sales],
+    ['FEES & REFUNDS', fees],
+    ['3RD-PARTY DELIVERY (UBER DIRECT)', uber],
+    ['ORDERS', orders],
+  ]) {
+    if (!section.length) continue
+    if (rows.length) rows.push([])
+    rows.push([title, ''])
+    rows.push(...section)
+  }
   return rows
 }
 
