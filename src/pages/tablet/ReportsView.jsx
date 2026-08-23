@@ -249,6 +249,7 @@ export default function ReportsView({ restaurant, onBack }) {
 function ActivityView({ data, detailOpen, setDetailOpen }) {
   const a = data.activity || {}
   const b = data.breakdown || {}
+  const adj = data.adjustments || {}
   const charges = data.charges || []
   const collected =
     (b.food_cents || 0) + (b.tax_cents || 0) + (b.tips_cents || 0) + (b.delivery_cents || 0)
@@ -279,6 +280,20 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
           <StatementRow
             label="Uber Driver Tips"
             value={`+${fmt(b.ud_tip_fronted_cents)}`}
+            muted
+          />
+        )}
+        {(adj.charges_cents || 0) > 0 && (
+          <StatementRow
+            label={`Adjustments + (${adj.charges_count || 0})`}
+            value={`+${fmt(adj.charges_cents)}`}
+            muted
+          />
+        )}
+        {(adj.refunds_cents || 0) > 0 && (
+          <StatementRow
+            label={`Adjustments − (${adj.refunds_count || 0})`}
+            value={`−${fmt(adj.refunds_cents)}`}
             muted
           />
         )}
