@@ -41,6 +41,35 @@ function dollarsToCents(v: any): number {
   return Math.round(Number(v || 0) * 100);
 }
 
+// America/New_York UTC offset in ms at a given instant, via Intl — never a
+// hardcoded -4/-5, so EDT and EST both come out right.
+function etOffsetMs(utcMs: number): number {
+  const parts: Record<string, string> = {};
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hour12: false,
+  });
+  for (const p of fmt.formatToParts(new Date(utcMs))) parts[p.type] = p.value;
+  const asUtc = Date.UTC(
+    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+    Number(parts.hour) % 24, Number(parts.minute), Number(parts.second)
+  );
+  return asUtc - utcMs;
+}
+
+// Unix seconds at 00:00:00 America/New_York on an ET date key ("YYYY-MM-DD"),
+// optionally dayOffset days later. Two passes: the offset is sampled at the
+// naive guess, then re-sampled at the corrected instant so a DST boundary
+// falling inside the guess resolves.
+function etMidnightUnix(dateKey: string, dayOffset = 0): number {
+  const [y, m, d] = String(dateKey).split("-").map(Number);
+  const naive = Date.UTC(y, m - 1, d + dayOffset, 0, 0, 0);
+  const firstPass = naive - etOffsetMs(naive);
+  return Math.floor((naive - etOffsetMs(firstPass)) / 1000);
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -111,20 +140,25 @@ serve(async (req: Request) => {
     }
     const stripeAccount = restaurant.stripe_account_id;
 
-    // --- Two windows. SELECTED is the user's range (end + a full day so `lte`
-    //     includes the whole final calendar day). WIDE reaches 21 days back for
-    //     payout grouping only. ---
-    const selectedStartUnix = Math.floor(new Date(start).getTime() / 1000);
-    const selectedEndUnix = Math.floor(new Date(end).getTime() / 1000) + 86400;
+    // --- Two windows. `start`/`end` are America/New_York date keys from the
+    //     caller (src/utils/scheduling.js getRangeForPreset), so SELECTED runs
+    //     00:00:00 ET on `start` to 00:00:00 ET the day after `end`, END
+    //     EXCLUSIVE. WIDE reaches 21 days back for payout grouping only. ---
+    const selectedStartUnix = etMidnightUnix(start);
+    const selectedEndUnix = etMidnightUnix(end, 1); // exclusive
     const wideStartUnix = selectedStartUnix - WIDE_LOOKBACK_SECONDS;
 
-    // --- Balance transactions: pull the WIDE set (paginate, cap 10 pages) ---
+    // --- Balance transactions: pull the WIDE set (paginate, cap 100 pages).
+    //     If the cap is reached with has_more still set the pull is short, and
+    //     a short pull silently under-reports every activity total below — so
+    //     throw rather than return a number that looks complete. ---
     const rawBt: any[] = [];
     let startingAfter: string | undefined = undefined;
-    for (let page = 0; page < 10; page++) {
-      const resp = await stripe.balanceTransactions.list(
+    let hasMore = false;
+    for (let page = 0; page < 100; page++) {
+      const resp: any = await stripe.balanceTransactions.list(
         {
-          created: { gte: wideStartUnix, lte: selectedEndUnix },
+          created: { gte: wideStartUnix, lt: selectedEndUnix },
           limit: 100,
           expand: ["data.source"],
           ...(startingAfter ? { starting_after: startingAfter } : {}),
@@ -132,13 +166,19 @@ serve(async (req: Request) => {
         { stripeAccount }
       );
       rawBt.push(...resp.data);
-      if (!resp.has_more || resp.data.length === 0) break;
+      hasMore = resp.has_more === true;
+      if (!hasMore || resp.data.length === 0) break;
       startingAfter = resp.data[resp.data.length - 1].id;
+    }
+    if (hasMore) {
+      throw new Error(
+        `balance transaction pagination exhausted the 100-page cap at ${rawBt.length} rows with has_more still true — totals would be short, refusing to report`
+      );
     }
 
     // --- Payouts deposited in the SELECTED window ---
     const payoutResp = await stripe.payouts.list(
-      { created: { gte: selectedStartUnix, lte: selectedEndUnix }, limit: 100 },
+      { created: { gte: selectedStartUnix, lt: selectedEndUnix }, limit: 100 },
       { stripeAccount }
     );
 
@@ -149,7 +189,7 @@ serve(async (req: Request) => {
     const wideActivityRows = [...wideCharges, ...wideRefunds];
 
     const inSelected = (bt: any) =>
-      bt.created >= selectedStartUnix && bt.created <= selectedEndUnix;
+      bt.created >= selectedStartUnix && bt.created < selectedEndUnix;
     const charges = wideCharges.filter(inSelected);
     const refunds = wideRefunds.filter(inSelected);
     const selectedActivityRows = [...charges, ...refunds];
@@ -200,11 +240,11 @@ serve(async (req: Request) => {
     const { data: ordersData, error: ordersErr } = await supabase
       .from("orders")
       .select(
-        "status, subtotal, discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status, recoup_amount, recoup_rate"
+        "status, subtotal, discount_amount, loyalty_discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status, recoup_amount, recoup_rate"
       )
       .eq("restaurant_id", restaurant_id)
       .gte("created_at", selStartIso)
-      .lte("created_at", selEndIso);
+      .lt("created_at", selEndIso);
     if (ordersErr) throw new Error(`orders fetch failed: ${ordersErr.message}`);
 
     const orders = ordersData || [];
@@ -216,7 +256,12 @@ serve(async (req: Request) => {
 
     const food_cents = nonCancelled.reduce(
       (s: number, o: any) =>
-        s + Math.round((Number(o.subtotal || 0) - Number(o.discount_amount || 0)) * 100),
+        s +
+        Math.round(
+          (Number(o.subtotal || 0) -
+            Number(o.discount_amount || 0) -
+            Number(o.loyalty_discount_amount || 0)) * 100
+        ),
       0
     );
     const tax_cents = nonCancelled.reduce((s: number, o: any) => s + dollarsToCents(o.tax_amount), 0);
@@ -283,6 +328,46 @@ serve(async (req: Request) => {
       ud_tip_kept_cents,
     };
 
+    // --- ADJUSTMENTS (DB; SELECTED ET window, approved only). Keyed off
+    //     approved_at, NOT created_at: admin-approve-adjustment creates the
+    //     PaymentIntent at approval time, so approved_at is when the money
+    //     moved. The IS NOT NULL guards on the Stripe ids are load-bearing,
+    //     not defensive: approved rows predating the charging code carry no
+    //     Stripe id and were never actually collected.
+    //
+    //     Adjustment charges/refunds are separate PaymentIntents and Refunds
+    //     on the connected account, so they ALREADY appear as balance
+    //     transactions and are ALREADY counted in gross_charged,
+    //     stripe_fees_actual and refunds_amount above. This key is
+    //     attribution, not new money. Any consumer must add these to the
+    //     DB-side breakdown to make the Sales section foot — and must NOT add
+    //     them to Gross Charged, which already includes them. ---
+    const { data: adjData, error: adjErr } = await supabase
+      .from("adjustment_requests")
+      .select("type, amount, approved_at, stripe_charge_intent_id, stripe_refund_id")
+      .eq("restaurant_id", restaurant_id)
+      .eq("status", "approved")
+      .not("approved_at", "is", null)
+      .gte("approved_at", selStartIso)
+      .lt("approved_at", selEndIso);
+    if (adjErr) throw new Error(`adjustments fetch failed: ${adjErr.message}`);
+
+    const adjRows = adjData || [];
+    const adjCharges = adjRows.filter(
+      (a: any) => a.type === "charge" && a.stripe_charge_intent_id != null
+    );
+    const adjRefunds = adjRows.filter(
+      (a: any) => a.type === "refund" && a.stripe_refund_id != null
+    );
+    const adjustments = {
+      // Both positive magnitudes — `amount` is stored as positive numeric
+      // dollars regardless of type, unlike Stripe's signed refund rows.
+      charges_cents: adjCharges.reduce((s: number, a: any) => s + dollarsToCents(a.amount), 0),
+      charges_count: adjCharges.length,
+      refunds_cents: adjRefunds.reduce((s: number, a: any) => s + dollarsToCents(a.amount), 0),
+      refunds_count: adjRefunds.length,
+    };
+
     // --- PAYOUT VIEW (grouped by settlement; WIDE rows). Each group also
     //     reports its deposit date + the sales window (min/max created) of its
     //     constituent charges. `ties` retained but unused by the UI. ---
@@ -326,6 +411,7 @@ serve(async (req: Request) => {
         range: { start, end, selectedStartUnix, selectedEndUnix, wideStartUnix },
         activity,
         breakdown,
+        adjustments,
         payouts,
         payout_groups,
         pending,
