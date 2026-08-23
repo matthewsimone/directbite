@@ -265,9 +265,23 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
         <SubtotalRow label="Collected from customers" value={fmt(collected)} />
         <StatementRow
           label="Ordr (added at checkout)"
-          value={`+${fmt(a.directbite_fees)}`}
+          value={`+${fmt(b.ordr_fee_cents)}`}
           muted
         />
+        {(b.ud_fee_fronted_cents || 0) > 0 && (
+          <StatementRow
+            label="Uber Delivery Costs"
+            value={`+${fmt(b.ud_fee_fronted_cents)}`}
+            muted
+          />
+        )}
+        {(b.ud_tip_fronted_cents || 0) > 0 && (
+          <StatementRow
+            label="Uber Driver Tips"
+            value={`+${fmt(b.ud_tip_fronted_cents)}`}
+            muted
+          />
+        )}
         {(b.recoup_cents || 0) > 0 && (
           <StatementRow
             label={b.recoup_rate
@@ -308,13 +322,22 @@ function ActivityView({ data, detailOpen, setDetailOpen }) {
         <section>
           <SectionLabel>3rd-Party Delivery (Uber Direct)</SectionLabel>
           <StatementRow label="Deliveries" value={String(b.ud_count)} />
-          <StatementRow label="Uber Charged" value={`−${fmt(b.ud_uber_charged_cents)}`} muted />
-          <StatementRow label="Covered by customer" value={`+${fmt(b.ud_customer_paid_cents)}`} muted />
-          <SubtotalRow label="Your net delivery cost" value={signedCost(b.ud_net_cost_cents)} />
-          <StatementRow label="Tips to drivers (paid through Uber)" value={fmt(b.ud_tips_to_driver_cents)} muted />
-          {b.ud_tip_kept_cents > 0 && (
-            <StatementRow label="Tips kept (over $5 cap)" value={`+${fmt(b.ud_tip_kept_cents)}`} muted />
-          )}
+
+          <div className="mt-3">
+            <StatementRow label="Uber delivery cost" value={`−${fmt(b.ud_uber_charged_cents)}`} muted />
+            <StatementRow label="Covered by customer" value={`+${fmt(b.ud_customer_paid_cents)}`} muted />
+            <SubtotalRow label="Your net delivery cost" value={signedCost(b.ud_net_cost_cents)} />
+          </div>
+
+          <div className="mt-4">
+            <StatementRow
+              label="Customer tips on Uber orders"
+              value={`+${fmt((b.ud_tips_to_driver_cents || 0) + (b.ud_tip_kept_cents || 0))}`}
+              muted
+            />
+            <StatementRow label="Paid to Uber drivers" value={`−${fmt(b.ud_tips_to_driver_cents)}`} muted />
+            <SubtotalRow label="Kept by you (over $5 cap)" value={fmt(b.ud_tip_kept_cents)} />
+          </div>
         </section>
       )}
 

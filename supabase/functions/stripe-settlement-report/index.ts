@@ -258,7 +258,7 @@ serve(async (req: Request) => {
       const { data: ordersData, error: ordersErr } = await supabase
         .from("orders")
         .select(
-          "status, subtotal, discount_amount, loyalty_discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_status, recoup_amount, recoup_rate"
+          "status, subtotal, discount_amount, loyalty_discount_amount, tax_amount, tip_amount, delivery_fee, delivery_fulfillment_method, uber_actual_fee, uber_quoted_fee, uber_status, recoup_amount, recoup_rate"
         )
         .eq("restaurant_id", restaurant_id)
         .gte("created_at", selStartIso)
@@ -356,6 +356,37 @@ serve(async (req: Request) => {
       0
     );
 
+    // --- Application-fee breakdown: what Ordr actually added at checkout ---
+    // Under platform billing the Stripe application fee on an Uber Direct order
+    // is 150 + uber_quoted_fee + min(tip, 500) — the platform fronts Uber's
+    // delivery cost and the capped driver tip inside the same fee. Reporting
+    // the raw fee as a single "Ordr" line therefore buries Uber money in it
+    // (Mahwah read $345.45 across 41 orders where Ordr's own take was $61.50).
+    // These three fields split it into its legs; activity.directbite_fees is
+    // untouched and still carries the Stripe-native total.
+    //
+    // ordr_fee_cents counts ALL orders, not nonCancelled. The $1.50 is never
+    // refunded on cancellation — _shared/refundUberAppFee.ts walks the fee down
+    // to exactly PLATFORM_SERVICE_FEE_CENTS and retains it — so a cancelled
+    // order's charge still carries the $1.50 and activity.directbite_fees still
+    // counts it. Using nonCancelled here would put the Sales section $1.50 out
+    // of balance for every cancellation in the range.
+    //
+    // The fronted legs are the opposite case: only DELIVERED orders contribute.
+    // Cancelled and self-delivered Uber orders had their fronted portion walked
+    // back by that same helper, so counting them would overstate. Reuses the
+    // `delivered` positive-match const above — do not re-derive it.
+    const ORDR_FEE_CENTS = 150;
+    const ordr_fee_cents = ORDR_FEE_CENTS * orders.length;
+    const ud_fee_fronted_cents = delivered.reduce(
+      (s: number, o: any) => s + dollarsToCents(o.uber_quoted_fee),
+      0
+    );
+    // Identical by construction to ud_tips_to_driver_cents — the capped tip the
+    // platform fronts to Uber IS the tip leg of the application fee. Aliased
+    // rather than recomputed so the two can never drift apart.
+    const ud_tip_fronted_cents = ud_tips_to_driver_cents;
+
     const breakdown = {
       food_cents,
       tax_cents,
@@ -371,6 +402,9 @@ serve(async (req: Request) => {
       ud_net_cost_cents,
       ud_tips_to_driver_cents,
       ud_tip_kept_cents,
+      ordr_fee_cents,
+      ud_fee_fronted_cents,
+      ud_tip_fronted_cents,
     };
 
     // --- ADJUSTMENTS (DB; SELECTED ET window, approved only). Keyed off
