@@ -2145,20 +2145,6 @@ export default function CheckoutPage() {
               <span>Subtotal</span>
               <span>{formatCurrency(fullSubtotal)}</span>
             </div>
-            <div className="flex justify-between text-gray-600">
-              <span>Tax</span>
-              <span>{formatCurrency(taxAmount)}</span>
-            </div>
-            <div className="flex justify-between text-gray-600">
-              <span>Service Fee</span>
-              <span>{formatCurrency(serviceFee)}</span>
-            </div>
-            {orderType === 'delivery' && (
-              <div className="flex justify-between text-gray-600">
-                <span>Delivery Fee{deliveryDistance ? ` (${deliveryDistance} mi)` : ''}</span>
-                <span>{showPlaceholder ? '—' : (deliveryFee === 0 ? 'Free' : formatCurrency(deliveryFee))}</span>
-              </div>
-            )}
             {discountAmount > 0 && (
               <div className="flex justify-between text-[#16A34A] font-medium">
                 <span>Discount ({discountPercentage}%)</span>
@@ -2171,6 +2157,20 @@ export default function CheckoutPage() {
                 <span>-{formatCurrency(loyaltyDiscount)}</span>
               </div>
             )}
+            {orderType === 'delivery' && (
+              <div className="flex justify-between text-gray-600">
+                <span>Delivery Fee{deliveryDistance ? ` (${deliveryDistance} mi)` : ''}</span>
+                <span>{showPlaceholder ? '—' : (deliveryFee === 0 ? 'Free' : formatCurrency(deliveryFee))}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-gray-600">
+              <span>Tax</span>
+              <span>{formatCurrency(taxAmount)}</span>
+            </div>
+            <div className="flex justify-between text-gray-600">
+              <span>Service Fee</span>
+              <span>{formatCurrency(serviceFee)}</span>
+            </div>
             {tip > 0 && (
               <div className="flex justify-between text-gray-600">
                 <span>Tip</span>
