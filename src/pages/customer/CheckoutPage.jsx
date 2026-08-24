@@ -1555,6 +1555,15 @@ export default function CheckoutPage() {
       .then(result => {
         if (controller.signal.aborted) return // stale response, ignore
 
+        // TEMP diagnostic — remove before merge.
+        console.log('[QUOTE]', {
+          aborted: controller.signal.aborted,
+          success: result?.success,
+          resolved: result?.resolved_mode,
+          reason: result?.reason,
+          customerFee: result?.customer_delivery_fee_cents,
+        })
+
         if (!result || !result.success) {
           // delivery_unavailable, uber_unavailable, network failure, etc.
           // Per D7: generic customer-facing message; Uber-side detail logged server-side.
