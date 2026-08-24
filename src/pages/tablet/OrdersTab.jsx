@@ -282,7 +282,6 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   // Print log is collapsed by default to avoid spamming the detail panel
   // with per-attempt rows; the disclosure header summarizes failures.
   const [printLogExpanded, setPrintLogExpanded] = useState(false)
-  const [showReprint, setShowReprint] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [showStatusOptions, setShowStatusOptions] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
@@ -572,7 +571,6 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
   async function handleReprint() {
     if (!restaurant.printer_ip) {
-      setShowReprint(false)
       return
     }
 
@@ -597,13 +595,19 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         status: result.success ? 'success' : 'failed',
         error_message: result.success ? null : result.message,
       })
-      await supabase.from('orders').update({
-        print_status: result.success ? 'printed' : 'failed',
-        print_attempts: printLogs.length + 1,
-      }).eq('id', order.id)
+      // print_trigger 'in_progress': an untaken order MUST stay at
+      // print_status 'pending' or the take-fire in useOrderPolling skips it
+      // and the kitchen ticket never prints on Mark In Progress. A reprint
+      // is an operator convenience, not the order's real print.
+      const awaitingTake = restaurant?.print_trigger === 'in_progress' && order.status === 'new'
+      if (!awaitingTake) {
+        await supabase.from('orders').update({
+          print_status: result.success ? 'printed' : 'failed',
+          print_attempts: printLogs.length + 1,
+        }).eq('id', order.id)
+      }
 
       fetchOrderDetails()
-      setShowReprint(false)
     } finally {
       setPrinting(false)
     }
@@ -992,10 +996,10 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             <Row label="Delivery Fee" value={formatMoney(order.delivery_fee)} />
           )}
           <Row label="Tax" value={formatMoney(order.tax_amount)} />
+          <Row label="Service Fee" value={formatMoney(order.service_fee)} />
           {Number(order.tip_amount) > 0 && (
             <Row label="Tip" value={formatMoney(order.tip_amount)} />
           )}
-          <Row label="Service Fee" value={formatMoney(order.service_fee)} />
           <div className="flex justify-between font-bold text-lg pt-1 border-t border-gray-100 mt-1">
             <span>Total</span>
             <span>{formatMoney(order.total_amount)}</span>
@@ -1075,17 +1079,6 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
 
       {/* Bottom actions */}
       <div className="shrink-0 px-4 pt-4 border-t border-gray-200 bg-white z-10 space-y-3" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
-        {/* Reprint confirmation */}
-        {showReprint && (
-          <div className="bg-gray-50 p-4 rounded-xl space-y-3">
-            <p className="text-center font-medium">Reprint this order?</p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowReprint(false)} className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold">No</button>
-              <button onClick={handleReprint} disabled={printing} className="flex-1 h-12 rounded-xl bg-[#16A34A] text-white font-semibold disabled:opacity-60">{printing ? 'Printing…' : 'Yes'}</button>
-            </div>
-          </div>
-        )}
-
         {/* Cancel confirmation */}
         {showCancelConfirm && (
           <div className="bg-red-50 p-4 rounded-xl space-y-3">
@@ -1347,7 +1340,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
         )}
 
         {/* Main action buttons */}
-        {!showReprint && !showStatusOptions && !showCancelConfirm && !showDeliverConfirm && !showRefundConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
+        {!showStatusOptions && !showCancelConfirm && !showDeliverConfirm && !showRefundConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
           order.delivery_fulfillment_method === 'uber_direct' && order.status === 'new' && order.uber_delivery_id ? (
             /* Step 4: this uber_direct order was already booked with Uber at
                placement (status kept 'new' so it chimed/printed). Accept must
@@ -1371,10 +1364,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 </button>
               )}
               <button
-                onClick={() => setShowReprint(true)}
-                className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
+                onClick={handleReprint}
+                disabled={printing}
+                className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm disabled:opacity-60"
               >
-                REPRINT
+                {printing ? 'PRINTING…' : 'REPRINT'}
               </button>
               <button
                 onClick={openCancelConfirm}
@@ -1417,10 +1411,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 </button>
               )}
               <button
-                onClick={() => setShowReprint(true)}
-                className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm"
+                onClick={handleReprint}
+                disabled={printing}
+                className="w-full h-12 rounded-xl border-2 border-gray-300 font-bold text-sm disabled:opacity-60"
               >
-                REPRINT
+                {printing ? 'PRINTING…' : 'REPRINT'}
               </button>
               <button
                 onClick={openCancelConfirm}
@@ -1434,10 +1429,11 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             <div className="space-y-3">
               <div className="flex gap-3">
                 <button
-                  onClick={() => setShowReprint(true)}
-                  className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base"
+                  onClick={handleReprint}
+                  disabled={printing}
+                  className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base disabled:opacity-60"
                 >
-                  REPRINT
+                  {printing ? 'PRINTING…' : 'REPRINT'}
                 </button>
                 {order.status === 'complete' ? (
                   <button

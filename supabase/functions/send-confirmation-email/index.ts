@@ -135,12 +135,15 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
     <tr><td style="padding:4px 0;color:#6b7280;">Tax</td><td style="text-align:right;padding:4px 0;">${formatMoney(order.tax_amount)}</td></tr>
   `;
 
+  pricingHtml += `
+    <tr><td style="padding:4px 0;color:#6b7280;">Service Fee</td><td style="text-align:right;padding:4px 0;">${formatMoney(order.service_fee)}</td></tr>
+  `;
+
   if (Number(order.tip_amount) > 0) {
     pricingHtml += `<tr><td style="padding:4px 0;color:#6b7280;">Tip</td><td style="text-align:right;padding:4px 0;">${formatMoney(order.tip_amount)}</td></tr>`;
   }
 
   pricingHtml += `
-    <tr><td style="padding:4px 0;color:#6b7280;">Service Fee</td><td style="text-align:right;padding:4px 0;">${formatMoney(order.service_fee)}</td></tr>
     <tr><td style="padding:8px 0;font-weight:bold;font-size:16px;border-top:2px solid #e5e7eb;">Total</td><td style="text-align:right;padding:8px 0;font-weight:bold;font-size:16px;border-top:2px solid #e5e7eb;">${formatMoney(order.total_amount)}</td></tr>
   `;
 
