@@ -226,7 +226,15 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [verifySuccess, setVerifySuccess] = useState(null)
 
   // M5b — Uber Direct configuration state (only relevant when verified)
-  const [mode, setMode] = useState(restaurant?.delivery_fulfillment || 'in_house')
+  // M-uz: `mode` is a UI-level value — 'in_house' | 'extend' | 'uber_direct' |
+  // 'both' — not a delivery_fulfillment value. 'extend' is the two-column pair
+  // (delivery_fulfillment='in_house', uber_extends_delivery=true) collapsed into
+  // one radio; saveUberSettings maps it back to both columns.
+  const [mode, setMode] = useState(
+    restaurant?.delivery_fulfillment === 'in_house' && restaurant?.uber_extends_delivery === true
+      ? 'extend'
+      : (restaurant?.delivery_fulfillment || 'in_house')
+  )
   const [uberActive, setUberActive] = useState(restaurant?.uber_direct_active || false)
   const [passthroughMode, setPassthroughMode] = useState(restaurant?.uber_passthrough_mode || 'customer_full')
   const [passthroughValue, setPassthroughValue] = useState(restaurant?.uber_passthrough_value ?? 0)
@@ -594,7 +602,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       const { data, error } = await supabase
         .from('restaurants')
         .update({
-          delivery_fulfillment: mode,
+          delivery_fulfillment: mode === 'extend' ? 'in_house' : mode,
+          uber_extends_delivery: mode === 'extend',
           uber_direct_active: uberActive,
           delivery_minimum_uber_direct: parseFloat(deliveryMinimumUD) || 0,
           uber_schedule: schedule,
@@ -637,6 +646,12 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const hasCredentials = !!restaurant?.uber_customer_id
   const showWizard = showWizardLocally || (hasCredentials && !isUberVerified)
   const isPlatform = (restaurant?.uber_billing_mode ?? 'self') === 'platform'
+  // M-uz: 'extend' needs an in-house boundary to extend. With no radius set,
+  // calculateDeliveryFeeCents returns null for every address, which would route
+  // 100% of deliveries to Uber rather than only those beyond the zone. Reads the
+  // PERSISTED value — the Delivery section owns this column via saveDelivery(),
+  // so an unsaved edit there must not unlock the option here.
+  const canExtend = restaurant?.delivery_max_radius_miles != null
 
   return (
     <div className="h-full overflow-y-auto p-4">
@@ -936,7 +951,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </p>
 
             {/* Uber Direct delivery minimum — first option in this section */}
-            {(mode === 'uber_direct' || mode === 'both') && (
+            {(mode === 'uber_direct' || mode === 'both' || mode === 'extend') && (
               <div className="space-y-2 pt-2 border-t border-gray-100">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Uber Direct Delivery Minimum</p>
                 <div className="relative">
@@ -948,7 +963,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               </div>
             )}
 
-            {/* Delivery Mode — 3 radio buttons */}
+            {/* Delivery Mode — 4 radio buttons */}
             <div className="space-y-2 pt-2 border-t border-gray-100">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Delivery Mode</p>
               <label className="flex items-center gap-3 cursor-pointer">
@@ -961,6 +976,24 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                 />
                 <span className="text-sm text-gray-700">In-House Only</span>
               </label>
+              <label className={`flex items-start gap-3 ${canExtend ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'extend'}
+                  disabled={!canExtend}
+                  onChange={() => setMode('extend')}
+                  className="accent-[#16A34A] w-4 h-4 mt-0.5"
+                />
+                <span className="text-sm text-gray-700">
+                  UberDirect to Expand Range
+                  {!canExtend && (
+                    <span className="block text-xs text-gray-500">
+                      Set a delivery radius under Delivery first — without an in-house boundary there is nothing to extend.
+                    </span>
+                  )}
+                </span>
+              </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="radio"
@@ -969,7 +1002,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   onChange={() => setMode('uber_direct')}
                   className="accent-[#16A34A] w-4 h-4"
                 />
-                <span className="text-sm text-gray-700">Uber Direct Only</span>
+                <span className="text-sm text-gray-700">UberDirect Only</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -984,7 +1017,9 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </div>
 
             {/* Cost Sharing — passthrough policy. Only relevant when Uber
-                fulfills (uber_direct / both); irrelevant for in_house. */}
+                fulfills (uber_direct / both / extend); irrelevant for in_house.
+                'extend' is covered by the condition below without a new clause:
+                the UI value is not 'in_house'. */}
             {mode !== 'in_house' && (
               <div className="space-y-2 pt-2 border-t border-gray-100">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost Sharing</p>
@@ -1044,8 +1079,12 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               </div>
             )}
 
-            {/* Real-Time Override + Schedule — only when mode === 'both' */}
-            {mode === 'both' && (
+            {/* Real-Time Override + Schedule — 'both' and 'extend'. Both resolve
+                through resolveMode's Branch 3, which checks uber_direct_active AND
+                the schedule, so for 'extend' these already govern whether an
+                extended-zone quote succeeds. Hiding them would leave an empty
+                schedule silently failing every extended-zone address. */}
+            {(mode === 'both' || mode === 'extend') && (
               <>
                 <div className="space-y-2 pt-2 border-t border-gray-100">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
@@ -1054,7 +1093,9 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                     <Toggle value={uberActive} onChange={setUberActive} />
                   </div>
                   <p className="text-xs text-gray-500">
-                    Turn ON when your drivers are unavailable. This overrides the schedule below.
+                    {mode === 'extend'
+                      ? 'Turn ON to keep the extended zone open regardless of the schedule below.'
+                      : 'Turn ON when your drivers are unavailable. This overrides the schedule below.'}
                   </p>
                 </div>
 
@@ -1115,7 +1156,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </p>
 
             {/* Uber Direct delivery minimum — first option in this section */}
-            {(mode === 'uber_direct' || mode === 'both') && (
+            {(mode === 'uber_direct' || mode === 'both' || mode === 'extend') && (
               <div className="space-y-2 pt-2 border-t border-gray-100">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Uber Direct Delivery Minimum</p>
                 <div className="relative">
@@ -1127,7 +1168,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               </div>
             )}
 
-            {/* Delivery Mode — 3 radio buttons */}
+            {/* Delivery Mode — 4 radio buttons */}
             <div className="space-y-2 pt-2 border-t border-gray-100">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Delivery Mode</p>
               <label className="flex items-center gap-3 cursor-pointer">
@@ -1140,6 +1181,24 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                 />
                 <span className="text-sm text-gray-700">In-House Only</span>
               </label>
+              <label className={`flex items-start gap-3 ${canExtend ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                <input
+                  type="radio"
+                  name="deliveryMode"
+                  checked={mode === 'extend'}
+                  disabled={!canExtend}
+                  onChange={() => setMode('extend')}
+                  className="accent-[#16A34A] w-4 h-4 mt-0.5"
+                />
+                <span className="text-sm text-gray-700">
+                  UberDirect to Expand Range
+                  {!canExtend && (
+                    <span className="block text-xs text-gray-500">
+                      Set a delivery radius under Delivery first — without an in-house boundary there is nothing to extend.
+                    </span>
+                  )}
+                </span>
+              </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
                   type="radio"
@@ -1148,7 +1207,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   onChange={() => setMode('uber_direct')}
                   className="accent-[#16A34A] w-4 h-4"
                 />
-                <span className="text-sm text-gray-700">Uber Direct Only</span>
+                <span className="text-sm text-gray-700">UberDirect Only</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
                 <input
@@ -1163,7 +1222,9 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             </div>
 
             {/* Cost Sharing — passthrough policy. Only relevant when Uber
-                fulfills (uber_direct / both); irrelevant for in_house. */}
+                fulfills (uber_direct / both / extend); irrelevant for in_house.
+                'extend' is covered by the condition below without a new clause:
+                the UI value is not 'in_house'. */}
             {mode !== 'in_house' && (
               <div className="space-y-2 pt-2 border-t border-gray-100">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Cost Sharing</p>
@@ -1223,8 +1284,12 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               </div>
             )}
 
-            {/* Real-Time Override + Schedule — only when mode === 'both' */}
-            {mode === 'both' && (
+            {/* Real-Time Override + Schedule — 'both' and 'extend'. Both resolve
+                through resolveMode's Branch 3, which checks uber_direct_active AND
+                the schedule, so for 'extend' these already govern whether an
+                extended-zone quote succeeds. Hiding them would leave an empty
+                schedule silently failing every extended-zone address. */}
+            {(mode === 'both' || mode === 'extend') && (
               <>
                 <div className="space-y-2 pt-2 border-t border-gray-100">
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
@@ -1233,7 +1298,9 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                     <Toggle value={uberActive} onChange={setUberActive} />
                   </div>
                   <p className="text-xs text-gray-500">
-                    Turn ON when your drivers are unavailable. This overrides the schedule below.
+                    {mode === 'extend'
+                      ? 'Turn ON to keep the extended zone open regardless of the schedule below.'
+                      : 'Turn ON when your drivers are unavailable. This overrides the schedule below.'}
                   </p>
                 </div>
 

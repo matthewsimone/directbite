@@ -962,10 +962,18 @@ export default function CheckoutPage() {
   // the "minimum order" message shows the moment Delivery is selected — not after
   // an address resolves the Uber quote. For 'both', assume Uber Direct until a
   // quote resolves the order to in-house (resolvedMode === 'in_house').
+  //
+  // M-uz: an extended-zone order is the one case configuration cannot predict —
+  // the restaurant is configured in_house, so neither clause below fires, yet
+  // create-payment-intent:170 enforces delivery_minimum_uber_direct because the
+  // order resolves to uber_direct server-side. Without the third clause the
+  // customer is shown the in-house minimum and rejected at Pay against the Uber
+  // one. Knowable only once resolvedMode settles, hence the different key.
   const fulfillment = restaurant?.delivery_fulfillment || 'in_house'
   const useUberMin =
     fulfillment === 'uber_direct' ||
-    (fulfillment === 'both' && resolvedMode !== 'in_house')
+    (fulfillment === 'both' && resolvedMode !== 'in_house') ||
+    resolvedMode === 'uber_direct'
   const deliveryMinimum = Number(
     (useUberMin
       ? restaurant?.delivery_minimum_uber_direct
