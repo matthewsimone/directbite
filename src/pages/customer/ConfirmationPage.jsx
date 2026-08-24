@@ -526,20 +526,6 @@ function ConfirmationLayout({
                 <span>Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Tax</span>
-                <span>{formatCurrency(taxAmount)}</span>
-              </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Service Fee</span>
-                <span>{formatCurrency(serviceFee)}</span>
-              </div>
-              {Number(deliveryFee) > 0 && (
-                <div className="flex justify-between text-gray-600">
-                  <span>Delivery Fee</span>
-                  <span>{formatCurrency(deliveryFee)}</span>
-                </div>
-              )}
               {Number(discountAmount) > 0 && (
                 <div className="flex justify-between text-[#16A34A] font-medium">
                   <span>Discount ({discountPercentage}%)</span>
@@ -552,6 +538,20 @@ function ConfirmationLayout({
                   <span>-{formatCurrency(loyaltyDiscount)}</span>
                 </div>
               )}
+              {Number(deliveryFee) > 0 && (
+                <div className="flex justify-between text-gray-600">
+                  <span>Delivery Fee</span>
+                  <span>{formatCurrency(deliveryFee)}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-gray-600">
+                <span>Tax</span>
+                <span>{formatCurrency(taxAmount)}</span>
+              </div>
+              <div className="flex justify-between text-gray-600">
+                <span>Service Fee</span>
+                <span>{formatCurrency(serviceFee)}</span>
+              </div>
               {Number(tip) > 0 && (
                 <div className="flex justify-between text-gray-600">
                   <span>Tip</span>
