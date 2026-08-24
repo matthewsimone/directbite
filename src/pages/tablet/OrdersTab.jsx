@@ -1661,18 +1661,26 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
           <span className={`text-sm font-medium ${restaurant.delivery_available ? 'text-gray-900' : 'text-gray-400'}`}>
             Delivery: {restaurant.delivery_available ? 'ON' : 'OFF'}
             {!restaurant.delivery_available && ', Not Accepting Deliveries'}
-            {/* Extended zone reads as plain text, deliberately without the green
-                pulsing dot below: that dot means "Uber is the fulfillment
-                method", which is a different state and must not look identical
-                at a glance. Guarded on a non-null radius — a restaurant without
-                one has no meaningful zone to extend. */}
-            {restaurant.delivery_available && uberExtendedZone &&
-              restaurant.delivery_max_radius_miles != null &&
-              `, Uber active beyond ${restaurant.delivery_max_radius_miles} miles`}
           </span>
           {restaurant.delivery_available && uberActive && (
             <span className="flex items-center gap-1.5">
               <span className="text-xs font-medium text-[#16A34A]">Uber: Active</span>
+              <span
+                className="inline-block w-2 h-2 rounded-full bg-[#16A34A] animate-pulse"
+                style={{ boxShadow: '0 0 0 3px rgba(22, 163, 74, 0.25)' }}
+              />
+            </span>
+          )}
+          {/* Extended zone: same pill treatment as "Uber: Active" above. The two
+              are mutually exclusive by construction — uberActive is false for
+              in_house, uberExtendedZone is true only for in_house — but they are
+              siblings under the parent's flex gap-2, so both rendering would
+              simply space correctly rather than collide. Guarded on a non-null
+              radius: a restaurant without one has no meaningful zone to extend. */}
+          {restaurant.delivery_available && uberExtendedZone &&
+            restaurant.delivery_max_radius_miles != null && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-xs font-medium text-[#16A34A]">Uber Active beyond {restaurant.delivery_max_radius_miles} miles</span>
               <span
                 className="inline-block w-2 h-2 rounded-full bg-[#16A34A] animate-pulse"
                 style={{ boxShadow: '0 0 0 3px rgba(22, 163, 74, 0.25)' }}
