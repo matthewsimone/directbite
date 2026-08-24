@@ -1510,6 +1510,17 @@ export default function CheckoutPage() {
         (uberOverrideOn ||
           (restaurant?.delivery_max_radius_miles != null && result.feeCents === null))
 
+      // TEMP diagnostic — remove before merge.
+      console.log('[EXTEND]', {
+        distance: result.distance,
+        feeCents: result.feeCents,
+        uberOverrideOn,
+        extends: restaurant?.uber_extends_delivery,
+        maxRadius: restaurant?.uber_max_radius_miles,
+        inHouseRadius: restaurant?.delivery_max_radius_miles,
+        extendViaUber,
+      })
+
       if (!extendViaUber) {
         setDeliveryDistance(result.distance)
         setDeliveryFeeCents(result.feeCents)
