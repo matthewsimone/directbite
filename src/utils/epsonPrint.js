@@ -498,10 +498,10 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
               printer.addText(pad('Delivery', fmt(order.delivery_fee)) + '\n')
             }
             printer.addText(pad('Tax', fmt(order.tax_amount)) + '\n')
+            printer.addText(pad('Service Fee', fmt(order.service_fee)) + '\n')
             if (Number(order.tip_amount) > 0) {
               printer.addText(pad('Tip', fmt(order.tip_amount)) + '\n')
             }
-            printer.addText(pad('Service Fee', fmt(order.service_fee)) + '\n')
             printer.addText(sep + '\n')
             printer.addText('\n') // breathing room above TOTAL
 
