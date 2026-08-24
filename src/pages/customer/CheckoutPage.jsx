@@ -1568,6 +1568,10 @@ export default function CheckoutPage() {
           // delivery_unavailable, uber_unavailable, network failure, etc.
           // Per D7: generic customer-facing message; Uber-side detail logged server-side.
           setAddressError("Delivery isn't available for this address. Please try pickup or a different address.")
+          // M-uz: the extended-zone fall-through is over and did not land on
+          // uber. wouldRejectOnServer reads this ref, and leaving it true would
+          // block create-payment-intent for an order the server would accept.
+          extendedZoneRef.current = false
           setResolvedMode(null)
           setUberQuoteId(null)
           setUberQuotedFeeCents(null)
@@ -1596,6 +1600,8 @@ export default function CheckoutPage() {
           // resolved_mode === 'in_house' (fallback: credentials_not_verified,
           // schedule_inactive, etc). Run haversine and use that fee.
           const hav = runHaversineCalc()
+          // M-uz: resolved back to in_house — same reset as the branch above.
+          extendedZoneRef.current = false
           setResolvedMode('in_house')
           setUberQuoteId(null)
           setUberQuotedFeeCents(null)
@@ -1614,6 +1620,8 @@ export default function CheckoutPage() {
         setAddressError("Couldn't calculate delivery fee. Please try a different address or pickup.")
         // Reset the same nine values the !result.success branch above sets, so no
         // path leaves the previous address's distance/fee/mode behind.
+        // M-uz: and the extended-zone ref with them, for the same reason.
+        extendedZoneRef.current = false
         setResolvedMode(null)
         setUberQuoteId(null)
         setUberQuotedFeeCents(null)
@@ -1658,12 +1666,21 @@ export default function CheckoutPage() {
     // reject this request shape. Avoids the invalid POST that produces a
     // toast for the customer. Conservatively handles 'both' mode by predicting
     // uber_direct when client hasn't yet resolved.
+    // M-uz: a configured-in_house restaurant whose address took the extended-zone
+    // fall-through needs its quote first too, or the POST carries in-house
+    // order_data and the server's distance guard rejects it as out of range.
+    // resolvedMode covers the resolved case, extendedZoneRef the pending one;
+    // the ref is cleared in every non-uber settle branch, so it cannot strand an
+    // ordinary in-house order. resolvedMode === null is deliberately NOT a block
+    // here — for in_house that is the state every ordinary order sits in.
     const wouldRejectOnServer =
       orderType === 'delivery' &&
       !uberQuoteId &&
       (restaurant?.delivery_fulfillment === 'uber_direct' ||
        (restaurant?.delivery_fulfillment === 'both' &&
-        (resolvedMode === 'uber_direct' || resolvedMode === null)))
+        (resolvedMode === 'uber_direct' || resolvedMode === null)) ||
+       (restaurant?.delivery_fulfillment === 'in_house' &&
+        (resolvedMode === 'uber_direct' || extendedZoneRef.current === true)))
     if (wouldRejectOnServer) return
     if (!restaurant || items.length === 0 || intentCreated.current) return
     intentCreated.current = true
@@ -1741,12 +1758,21 @@ export default function CheckoutPage() {
     // reject this request shape. Avoids the invalid POST that produces a
     // toast for the customer. Conservatively handles 'both' mode by predicting
     // uber_direct when client hasn't yet resolved.
+    // M-uz: a configured-in_house restaurant whose address took the extended-zone
+    // fall-through needs its quote first too, or the POST carries in-house
+    // order_data and the server's distance guard rejects it as out of range.
+    // resolvedMode covers the resolved case, extendedZoneRef the pending one;
+    // the ref is cleared in every non-uber settle branch, so it cannot strand an
+    // ordinary in-house order. resolvedMode === null is deliberately NOT a block
+    // here — for in_house that is the state every ordinary order sits in.
     const wouldRejectOnServer =
       orderType === 'delivery' &&
       !uberQuoteId &&
       (restaurant?.delivery_fulfillment === 'uber_direct' ||
        (restaurant?.delivery_fulfillment === 'both' &&
-        (resolvedMode === 'uber_direct' || resolvedMode === null)))
+        (resolvedMode === 'uber_direct' || resolvedMode === null)) ||
+       (restaurant?.delivery_fulfillment === 'in_house' &&
+        (resolvedMode === 'uber_direct' || extendedZoneRef.current === true)))
     if (wouldRejectOnServer) return
     if (!paymentIntentId || !restaurant) return
 
@@ -1899,6 +1925,9 @@ export default function CheckoutPage() {
           // Mode transitioned to in_house mid-checkout (schedule lapsed etc).
           // Fall back to haversine; bail out if haversine produces an error.
           const hav = runHaversineCalc()
+          // M-uz: mode transitioned back to in_house — same reset as the quote
+          // settle branches above.
+          extendedZoneRef.current = false
           setResolvedMode('in_house')
           setUberQuoteId(null)
           setUberQuotedFeeCents(null)
