@@ -53,20 +53,29 @@ const cases = [
 ];
 
 // isUberExtendedZoneActiveNow — the "is in-house being EXTENDED by Uber" question.
-// True only for delivery_fulfillment='in_house' AND uber_extends_delivery=true,
-// then the same credentials/override/schedule rules as 'both'.
+// True for delivery_fulfillment='in_house' AND uber_extends_delivery=true AND
+// usable credentials. CREDENTIALS ONLY — the schedule and the realtime override
+// are not consulted, because an extended zone is a permanent capability, not an
+// availability window. Mirrors resolveMode Branch 1e.
+//
+// A schedule that throws on read proves the point: the old rule ran it through
+// evaluateBothRules and caught the error into a false, the new one never touches it.
+const explodingSchedule = {
+  get '3'() { throw new Error('uber_schedule must not be read on the extended-zone path'); },
+};
+
 const extendedCases = [
   {
-    name: 'extended: in_house + opted in + Wed 12:00 NY, sched Wed 11:00-16:00 → true',
+    name: 'extended: in_house + opted in + platform creds → true',
     restaurant: { delivery_fulfillment: 'in_house', uber_extends_delivery: true, uber_billing_mode: 'platform', uber_direct_active: false, uber_schedule: wedSchedule },
     now: new Date('2026-07-15T12:00:00-04:00'),
     expect: true,
   },
   {
-    name: 'extended: in_house + opted in + Tue 12:00 NY, same schedule → false (closed)',
+    name: 'extended: in_house + opted in + Tue 12:00 NY, Wed-only schedule → true (schedule ignored)',
     restaurant: { delivery_fulfillment: 'in_house', uber_extends_delivery: true, uber_billing_mode: 'platform', uber_direct_active: false, uber_schedule: wedSchedule },
     now: new Date('2026-07-14T12:00:00-04:00'),
-    expect: false,
+    expect: true,
   },
   {
     name: 'extended: in_house + opted in + override ON, no schedule → true',
@@ -97,6 +106,40 @@ const extendedCases = [
     restaurant: { delivery_fulfillment: 'both', uber_extends_delivery: true, uber_billing_mode: 'platform', uber_direct_active: true, uber_schedule: wedSchedule },
     now: anyNow,
     expect: false,
+  },
+
+  // --- schedule independence: every case below is off-schedule with the
+  // override OFF, and every one must still be true. Under the old rule each
+  // resolved false, which is what made the tablet badge disappear.
+  {
+    name: 'extended: override off + empty schedule → true',
+    restaurant: { delivery_fulfillment: 'in_house', uber_extends_delivery: true, uber_billing_mode: 'platform', uber_direct_active: false, uber_schedule: {} },
+    now: new Date('2026-07-14T03:00:00-04:00'),
+    expect: true,
+  },
+  {
+    name: 'extended: override off + null schedule → true',
+    restaurant: { delivery_fulfillment: 'in_house', uber_extends_delivery: true, uber_billing_mode: 'platform', uber_direct_active: false, uber_schedule: null },
+    now: anyNow,
+    expect: true,
+  },
+  {
+    name: 'extended: override off + Wed 16:00 NY (end-exclusive, false for both) → true',
+    restaurant: { delivery_fulfillment: 'in_house', uber_extends_delivery: true, uber_billing_mode: 'platform', uber_direct_active: false, uber_schedule: wedSchedule },
+    now: new Date('2026-07-15T16:00:00-04:00'),
+    expect: true,
+  },
+  {
+    name: 'extended: override off + self billing WITH verified creds, off-schedule → true',
+    restaurant: { delivery_fulfillment: 'in_house', uber_extends_delivery: true, uber_billing_mode: 'self', uber_credentials_verified_at: '2026-07-01T00:00:00Z', uber_direct_active: false, uber_schedule: wedSchedule },
+    now: new Date('2026-07-14T12:00:00-04:00'),
+    expect: true,
+  },
+  {
+    name: 'extended: override off + schedule that throws if read → true (never read)',
+    restaurant: { delivery_fulfillment: 'in_house', uber_extends_delivery: true, uber_billing_mode: 'platform', uber_direct_active: false, uber_schedule: explodingSchedule },
+    now: new Date('2026-07-15T12:00:00-04:00'),
+    expect: true,
   },
 ];
 

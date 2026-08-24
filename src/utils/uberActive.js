@@ -16,11 +16,13 @@
 //   isUberActiveNow()             — is Uber the FULFILLMENT MODE right now?
 //                                   False for in_house by definition.
 //   isUberExtendedZoneActiveNow() — is a configured-in_house restaurant
-//                                   EXTENDING its in-house zone via Uber right
-//                                   now? True only for in_house +
-//                                   uber_extends_delivery.
-// They are mutually exclusive by construction, and both evaluate the same
-// credentials → realtime override → schedule rules via evaluateBothRules().
+//                                   EXTENDING its in-house zone via Uber? True
+//                                   only for in_house + uber_extends_delivery.
+// They are mutually exclusive by construction, and they do NOT share a rule:
+// isUberActiveNow runs the credentials → realtime override → schedule sequence
+// via evaluateBothRules(); the extended zone resolves on credentials alone,
+// because it is a permanent capability rather than an availability window.
+// Mirrors resolveMode Branch 1e (uberMode.ts).
 //
 // Time boundary semantics (mirrored): start inclusive, end exclusive —
 // "11:00"–"22:00" means active 11:00 through 21:59 (current >= start &&
@@ -111,23 +113,33 @@ export function isUberActiveNow(restaurant, now = new Date()) {
 }
 
 /**
- * Is this restaurant currently EXTENDING its in-house delivery zone via Uber?
+ * Is this restaurant EXTENDING its in-house delivery zone via Uber?
  *
  * A different question from isUberActiveNow(), which asks "is Uber the
- * fulfillment mode" and is correctly false for in_house. This one is true only
- * for a configured-in_house restaurant that opted in via uber_extends_delivery
- * and whose credentials + schedule currently resolve to uber_direct — exactly
- * resolveMode's extendedZone path (uberMode.ts:112, :132).
+ * fulfillment mode" and is correctly false for in_house. This one is true for a
+ * configured-in_house restaurant that opted in via uber_extends_delivery and
+ * has usable Uber credentials — exactly resolveMode's Branch 1e.
+ *
+ * Credentials ONLY. The schedule and the realtime override are deliberately not
+ * consulted: an extended zone is a permanent capability, not an availability
+ * window. An extended-zone address lies outside the in-house radius, so there is
+ * no in-house driver to fall back to when the Uber window is closed — gating on
+ * the schedule would simply refuse the address, and would make this badge
+ * disappear while the server still quotes and dispatches those orders.
+ *
+ * The override decides whether IN-RADIUS addresses also route to Uber, which is
+ * a question about the immediate zone, not this one.
  *
  * @param {object} restaurant - needs delivery_fulfillment, uber_extends_delivery,
- *   uber_billing_mode, uber_credentials_verified_at, uber_direct_active,
- *   uber_schedule.
- * @param {Date} [now] - injectable clock (defaults to real now).
+ *   uber_billing_mode, uber_credentials_verified_at.
+ * @param {Date} [_now] - accepted for signature parity with isUberActiveNow and
+ *   deliberately unused; this answer does not depend on the clock.
  * @returns {boolean}
  */
-export function isUberExtendedZoneActiveNow(restaurant, now = new Date()) {
+export function isUberExtendedZoneActiveNow(restaurant, _now = new Date()) {
   if (!restaurant) return false;
   if (restaurant.delivery_fulfillment !== 'in_house') return false;
   if (restaurant.uber_extends_delivery !== true) return false;
-  return evaluateBothRules(restaurant, now);
+  const isPlatform = (restaurant.uber_billing_mode ?? 'self') === 'platform';
+  return isPlatform || !!restaurant.uber_credentials_verified_at;
 }

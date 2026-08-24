@@ -326,7 +326,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           console.log('[PAYMENTMETHOD] BLOCKED — delivery validation failed')
           ev.complete('fail')
           submittedRef.current = false
-          toast.error('Please enter a delivery address before paying')
+          // onValidateDelivery has already toasted the actual reason.
           return
         }
       }
@@ -414,6 +414,9 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     }
 
     if (onValidateDelivery) {
+      // No toast here: onValidateDelivery raises one for every false it
+      // returns. This used to return in silence, which left a tapped Pay
+      // button looking dead.
       const isValid = await onValidateDelivery()
       if (!isValid) {
         submittedRef.current = false
@@ -633,7 +636,12 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             <span className="text-2xl font-bold text-gray-900">{showPlaceholder ? '—' : formatCurrency(total)}</span>
           </div>
 
-          {payMethod === 'wallet' && paymentRequest && !showPlaceholder ? (
+          {/* externalDisabled gates the wallet by NOT rendering it:
+              PaymentRequestButtonElement has no disabled option, and the click
+              lands inside a Stripe iframe where an overlay is not reliable. The
+              customer falls through to the disabled button below, beside the
+              warning that says why. */}
+          {payMethod === 'wallet' && paymentRequest && !showPlaceholder && !externalDisabled ? (
             <div
               onClickCapture={() => {
                 console.log('[WRAPPER] click captured on wallet button wrapper (may not fire for iframe)')
@@ -811,7 +819,11 @@ export default function CheckoutPage() {
   useRestaurantBranding(restaurant, 'ordering')
 
   const { promotion } = usePromotion(restaurant?.id)
-  const { items, subtotal, clearCart } = useCart()
+  // subtotal is deliberately not pulled from the cart: every figure this page
+  // needs is derived from fullSubtotal below, and the delivery floor now uses
+  // netSubtotal. Leaving it bound is what let the two be confused in the first
+  // place.
+  const { items, clearCart } = useCart()
 
   const [orderType, setOrderType] = useState('pickup')
   // Applies the restaurant's default order type exactly once, after the async
@@ -979,7 +991,6 @@ export default function CheckoutPage() {
       ? restaurant?.delivery_minimum_uber_direct
       : restaurant?.delivery_minimum_in_house) || 0
   )
-  const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
   // Non-null only when the payment intent reused an existing Stripe Customer;
   // it is what lets the Payment Element redisplay their saved cards.
@@ -1016,6 +1027,20 @@ export default function CheckoutPage() {
   const loyaltyRewardItem = items.find(i => i.loyaltyRedemptionId && i.loyaltyRewardKind === 'discount')
   const loyaltyDiscount = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyDiscountCents || 0) / 100 : 0
   const netSubtotal = Math.max(0, Math.round((discountedSubtotal - loyaltyDiscount) * 100) / 100)
+  // The delivery floor is revenue, not menu prices: a restaurant setting $15
+  // means fifteen dollars in the door. So it is measured against netSubtotal —
+  // after any promotion AND after a discount reward — not against the cart's
+  // own subtotal, which counts a promoted item at its discounted price but is
+  // computed from a different set of fields than the figure the server sees.
+  //
+  // create-payment-intent computes the same net figure, reading the reward's
+  // value from the redemption row rather than from order_data (see the note at
+  // loyalty_redemption_id below). The two must agree or a customer clears the
+  // floor here and is rejected at Pay.
+  //
+  // Declared here rather than beside deliveryMinimum because netSubtotal is not
+  // in scope until this line.
+  const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && netSubtotal < deliveryMinimum
   const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
   // M6.5b: Restructured to keep uber_direct path exclusive of in_house
   // fallbacks. Prevents the deliveryFee from flashing the in_house default
@@ -1493,14 +1518,22 @@ export default function CheckoutPage() {
       // Zero impact on the 8 production restaurants currently in this mode.
       const result = runHaversineCalc()
 
-      // Uber-extended delivery: the address is outside the in-house radius but
-      // inside the uber radius, so fall through to the Uber quote block below
-      // rather than rejecting it. Any other outcome keeps today's behavior.
+      // M-uz: two ways an address leaves the in-house zone for Uber.
+      //  - normal: the address is outside a configured in-house radius
+      //    (feeCents null). No configured radius means nothing to extend.
+      //  - realtime override: uber_direct_active means our own drivers are
+      //    unavailable, so EVERY address goes to Uber — in-radius ones
+      //    included, and whether or not an in-house radius is configured.
+      // uber_max_radius_miles caps both paths; it is the only cap under the
+      // override.
+      const uberOverrideOn = restaurant?.uber_direct_active === true
+
       const extendViaUber =
-        result.feeCents === null &&
         restaurant?.uber_extends_delivery === true &&
         typeof result.distance === 'number' &&
-        result.distance <= Number(restaurant.uber_max_radius_miles ?? 10)
+        result.distance <= Number(restaurant.uber_max_radius_miles ?? 10) &&
+        (uberOverrideOn ||
+          (restaurant?.delivery_max_radius_miles != null && result.feeCents === null))
 
       if (!extendViaUber) {
         setDeliveryDistance(result.distance)
@@ -1540,6 +1573,10 @@ export default function CheckoutPage() {
           // delivery_unavailable, uber_unavailable, network failure, etc.
           // Per D7: generic customer-facing message; Uber-side detail logged server-side.
           setAddressError("Delivery isn't available for this address. Please try pickup or a different address.")
+          // M-uz: the extended-zone fall-through is over and did not land on
+          // uber. wouldRejectOnServer reads this ref, and leaving it true would
+          // block create-payment-intent for an order the server would accept.
+          extendedZoneRef.current = false
           setResolvedMode(null)
           setUberQuoteId(null)
           setUberQuotedFeeCents(null)
@@ -1568,6 +1605,8 @@ export default function CheckoutPage() {
           // resolved_mode === 'in_house' (fallback: credentials_not_verified,
           // schedule_inactive, etc). Run haversine and use that fee.
           const hav = runHaversineCalc()
+          // M-uz: resolved back to in_house — same reset as the branch above.
+          extendedZoneRef.current = false
           setResolvedMode('in_house')
           setUberQuoteId(null)
           setUberQuotedFeeCents(null)
@@ -1586,6 +1625,8 @@ export default function CheckoutPage() {
         setAddressError("Couldn't calculate delivery fee. Please try a different address or pickup.")
         // Reset the same nine values the !result.success branch above sets, so no
         // path leaves the previous address's distance/fee/mode behind.
+        // M-uz: and the extended-zone ref with them, for the same reason.
+        extendedZoneRef.current = false
         setResolvedMode(null)
         setUberQuoteId(null)
         setUberQuotedFeeCents(null)
@@ -1601,7 +1642,20 @@ export default function CheckoutPage() {
     return () => {
       controller.abort()
     }
-  }, [orderType, deliveryLat, deliveryLon, restaurant, scheduledFor])
+  }, [
+    orderType, deliveryLat, deliveryLon, scheduledFor,
+    restaurant?.id,
+    restaurant?.latitude,
+    restaurant?.longitude,
+    restaurant?.delivery_fulfillment,
+    restaurant?.delivery_max_radius_miles,
+    restaurant?.delivery_tier1_max_miles,
+    restaurant?.delivery_tier1_fee_cents,
+    restaurant?.delivery_tier2_fee_cents,
+    restaurant?.uber_extends_delivery,
+    restaurant?.uber_max_radius_miles,
+    restaurant?.uber_direct_active,
+  ])
 
   // Redirect to menu if cart is empty
   useEffect(() => {
@@ -1617,12 +1671,21 @@ export default function CheckoutPage() {
     // reject this request shape. Avoids the invalid POST that produces a
     // toast for the customer. Conservatively handles 'both' mode by predicting
     // uber_direct when client hasn't yet resolved.
+    // M-uz: a configured-in_house restaurant whose address took the extended-zone
+    // fall-through needs its quote first too, or the POST carries in-house
+    // order_data and the server's distance guard rejects it as out of range.
+    // resolvedMode covers the resolved case, extendedZoneRef the pending one;
+    // the ref is cleared in every non-uber settle branch, so it cannot strand an
+    // ordinary in-house order. resolvedMode === null is deliberately NOT a block
+    // here — for in_house that is the state every ordinary order sits in.
     const wouldRejectOnServer =
       orderType === 'delivery' &&
       !uberQuoteId &&
       (restaurant?.delivery_fulfillment === 'uber_direct' ||
        (restaurant?.delivery_fulfillment === 'both' &&
-        (resolvedMode === 'uber_direct' || resolvedMode === null)))
+        (resolvedMode === 'uber_direct' || resolvedMode === null)) ||
+       (restaurant?.delivery_fulfillment === 'in_house' &&
+        (resolvedMode === 'uber_direct' || extendedZoneRef.current === true)))
     if (wouldRejectOnServer) return
     if (!restaurant || items.length === 0 || intentCreated.current) return
     intentCreated.current = true
@@ -1700,12 +1763,21 @@ export default function CheckoutPage() {
     // reject this request shape. Avoids the invalid POST that produces a
     // toast for the customer. Conservatively handles 'both' mode by predicting
     // uber_direct when client hasn't yet resolved.
+    // M-uz: a configured-in_house restaurant whose address took the extended-zone
+    // fall-through needs its quote first too, or the POST carries in-house
+    // order_data and the server's distance guard rejects it as out of range.
+    // resolvedMode covers the resolved case, extendedZoneRef the pending one;
+    // the ref is cleared in every non-uber settle branch, so it cannot strand an
+    // ordinary in-house order. resolvedMode === null is deliberately NOT a block
+    // here — for in_house that is the state every ordinary order sits in.
     const wouldRejectOnServer =
       orderType === 'delivery' &&
       !uberQuoteId &&
       (restaurant?.delivery_fulfillment === 'uber_direct' ||
        (restaurant?.delivery_fulfillment === 'both' &&
-        (resolvedMode === 'uber_direct' || resolvedMode === null)))
+        (resolvedMode === 'uber_direct' || resolvedMode === null)) ||
+       (restaurant?.delivery_fulfillment === 'in_house' &&
+        (resolvedMode === 'uber_direct' || extendedZoneRef.current === true)))
     if (wouldRejectOnServer) return
     if (!paymentIntentId || !restaurant) return
 
@@ -1831,12 +1903,28 @@ export default function CheckoutPage() {
   // Async because re-quoting takes a network round-trip. Both PaymentForm
   // callsites (card path in handleSubmit, wallet path in pr.on('paymentmethod'))
   // await this.
+  // Every false return raises its own toast. The two callsites used to toast
+  // unconditionally after a false, which was wrong in both directions: the card
+  // path said nothing at all, and the wallet path blamed a missing address for
+  // an address that was entered and merely out of range. Messaging belongs
+  // here, where the reason is known, and nowhere else — or the two paths drift
+  // apart again and a customer gets the same rejection twice.
   async function onValidateDelivery() {
     if (orderType === 'delivery' && !deliveryLat) {
       setAddressError('Please enter a delivery address')
+      toast.error('Please enter a delivery address before paying')
       return false
     }
-    if (addressError) return false
+    // Surfaces the message already rendered in the address block. The customer
+    // tapping Pay is looking at the bottom bar, not at that line.
+    if (addressError) {
+      toast.error(addressError)
+      return false
+    }
+    if (belowMinimum) {
+      toast.error('This order is below the delivery minimum. Add more items or switch to pickup.')
+      return false
+    }
 
     if (resolvedMode === 'uber_direct' && quoteExpiresAt) {
       const expiresMs = new Date(quoteExpiresAt).getTime()
@@ -1858,6 +1946,9 @@ export default function CheckoutPage() {
           // Mode transitioned to in_house mid-checkout (schedule lapsed etc).
           // Fall back to haversine; bail out if haversine produces an error.
           const hav = runHaversineCalc()
+          // M-uz: mode transitioned back to in_house — same reset as the quote
+          // settle branches above.
+          extendedZoneRef.current = false
           setResolvedMode('in_house')
           setUberQuoteId(null)
           setUberQuotedFeeCents(null)
@@ -2321,7 +2412,7 @@ export default function CheckoutPage() {
                 orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
                 slug={slug}
                 restaurant={restaurant}
-                disabled={belowMinimum}
+                disabled={belowMinimum || !!addressError}
                 onValidateDelivery={onValidateDelivery}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}
