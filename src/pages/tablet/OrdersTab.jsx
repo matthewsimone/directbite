@@ -4,7 +4,7 @@ import { printOrder } from '../../utils/epsonPrint'
 import { formatPhone } from '../../utils/format'
 import { formatScheduledLabel, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
 import { getStuckStage } from '../../utils/stuckStage'
-import { isUberActiveNow } from '../../utils/uberActive'
+import { isUberActiveNow, isUberExtendedZoneActiveNow } from '../../utils/uberActive'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -1647,6 +1647,10 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
   // state, recomputed each render. The 10s poll re-renders OrdersTab, so this
   // refreshes at schedule window boundaries (same cadence as escalation).
   const uberActive = restaurant ? isUberActiveNow(restaurant) : false
+  // Live "is the in-house zone being extended by Uber right now?" — same pure
+  // read, same 10s-poll refresh cadence. Mutually exclusive with uberActive:
+  // that one is false for in_house by definition, this one is true only for it.
+  const uberExtendedZone = restaurant ? isUberExtendedZoneActiveNow(restaurant) : false
 
   return (
     <div className="h-full flex flex-col">
@@ -1657,6 +1661,14 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
           <span className={`text-sm font-medium ${restaurant.delivery_available ? 'text-gray-900' : 'text-gray-400'}`}>
             Delivery: {restaurant.delivery_available ? 'ON' : 'OFF'}
             {!restaurant.delivery_available && ', Not Accepting Deliveries'}
+            {/* Extended zone reads as plain text, deliberately without the green
+                pulsing dot below: that dot means "Uber is the fulfillment
+                method", which is a different state and must not look identical
+                at a glance. Guarded on a non-null radius — a restaurant without
+                one has no meaningful zone to extend. */}
+            {restaurant.delivery_available && uberExtendedZone &&
+              restaurant.delivery_max_radius_miles != null &&
+              `, Uber active beyond ${restaurant.delivery_max_radius_miles} miles`}
           </span>
           {restaurant.delivery_available && uberActive && (
             <span className="flex items-center gap-1.5">
