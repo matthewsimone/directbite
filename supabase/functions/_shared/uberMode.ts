@@ -22,6 +22,12 @@
 //      - else evaluate schedule for current NY day/time:
 //        - if today enabled AND now in [start, end) → uber_direct (schedule)
 //        - else → in_house (schedule_inactive)
+//   4. extendedZone = true (the caller has verified restaurants.uber_extends_delivery
+//      and that the address falls inside uber_max_radius_miles): a restaurant whose
+//      delivery_fulfillment = 'in_house' is evaluated by rule 3 instead of rule 1.
+//      Credentials, the realtime toggle and the schedule all apply, and unverified
+//      credentials or a closed schedule still resolve to in_house with the same
+//      reason. Defaults false — omitting it preserves rule 1 exactly.
 //
 // Time boundary semantics: start inclusive, end exclusive — i.e., a window
 // of "11:00" to "22:00" means 11:00–21:59 (current >= start && current < end).
@@ -94,12 +100,16 @@ function isInTimeWindow(current: string, start?: string, end?: string): boolean 
 
 export function resolveMode(
   restaurant: RestaurantForMode,
-  currentDate?: Date
+  currentDate?: Date,
+  extendedZone = false
 ): ModeResolution {
   const mode = restaurant.delivery_fulfillment;
 
-  // Branch 1: in_house — never quote
-  if (mode === 'in_house') {
+  // Branch 1: in_house — never quote, unless the caller flagged an extended-zone
+  // address (the restaurants.uber_extends_delivery opt-in, verified server-side by
+  // the caller). Such a restaurant resolves under the identical credential +
+  // schedule rules as 'both' — see Branch 3.
+  if (mode === 'in_house' && !extendedZone) {
     return { resolved_mode: 'in_house', requires_quote: false };
   }
 
@@ -117,8 +127,9 @@ export function resolveMode(
     return { resolved_mode: 'uber_direct', requires_quote: true };
   }
 
-  // Branch 3: both
-  if (mode === 'both') {
+  // Branch 3: both — and in_house with an approved extended-zone address,
+  // which resolves by the same rules.
+  if (mode === 'both' || (mode === 'in_house' && extendedZone)) {
     if (!credentialsVerified) {
       return { resolved_mode: 'in_house', requires_quote: false, reason: 'credentials_not_verified' };
     }

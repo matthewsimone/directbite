@@ -12,6 +12,16 @@
 // Deno file is the source of truth; we cannot import it (Deno-only), so the
 // helpers are re-implemented here as local functions.
 //
+// Two exports, two DIFFERENT questions — do not conflate them:
+//   isUberActiveNow()             — is Uber the FULFILLMENT MODE right now?
+//                                   False for in_house by definition.
+//   isUberExtendedZoneActiveNow() — is a configured-in_house restaurant
+//                                   EXTENDING its in-house zone via Uber right
+//                                   now? True only for in_house +
+//                                   uber_extends_delivery.
+// They are mutually exclusive by construction, and both evaluate the same
+// credentials → realtime override → schedule rules via evaluateBothRules().
+//
 // Time boundary semantics (mirrored): start inclusive, end exclusive —
 // "11:00"–"22:00" means active 11:00 through 21:59 (current >= start &&
 // current < end). Overnight windows (start > end) are NOT supported — same
@@ -39,6 +49,27 @@ function getNyTimeComponents(date) {
 function isInTimeWindow(current, start, end) {
   if (!start || !end) return false;
   return current >= start && current < end;
+}
+
+/**
+ * Branch 3 of resolveMode: credentials -> realtime override -> schedule window.
+ * Mirrors uberMode.ts:133-149. Extracted so the extended-zone question below
+ * reuses this exact evaluation instead of a second copy that could drift.
+ */
+function evaluateBothRules(restaurant, now) {
+  const isPlatform = (restaurant.uber_billing_mode ?? 'self') === 'platform';
+  const credentialsVerified = isPlatform || !!restaurant.uber_credentials_verified_at;
+  if (!credentialsVerified) return false;
+  // Manual realtime override wins over schedule.
+  if (restaurant.uber_direct_active === true) return true;
+  try {
+    const { dow, time } = getNyTimeComponents(now);
+    const daySchedule = restaurant.uber_schedule?.[dow];
+    return !!(daySchedule?.enabled && isInTimeWindow(time, daySchedule.start, daySchedule.end));
+  } catch (err) {
+    // Corrupt schedule → inactive (edge falls back to in_house here).
+    return false;
+  }
 }
 
 /**
@@ -72,19 +103,31 @@ export function isUberActiveNow(restaurant, now = new Date()) {
 
   // Branch 3: both.
   if (mode === 'both') {
-    if (!credentialsVerified) return false;
-    // Manual realtime override wins over schedule.
-    if (restaurant.uber_direct_active === true) return true;
-    try {
-      const { dow, time } = getNyTimeComponents(now);
-      const daySchedule = restaurant.uber_schedule?.[dow];
-      return !!(daySchedule?.enabled && isInTimeWindow(time, daySchedule.start, daySchedule.end));
-    } catch (err) {
-      // Corrupt schedule → inactive (edge falls back to in_house here).
-      return false;
-    }
+    return evaluateBothRules(restaurant, now);
   }
 
   // Defensive: null / unknown mode.
   return false;
+}
+
+/**
+ * Is this restaurant currently EXTENDING its in-house delivery zone via Uber?
+ *
+ * A different question from isUberActiveNow(), which asks "is Uber the
+ * fulfillment mode" and is correctly false for in_house. This one is true only
+ * for a configured-in_house restaurant that opted in via uber_extends_delivery
+ * and whose credentials + schedule currently resolve to uber_direct — exactly
+ * resolveMode's extendedZone path (uberMode.ts:112, :132).
+ *
+ * @param {object} restaurant - needs delivery_fulfillment, uber_extends_delivery,
+ *   uber_billing_mode, uber_credentials_verified_at, uber_direct_active,
+ *   uber_schedule.
+ * @param {Date} [now] - injectable clock (defaults to real now).
+ * @returns {boolean}
+ */
+export function isUberExtendedZoneActiveNow(restaurant, now = new Date()) {
+  if (!restaurant) return false;
+  if (restaurant.delivery_fulfillment !== 'in_house') return false;
+  if (restaurant.uber_extends_delivery !== true) return false;
+  return evaluateBothRules(restaurant, now);
 }

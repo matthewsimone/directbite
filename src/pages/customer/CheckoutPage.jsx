@@ -945,6 +945,14 @@ export default function CheckoutPage() {
   const [uberEnvironment, setUberEnvironment] = useState(null)
   const [quoteLoading, setQuoteLoading] = useState(false)
   const quoteAbortController = useRef(null)
+  // M-uz: true while the current delivery address is an extended-zone address
+  // (outside the in-house radius, inside uber_max_radius_miles) on a
+  // configured-in_house restaurant. A ref, not state: fetchUberQuote must read it
+  // synchronously in the same tick the effect sets it, it must not retrigger the
+  // effect that writes it, and onValidateDelivery's expired-quote re-quote — which
+  // runs far outside that effect's closure — needs the same value or the customer
+  // is stranded at Pay.
+  const extendedZoneRef = useRef(false)
   const [mapsLoaded, setMapsLoaded] = useState(false)
   const autocompleteRef = useRef(null)
   // The live address input node. State, not a ref, so the Autocomplete effect
@@ -1008,13 +1016,19 @@ export default function CheckoutPage() {
   // uber_direct uses uber fee when resolved; 'both' uses whichever resolved.
   // During the unresolved window, falls back to 0 (display layer shows "—"
   // via showPlaceholder).
+  // M-uz: keyed on resolvedMode, not the restaurant's CONFIGURED mode. An
+  // extended-zone order is a configured-in_house restaurant that resolved to
+  // uber_direct; keying on configuration charged it the in-house tier fee while
+  // recording an Uber order. The three pre-existing outcomes are preserved:
+  // resolved in_house uses the haversine fee, resolved uber_direct uses the uber
+  // fee, and the unresolved window falls to 0 under showPlaceholder.
   const deliveryFee = orderType === 'delivery'
-    ? (restaurant?.delivery_fulfillment === 'in_house'
-        ? (deliveryFeeCents != null ? deliveryFeeCents : defaultFeeCents) / 100
-        : (resolvedMode === 'uber_direct' && uberCustomerFeeCents != null
-            ? uberCustomerFeeCents / 100
-            : (resolvedMode === 'in_house' && deliveryFeeCents != null
-                ? deliveryFeeCents / 100
+    ? (resolvedMode === 'uber_direct'
+        ? (uberCustomerFeeCents != null ? uberCustomerFeeCents / 100 : 0)
+        : (deliveryFeeCents != null
+            ? deliveryFeeCents / 100
+            : (restaurant?.delivery_fulfillment === 'in_house'
+                ? defaultFeeCents / 100
                 : 0)))
     : 0
   // M6.5: Show — during quote loading to prevent showing stale fee during
@@ -1153,6 +1167,11 @@ export default function CheckoutPage() {
       ? uberQuotedFeeCents / 100 // cents → dollars per D3 (orders.uber_quoted_fee is numeric dollars)
       : null,
     uber_environment: resolvedMode === 'uber_direct' ? uberEnvironment : null,
+    // M-uz: an extended-zone order is a configured-in_house restaurant that
+    // resolved to uber_direct. Derived from state rather than extendedZoneRef —
+    // this is a useMemo and a ref mutation would not recompute it.
+    // create-payment-intent re-checks uber_extends_delivery before honoring it.
+    extended_zone: resolvedMode === 'uber_direct' && restaurant?.delivery_fulfillment === 'in_house',
     items: items.map(item => ({
       menu_item_id: item.menuItemId,
       item_size_id: item.itemSizeId || null,
@@ -1373,10 +1392,15 @@ export default function CheckoutPage() {
     )
     const feeCents = calculateDeliveryFeeCents(dist, restaurant)
     if (feeCents === null) {
+      // When uber_extends_delivery is on, the real customer-facing maximum is
+      // the uber radius, not the in-house tier radius.
+      const effectiveMaxMiles = restaurant.uber_extends_delivery
+        ? Number(restaurant.uber_max_radius_miles ?? 10)
+        : restaurant.delivery_max_radius_miles
       return {
         distance: Math.round(dist * 10) / 10,
         feeCents: null,
-        errorMsg: `Sorry, delivery is not available to your address. Distance: ${dist.toFixed(1)} miles, maximum: ${restaurant.delivery_max_radius_miles} miles.`,
+        errorMsg: `Sorry, delivery is not available to your address. Distance: ${dist.toFixed(1)} miles, maximum: ${effectiveMaxMiles} miles.`,
       }
     }
     return {
@@ -1413,6 +1437,10 @@ export default function CheckoutPage() {
           // ASAP — the field is harmlessly ignored by the function (and the
           // ASAP request stays byte-identical aside from this null key).
           scheduled_for: scheduledFor,
+          // M-uz: true only on the extended-zone fall-through from the in_house
+          // branch. uber-quote ignores it unless the restaurant actually set
+          // uber_extends_delivery.
+          extended_zone: extendedZoneRef.current,
         }),
         signal,
       })
@@ -1432,6 +1460,10 @@ export default function CheckoutPage() {
   // byte-equivalent to the pre-M5c behavior; uber path calls uber-quote
   // and falls back to haversine when uber returns resolved_mode='in_house'.
   useEffect(() => {
+    // Reset ahead of every branch below; only the extended-zone fall-through sets
+    // it true. One place, so no path can leak a stale true into a later address.
+    extendedZoneRef.current = false
+
     if (orderType !== 'delivery' || !deliveryLat || !deliveryLon) {
       setDeliveryDistance(null)
       setDeliveryFeeCents(null)
@@ -1452,17 +1484,33 @@ export default function CheckoutPage() {
       // In-house path: existing haversine logic, byte-equivalent behavior.
       // Zero impact on the 8 production restaurants currently in this mode.
       const result = runHaversineCalc()
-      setDeliveryDistance(result.distance)
-      setDeliveryFeeCents(result.feeCents)
-      setAddressError(result.errorMsg)
-      setResolvedMode('in_house')
-      setUberQuoteId(null)
-      setUberQuotedFeeCents(null)
-      setUberCustomerFeeCents(null)
-      setQuoteExpiresAt(null)
-      setUberEnvironment(null)
-      setQuoteLoading(false)
-      return
+
+      // Uber-extended delivery: the address is outside the in-house radius but
+      // inside the uber radius, so fall through to the Uber quote block below
+      // rather than rejecting it. Any other outcome keeps today's behavior.
+      const extendViaUber =
+        result.feeCents === null &&
+        restaurant?.uber_extends_delivery === true &&
+        typeof result.distance === 'number' &&
+        result.distance <= Number(restaurant.uber_max_radius_miles ?? 10)
+
+      if (!extendViaUber) {
+        setDeliveryDistance(result.distance)
+        setDeliveryFeeCents(result.feeCents)
+        setAddressError(result.errorMsg)
+        setResolvedMode('in_house')
+        setUberQuoteId(null)
+        setUberQuotedFeeCents(null)
+        setUberCustomerFeeCents(null)
+        setQuoteExpiresAt(null)
+        setUberEnvironment(null)
+        setQuoteLoading(false)
+        return
+      }
+
+      // Falling through to the Uber block below. uber-quote re-checks
+      // uber_extends_delivery before honoring this.
+      extendedZoneRef.current = true
     }
 
     // Uber path (delivery_fulfillment is 'uber_direct' or 'both').
@@ -1528,6 +1576,16 @@ export default function CheckoutPage() {
         if (err.name === 'AbortError') return
         console.error('[Uber] quote fetch unexpected error', err)
         setAddressError("Couldn't calculate delivery fee. Please try a different address or pickup.")
+        // Reset the same nine values the !result.success branch above sets, so no
+        // path leaves the previous address's distance/fee/mode behind.
+        setResolvedMode(null)
+        setUberQuoteId(null)
+        setUberQuotedFeeCents(null)
+        setUberCustomerFeeCents(null)
+        setQuoteExpiresAt(null)
+        setUberEnvironment(null)
+        setDeliveryFeeCents(null)
+        setDeliveryDistance(null)
         setQuoteLoading(false)
       })
 
@@ -2159,7 +2217,7 @@ export default function CheckoutPage() {
             )}
             {orderType === 'delivery' && (
               <div className="flex justify-between text-gray-600">
-                <span>Delivery Fee{deliveryDistance ? ` (${deliveryDistance} mi)` : ''}</span>
+                <span>Delivery Fee{!showPlaceholder && deliveryDistance ? ` (${deliveryDistance} mi)` : ''}</span>
                 <span>{showPlaceholder ? '—' : (deliveryFee === 0 ? 'Free' : formatCurrency(deliveryFee))}</span>
               </div>
             )}

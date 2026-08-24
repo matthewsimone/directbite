@@ -16,6 +16,27 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Great-circle distance in miles. Mirrors src/utils/haversine.js
+// (haversineDistanceMiles) exactly — same earth radius, same formula — so the
+// server's radius verdict matches the distance the customer was shown. Local
+// rather than imported, following hashToken's precedent below.
+const EARTH_RADIUS_MILES = 3958.8;
+function haversineDistanceMiles(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number {
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+  return EARTH_RADIUS_MILES * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // Duplicated from customer-auth (its lines 91-99) rather than imported —
 // edge functions do not share a module here. MUST stay identical: a
 // different digest would never match a stored token_hash.
@@ -109,7 +130,8 @@ serve(async (req: Request) => {
          uber_direct_active, uber_schedule,
          uber_passthrough_mode, uber_passthrough_value,
          delivery_minimum_in_house, delivery_minimum_uber_direct,
-         uber_billing_mode`
+         uber_billing_mode, latitude, longitude,
+         delivery_max_radius_miles, uber_extends_delivery, uber_max_radius_miles`
       )
       .eq("id", restaurant_id)
       .single();
@@ -132,7 +154,14 @@ serve(async (req: Request) => {
     // Defensive: ignore the client's claim of delivery_fulfillment_method
     // from order_data. Re-resolve from restaurant config (and current NY
     // time, in case the 'both' mode schedule lapses mid-checkout).
-    const resolution = resolveMode(restaurant as RestaurantForMode);
+    // M-uz: the client's extended_zone claim counts only when this restaurant
+    // actually opted in AND is configured in_house — the only shape where an
+    // extended zone means anything. Same re-check uber-quote performs.
+    const extendedZone =
+      order_data?.extended_zone === true &&
+      restaurant.uber_extends_delivery === true &&
+      restaurant.delivery_fulfillment === "in_house";
+    const resolution = resolveMode(restaurant as RestaurantForMode, undefined, extendedZone);
     const serverResolvedMode = resolution.resolved_mode;
 
     // M6.5: Pickup orders never need delivery quote validation regardless
@@ -429,6 +458,48 @@ serve(async (req: Request) => {
       }
     }
     // -------- End M6 validation block --------
+
+    // -------- Distance guard (delivery only) --------
+    // The client picks the mode; the server decides whether the address actually
+    // qualifies for it. Without this, a crafted order_data could claim uber_direct
+    // for an address past the extended radius, or in_house for one past the tier
+    // radius. Runs after the block above so dropoff coords are already backfilled
+    // from the cached quote and already proven non-null for uber_direct.
+    if (!isPickup) {
+      const rLat = Number(restaurant.latitude);
+      const rLng = Number(restaurant.longitude);
+      const dLat = order_data?.dropoff_lat;
+      const dLng = order_data?.dropoff_lng;
+
+      if (
+        Number.isFinite(rLat) && Number.isFinite(rLng) &&
+        typeof dLat === "number" && typeof dLng === "number"
+      ) {
+        const distanceMiles = haversineDistanceMiles(rLat, rLng, dLat, dLng);
+        // A plain uber_direct restaurant has no configured radius — Uber's own
+        // quote defines serviceability — so only the two configured radii apply.
+        const limitMiles = serverResolvedMode === "uber_direct"
+          ? (extendedZone ? Number(restaurant.uber_max_radius_miles ?? 10) : null)
+          : Number(restaurant.delivery_max_radius_miles ?? 0);
+
+        if (limitMiles !== null && limitMiles > 0 && distanceMiles > limitMiles) {
+          return validationError(
+            "address_out_of_range",
+            `mode=${serverResolvedMode} extended=${extendedZone} ` +
+              `distance=${distanceMiles.toFixed(2)} limit=${limitMiles}`
+          );
+        }
+      } else if (serverResolvedMode === "in_house") {
+        // Warn rather than reject: an in_house order has never been required to
+        // carry coords, and rejecting would break existing in-house restaurants.
+        // Nothing is gained by omitting them — the in-house delivery_fee in
+        // order_data is already client-supplied and unvalidated today.
+        console.warn(
+          "[create-payment-intent] distance guard skipped; missing coords",
+          { restaurant_id }
+        );
+      }
+    }
 
     // Store order data in pending_orders table to avoid Stripe metadata size limits
     let pending_order_id: string;

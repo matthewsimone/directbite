@@ -85,6 +85,7 @@ serve(async (req: Request) => {
     dropoff_lng,
     dropoff_phone,
     scheduled_for,
+    extended_zone,
     // cart_subtotal_cents accepted but unused in M5a — accepted for forward
     // compat (future: validate against delivery minimum server-side)
   } = body || {};
@@ -101,7 +102,8 @@ serve(async (req: Request) => {
        delivery_fulfillment, uber_credentials_verified_at,
        uber_direct_active, uber_schedule,
        uber_passthrough_mode, uber_passthrough_value,
-       uber_customer_id, uber_environment, uber_billing_mode`
+       uber_customer_id, uber_environment, uber_billing_mode,
+       uber_extends_delivery, uber_max_radius_miles`
     )
     .eq("id", restaurant_id)
     .single();
@@ -112,7 +114,12 @@ serve(async (req: Request) => {
   }
 
   // -------- Mode resolution --------
-  const resolution = resolveMode(restaurant as RestaurantForMode);
+  // extended_zone is only a client hint. It counts solely when the restaurant
+  // actually opted in, so a crafted request cannot force an Uber quote for a
+  // restaurant that never enabled uber_extends_delivery.
+  const extendedZone =
+    extended_zone === true && restaurant.uber_extends_delivery === true;
+  const resolution = resolveMode(restaurant as RestaurantForMode, undefined, extendedZone);
 
   // Short-circuit: in_house. No Uber call needed; checkout uses haversine.
   if (resolution.resolved_mode === "in_house") {
