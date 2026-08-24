@@ -1079,61 +1079,66 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               </div>
             )}
 
-            {/* Real-Time Override + Schedule — 'both' and 'extend'. Both resolve
-                through resolveMode's Branch 3, which checks uber_direct_active AND
-                the schedule, so for 'extend' these already govern whether an
-                extended-zone quote succeeds. Hiding them would leave an empty
-                schedule silently failing every extended-zone address. */}
+            {/* Real-Time Override — 'both' and 'extend'. For 'both' it is Branch
+                3's first test, ahead of the schedule. For 'extend' it is what
+                makes extendViaUber flag every address inside
+                uber_max_radius_miles, in-radius ones included. */}
             {(mode === 'both' || mode === 'extend') && (
-              <>
-                <div className="space-y-2 pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">Uber Direct Active</span>
-                    <Toggle value={uberActive} onChange={setUberActive} />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    {mode === 'extend'
-                      ? 'Turn ON to keep the extended zone open regardless of the schedule below.'
-                      : 'Turn ON when your drivers are unavailable. This overrides the schedule below.'}
-                  </p>
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Uber Direct Active</span>
+                  <Toggle value={uberActive} onChange={setUberActive} />
                 </div>
+                <p className="text-xs text-gray-500">
+                  {mode === 'extend'
+                    ? 'Turn ON when your drivers are unavailable. All deliveries will go through Uber Direct.'
+                    : 'Turn ON when your drivers are unavailable. This overrides the schedule below.'}
+                </p>
+              </div>
+            )}
 
-                <div className="space-y-3 pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schedule</p>
-                  {[0, 1, 2, 3, 4, 5, 6].map(dow => {
-                    const day = schedule[String(dow)] || { enabled: false }
-                    return (
-                      <div key={dow} className="flex items-center gap-2">
-                        <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[dow].slice(0, 3)}</span>
-                        <Toggle
-                          value={day.enabled}
-                          onChange={val => updateScheduleDay(dow, 'enabled', val)}
-                        />
-                        {day.enabled ? (
-                          <div className="flex items-center gap-1 flex-1 min-w-0">
-                            <input
-                              type="time"
-                              value={day.start || '11:00'}
-                              onChange={e => updateScheduleDay(dow, 'start', e.target.value)}
-                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
-                            />
-                            <span className="text-gray-400 text-xs shrink-0">to</span>
-                            <input
-                              type="time"
-                              value={day.end || '22:00'}
-                              onChange={e => updateScheduleDay(dow, 'end', e.target.value)}
-                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">Closed</span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
+            {/* Schedule — 'both' only. resolveMode Branch 1e resolves 'extend' on
+                credentials alone and never reads uber_schedule, so showing this
+                to an extend operator offers a control that does nothing.
+                saveUberSettings still writes the column for every mode, on
+                purpose: gating the write would silently drop a restaurant's
+                configured schedule on a 'both' → 'extend' → 'both' round trip. */}
+            {mode === 'both' && (
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schedule</p>
+                {[0, 1, 2, 3, 4, 5, 6].map(dow => {
+                  const day = schedule[String(dow)] || { enabled: false }
+                  return (
+                    <div key={dow} className="flex items-center gap-2">
+                      <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[dow].slice(0, 3)}</span>
+                      <Toggle
+                        value={day.enabled}
+                        onChange={val => updateScheduleDay(dow, 'enabled', val)}
+                      />
+                      {day.enabled ? (
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
+                          <input
+                            type="time"
+                            value={day.start || '11:00'}
+                            onChange={e => updateScheduleDay(dow, 'start', e.target.value)}
+                            className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                          />
+                          <span className="text-gray-400 text-xs shrink-0">to</span>
+                          <input
+                            type="time"
+                            value={day.end || '22:00'}
+                            onChange={e => updateScheduleDay(dow, 'end', e.target.value)}
+                            className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">Closed</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </Section>
         ) : isUberVerified ? (
@@ -1284,61 +1289,66 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               </div>
             )}
 
-            {/* Real-Time Override + Schedule — 'both' and 'extend'. Both resolve
-                through resolveMode's Branch 3, which checks uber_direct_active AND
-                the schedule, so for 'extend' these already govern whether an
-                extended-zone quote succeeds. Hiding them would leave an empty
-                schedule silently failing every extended-zone address. */}
+            {/* Real-Time Override — 'both' and 'extend'. For 'both' it is Branch
+                3's first test, ahead of the schedule. For 'extend' it is what
+                makes extendViaUber flag every address inside
+                uber_max_radius_miles, in-radius ones included. */}
             {(mode === 'both' || mode === 'extend') && (
-              <>
-                <div className="space-y-2 pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-700">Uber Direct Active</span>
-                    <Toggle value={uberActive} onChange={setUberActive} />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    {mode === 'extend'
-                      ? 'Turn ON to keep the extended zone open regardless of the schedule below.'
-                      : 'Turn ON when your drivers are unavailable. This overrides the schedule below.'}
-                  </p>
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Real-Time Override</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-gray-700">Uber Direct Active</span>
+                  <Toggle value={uberActive} onChange={setUberActive} />
                 </div>
+                <p className="text-xs text-gray-500">
+                  {mode === 'extend'
+                    ? 'Turn ON when your drivers are unavailable. All deliveries will go through Uber Direct.'
+                    : 'Turn ON when your drivers are unavailable. This overrides the schedule below.'}
+                </p>
+              </div>
+            )}
 
-                <div className="space-y-3 pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schedule</p>
-                  {[0, 1, 2, 3, 4, 5, 6].map(dow => {
-                    const day = schedule[String(dow)] || { enabled: false }
-                    return (
-                      <div key={dow} className="flex items-center gap-2">
-                        <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[dow].slice(0, 3)}</span>
-                        <Toggle
-                          value={day.enabled}
-                          onChange={val => updateScheduleDay(dow, 'enabled', val)}
-                        />
-                        {day.enabled ? (
-                          <div className="flex items-center gap-1 flex-1 min-w-0">
-                            <input
-                              type="time"
-                              value={day.start || '11:00'}
-                              onChange={e => updateScheduleDay(dow, 'start', e.target.value)}
-                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
-                            />
-                            <span className="text-gray-400 text-xs shrink-0">to</span>
-                            <input
-                              type="time"
-                              value={day.end || '22:00'}
-                              onChange={e => updateScheduleDay(dow, 'end', e.target.value)}
-                              className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">Closed</span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
+            {/* Schedule — 'both' only. resolveMode Branch 1e resolves 'extend' on
+                credentials alone and never reads uber_schedule, so showing this
+                to an extend operator offers a control that does nothing.
+                saveUberSettings still writes the column for every mode, on
+                purpose: gating the write would silently drop a restaurant's
+                configured schedule on a 'both' → 'extend' → 'both' round trip. */}
+            {mode === 'both' && (
+              <div className="space-y-3 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schedule</p>
+                {[0, 1, 2, 3, 4, 5, 6].map(dow => {
+                  const day = schedule[String(dow)] || { enabled: false }
+                  return (
+                    <div key={dow} className="flex items-center gap-2">
+                      <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[dow].slice(0, 3)}</span>
+                      <Toggle
+                        value={day.enabled}
+                        onChange={val => updateScheduleDay(dow, 'enabled', val)}
+                      />
+                      {day.enabled ? (
+                        <div className="flex items-center gap-1 flex-1 min-w-0">
+                          <input
+                            type="time"
+                            value={day.start || '11:00'}
+                            onChange={e => updateScheduleDay(dow, 'start', e.target.value)}
+                            className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                          />
+                          <span className="text-gray-400 text-xs shrink-0">to</span>
+                          <input
+                            type="time"
+                            value={day.end || '22:00'}
+                            onChange={e => updateScheduleDay(dow, 'end', e.target.value)}
+                            className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-sm text-gray-400">Closed</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </Section>
         ) : showWizard ? (

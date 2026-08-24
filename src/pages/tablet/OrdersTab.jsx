@@ -1675,12 +1675,24 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
               are mutually exclusive by construction — uberActive is false for
               in_house, uberExtendedZone is true only for in_house — but they are
               siblings under the parent's flex gap-2, so both rendering would
-              simply space correctly rather than collide. Guarded on a non-null
-              radius: a restaurant without one has no meaningful zone to extend. */}
+              simply space correctly rather than collide.
+
+              The radius guard belongs to the "beyond N miles" wording, not to
+              the badge. Under the realtime override extendViaUber flags every
+              address inside uber_max_radius_miles — in-radius ones included,
+              "whether or not an in-house radius is configured" — so the
+              in-house radius is no longer the boundary and naming it is wrong.
+              A restaurant without one still has a live extended zone worth
+              showing; only the "beyond" variant needs the number. */}
           {restaurant.delivery_available && uberExtendedZone &&
-            restaurant.delivery_max_radius_miles != null && (
+            (restaurant.uber_direct_active === true ||
+              restaurant.delivery_max_radius_miles != null) && (
             <span className="flex items-center gap-1.5">
-              <span className="text-xs font-medium text-[#16A34A]">Uber Active beyond {restaurant.delivery_max_radius_miles} miles</span>
+              <span className="text-xs font-medium text-[#16A34A]">
+                {restaurant.uber_direct_active === true
+                  ? 'Uber Active'
+                  : `Uber Active beyond ${restaurant.delivery_max_radius_miles} miles`}
+              </span>
               <span
                 className="inline-block w-2 h-2 rounded-full bg-[#16A34A] animate-pulse"
                 style={{ boxShadow: '0 0 0 3px rgba(22, 163, 74, 0.25)' }}
