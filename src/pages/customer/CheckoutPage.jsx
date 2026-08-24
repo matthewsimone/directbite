@@ -1578,6 +1578,8 @@ export default function CheckoutPage() {
 
     fetchUberQuote(controller.signal)
       .then(result => {
+        if (controller.signal.aborted) return // stale response, ignore
+
         // TEMP diagnostic — remove before merge.
         console.log('[QUOTE]', {
           aborted: controller.signal.aborted,
@@ -1586,8 +1588,6 @@ export default function CheckoutPage() {
           reason: result?.reason,
           customerFee: result?.customer_delivery_fee_cents,
         })
-
-        if (controller.signal.aborted) return // stale response, ignore
 
         if (!result || !result.success) {
           // delivery_unavailable, uber_unavailable, network failure, etc.
