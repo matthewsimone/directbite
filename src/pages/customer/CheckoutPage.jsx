@@ -1493,14 +1493,22 @@ export default function CheckoutPage() {
       // Zero impact on the 8 production restaurants currently in this mode.
       const result = runHaversineCalc()
 
-      // Uber-extended delivery: the address is outside the in-house radius but
-      // inside the uber radius, so fall through to the Uber quote block below
-      // rather than rejecting it. Any other outcome keeps today's behavior.
+      // M-uz: two ways an address leaves the in-house zone for Uber.
+      //  - normal: the address is outside a configured in-house radius
+      //    (feeCents null). No configured radius means nothing to extend.
+      //  - realtime override: uber_direct_active means our own drivers are
+      //    unavailable, so EVERY address goes to Uber — in-radius ones
+      //    included, and whether or not an in-house radius is configured.
+      // uber_max_radius_miles caps both paths; it is the only cap under the
+      // override.
+      const uberOverrideOn = restaurant?.uber_direct_active === true
+
       const extendViaUber =
-        result.feeCents === null &&
         restaurant?.uber_extends_delivery === true &&
         typeof result.distance === 'number' &&
-        result.distance <= Number(restaurant.uber_max_radius_miles ?? 10)
+        result.distance <= Number(restaurant.uber_max_radius_miles ?? 10) &&
+        (uberOverrideOn ||
+          (restaurant?.delivery_max_radius_miles != null && result.feeCents === null))
 
       if (!extendViaUber) {
         setDeliveryDistance(result.distance)
@@ -1601,7 +1609,20 @@ export default function CheckoutPage() {
     return () => {
       controller.abort()
     }
-  }, [orderType, deliveryLat, deliveryLon, restaurant, scheduledFor])
+  }, [
+    orderType, deliveryLat, deliveryLon, scheduledFor,
+    restaurant?.id,
+    restaurant?.latitude,
+    restaurant?.longitude,
+    restaurant?.delivery_fulfillment,
+    restaurant?.delivery_max_radius_miles,
+    restaurant?.delivery_tier1_max_miles,
+    restaurant?.delivery_tier1_fee_cents,
+    restaurant?.delivery_tier2_fee_cents,
+    restaurant?.uber_extends_delivery,
+    restaurant?.uber_max_radius_miles,
+    restaurant?.uber_direct_active,
+  ])
 
   // Redirect to menu if cart is empty
   useEffect(() => {
