@@ -326,7 +326,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           console.log('[PAYMENTMETHOD] BLOCKED — delivery validation failed')
           ev.complete('fail')
           submittedRef.current = false
-          toast.error('Please enter a delivery address before paying')
+          // onValidateDelivery has already toasted the actual reason.
           return
         }
       }
@@ -414,6 +414,9 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     }
 
     if (onValidateDelivery) {
+      // No toast here: onValidateDelivery raises one for every false it
+      // returns. This used to return in silence, which left a tapped Pay
+      // button looking dead.
       const isValid = await onValidateDelivery()
       if (!isValid) {
         submittedRef.current = false
@@ -633,7 +636,12 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
             <span className="text-2xl font-bold text-gray-900">{showPlaceholder ? '—' : formatCurrency(total)}</span>
           </div>
 
-          {payMethod === 'wallet' && paymentRequest && !showPlaceholder ? (
+          {/* externalDisabled gates the wallet by NOT rendering it:
+              PaymentRequestButtonElement has no disabled option, and the click
+              lands inside a Stripe iframe where an overlay is not reliable. The
+              customer falls through to the disabled button below, beside the
+              warning that says why. */}
+          {payMethod === 'wallet' && paymentRequest && !showPlaceholder && !externalDisabled ? (
             <div
               onClickCapture={() => {
                 console.log('[WRAPPER] click captured on wallet button wrapper (may not fire for iframe)')
@@ -811,7 +819,11 @@ export default function CheckoutPage() {
   useRestaurantBranding(restaurant, 'ordering')
 
   const { promotion } = usePromotion(restaurant?.id)
-  const { items, subtotal, clearCart } = useCart()
+  // subtotal is deliberately not pulled from the cart: every figure this page
+  // needs is derived from fullSubtotal below, and the delivery floor now uses
+  // netSubtotal. Leaving it bound is what let the two be confused in the first
+  // place.
+  const { items, clearCart } = useCart()
 
   const [orderType, setOrderType] = useState('pickup')
   // Applies the restaurant's default order type exactly once, after the async
@@ -979,7 +991,6 @@ export default function CheckoutPage() {
       ? restaurant?.delivery_minimum_uber_direct
       : restaurant?.delivery_minimum_in_house) || 0
   )
-  const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && subtotal < deliveryMinimum
   const [clientSecret, setClientSecret] = useState(null)
   // Non-null only when the payment intent reused an existing Stripe Customer;
   // it is what lets the Payment Element redisplay their saved cards.
@@ -1016,6 +1027,20 @@ export default function CheckoutPage() {
   const loyaltyRewardItem = items.find(i => i.loyaltyRedemptionId && i.loyaltyRewardKind === 'discount')
   const loyaltyDiscount = loyaltyRewardItem ? Number(loyaltyRewardItem.loyaltyDiscountCents || 0) / 100 : 0
   const netSubtotal = Math.max(0, Math.round((discountedSubtotal - loyaltyDiscount) * 100) / 100)
+  // The delivery floor is revenue, not menu prices: a restaurant setting $15
+  // means fifteen dollars in the door. So it is measured against netSubtotal —
+  // after any promotion AND after a discount reward — not against the cart's
+  // own subtotal, which counts a promoted item at its discounted price but is
+  // computed from a different set of fields than the figure the server sees.
+  //
+  // create-payment-intent computes the same net figure, reading the reward's
+  // value from the redemption row rather than from order_data (see the note at
+  // loyalty_redemption_id below). The two must agree or a customer clears the
+  // floor here and is rejected at Pay.
+  //
+  // Declared here rather than beside deliveryMinimum because netSubtotal is not
+  // in scope until this line.
+  const belowMinimum = orderType === 'delivery' && deliveryMinimum > 0 && netSubtotal < deliveryMinimum
   const defaultFeeCents = restaurant?.delivery_tier1_fee_cents ?? 0
   // M6.5b: Restructured to keep uber_direct path exclusive of in_house
   // fallbacks. Prevents the deliveryFee from flashing the in_house default
@@ -1898,12 +1923,28 @@ export default function CheckoutPage() {
   // Async because re-quoting takes a network round-trip. Both PaymentForm
   // callsites (card path in handleSubmit, wallet path in pr.on('paymentmethod'))
   // await this.
+  // Every false return raises its own toast. The two callsites used to toast
+  // unconditionally after a false, which was wrong in both directions: the card
+  // path said nothing at all, and the wallet path blamed a missing address for
+  // an address that was entered and merely out of range. Messaging belongs
+  // here, where the reason is known, and nowhere else — or the two paths drift
+  // apart again and a customer gets the same rejection twice.
   async function onValidateDelivery() {
     if (orderType === 'delivery' && !deliveryLat) {
       setAddressError('Please enter a delivery address')
+      toast.error('Please enter a delivery address before paying')
       return false
     }
-    if (addressError) return false
+    // Surfaces the message already rendered in the address block. The customer
+    // tapping Pay is looking at the bottom bar, not at that line.
+    if (addressError) {
+      toast.error(addressError)
+      return false
+    }
+    if (belowMinimum) {
+      toast.error('This order is below the delivery minimum. Add more items or switch to pickup.')
+      return false
+    }
 
     if (resolvedMode === 'uber_direct' && quoteExpiresAt) {
       const expiresMs = new Date(quoteExpiresAt).getTime()
@@ -2391,7 +2432,7 @@ export default function CheckoutPage() {
                 orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
                 slug={slug}
                 restaurant={restaurant}
-                disabled={belowMinimum}
+                disabled={belowMinimum || !!addressError}
                 onValidateDelivery={onValidateDelivery}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}

@@ -195,13 +195,55 @@ serve(async (req: Request) => {
     // Server-side delivery-minimum guard (Step B). Mirrors the client check so a
     // crafted request can't bypass it. Delivery only; no-op when the minimum is 0.
     // Mode picked by serverResolvedMode (resolveMode already collapses 'both').
+    //
+    // The floor is revenue, not menu prices: measured after any promotion AND
+    // after a discount reward, which is CheckoutPage's netSubtotal. order_data
+    // carries the promotion (discount_amount) but deliberately carries nothing
+    // about the reward except its id — trusting an amount from the client here
+    // would let a crafted request lower the very floor it has to clear.
+    //
+    // Hence the hoisted read below. The full redemption block further down owns
+    // the authoritative loyaltyDiscountCents, but it runs 100+ lines after this
+    // guard; re-reading the one column keeps this check in place rather than
+    // reordering that block's seven rejections ahead of this one.
     if (!isPickup) {
       const minDollars = serverResolvedMode === 'uber_direct'
         ? Number(restaurant.delivery_minimum_uber_direct || 0)
         : Number(restaurant.delivery_minimum_in_house || 0);
-      const foodSubtotal = Number(order_data?.subtotal || 0);
-      if (minDollars > 0 && foodSubtotal < minDollars) {
-        return validationError("below_minimum", `mode=${serverResolvedMode} subtotal=${foodSubtotal} min=${minDollars}`);
+      if (minDollars > 0) {
+        let rewardDiscountCents = 0;
+        if (order_data?.loyalty_redemption_id) {
+          const { data: claimed } = await supabase
+            .from("loyalty_redemptions")
+            .select("discount_cents, reward_kind")
+            .eq("id", order_data.loyalty_redemption_id)
+            .eq("restaurant_id", restaurant_id)
+            .maybeSingle();
+          // Only a discount reward moves this figure — an item reward is
+          // already a zero-priced line, the same reason loyaltyDiscountCents
+          // below starts at 0. A missing, foreign or already-spent row
+          // contributes nothing and is rejected by the block below, not here:
+          // this guard's job is the floor, and claiming a bad id must not
+          // quietly relax it.
+          if (claimed?.reward_kind === "discount") {
+            rewardDiscountCents = Number(claimed.discount_cents || 0);
+          }
+        }
+        // Cents throughout, floored at 0: an over-large reward displays at face
+        // value on the client, so the subtraction can go negative.
+        const netSubtotalCents = Math.max(
+          0,
+          Math.round(Number(order_data?.subtotal || 0) * 100) -
+            Math.round(Number(order_data?.discount_amount || 0) * 100) -
+            rewardDiscountCents
+        );
+        const minCents = Math.round(minDollars * 100);
+        if (netSubtotalCents < minCents) {
+          return validationError(
+            "below_minimum",
+            `mode=${serverResolvedMode} net=${netSubtotalCents} min=${minCents}`
+          );
+        }
       }
     }
 
