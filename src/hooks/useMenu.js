@@ -60,7 +60,7 @@ export function useMenu(restaurantId) {
       const grp = await boundedFetch(
         [
           (s) => supabase.from('menu_categories').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
-          (s) => supabase.from('menu_items').select('*, menu_categories(discount_exempt)').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
+          (s) => supabase.from('menu_items').select('*, menu_categories(discount_exempt, availability)').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
           (s) => supabase.from('item_sizes').select('*, menu_items!inner(restaurant_id)').eq('menu_items.restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
           (s) => supabase.from('topping_groups').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
           (s) => supabase.from('toppings').select('*').eq('restaurant_id', restaurantId).order('sort_order').abortSignal(s).retry(false),
@@ -74,11 +74,18 @@ export function useMenu(restaurantId) {
 
       const [catRes, itemRes, sizeRes, tgRes, topRes, itgRes] = grp.results
       setCategories(catRes.data || [])
-      // Flatten the joined category flag onto each item so consumers read
-      // item.discount_exempt directly (default false when missing = not exempt).
+      // Flatten the joined category flags onto each item so consumers read them
+      // directly (discount_exempt defaults false when missing = not exempt).
+      //
+      // category_availability, NOT availability: menu_items may one day grow an
+      // availability concept of its own, and a flattened category field sitting
+      // on that name would shadow it silently. The prefix says whose schedule
+      // this is. null = unrestricted, which is what categoryAvailability.js
+      // fails open on.
       const itemsWithExempt = (itemRes.data || []).map(it => ({
         ...it,
         discount_exempt: it.menu_categories?.discount_exempt ?? false,
+        category_availability: it.menu_categories?.availability ?? null,
       }))
       setItems(itemsWithExempt)
       setSizes(sizeRes.data || [])

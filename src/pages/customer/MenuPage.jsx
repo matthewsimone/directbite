@@ -5,6 +5,7 @@ import { useRestaurant } from '../../hooks/useRestaurant'
 import { useMenu } from '../../hooks/useMenu'
 import { usePromotion } from '../../hooks/usePromotion'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
+import { isCategoryAvailableNow, formatAvailabilityLabel } from '../../utils/categoryAvailability'
 import { useCart } from '../../hooks/useCart'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { useRewardLineReconcile } from '../../hooks/useRewardLineReconcile'
@@ -291,6 +292,16 @@ export default function MenuPage() {
         toast.error('This item is currently unavailable')
         return
       }
+      // The item is orderable but its category may be outside its window.
+      // Checked second so an unavailable item keeps its own more specific
+      // message; whichever guard fires first wins.
+      //
+      // No label check guards this call: isCategoryAvailableNow fails open, so
+      // null / absent / malformed availability returns true.
+      if (!isCategoryAvailableNow(item.category_availability)) {
+        toast.error("Sorry, this item isn't available right now.")
+        return
+      }
       // Closed restaurants no longer block — users can browse, add to cart,
       // and pick a future slot at checkout. The closed-hours banner above
       // explains the state.
@@ -433,6 +444,11 @@ export default function MenuPage() {
                     item={item}
                     lowestPrice={getLowestPrice(item.id)}
                     promotion={promotion}
+                    /* Per-item here: this row spans categories, so there is no
+                       single cat in scope. Same value the category grid reads
+                       from cat.availability — useMenu flattens it off the same
+                       menu_categories row. */
+                    unavailable={!isCategoryAvailableNow(item.category_availability)}
                     onClick={() => handleItemClick(item)}
                   />
                 ))}
@@ -453,6 +469,15 @@ export default function MenuPage() {
               const catItems = filterItems(getItemsByCategory(cat.id))
               if (searchQuery && catItems.length === 0) return null
 
+              // '' whenever the category is always available, so this doubles as
+              // the render condition. Shown whether or not the window is open
+              // right now — it is the schedule, not a live status.
+              const availabilityLabel = formatAvailabilityLabel(cat.availability)
+              const showDiscountPill = promotion && cat.discount_exempt === true
+              // Computed once per category, not per item: every item in a
+              // category shares its window.
+              const categoryClosedNow = !isCategoryAvailableNow(cat.availability)
+
               return (
                 <section
                   key={cat.id}
@@ -461,15 +486,30 @@ export default function MenuPage() {
                   className="mb-8"
                 >
                   <h2 className="text-xl font-bold text-gray-900 mt-8 mb-3">{cat.name}</h2>
-                  {promotion && cat.discount_exempt === true && (
-                    <div className="-mt-2 mb-3">
-                      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 text-[#16A34A] text-xs font-medium px-2 py-0.5">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
-                          <line x1="7" y1="7" x2="7.01" y2="7"/>
-                        </svg>
-                        Already discounted
-                      </span>
+                  {/* One row for both pills. The wrapper keeps the -mt-2 mb-3 the
+                      discount pill carried on its own; flex-wrap + gap-2 is what
+                      lets the availability pill sit beside it rather than under
+                      it. Renders when EITHER pill has something to say. */}
+                  {(showDiscountPill || availabilityLabel) && (
+                    <div className="-mt-2 mb-3 flex flex-wrap items-center gap-2">
+                      {showDiscountPill && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 text-[#16A34A] text-xs font-medium px-2 py-0.5">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                            <line x1="7" y1="7" x2="7.01" y2="7"/>
+                          </svg>
+                          Already discounted
+                        </span>
+                      )}
+                      {availabilityLabel && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                          </svg>
+                          Only available {availabilityLabel}
+                        </span>
+                      )}
                     </div>
                   )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -479,6 +519,7 @@ export default function MenuPage() {
                         item={item}
                         lowestPrice={getLowestPrice(item.id)}
                         promotion={promotion}
+                        unavailable={categoryClosedNow}
                         onClick={() => handleItemClick(item)}
                       />
                     ))}

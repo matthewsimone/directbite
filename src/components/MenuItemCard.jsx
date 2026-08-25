@@ -1,7 +1,13 @@
 import { formatCurrency } from '../utils/format'
 
-export default function MenuItemCard({ item, lowestPrice, promotion, onClick }) {
-  const unavailable = !item.is_available
+// `unavailable` lets a caller grey the card for a reason that is not the item's
+// own is_available flag — today, a category outside its availability window.
+// It is OR-ed into the existing flag rather than replacing it, so the treatment
+// (dimmed card, "Unavailable" chip, best-seller badge suppressed) stays a single
+// code path. Defaulting to false makes every call site that omits it render
+// byte-identical to before: MenuStatic, TagStatic, and MenuPage's Popular row.
+export default function MenuItemCard({ item, lowestPrice, promotion, onClick, unavailable: unavailableProp = false }) {
+  const unavailable = unavailableProp || !item.is_available
   const isExempt = item.discount_exempt === true
   const hasDiscount = promotion && Number(promotion.discount_percentage) > 0 && !isExempt
   const discountedPrice = hasDiscount
