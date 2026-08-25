@@ -3,6 +3,8 @@ import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 import MenuImportModal from '../../components/MenuImportModal'
+import CategoryAvailabilityModal from '../../components/CategoryAvailabilityModal'
+import { formatAvailabilityLabel } from '../../utils/categoryAvailability'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -562,6 +564,10 @@ export default function MenuManagementTab() {
 
   // Menu import modal
   const [showImportModal, setShowImportModal] = useState(false)
+  // The category whose availability schedule is open in the editor, or null.
+  // Holds the id rather than the row so a fetchMenu() refresh reseeds from
+  // fresh data instead of a captured copy.
+  const [availabilityCatId, setAvailabilityCatId] = useState(null)
 
   useEffect(() => {
     supabase.from('restaurants').select('id, name, slug').order('name').then(({ data }) => {
@@ -611,6 +617,22 @@ export default function MenuManagementTab() {
 
   async function toggleCatDiscountExempt(catId, newValue) {
     await supabase.from('menu_categories').update({ discount_exempt: newValue }).eq('id', catId)
+    fetchMenu()
+  }
+
+  // newValue is the object built by the editor, or null to clear. Same shape as
+  // toggleCatDiscountExempt above: write, then refetch. fetchMenu selects
+  // menu_categories with '*', so availability comes back without a query change.
+  async function saveCatAvailability(catId, newValue) {
+    const { error } = await supabase
+      .from('menu_categories')
+      .update({ availability: newValue })
+      .eq('id', catId)
+    if (error) {
+      console.error('[MenuManagement] saveCatAvailability failed', error)
+      alert("Couldn't save the availability schedule. Please try again.")
+      return
+    }
     fetchMenu()
   }
 
@@ -794,6 +816,27 @@ export default function MenuManagementTab() {
                           />
                           Discount Exempt
                         </label>
+                        {/* An icon, not a control: 509 categories exist fleet-wide
+                            and only a handful will ever carry a schedule, so the
+                            row must not grow for everyone else. The title is the
+                            whole readout — hovering tells the operator which
+                            categories are scheduled without opening anything.
+                            draggable={false} keeps a drag started on the icon from
+                            picking up the row; stopPropagation keeps the click off
+                            the row's handlers. */}
+                        <button
+                          draggable={false}
+                          onClick={e => { e.stopPropagation(); setAvailabilityCatId(cat.id) }}
+                          title={cat.availability == null
+                            ? 'Set availability schedule'
+                            : formatAvailabilityLabel(cat.availability)}
+                          className={`shrink-0 ${cat.availability == null ? 'text-gray-400 hover:text-gray-600' : 'text-[#16A34A]'}`}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                          </svg>
+                        </button>
                         <button onClick={() => { setEditingCatId(cat.id); setEditCatName(cat.name) }}
                           className="text-xs text-gray-500 hover:text-gray-700">Edit</button>
                         <button onClick={() => deleteCategory(cat.id)}
@@ -946,6 +989,14 @@ export default function MenuManagementTab() {
           restaurant={restaurants.find(r => r.id === selectedRestaurant)}
           onClose={() => setShowImportModal(false)}
           onImported={fetchMenu}
+        />
+      )}
+
+      {availabilityCatId && categories.find(c => c.id === availabilityCatId) && (
+        <CategoryAvailabilityModal
+          category={categories.find(c => c.id === availabilityCatId)}
+          onSave={value => saveCatAvailability(availabilityCatId, value)}
+          onClose={() => setAvailabilityCatId(null)}
         />
       )}
     </div>

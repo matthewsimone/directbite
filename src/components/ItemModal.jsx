@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import toast from 'react-hot-toast'
 import { formatCurrency } from '../utils/format'
+import { isCategoryAvailableNow } from '../utils/categoryAvailability'
 
 // Compute pre-selected toppings from each group's is_default flags.
 // Runs once at modal mount via lazy useState initializer.
@@ -205,6 +207,25 @@ export default function ItemModal({
   }
 
   function handleAdd() {
+    // Availability is re-checked HERE, not only at the tap that opened this
+    // modal, because the modal has a second entrance: MenuPage's ?item=ID
+    // deep-link effect calls setSelectedItem directly and reaches neither of
+    // handleItemClick's guards. That link is how customers arrive from the
+    // prerendered SEO pages (MenuStatic/TagStatic build it via getOrderUrl),
+    // so it is a live path, not a corner case. The modal still OPENS from a
+    // deep link — browsing is fine — but Add is refused.
+    //
+    // is_available first, matching handleItemClick's order, and with the same
+    // message string so the two surfaces never contradict each other.
+    if (!item.is_available) {
+      toast.error('This item is currently unavailable')
+      return
+    }
+    if (!isCategoryAvailableNow(item.category_availability)) {
+      toast.error("Sorry, this item isn't available right now.")
+      return
+    }
+
     const errors = validate()
     if (errors.length > 0) {
       setValidationErrors(errors)
