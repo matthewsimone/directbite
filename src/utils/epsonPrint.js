@@ -239,7 +239,19 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
             printer.addText('\n')
 
             // ── 2. PICKUP/DELIVERY + PAID ──
-            const typeLabel = order.order_type === 'delivery' ? 'DELIVERY' : 'PICKUP'
+            // UberDirect orders print "UBER DELIVERY" so the kitchen knows a courier
+            // is coming, not their own driver. Keyed on cancelled_by (not status)
+            // because a bail-out to in-house goes self_delivering -> complete and
+            // delivery_fulfillment_method stays 'uber_direct' forever; cancelled_by
+            // is durable across that transition. Same discriminator the tablet uses
+            // at OrdersTab.jsx:238. Computed live at print time, so a REPRINT after
+            // "Deliver In-House" prints the corrected label.
+            const isUberNow =
+              order.delivery_fulfillment_method === 'uber_direct' &&
+              order.cancelled_by !== 'restaurant_self_deliver'
+            const typeLabel = order.order_type === 'delivery'
+              ? (isUberNow ? 'UBER DELIVERY' : 'DELIVERY')
+              : 'PICKUP'
             bold(true)
             printer.addTextSize(2, 1)
             printer.addTextAlign(L)
