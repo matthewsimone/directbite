@@ -182,6 +182,8 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [savedSms, setSavedSms] = useState(false)
   const [savingNotifyEmail, setSavingNotifyEmail] = useState(false)
   const [savedNotifyEmail, setSavedNotifyEmail] = useState(false)
+  const [savingReadyTime, setSavingReadyTime] = useState(false)
+  const [savedReadyTime, setSavedReadyTime] = useState(false)
 
   // Local state for editable fields
   const [pickupMinutes, setPickupMinutes] = useState(restaurant?.estimated_pickup_minutes || 30)
@@ -208,6 +210,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [smsEnabled, setSmsEnabled] = useState(restaurant?.sms_enabled || false)
   const [smsPhone, setSmsPhone] = useState(restaurant?.sms_phone || '')
   const [notificationEmail, setNotificationEmail] = useState(restaurant?.notification_email || '')
+  const [readyTimeEnabled, setReadyTimeEnabled] = useState(restaurant?.ready_time_confirmation_enabled || false)
 
   const [bulkUpdating, setBulkUpdating] = useState(false)
   const [showReports, setShowReports] = useState(false)
@@ -1648,6 +1651,28 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
             />
             <p className="text-xs text-gray-400 mt-1">We'll email this address whenever a new order comes in. Leave blank to disable.</p>
           </div>
+        </Section>
+
+        {/* Customer Notifications */}
+        <Section title="Customer Notifications" onSave={async () => {
+          setSavingReadyTime(true); setSavedReadyTime(false)
+          const { data } = await supabase.from('restaurants').update({
+            ready_time_confirmation_enabled: readyTimeEnabled,
+          }).eq('id', restaurant.id).select().single()
+          if (data) setRestaurant(data)
+          setSavingReadyTime(false); setSavedReadyTime(true)
+          setTimeout(() => setSavedReadyTime(false), 2000)
+        }} saving={savingReadyTime} saved={savedReadyTime}>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Confirm Ready Time</span>
+            <Toggle value={readyTimeEnabled} onChange={setReadyTimeEnabled} />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            When on, new pickup and in-house delivery orders are accepted with a
+            time quote instead of Update Status, and the customer gets a second
+            email with their exact time. Uber Direct and scheduled orders are
+            unaffected.
+          </p>
         </Section>
 
         {/* Website Settings (paid add-on) */}
