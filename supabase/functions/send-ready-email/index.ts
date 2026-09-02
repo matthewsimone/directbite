@@ -44,11 +44,21 @@ function escapeHtml(s: string): string {
   return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// (917) 559-7931 from any 10- or 11-digit input. Anything that doesn't
+// match those shapes is returned unchanged rather than mangled — a
+// restaurant with an odd phone string still gets something dialable.
+function formatPhone(raw: string): string {
+  const d = String(raw || "").replace(/\D/g, "");
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  if (d.length === 11 && d[0] === "1") return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  return String(raw || "");
+}
+
 function buildReadyHtml(order: any, restaurant: any, isDelivery: boolean): string {
   const time = formatTimeShort(order.quoted_for);
   const day = formatDayLabel(order.quoted_for);
   const name = escapeHtml(restaurant.name || "");
-  const phone = escapeHtml(restaurant.phone || "");
+  const phone = escapeHtml(formatPhone(restaurant.phone || ""));
   const heading = isDelivery ? "Your order is on the way" : "Get ready for pickup";
   const lead = isDelivery
     ? `Your order from ${name} will arrive around:`
