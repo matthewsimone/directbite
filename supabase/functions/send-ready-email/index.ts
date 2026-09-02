@@ -182,8 +182,8 @@ serve(async (req: Request) => {
     const senderName = `"${String(restaurant.name || "Ordr").replace(/[\\"]/g, "\\$&")}"`;
 
     const subject = isDelivery
-      ? `Your ${restaurant.name} order will arrive at ${time}`
-      : `Your ${restaurant.name} order will be ready at ${time}`;
+      ? `Your ${restaurant.name} order will arrive around ${time}`
+      : `Your ${restaurant.name} order will be ready around ${time}`;
 
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
