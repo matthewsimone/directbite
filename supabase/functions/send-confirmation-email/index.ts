@@ -112,6 +112,13 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
   const timeRowLabel = isScheduled
     ? (isDelivery ? "Delivery Time" : "Pickup Time")
     : "Estimated Time";
+  // Ready-time confirmation: on a flagged restaurant this receipt shows NO
+  // time at all. The operator quotes an exact time on the tablet and the
+  // customer gets a second email with it. Showing an estimate here and a
+  // different confirmed time minutes later reads as a broken promise, so the
+  // row is omitted rather than softened. Scheduled orders keep their row —
+  // the customer picked that slot and gets no second email.
+  const usesReadyConfirm = restaurant.ready_time_confirmation_enabled === true && !isScheduled;
   const timeRowValue = isScheduled ? scheduledTimeLabel : estimatedTime;
   const heading = isScheduled ? "Order Scheduled!" : "Order Confirmed!";
 
@@ -179,10 +186,12 @@ function buildConfirmationHtml(order: any, restaurant: any, items: any[]): strin
             <td style="padding:4px 0;color:#6b7280;font-size:14px;">Order Type</td>
             <td style="text-align:right;font-weight:bold;">${orderTypeLabel}</td>
           </tr>
+          ${usesReadyConfirm ? "" : `
           <tr>
             <td style="padding:4px 0;color:#6b7280;font-size:14px;">${timeRowLabel}</td>
             <td style="text-align:right;font-weight:bold;">${timeRowValue}</td>
           </tr>
+          `}
         </table>
       </div>
 
