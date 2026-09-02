@@ -547,6 +547,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     setUpdating(false)
     setShowStatusOptions(false)
     setShowCancelConfirm(false)
+    setShowQuoteOptions(false)
   }
 
   // Stuck-pending "Deliver Yourself": cancel the Uber dispatch (no refund) via
