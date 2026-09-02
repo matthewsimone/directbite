@@ -295,6 +295,14 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
   const [dispatching, setDispatching] = useState(false)
   // null | { new_fee_cents, original_fee_cents, delta_cents, new_quote_id }
   const [showPriceChangeModal, setShowPriceChangeModal] = useState(null)
+  // Ready-time confirmation (per-restaurant, ready_time_confirmation_enabled).
+  // Only reachable for in-house, non-scheduled orders sitting at 'new'.
+  const [showQuoteOptions, setShowQuoteOptions] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  // Ticks while the options sheet is open so the clock times next to each
+  // ladder row stay honest — a sheet left open for two minutes must not
+  // quote a time computed when it was first rendered.
+  const [nowTick, setNowTick] = useState(() => Date.now())
   const [adjustType, setAdjustType] = useState('refund')
   const [adjustAmount, setAdjustAmount] = useState('')
   const [adjustNote, setAdjustNote] = useState('')
@@ -315,6 +323,15 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     // so a new order's print log opens collapsed.
     setPrintLogExpanded(false)
   }, [order.id])
+
+  // Only ticks while the quote sheet is open. Off otherwise — this component
+  // is mounted for every order detail view and an always-on interval would
+  // re-render the whole panel every 15s for no reason.
+  useEffect(() => {
+    if (!showQuoteOptions) return
+    const t = setInterval(() => setNowTick(Date.now()), 15000)
+    return () => clearInterval(t)
+  }, [showQuoteOptions])
 
   async function fetchOrderDetails() {
     const { data: itemsData } = await supabase
@@ -448,7 +465,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
     }
   }
 
-  async function updateStatus(newStatus) {
+  async function updateStatus(newStatus, extraUpdates = {}) {
     setUpdating(true)
 
     if (newStatus === 'cancelled') {
@@ -511,7 +528,7 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       // accepted_at stamps the moment the restaurant first acts on a new
       // order — both Accept (scheduled) and Mark In Progress count as
       // acceptance. Don't overwrite on later transitions.
-      const updates = { status: newStatus }
+      const updates = { status: newStatus, ...extraUpdates }
       if (order.status === 'new' && (newStatus === 'scheduled' || newStatus === 'in_progress')) {
         updates.accepted_at = new Date().toISOString()
       }
@@ -610,6 +627,62 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
       fetchOrderDetails()
     } finally {
       setPrinting(false)
+    }
+  }
+
+  // Ready-time ladders. Five-minute resolution through the realistic band,
+  // widening past the point where precision stops meaning anything — nobody
+  // quoting 90 minutes is distinguishing it from 95. Both ladders cover the
+  // whole fleet's configured estimates with headroom for a bad night.
+  const PICKUP_LADDER = [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90]
+  const DELIVERY_LADDER = [20, 30, 40, 45, 50, 60, 70, 75, 90, 105, 120]
+
+  const isDeliveryOrder = order.order_type === 'delivery'
+
+  // The green button's default comes from the same column that drives the
+  // customer ordering page header, so the quote and the advertised estimate
+  // can never disagree. Falls back to 30/45 only if the column is somehow
+  // null — HeroSection renders it unguarded, so null would already be visible
+  // there first.
+  const defaultQuoteMinutes = isDeliveryOrder
+    ? (restaurant?.estimated_delivery_minutes || 45)
+    : (restaurant?.estimated_pickup_minutes || 30)
+
+  function formatClock(ms) {
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    }).format(new Date(ms))
+  }
+
+  // Confirms the order with a promise time. Writes status + quoted_for in ONE
+  // update (atomic — no window where the order is in_progress with no quote),
+  // then fires the customer email WITHOUT awaiting it.
+  //
+  // Fire-and-forget is deliberate. On a restaurant running
+  // print_trigger='in_progress' this same status write is what fires the
+  // kitchen ticket. An awaited email call could hang the button for seconds
+  // if Resend is slow, mid-rush, and the operator would tap again. The email
+  // is a courtesy; the ticket is not. Failures land in the edge function logs.
+  async function confirmReadyTime(minutes) {
+    if (confirming || updating) return
+    setConfirming(true)
+    const quotedFor = new Date(Date.now() + minutes * 60000).toISOString()
+    try {
+      await updateStatus('in_progress', { quoted_for: quotedFor })
+      // No session refresh: send-ready-email is verify_jwt=false and makes
+      // every send/skip decision server-side. A refreshSession() failure must
+      // never block an order that has already advanced.
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-ready-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ order_id: order.id }),
+      }).catch(() => {})
+    } finally {
+      setConfirming(false)
+      setShowQuoteOptions(false)
     }
   }
 
@@ -1339,8 +1412,47 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
           </div>
         )}
 
+        {/* Ready-time options. Mirrors the showStatusOptions sheet's structure
+            deliberately — same container, same button sizing, cancel above
+            dismiss. Cancel Order MUST live here: on a flagged restaurant the
+            UPDATE STATUS sheet no longer renders for new orders, so this is
+            the only cancel path for an order that hasn't been confirmed. */}
+        {showQuoteOptions && !showCancelConfirm && !showDeliverConfirm && !showRefundConfirm && (
+          <div className="bg-gray-50 p-4 rounded-xl space-y-3">
+            <p className="font-semibold text-gray-800">
+              {isDeliveryOrder ? 'Arriving in' : 'Ready in'}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(isDeliveryOrder ? DELIVERY_LADDER : PICKUP_LADDER).map(min => (
+                <button
+                  key={min}
+                  onClick={() => confirmReadyTime(min)}
+                  disabled={confirming || updating}
+                  className="h-14 rounded-xl border-2 border-gray-300 bg-white active:bg-gray-100 disabled:opacity-50 flex flex-col items-center justify-center"
+                >
+                  <span className="text-base font-bold text-gray-900">{min} min</span>
+                  <span className="text-xs text-gray-500">{formatClock(nowTick + min * 60000)}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={openCancelConfirm}
+              disabled={fetchingFee}
+              className="w-full h-12 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50"
+            >
+              {fetchingFee ? 'Checking…' : 'Cancel Order'}
+            </button>
+            <button
+              onClick={() => setShowQuoteOptions(false)}
+              className="w-full h-12 rounded-xl border border-gray-300 font-semibold"
+            >
+              Back
+            </button>
+          </div>
+        )}
+
         {/* Main action buttons */}
-        {!showStatusOptions && !showCancelConfirm && !showDeliverConfirm && !showRefundConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && (
+        {!showStatusOptions && !showCancelConfirm && !showDeliverConfirm && !showRefundConfirm && !showAdjustForm && !showPrepTimeModal && !showPriceChangeModal && !showQuoteOptions && (
           order.delivery_fulfillment_method === 'uber_direct' && order.status === 'new' && order.uber_delivery_id ? (
             /* Step 4: this uber_direct order was already booked with Uber at
                placement (status kept 'new' so it chimed/printed). Accept must
@@ -1423,6 +1535,38 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                 className="w-full text-center text-sm text-red-600 hover:text-red-800 py-1 disabled:opacity-50"
               >
                 {fetchingFee ? 'Checking…' : 'Cancel & Refund Order'}
+              </button>
+            </div>
+          ) : restaurant?.ready_time_confirmation_enabled && order.status === 'new' && order.delivery_fulfillment_method !== 'uber_direct' && !order.scheduled_for ? (
+            /* Ready-time confirmation. Per-restaurant flag, in-house only,
+               ASAP only. Confirm writes status + quoted_for in one update —
+               on a print_trigger='in_progress' restaurant that same write is
+               what fires the kitchen ticket, so this button is load-bearing
+               for printing, not just for the email. Uber Direct and scheduled
+               orders are excluded above and fall through to their own
+               branches; in_progress / complete / cancelled fall to the
+               generic else below, unchanged. */
+            <div className="flex gap-3">
+              <button
+                onClick={handleReprint}
+                disabled={printing}
+                className="basis-[18%] h-14 rounded-xl border-2 border-gray-300 font-bold text-xs disabled:opacity-60"
+              >
+                {printing ? '…' : 'REPRINT'}
+              </button>
+              <button
+                onClick={() => { setNowTick(Date.now()); setShowQuoteOptions(true) }}
+                disabled={confirming || updating}
+                className="basis-[32%] h-14 rounded-xl border-2 border-gray-300 font-bold text-sm disabled:opacity-50"
+              >
+                MORE OPTIONS
+              </button>
+              <button
+                onClick={() => confirmReadyTime(defaultQuoteMinutes)}
+                disabled={confirming || updating}
+                className="basis-[50%] h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
+              >
+                {confirming ? 'CONFIRMING…' : `Confirm ${defaultQuoteMinutes} min`}
               </button>
             </div>
           ) : (
