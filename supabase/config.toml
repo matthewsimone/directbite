@@ -73,6 +73,14 @@ verify_jwt = false
 [functions.send-order-sms]
 verify_jwt = false
 
+# send-ready-email — tablet-callable. Sends the customer's confirmed
+# ready/arrival time after the operator quotes it. JWT off, matching the
+# other notification functions; all send/skip decisions are made
+# server-side from the order and restaurant rows.
+
+[functions.send-ready-email]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Other JWT-off functions
