@@ -1422,16 +1422,23 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
             <p className="font-semibold text-gray-800">
               {isDeliveryOrder ? 'Arriving in' : 'Ready in'}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            {/* The ladder scrolls, not the page. Cancel and Back sit OUTSIDE
+                this container so they are reachable regardless of screen
+                height — a sheet the operator cannot dismiss is worse than no
+                sheet, and the tablet fleet will not stay one model.
+                max-h is in rem, not vh: roughly four rows on any device,
+                rather than a fraction of a viewport height that varies with
+                webview chrome and soft keyboards. */}
+            <div className="max-h-[18rem] overflow-y-auto space-y-2 -mx-1 px-1">
               {(isDeliveryOrder ? DELIVERY_LADDER : PICKUP_LADDER).map(min => (
                 <button
                   key={min}
                   onClick={() => confirmReadyTime(min)}
                   disabled={confirming || updating}
-                  className="h-14 rounded-xl border-2 border-gray-300 bg-white active:bg-gray-100 disabled:opacity-50 flex flex-col items-center justify-center"
+                  className="w-full h-14 rounded-xl border-2 border-gray-300 bg-white active:bg-gray-100 disabled:opacity-50 flex items-center justify-between px-5"
                 >
                   <span className="text-base font-bold text-gray-900">{min} min</span>
-                  <span className="text-xs text-gray-500">{formatClock(nowTick + min * 60000)}</span>
+                  <span className="text-sm text-gray-500">{formatClock(nowTick + min * 60000)}</span>
                 </button>
               ))}
             </div>
