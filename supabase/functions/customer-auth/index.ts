@@ -1108,24 +1108,78 @@ async function handleLinkPaymentCustomer(body: any): Promise<Response> {
       return jsonResponse(NOT_LINKED, 200);
     }
 
-    // --- 6. Upsert: a first-time customer at this restaurant has no profile
-    // row yet, so an UPDATE would silently match nothing. Keyed on the
-    // unique (restaurant_id, customer_id) from 062_customer_accounts_schema.
-    const { error: upsertErr } = await supabase
+    // --- 6. Write, FILL-ONLY. A customer's Stripe Customer is set once and
+    // never replaced: the id already on the row is the one holding their saved
+    // cards. A later request that arrives with a DIFFERENT Customer (e.g. a
+    // checkout that ran without a usable session and so minted a fresh one)
+    // must not overwrite it, or the cards are stranded on the old Customer.
+    //
+    // Two statements rather than one upsert, because PostgREST cannot attach a
+    // filter to an upsert — the guard has to live on an UPDATE:
+    //   a) INSERT ... ON CONFLICT DO NOTHING creates the row for a first-time
+    //      customer and touches nothing if it already exists.
+    //   b) UPDATE ... WHERE stripe_customer_id IS NULL fills a row that exists
+    //      but has never been linked. A row that already holds an id matches
+    //      zero rows here and is left exactly as it was.
+    const nowIso6 = new Date().toISOString();
+
+    const { error: insertErr } = await supabase
       .from("restaurant_customers")
       .upsert(
         {
           restaurant_id,
           customer_id: identity.id,
           stripe_customer_id: stripeCustomerId,
-          updated_at: new Date().toISOString(),
+          updated_at: nowIso6,
         },
-        { onConflict: "restaurant_id,customer_id" }
+        { onConflict: "restaurant_id,customer_id", ignoreDuplicates: true }
       );
 
-    if (upsertErr) {
-      console.error("customer-auth link upsert failed:", upsertErr.message);
+    if (insertErr) {
+      console.error("customer-auth link insert failed:", insertErr.message);
       return jsonResponse(NOT_LINKED, 200);
+    }
+
+    const { data: filled, error: updateErr } = await supabase
+      .from("restaurant_customers")
+      .update({
+        stripe_customer_id: stripeCustomerId,
+        updated_at: nowIso6,
+      })
+      .eq("restaurant_id", restaurant_id)
+      .eq("customer_id", identity.id)
+      .is("stripe_customer_id", null)
+      .select("id");
+
+    if (updateErr) {
+      console.error("customer-auth link update failed:", updateErr.message);
+      return jsonResponse(NOT_LINKED, 200);
+    }
+
+    // Divergence signal. Zero rows filled means the row already held an id.
+    // If that id is not the one this PaymentIntent charged, a duplicate Stripe
+    // Customer exists for this person at this restaurant — the saved cards are
+    // on one of them and the latest order is on the other. Previously this
+    // overwrote silently; now it is left alone and logged.
+    if (!filled?.length) {
+      const { data: current } = await supabase
+        .from("restaurant_customers")
+        .select("stripe_customer_id")
+        .eq("restaurant_id", restaurant_id)
+        .eq("customer_id", identity.id)
+        .maybeSingle();
+
+      if (current?.stripe_customer_id && current.stripe_customer_id !== stripeCustomerId) {
+        console.warn(
+          "customer-auth link: duplicate Stripe Customer, keeping the stored id",
+          {
+            restaurant_id,
+            customer_id: identity.id,
+            stored: current.stripe_customer_id,
+            incoming: stripeCustomerId,
+          }
+        );
+      }
     }
 
     // --- 7. ---
