@@ -189,7 +189,7 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed, onVerifiedSwap, onPayingChange }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -218,9 +218,19 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
   // Verification is an accelerator, never a gate. A customer who ignores the
   // code field fills the form in and checks out exactly as before.
+  // Verification does two things: fills the saved contact/address, and asks the
+  // parent to move the payment onto the Customer this person already has. The
+  // intent created on arrival is bound to a guest Customer and Stripe will not
+  // let a card attached to another Customer confirm against it, so showing the
+  // saved card requires a replacement intent, not just a redisplay.
+  const handleVerified = useCallback(async () => {
+    await applySavedProfile()
+    if (onVerifiedSwap) await onVerifiedSwap()
+  }, [applySavedProfile, onVerifiedSwap])
+
   const otp = useOtpFlow({
     restaurantId: restaurant?.id,
-    onVerified: applySavedProfile,
+    onVerified: handleVerified,
   })
 
   // The hook owns the digits; customerPhone is what the order payload reads,
@@ -332,11 +342,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       }
 
       submittedRef.current = true
+      // Same signal the card path sends: a wallet confirm in flight must stop a
+      // swap from starting underneath it.
+      onPayingChange?.(true)
 
       const secret = clientSecretRef.current
       if (!secret) {
         ev.complete('fail')
         submittedRef.current = false
+        onPayingChange?.(false)
         toast.error('Payment not ready. Please try again.')
         return
       }
@@ -354,6 +368,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
           console.error('[Wallet] Failed to update customer data:', err)
           ev.complete('fail')
           submittedRef.current = false
+          onPayingChange?.(false)
           toast.error('Failed to save customer info. Please try again.')
           return
         }
@@ -368,6 +383,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       if (confirmError) {
         ev.complete('fail')
         submittedRef.current = false
+        onPayingChange?.(false)
         toast.error(friendlyPaymentError(confirmError))
       } else {
         ev.complete('success')
@@ -401,15 +417,20 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     if (!stripe || !elements || payMethod === 'wallet') return
     if (submittedRef.current) return
     submittedRef.current = true
+    // The parent abandons an intent swap while this is true — a confirm must
+    // never land on an intent that is being replaced and cancelled.
+    onPayingChange?.(true)
 
     if (!customerInfo.name.trim() || !customerInfo.phone.trim()) {
       toast.error('Please fill in your name and phone number')
       submittedRef.current = false
+      onPayingChange?.(false)
       return
     }
     if (!customerInfo.email.trim()) {
       toast.error('Please enter your email address')
       submittedRef.current = false
+      onPayingChange?.(false)
       return
     }
 
@@ -420,6 +441,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       const isValid = await onValidateDelivery()
       if (!isValid) {
         submittedRef.current = false
+        onPayingChange?.(false)
         return
       }
     }
@@ -456,6 +478,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       toast.error(friendlyPaymentError(error))
       setLoading(false)
       submittedRef.current = false
+      onPayingChange?.(false)
       return
     }
 
@@ -999,6 +1022,14 @@ export default function CheckoutPage() {
   const [stripeAccount, setStripeAccount] = useState(null)
   const [initError, setInitError] = useState(null)
   const idempotencyKey = useRef(Math.random().toString(36).slice(2) + Date.now().toString(36))
+
+  // Intent swap after mid-checkout verification. `swapping` disables Pay and
+  // hides the wallet for its duration; `payingRef` is the other direction — a
+  // confirm already underway abandons the swap rather than pulling the intent
+  // out from under it.
+  const [swapping, setSwapping] = useState(false)
+  const payingRef = useRef(false)
+  const handlePayingChange = useCallback(next => { payingRef.current = next }, [])
 
   // Compute full (undiscounted) subtotal from cart items' fullBasePrice/fullPrice
   const discountPercentage = promotion ? Number(promotion.discount_percentage) : 0
@@ -1828,6 +1859,82 @@ export default function CheckoutPage() {
     return () => clearTimeout(updateTimer.current)
   }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, includeUtensils, specialInstructions, buildOrderData])
 
+  // Replace the guest intent with one on the verified customer's Stripe
+  // Customer. Create-then-cancel, never the reverse: the replacement is proven
+  // chargeable before the old one is retired, so no failure here can leave the
+  // customer without a payable intent.
+  const swapIntentForVerifiedCustomer = useCallback(async () => {
+    // A confirm is in flight — leave the intent exactly where it is. The
+    // customer is mid-payment on the guest Customer; that charge succeeds, and
+    // link_payment_customer will not overwrite their stored Customer.
+    if (payingRef.current) return
+    if (!paymentIntentId || !restaurant) return
+    if (!getSessionTokenForPayment()) return
+
+    setSwapping(true)
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+      // A FRESH idempotency key. Reusing the mount-time one would make Stripe
+      // hand back the very intent we are trying to replace.
+      const swapKey = Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/create-payment-intent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${supabaseAnonKey}`,
+        },
+        // No payment_intent_id: this takes the CREATE path, so the session
+        // token resolves the stored Stripe Customer and the response carries a
+        // Customer Session for that same Customer. The two can never diverge,
+        // which is what keeps an uncharg[e]able saved card impossible.
+        body: JSON.stringify({
+          restaurant_id: restaurant.id,
+          amount: Math.round(total * 100),
+          order_data: buildOrderData(),
+          idempotency_key: swapKey,
+          session_token: getSessionTokenForPayment(),
+          cancel_payment_intent_id: paymentIntentId,
+        }),
+      })
+
+      if (!res.ok) {
+        // Create failed. The original intent was never touched and is still
+        // chargeable; leave every piece of state alone. Suppressing the
+        // customer session is belt-and-braces — it is already null on this
+        // path, and a null one shows a plain card form rather than a saved
+        // card the original intent could not charge.
+        setCustomerSessionSecret(null)
+        return
+      }
+
+      const data = await res.json().catch(() => ({}))
+      if (!data.clientSecret || !data.paymentIntentId) {
+        setCustomerSessionSecret(null)
+        return
+      }
+
+      // Apply unconditionally, even if a confirm slipped through while this was
+      // in flight. By the time the response is here the server has already
+      // cancelled the old intent, so the replacement is the ONLY chargeable
+      // one — returning early would strand the customer on a dead intent with
+      // no way forward but a reload. A racing confirm on the old secret fails
+      // with a toast, and the retry lands on the secret set below.
+      idempotencyKey.current = swapKey
+      setClientSecret(data.clientSecret)
+      setPaymentIntentId(data.paymentIntentId)
+      setStripeAccount(data.stripeAccount)
+      setCustomerSessionSecret(data.customerSessionClientSecret || null)
+    } catch {
+      // Network failure: same as a create failure. Original intent stands.
+      setCustomerSessionSecret(null)
+    } finally {
+      setSwapping(false)
+    }
+  }, [paymentIntentId, restaurant, total, buildOrderData, getSessionTokenForPayment])
+
   function handlePaymentSuccess(piId) {
     // The wallet's values when a wallet supplied them, the form's otherwise.
     // Resolved ONCE and used for both the profile write and the navigate state
@@ -2404,7 +2511,11 @@ export default function CheckoutPage() {
               <span className="ml-3 text-sm text-gray-500">Loading payment...</span>
             </div>
           ) : (
-            <Elements stripe={stripePromise} options={stripeOptions}>
+            <Elements
+              key={`${paymentIntentId || 'no-intent'}:${customerSessionSecret ? 'cs' : 'none'}`}
+              stripe={stripePromise}
+              options={stripeOptions}
+            >
               <PaymentForm
                 onSuccess={handlePaymentSuccess}
                 total={total}
@@ -2412,7 +2523,7 @@ export default function CheckoutPage() {
                 orderData={{ order_type: orderType, delivery_address: fullDeliveryAddress }}
                 slug={slug}
                 restaurant={restaurant}
-                disabled={belowMinimum || !!addressError}
+                disabled={belowMinimum || !!addressError || swapping}
                 onValidateDelivery={onValidateDelivery}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}
@@ -2420,6 +2531,8 @@ export default function CheckoutPage() {
                 needsAddress={needsAddress}
                 showPlaceholder={showPlaceholder}
                 onSavedProfile={handleSavedProfile}
+                onVerifiedSwap={swapIntentForVerifiedCustomer}
+                onPayingChange={handlePayingChange}
                 contactCollapsed={contactCollapsed}
                 onWalletCustomer={async (name, email, phone) => {
                   // Synchronous, so success cannot outrun it. See walletContactRef.

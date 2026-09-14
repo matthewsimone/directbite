@@ -112,7 +112,7 @@ serve(async (req: Request) => {
     // session_token is TOP LEVEL, never inside order_data: order_data is
     // persisted wholesale into pending_orders, and a session token written
     // there would be a 365-day credential sitting in plaintext.
-    const { restaurant_id, amount, order_data, payment_intent_id, idempotency_key, session_token } = await req.json();
+    const { restaurant_id, amount, order_data, payment_intent_id, idempotency_key, session_token, cancel_payment_intent_id } = await req.json();
 
     if (!restaurant_id || !amount) {
       return new Response(
@@ -740,6 +740,38 @@ serve(async (req: Request) => {
         console.error(
           "[create-payment-intent] customer session create failed (non-fatal)",
           csErr.message
+        );
+      }
+    }
+
+    // Retire the intent this one supersedes. Set when the customer verified
+    // partway through checkout: the intent created on arrival is bound to a
+    // throwaway guest Customer and cannot be moved, so the client asks for a
+    // replacement on the Customer their profile already holds.
+    //
+    // LAST, deliberately. The replacement exists and is chargeable by the time
+    // we get here, so a cancel failure costs an abandoned intent that Stripe
+    // expires on its own — never the customer's ability to pay. Cancelling
+    // first would open a window where the old intent is dead and the new one
+    // does not exist yet.
+    if (cancel_payment_intent_id && cancel_payment_intent_id !== paymentIntent.id) {
+      try {
+        const stale = await stripe.paymentIntents.retrieve(
+          cancel_payment_intent_id,
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+        // Only an intent still waiting for a payment method. Anything further
+        // along has a method attached or money in flight and is never touched.
+        if (stale.status === "requires_payment_method") {
+          await stripe.paymentIntents.cancel(
+            cancel_payment_intent_id,
+            { stripeAccount: restaurant.stripe_account_id }
+          );
+        }
+      } catch (cancelErr: any) {
+        console.error(
+          "[create-payment-intent] superseded intent cancel failed (non-fatal)",
+          cancelErr.message
         );
       }
     }
