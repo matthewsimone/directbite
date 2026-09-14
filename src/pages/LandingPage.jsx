@@ -447,7 +447,6 @@ const CSS = `
 /* announcement: was wrapping to 3 lines = 148px tall */
  
  .ordr-landing .topbar{padding:9px 16px;font-size:12.5px;gap:8px;line-height:1.35}
- .ordr-landing .topbar a{display:none}
  .ordr-landing .topbar .tag{font-size:9.5px;padding:3px 9px}
  .ordr-landing .nav-links a:not(.btn){display:none}
  .ordr-landing .nav-in{height:58px}
@@ -674,7 +673,6 @@ export default function LandingPage() {
       <div className="topbar">
         <span className="tag">New</span>
         <span>Loyalty is live — turn first-time orders into regulars</span>
-        <a href="#platform">See how →</a>
       </div>
 
       <nav>
@@ -802,7 +800,7 @@ export default function LandingPage() {
       </div>
 
       <div className="marq">
-        <div className="marq-l">Trusted by independent restaurants across New Jersey</div>
+        <div className="marq-l">Trusted by independent restaurants</div>
         <div className="track">
           <span>Stella</span><span>Frank’s Pizza</span><span>Bella Pizza</span><span>Pazza</span><span>New Park Tavern</span><span>Gino’s</span><span>Morano’s</span><span>Park Pizza</span><span>Torino</span><span>Gaby’s</span>
           <span>Stella</span><span>Frank’s Pizza</span><span>Bella Pizza</span><span>Pazza</span><span>New Park Tavern</span><span>Gino’s</span><span>Morano’s</span><span>Park Pizza</span><span>Torino</span><span>Gaby’s</span>
