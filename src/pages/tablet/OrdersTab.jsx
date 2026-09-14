@@ -1038,13 +1038,22 @@ function OrderDetail({ order, restaurant, onBack, onStatusChange }) {
                   ** LOYALTY REWARD - {Number(order.loyalty_points_spent || 0)} PTS **
                 </p>
               )}
-              {item.order_item_toppings?.map(t => (
-                <p key={t.id} className="pl-6 text-sm text-gray-600">
-                  {t.placement_type === 'addon'
-                    ? `${t.topping_name}   ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}${item.quantity > 1 ? ' ea' : ''}`}`
-                    : `${t.placement.toUpperCase()}: ${t.topping_name}   ${Number(t.price_charged) === 0 ? 'Free' : `+${formatMoney(t.price_charged)}${item.quantity > 1 ? ' ea' : ''}`}`}
-                </p>
-              ))}
+              {item.order_item_toppings?.map(t => {
+                // Tablet only: a zero-priced topping renders with no price text
+                // at all. The separator lives inside the suffix so the free case
+                // leaves zero trailing whitespace. Admin/receipts/emails still
+                // print "Free" — see admin/OrdersTab.jsx.
+                const tPriceSuffix = Number(t.price_charged) === 0
+                  ? ''
+                  : `   +${formatMoney(t.price_charged)}${item.quantity > 1 ? ' ea' : ''}`
+                return (
+                  <p key={t.id} className="pl-6 text-sm text-gray-600">
+                    {t.placement_type === 'addon'
+                      ? `${t.topping_name}${tPriceSuffix}`
+                      : `${t.placement.toUpperCase()}: ${t.topping_name}${tPriceSuffix}`}
+                  </p>
+                )
+              })}
               {item.special_instructions && (
                 <p className="pl-6 text-sm italic text-gray-400">{item.special_instructions}</p>
               )}
