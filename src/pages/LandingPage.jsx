@@ -88,8 +88,8 @@ const CSS = `
 .ordr-landing .lg{height:34px;color:var(--ink);display:block}
 .ordr-landing .lg svg{height:100%;width:auto;display:block}
 .ordr-landing .nav-links{display:flex;align-items:center;gap:32px}
-.ordr-landing .nav-links a{color:var(--ink-2);font-size:15.5px;font-weight:500;letter-spacing:-.008em}
-.ordr-landing .nav-links a:hover{color:var(--ink)}
+.ordr-landing .nav-links a:not(.btn){color:var(--ink-2);font-size:15.5px;font-weight:500;letter-spacing:-.008em}
+.ordr-landing .nav-links a:not(.btn):hover{color:var(--ink)}
 /* ---------- hero ---------- */
 
 
@@ -356,6 +356,22 @@ const CSS = `
 .ordr-landing .foot-links a{color:var(--ink-3);font-size:14.5px}
 .ordr-landing .copy{color:var(--ink-3);font-size:14px}
 
+@media(max-width:1000px){
+ .ordr-landing .hero-in{grid-template-columns:1fr;gap:0}
+ .ordr-landing .hero h1{max-width:none}
+ .ordr-landing .stage{height:470px;margin:44px -32px 0}
+ .ordr-landing .tilt{left:50%;transform:translateX(-48%) rotate(8deg) rotateY(5deg) rotateX(1.5deg) scale(.76)}
+ .ordr-landing .stats{grid-template-columns:1fr 1fr;max-width:none}
+ .ordr-landing .tiles{grid-template-columns:1fr}
+ .ordr-landing section{padding:84px 0}
+ .ordr-landing .founder{padding:36px 28px}
+ .ordr-landing .refs{padding:48px 26px;border-radius:24px}
+ .ordr-landing .byline{flex-direction:column;gap:12px}
+ .ordr-landing .final{padding:60px 26px;border-radius:28px}
+ .ordr-landing table{font-size:13px}
+ .ordr-landing th,.ordr-landing td{padding:11px 7px}
+ .ordr-landing td:first-child,.ordr-landing th:first-child{padding-left:14px}
+}
 @media(max-width:760px){
  .ordr-landing .wrap{padding:0 22px}
 /* announcement: was wrapping to 3 lines = 148px tall */
@@ -388,7 +404,7 @@ const CSS = `
 
  
  .ordr-landing .hero-in{gap:0}
- .ordr-landing .stage{height:400px;margin:8px -22px 0;overflow:hidden}
+ .ordr-landing .stage{height:400px;margin:22px -22px 0;overflow:hidden}
  .ordr-landing .tilt{left:auto;right:-96px;top:4px;
    transform:rotate(8deg) rotateY(5deg) rotateX(1.5deg) scale(.74)}
  .ordr-landing .orders{display:flex;left:32px;right:auto;top:auto;bottom:275px;width:auto;align-items:flex-start;gap:7px}
@@ -438,22 +454,6 @@ const CSS = `
  .ordr-landing .soonstrip .lb{height:26px;padding:0 9px;font-size:10.5px}
  .ordr-landing .foot-links{flex-wrap:wrap;gap:16px 20px}
  .ordr-landing .foot{gap:18px}
-}
-@media(max-width:1000px){
- .ordr-landing .hero-in{grid-template-columns:1fr;gap:0}
- .ordr-landing .hero h1{max-width:none}
- .ordr-landing .stage{height:470px;margin:44px -32px 0}
- .ordr-landing .tilt{left:50%;transform:translateX(-48%) rotate(8deg) rotateY(5deg) rotateX(1.5deg) scale(.76)}
- .ordr-landing .stats{grid-template-columns:1fr 1fr;max-width:none}
- .ordr-landing .tiles{grid-template-columns:1fr}
- .ordr-landing section{padding:84px 0}
- .ordr-landing .founder{padding:36px 28px}
- .ordr-landing .refs{padding:48px 26px;border-radius:24px}
- .ordr-landing .byline{flex-direction:column;gap:12px}
- .ordr-landing .final{padding:60px 26px;border-radius:28px}
- .ordr-landing table{font-size:13px}
- .ordr-landing th,.ordr-landing td{padding:11px 7px}
- .ordr-landing td:first-child,.ordr-landing th:first-child{padding-left:14px}
 }
 `
 
