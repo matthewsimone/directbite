@@ -11,6 +11,90 @@ import rewardChoppedSalad from '../assets/landing/reward-chopped-salad.jpg'
 import stellaHero from '../assets/landing/stella-hero.jpg'
 import uberDirect from '../assets/landing/uber-direct.svg'
 
+// ── Contact Form Dialog ──
+function ContactFormDialog({ open, onOpenChange, heading }) {
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState(false)
+
+  if (!open) return null
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSubmitting(true)
+    try {
+      const formData = new FormData(e.currentTarget)
+      formData.append('_subject', heading)
+      const res = await fetch('https://formspree.io/f/mbdqlgwr', {
+        method: 'POST',
+        body: formData,
+        headers: { Accept: 'application/json' },
+      })
+      if (!res.ok) throw new Error('Submit failed')
+      setSuccess(true)
+      setTimeout(() => { onOpenChange(false); setSuccess(false) }, 2000)
+    } catch {
+      alert('Something went wrong. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={() => onOpenChange(false)} />
+      <div className="relative bg-white rounded-2xl w-full max-w-[440px] p-6 shadow-xl" style={{ animation: 'ordr-fadeInScale 0.2s ease-out' }}>
+        <button onClick={() => onOpenChange(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+        <h2 className="text-xl font-semibold text-[#111] mb-1">{heading}</h2>
+        <p className="text-sm text-[#6b7280] mb-5">Fill out the form below and we'll get back to you within 24 hours.</p>
+
+        {success ? (
+          <div className="text-center py-8">
+            <div className="w-12 h-12 bg-[#16A34A] rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="font-semibold text-[#111]">Thanks!</p>
+            <p className="text-sm text-[#6b7280]">We'll be in touch shortly.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Your Name</label>
+              <input name="name" required maxLength={100} placeholder="John Smith"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Restaurant Name</label>
+              <input name="restaurant" required maxLength={100} placeholder="Simone's Pizza"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Zip Code</label>
+              <input name="zip" required maxLength={10} placeholder="10001"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Email</label>
+              <input name="email" type="email" required maxLength={255} placeholder="you@restaurant.com"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#111] mb-1 block">Phone Number</label>
+              <input name="phone" type="tel" required maxLength={20} placeholder="(555) 123-4567"
+                className="w-full h-10 px-3 border border-[#e5e7eb] rounded-lg text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40" />
+            </div>
+            <button type="submit" disabled={submitting}
+              className="w-full h-10 bg-[#16A34A] text-white font-medium rounded-full hover:opacity-90 transition-opacity disabled:opacity-50 mt-2">
+              {submitting ? 'Sending...' : 'Submit'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Every rule is scoped under .ordr-landing. This page ships alongside ~25 live
 // restaurant storefronts that share one global stylesheet (src/index.css), so a
 // bare `nav {}` or `:root {}` here would reach straight into the tablet and
@@ -44,7 +128,8 @@ const CSS = `
 
 .ordr-landing .btn{display:inline-flex;align-items:center;gap:9px;height:52px;padding:0 26px;border-radius:999px;
  font-size:16px;font-weight:600;letter-spacing:-.012em;border:1px solid transparent;
- transition:transform .16s,box-shadow .16s,background .16s;white-space:nowrap}
+ transition:transform .16s,box-shadow .16s,background .16s;white-space:nowrap;
+ font-family:inherit;cursor:pointer;text-decoration:none}
 .ordr-landing .btn:active{transform:scale(.985)}
 .ordr-landing .btn-primary{background:var(--green-mid);color:#fff;box-shadow:0 10px 34px rgba(34,197,94,.30)}
 .ordr-landing .btn-primary:hover{background:var(--green);box-shadow:0 12px 40px rgba(34,197,94,.42)}
@@ -189,6 +274,7 @@ const CSS = `
 /* the phone's 8deg lean already slopes its edge ~9px per row, so a uniform
    offset lands the top pill flush and the newest one tucked behind */
 
+@keyframes ordr-fadeInScale{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
 @keyframes ordr-ordIn{from{opacity:0;transform:translateY(26px) scale(.90)}to{opacity:1;transform:none}}
 @keyframes ordr-ordOut{to{opacity:0;transform:translateY(-18px) scale(.96)}}
 @media(prefers-reduced-motion:reduce){.ordr-landing .ord{animation:none}}
@@ -523,6 +609,21 @@ const RIVALS = [
 ]
 
 export default function LandingPage() {
+  const [contactOpen, setContactOpen] = useState(false)
+  const [contactHeading, setContactHeading] = useState('')
+
+  // Suppress PWA install prompt on landing page
+  useEffect(() => {
+    const suppress = (e) => e.preventDefault()
+    window.addEventListener('beforeinstallprompt', suppress)
+    return () => window.removeEventListener('beforeinstallprompt', suppress)
+  }, [])
+
+  function openContact(heading) {
+    setContactHeading(heading)
+    setContactOpen(true)
+  }
+
   // Incoming-order pills. Newest first in the array; .orders is column-reverse,
   // so index 0 paints at the bottom and the oldest row sits on top.
   const [orders, setOrders] = useState([])
@@ -566,6 +667,7 @@ export default function LandingPage() {
   const nextRival = () => setRival(i => (i + 1) % RIVALS.length)
 
   return (
+    <>
     <div className="ordr-landing">
       <style>{CSS}</style>
 
@@ -582,7 +684,7 @@ export default function LandingPage() {
             <a href="#platform">Platform</a>
             <a href="#pricing">Pricing</a>
             <a href="#restaurants">Restaurants</a>
-            <a href="#demo" className="btn btn-primary btn-sm">Get a free demo</a>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => openContact('Get a free demo')}>Get a free demo</button>
           </div>
         </div>
       </nav>
@@ -599,7 +701,7 @@ export default function LandingPage() {
             <h1 className="display">The easiest way to <span className="gr">grow your restaurant</span> online.</h1>
             <p className="lede">Your own site, your own customers, your own margin — and the technology to grow direct orders 20–50%+.</p>
             <div className="cta">
-              <a href="#demo" className="btn btn-primary">Get a free demo</a>
+              <button type="button" className="btn btn-primary" onClick={() => openContact('Request a Demo')}>Get a free demo</button>
               <a href="#platform" className="btn btn-soft">See how it works</a>
             </div>
             <p className="micro">Live in under a week · No contract · Keep your domain and your customer list</p>
@@ -951,8 +1053,7 @@ export default function LandingPage() {
           <h2 className="display">Stop paying for <span className="gr">your own customers</span>.</h2>
           <p>Fifteen minutes, and we’ll show you what last month would have looked like on Ordr.</p>
           <div className="cta">
-            <a href="#" className="btn btn-white">Get a free demo</a>
-            <a href="#" className="btn btn-glass">See a live restaurant</a>
+            <button type="button" className="btn btn-white" onClick={() => openContact('Get Started')}>Get a free demo</button>
           </div>
         </div>
       </div>
@@ -971,5 +1072,8 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
+
+    <ContactFormDialog open={contactOpen} onOpenChange={setContactOpen} heading={contactHeading} />
+    </>
   )
 }
