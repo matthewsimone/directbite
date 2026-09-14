@@ -391,7 +391,7 @@ const CSS = `
  .ordr-landing .stage{height:400px;margin:8px -22px 0;overflow:hidden}
  .ordr-landing .tilt{left:auto;right:-96px;top:4px;
    transform:rotate(8deg) rotateY(5deg) rotateX(1.5deg) scale(.74)}
- .ordr-landing .orders{display:flex;left:32px;right:auto;top:0;bottom:auto;width:auto;align-items:flex-start;gap:7px}
+ .ordr-landing .orders{display:flex;left:32px;right:auto;top:auto;bottom:275px;width:auto;align-items:flex-start;gap:7px}
  .ordr-landing .ord{padding:8px 15px 8px 10px;border-radius:13px;gap:8px}
  .ordr-landing .ord .dot{width:19px;height:19px}
  .ordr-landing .ord .dot svg{width:10px;height:10px}
