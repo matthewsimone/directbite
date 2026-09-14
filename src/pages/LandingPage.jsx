@@ -370,7 +370,9 @@ const CSS = `
 /* hero: compress everything above the phone */
 
  
- .ordr-landing .hero{padding:22px 0 28px}
+ .ordr-landing .hero{padding:22px 0 0}
+ .ordr-landing .hero .plasma{opacity:.40}
+ .ordr-landing .hero .grain{opacity:.2}
  .ordr-landing .pill{padding:5px 13px 5px 10px;font-size:12px;margin-bottom:14px}
  .ordr-landing .pill .st{font-size:11px}
  .ordr-landing .hero h1{font-size:34px;line-height:1.06;margin-bottom:14px;max-width:none}
@@ -390,9 +392,6 @@ const CSS = `
  .ordr-landing .tilt{left:auto;right:-96px;top:4px;
    transform:rotate(8deg) rotateY(5deg) rotateX(1.5deg) scale(.74)}
  .ordr-landing .orders{display:flex;left:32px;right:auto;top:0;bottom:auto;width:auto;align-items:flex-start;gap:7px}
-/* column-reverse: nth-child(4) is the topmost/oldest — 3 fit the mobile band */
- 
- .ordr-landing .ord:nth-child(4){display:none}
  .ordr-landing .ord{padding:8px 15px 8px 10px;border-radius:13px;gap:8px}
  .ordr-landing .ord .dot{width:19px;height:19px}
  .ordr-landing .ord .dot svg{width:10px;height:10px}
@@ -502,7 +501,17 @@ function Pfill() {
 
 // Ticker amounts for the incoming-order pills, cycled in order.
 const AMOUNTS = [42.18, 67.50, 128.94, 35.75, 96.20, 54.22, 173.40, 88.65, 111.18, 61.05, 149.30, 73.82]
-const MAX_ORDERS = 4
+// Order-stack depth. Mobile fits three pills in the band beside the phone,
+// desktop four. Read per insert rather than captured once: a rotate or a
+// resize must change the cap without remounting, and the old approach of
+// hiding the overflow pill with display:none meant its exit animation ran
+// on an invisible element, so the stack jumped instead of sliding.
+const ORDERS_DESKTOP = 4
+const ORDERS_MOBILE = 3
+function orderCap() {
+  if (typeof window === 'undefined' || !window.matchMedia) return ORDERS_DESKTOP
+  return window.matchMedia('(max-width:760px)').matches ? ORDERS_MOBILE : ORDERS_DESKTOP
+}
 
 // Mobile comparison switcher. Mirrors the four rival columns the desktop table
 // shows; the Ordr column is static beside it.
@@ -527,7 +536,8 @@ export default function LandingPage() {
         const next = [{ id: nextId.current, amount }, ...prev]
         // Anything past the cap is flagged rather than dropped, so ordr-ordOut
         // has something to animate before it leaves the DOM.
-        return next.map((o, i) => (i >= MAX_ORDERS ? { ...o, out: true } : o))
+        const cap = orderCap()
+        return next.map((o, i) => (i >= cap ? { ...o, out: true } : o))
       })
     }
 
