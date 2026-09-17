@@ -2335,15 +2335,24 @@ export default function CheckoutPage() {
 
         {/* Tip */}
         {/* Napkins & Utensils */}
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-gray-700">Include napkins & utensils</span>
-          <button
-            onClick={() => setIncludeUtensils(!includeUtensils)}
-            className={`relative w-12 h-7 rounded-full transition-colors ${includeUtensils ? 'bg-[#16A34A]' : 'bg-gray-300'}`}
-          >
-            <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${includeUtensils ? 'left-5.5' : 'left-0.5'}`} />
-          </button>
-        </div>
+        {/* Display-only gate. The includeUtensils state and the include_utensils
+            key in buildOrderData are deliberately left in place: with the control
+            gone the customer simply cannot set it to true, so the value stays
+            false and flows to the DB exactly as an untoggled order does today —
+            every downstream truthy gate (print, receipt, email, confirmation)
+            stays dark. Explicit !== false rather than a truthy test so a
+            restaurant row without the column still renders the toggle. */}
+        {restaurant.utensils_option_enabled !== false && (
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">Include napkins & utensils</span>
+            <button
+              onClick={() => setIncludeUtensils(!includeUtensils)}
+              className={`relative w-12 h-7 rounded-full transition-colors ${includeUtensils ? 'bg-[#16A34A]' : 'bg-gray-300'}`}
+            >
+              <span className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${includeUtensils ? 'left-5.5' : 'left-0.5'}`} />
+            </button>
+          </div>
+        )}
 
         <TipSelector subtotal={discountedSubtotal} orderType={orderType} onTipChange={setTip} />
         {resolvedMode === 'uber_direct' && tip > 5 && (
