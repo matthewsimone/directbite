@@ -188,6 +188,9 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   // Local state for editable fields
   const [pickupMinutes, setPickupMinutes] = useState(restaurant?.estimated_pickup_minutes || 30)
   const [deliveryMinutes, setDeliveryMinutes] = useState(restaurant?.estimated_delivery_minutes || 60)
+  // !== false, not a truthy read: a row predating migration 089 has no column,
+  // and undefined must mean ON (the checkout gate reads it the same way).
+  const [utensilsOptionEnabled, setUtensilsOptionEnabled] = useState(restaurant?.utensils_option_enabled !== false)
   const [deliveryAvailable, setDeliveryAvailable] = useState(restaurant?.delivery_available || false)
   const [deliveryNote, setDeliveryNote] = useState(restaurant?.delivery_note || '')
   const [deliveryMinimum, setDeliveryMinimum] = useState(restaurant?.delivery_minimum_in_house || 0)
@@ -342,6 +345,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       .update({
         estimated_pickup_minutes: parseInt(pickupMinutes) || 30,
         estimated_delivery_minutes: parseInt(deliveryMinutes) || 60,
+        utensils_option_enabled: utensilsOptionEnabled,
       })
       .eq('id', restaurant.id)
       .select()
@@ -789,6 +793,14 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">min</span>
             </div>
           </FieldRow>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700">Napkins &amp; Utensils Option</span>
+            <Toggle value={utensilsOptionEnabled} onChange={setUtensilsOptionEnabled} />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            When on, customers can request napkins and utensils at checkout. When off,
+            the option is removed from the checkout page entirely.
+          </p>
         </Section>
 
         {/* Delivery */}
