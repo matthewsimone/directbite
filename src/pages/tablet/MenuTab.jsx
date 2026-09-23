@@ -4,10 +4,42 @@ import { supabase } from '../../lib/supabase'
 
 const FEATURED_LIMIT = 8
 
+// Available items first, unavailable after, WITHIN each category. The category
+// grouping and the order in which categories first appear are both preserved,
+// and each group keeps the relative order the query returned (sort_order, then
+// name). Two filter passes per category rather than one .sort() with a boolean
+// comparator: filter is specified to preserve order, so neither group can be
+// disturbed internally.
+//
+// Called EXACTLY ONCE, in fetchMenu, on the raw query result — the ordering is
+// baked into the array that reaches state. Deriving it during render instead
+// would re-sort on every state change, so toggling an item would make its row
+// jump out from under the operator's finger the instant they tapped it.
+function orderByAvailability(rows) {
+  const byCategory = new Map()
+  for (const row of rows) {
+    if (!byCategory.has(row.category_id)) byCategory.set(row.category_id, [])
+    byCategory.get(row.category_id).push(row)
+  }
+  const out = []
+  // Map iterates in insertion order, so categories come back in the order they
+  // first appeared in the query result.
+  for (const group of byCategory.values()) {
+    out.push(...group.filter(i => i.is_available))
+    out.push(...group.filter(i => !i.is_available))
+  }
+  return out
+}
+
 export default function MenuTab({ restaurant }) {
   const [categories, setCategories] = useState([])
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
+  // id of the item whose availability write is in flight, or null. Its toggle
+  // is disabled until the write settles, which closes the double-tap path:
+  // without it a second tap fires a second write computed from the same stale
+  // item.is_available, so the two writes disagree and the last to land wins.
+  const [togglingId, setTogglingId] = useState(null)
 
   useEffect(() => {
     fetchMenu()
@@ -26,23 +58,42 @@ export default function MenuTab({ restaurant }) {
         .from('menu_items')
         .select('*, item_sizes(*)')
         .eq('restaurant_id', restaurant.id)
-        .order('sort_order'),
+        // sort_order defaults to 0 (001_initial_schema.sql:53), so a restaurant
+        // that never reordered has every item at 0 and Postgres is free to
+        // return them in any order — including a different one each fetch.
+        // name is the tiebreaker that makes the list stable.
+        .order('sort_order')
+        .order('name'),
     ])
 
     setCategories(catRes.data || [])
-    setItems(itemRes.data || [])
+    setItems(orderByAvailability(itemRes.data || []))
     setLoading(false)
   }
 
   async function toggleAvailability(item) {
+    // The button is already disabled while this item is in flight; this is the
+    // belt-and-braces guard for any path that reaches the handler anyway.
+    if (togglingId === item.id) return
     const newVal = !item.is_available
-    const { error } = await supabase
-      .from('menu_items')
-      .update({ is_available: newVal })
-      .eq('id', item.id)
+    setTogglingId(item.id)
+    try {
+      const { error } = await supabase
+        .from('menu_items')
+        .update({ is_available: newVal })
+        .eq('id', item.id)
 
-    if (!error) {
+      if (error) {
+        toast.error(`Update failed: ${error.message}`)
+        return
+      }
+      // Updates the row in place — Array.prototype.map preserves position, so
+      // the row greys where it sits and does not move. It takes its sorted
+      // position on the next fetchMenu.
       setItems(prev => prev.map(i => i.id === item.id ? { ...i, is_available: newVal } : i))
+      toast.success(newVal ? 'Item available' : 'Item unavailable')
+    } finally {
+      setTogglingId(null)
     }
   }
 
@@ -111,7 +162,8 @@ export default function MenuTab({ restaurant }) {
                       </div>
                       <button
                         onClick={() => toggleAvailability(item)}
-                        className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${
+                        disabled={togglingId === item.id}
+                        className={`relative w-14 h-8 rounded-full transition-colors shrink-0 disabled:opacity-60 ${
                           item.is_available ? 'bg-[#16A34A]' : 'bg-gray-300'
                         }`}
                       >
