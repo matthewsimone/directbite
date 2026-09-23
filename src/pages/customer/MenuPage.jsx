@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useRef, useEffect, useCallback } from 'react'
+import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useRestaurant } from '../../hooks/useRestaurant'
@@ -95,7 +95,6 @@ export default function MenuPage() {
     stalled: menuStalled,
     failed: menuFailed,
     retry: menuRetry,
-    getItemsByCategory,
     getSizesForItem,
     getToppingGroupsForItem,
     getToppingsForGroup,
@@ -105,6 +104,40 @@ export default function MenuPage() {
   const { addItem, itemCount, subtotal } = useCart()
   const { isLoggedIn, loadProfile, loadSessionState } = useCustomerAuth()
   const reconcileRewardLine = useRewardLineReconcile()
+
+  // THE ONE PLACE unavailable items are hidden from the customer menu.
+  // menu_items.is_available === false means the kitchen has 86'd the item; it
+  // does not appear here at all. Everything the menu renders — tabs, sections,
+  // grids, the search empty-state — reads from this map, so there is exactly
+  // one is_available test on the browse path.
+  //
+  // NOT filtered in useMenu: `items` must stay whole. The ?item=ID deep link
+  // below looks an item up in it, and an unavailable item must still resolve so
+  // the modal opens and ItemModal.handleAdd refuses the Add — filtering upstream
+  // would turn that into a silent no-op instead. useMenu also feeds the three
+  // website SEO routes, which are a different surface and out of scope here.
+  //
+  // Category SCHEDULE availability (menu_categories.availability, migration 086)
+  // is deliberately absent from this map: a time-windowed category still renders
+  // with its greyed cards and "Only available ..." pill. Only the item boolean
+  // hides.
+  const visibleItemsByCategory = useMemo(() => {
+    const byCategory = new Map()
+    for (const item of items) {
+      if (!item.is_available) continue
+      if (!byCategory.has(item.category_id)) byCategory.set(item.category_id, [])
+      byCategory.get(item.category_id).push(item)
+    }
+    return byCategory
+  }, [items])
+
+  // A category with nothing left to show is dropped whole — tab, header and
+  // grid together. A tab that scrolls to an empty section is worse than the
+  // section simply not being there.
+  const visibleCategories = useMemo(
+    () => categories.filter(cat => (visibleItemsByCategory.get(cat.id)?.length ?? 0) > 0),
+    [categories, visibleItemsByCategory]
+  )
 
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState(null)
@@ -198,16 +231,17 @@ export default function MenuPage() {
     }
   }, [restaurant?.id, isLoggedIn, loadProfile])
 
-  // Set initial active category
+  // Set initial active category. Visible categories only — a hidden category
+  // has no tab to highlight and no section to scroll to.
   useEffect(() => {
-    if (categories.length > 0 && !activeCategory) {
-      setActiveCategory(categories[0].id)
+    if (visibleCategories.length > 0 && !activeCategory) {
+      setActiveCategory(visibleCategories[0].id)
     }
-  }, [categories, activeCategory])
+  }, [visibleCategories, activeCategory])
 
   // Scroll-based category tracking — pick the section closest to the top of the viewport
   useEffect(() => {
-    if (categories.length === 0) return
+    if (visibleCategories.length === 0) return
 
     function handleScroll() {
       // Suppressed during smooth-scroll-to-section so we don't flicker
@@ -217,7 +251,7 @@ export default function MenuPage() {
       let closest = null
       let closestDist = Infinity
 
-      for (const cat of categories) {
+      for (const cat of visibleCategories) {
         const el = sectionRefs.current[cat.id]
         if (!el) continue
         const top = el.getBoundingClientRect().top - offset
@@ -229,8 +263,8 @@ export default function MenuPage() {
       }
 
       // If no section has scrolled past the offset, use the first category
-      if (!closest && categories.length > 0) {
-        closest = categories[0].id
+      if (!closest && visibleCategories.length > 0) {
+        closest = visibleCategories[0].id
       }
 
       if (closest) setActiveCategory(closest)
@@ -252,7 +286,9 @@ export default function MenuPage() {
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('scrollend', handleScrollEnd)
     }
-  }, [categories, items])
+    // visibleCategories derives from both categories and items, so it alone is
+    // the correct dependency — it changes whenever either input does.
+  }, [visibleCategories])
 
   const handleCategorySelect = useCallback((categoryId) => {
     setActiveCategory(categoryId)
@@ -456,17 +492,19 @@ export default function MenuPage() {
             </div>
           )}
 
-          <CategoryTabs
-            categories={categories}
-            activeId={activeCategory}
-            onSelect={handleCategorySelect}
-          />
+          {visibleCategories.length > 0 && (
+            <CategoryTabs
+              categories={visibleCategories}
+              activeId={activeCategory}
+              onSelect={handleCategorySelect}
+            />
+          )}
           <MenuSearch value={searchQuery} onChange={setSearchQuery} />
 
           {/* Menu sections */}
           <div className="max-w-[1100px] mx-auto px-6 sm:px-8">
-            {categories.map(cat => {
-              const catItems = filterItems(getItemsByCategory(cat.id))
+            {visibleCategories.map(cat => {
+              const catItems = filterItems(visibleItemsByCategory.get(cat.id) || [])
               if (searchQuery && catItems.length === 0) return null
 
               // '' whenever the category is always available, so this doubles as
@@ -524,14 +562,11 @@ export default function MenuPage() {
                       />
                     ))}
                   </div>
-                  {catItems.length === 0 && !searchQuery && (
-                    <p className="text-gray-400 text-sm py-4">No items in this category yet.</p>
-                  )}
                 </section>
               )
             })}
 
-            {searchQuery && categories.every(cat => filterItems(getItemsByCategory(cat.id)).length === 0) && (
+            {searchQuery && visibleCategories.every(cat => filterItems(visibleItemsByCategory.get(cat.id) || []).length === 0) && (
               <p className="text-center text-gray-400 py-12">No items match "{searchQuery}"</p>
             )}
           </div>
