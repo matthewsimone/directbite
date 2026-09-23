@@ -3,8 +3,43 @@ import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
 
-const RESERVED_PATHS = ['home', 'checkout', 'confirmation', 'tablet', 'order', 'admin', 'privacy', 'terms', 'applepay-test', 'login']
+// 'menu', 'places' and 'tags' are live routes (App.jsx /:slug/menu, /places,
+// /tags; CustomDomainShell /menu, /places, /tags) and they OUT-RANK the
+// /:linkPath catch-all, so a link claiming one of those paths would silently
+// render the SEO page instead of itself. They matter more now that page links
+// exist, since "Menu" is the obvious label to reach for.
+//
+// 'sitemap.xml' and 'robots.txt' are deliberately absent: PATH_RE rejects dots,
+// so neither can ever be entered.
+const RESERVED_PATHS = ['home', 'checkout', 'confirmation', 'tablet', 'order', 'admin', 'privacy', 'terms', 'applepay-test', 'login', 'menu', 'places', 'tags']
 const PATH_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+// Absent type reads as 'pdf', absent/blank group as ungrouped — the same rules
+// the website side applies in pages/website/utils/websiteLinks.js. Duplicated
+// rather than imported: this is a tablet file, and the two are three lines
+// each; if the meaning of an absent key ever changes, change it in both.
+function typeOf(link) {
+  return link && link.type === 'page' ? 'page' : 'pdf'
+}
+function groupOf(link) {
+  return link && typeof link.group === 'string' ? link.group.trim() : ''
+}
+
+// Index of the nearest link in `dir` that shares list[i]'s group, or -1.
+// Reordering is per-group: the arrows move a link within its own dropdown and
+// leave every other group where it sits. Without this, a swap with a raw
+// adjacent element would move links ACROSS group boundaries — silently
+// re-grouping them, because grouping is derived from the `group` string and
+// the array order only decides position.
+function groupNeighborIndex(list, i, dir) {
+  const key = groupOf(list[i])
+  if (dir === 'up') {
+    for (let k = i - 1; k >= 0; k--) if (groupOf(list[k]) === key) return k
+  } else {
+    for (let k = i + 1; k < list.length; k++) if (groupOf(list[k]) === key) return k
+  }
+  return -1
+}
 
 function genId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
@@ -42,8 +77,8 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
     setLinks((prev) => {
       const i = prev.findIndex((l) => l.id === id)
       if (i < 0) return prev
-      const j = dir === 'up' ? i - 1 : i + 1
-      if (j < 0 || j >= prev.length) return prev
+      const j = groupNeighborIndex(prev, i, dir)
+      if (j < 0) return prev // no same-group neighbor that way — the arrow is disabled too
       const next = [...prev]
       ;[next[i], next[j]] = [next[j], next[i]]
       return next
@@ -54,7 +89,18 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
     for (const l of links) {
       const label = (l.label || '').trim()
       const path = (l.path || '').trim().toLowerCase()
-      if (!label || !path || !l.href) return 'Each link needs a label, a URL path, and an uploaded PDF.'
+      const type = typeOf(l)
+      const href = (l.href || '').trim()
+      const named = label || 'This link'
+      if (!label) return 'Each link needs a label.'
+      if (!path) return `"${named}" needs a URL path.`
+      // href is required for BOTH types, but it means different things: an
+      // uploaded PDF, or the internal route a page link opens.
+      if (type === 'pdf' && !href) return `"${named}" is a PDF link — upload a PDF for it.`
+      if (type === 'page') {
+        if (!href) return `"${named}" is a page link — enter the page it opens, like /menu.`
+        if (!href.startsWith('/')) return `"${named}" must open an internal path starting with "/" — for example /menu.`
+      }
       if (!PATH_RE.test(path)) return `Path "${path}" can only use lowercase letters, numbers, and hyphens.`
       if (RESERVED_PATHS.includes(path)) return `"${path}" is a reserved path — choose another.`
       if (seen.has(path)) return `Duplicate path "${path}". Each link needs a unique path.`
@@ -65,7 +111,21 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
   async function saveLinks() {
     const err = validate()
     if (err) { toast.error(err); return }
-    const clean = links.map((l) => ({ id: l.id, label: l.label.trim(), path: l.path.trim().toLowerCase(), href: l.href }))
+    // This rebuilds every element from a named whitelist on EVERY save, so a
+    // key missing here is stripped from rows that were previously fine — not
+    // just from the row being edited. type and group must be carried.
+    //
+    // Absence is written as absence: `type` is omitted when it is 'pdf' and
+    // `group` when it is blank, so a link with neither key round-trips to the
+    // exact same four-key object it is today.
+    const clean = links.map((l) => {
+      const type = typeOf(l)
+      const group = groupOf(l)
+      const out = { id: l.id, label: l.label.trim(), path: l.path.trim().toLowerCase(), href: (l.href || '').trim() }
+      if (type !== 'pdf') out.type = type
+      if (group) out.group = group
+      return out
+    })
     setSaving(true); setSaved(false)
     const { data, error } = await supabase.from('restaurants').update({ website_links: clean }).eq('id', restaurant.id).select().single()
     setSaving(false)
@@ -82,13 +142,24 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
       <p className="text-xs text-gray-400">Add PDF menus or info pages to your website navigation (e.g. Catering Menu, Lunch Specials).</p>
       {links.length === 0 && <p className="text-sm text-gray-400">No links yet.</p>}
       <div className="space-y-4">
-        {links.map((link, idx) => (
+        {links.map((link, idx) => {
+          const type = typeOf(link)
+          const group = groupOf(link)
+          // Arrows reorder WITHIN a group, so they are live only when this link
+          // has a same-group neighbor in that direction — not merely when it is
+          // off the ends of the array.
+          const canMoveUp = groupNeighborIndex(links, idx, 'up') >= 0
+          const canMoveDown = groupNeighborIndex(links, idx, 'down') >= 0
+          return (
           <div key={link.id} className="border border-gray-200 rounded-lg p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-400">Link {idx + 1}</span>
+              <span className="text-xs font-medium text-gray-400">
+                Link {idx + 1}
+                {group && <span className="ml-2 text-gray-400">· {group}</span>}
+              </span>
               <div className="flex items-center gap-1">
-                <button onClick={() => move(link.id, 'up')} disabled={idx === 0} className="px-2 py-1 text-gray-500 disabled:opacity-30" aria-label="Move up">↑</button>
-                <button onClick={() => move(link.id, 'down')} disabled={idx === links.length - 1} className="px-2 py-1 text-gray-500 disabled:opacity-30" aria-label="Move down">↓</button>
+                <button onClick={() => move(link.id, 'up')} disabled={!canMoveUp} className="px-2 py-1 text-gray-500 disabled:opacity-30" aria-label="Move up">↑</button>
+                <button onClick={() => move(link.id, 'down')} disabled={!canMoveDown} className="px-2 py-1 text-gray-500 disabled:opacity-30" aria-label="Move down">↓</button>
                 <button onClick={() => removeLink(link.id)} className="px-2 py-1 text-red-500 text-sm" aria-label="Remove">Remove</button>
               </div>
             </div>
@@ -105,11 +176,54 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
               <p className="text-xs text-gray-400 mt-1">Appears at {restaurant?.custom_domain || 'yoursite.com'}/{link.path || 'catering'}</p>
             </div>
             <div>
-              <label className="text-xs text-gray-400 mb-1 block">PDF</label>
-              <ImageUpload accept="pdf" maxSizeMB={10} currentImageUrl={link.href} bucketName="restaurant-files" storagePath={`${slug}/${link.id}.pdf`} onUpload={(url) => updateLink(link.id, { href: url })} placeholder={link.href ? 'Replace PDF' : 'Upload PDF'} />
+              <label className="text-xs text-gray-400 mb-1 block">Type</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'pdf', label: 'PDF' },
+                  { value: 'page', label: 'Page' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    // Switching type clears href: a storage URL is not an
+                    // internal path and vice versa, so carrying it across would
+                    // leave a value that passes neither validation.
+                    onClick={() => updateLink(link.id, { type: opt.value === 'pdf' ? undefined : 'page', href: '' })}
+                    className={`flex-1 h-11 rounded-lg text-sm font-medium border transition-colors ${
+                      type === opt.value
+                        ? 'bg-[#16A34A] text-white border-[#16A34A]'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                {type === 'pdf'
+                  ? 'Shows an uploaded PDF on its own page.'
+                  : 'Links straight to a page your site already has.'}
+              </p>
             </div>
+            <div>
+              <label className="text-xs text-gray-400 mb-1 block">Group</label>
+              <input type="text" value={link.group || ''} onChange={(e) => updateLink(link.id, { group: e.target.value })} placeholder="optional — links sharing a group become a dropdown" className="w-full h-11 px-3 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            {type === 'pdf' ? (
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">PDF</label>
+                <ImageUpload accept="pdf" maxSizeMB={10} currentImageUrl={link.href} bucketName="restaurant-files" storagePath={`${slug}/${link.id}.pdf`} onUpload={(url) => updateLink(link.id, { href: url })} placeholder={link.href ? 'Replace PDF' : 'Upload PDF'} />
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Opens</label>
+                <input type="text" value={link.href || ''} onChange={(e) => updateLink(link.id, { href: e.target.value })} placeholder="/menu" className="w-full h-11 px-3 border border-gray-300 rounded-lg text-sm" />
+                <p className="text-xs text-gray-400 mt-1">A page on this site, starting with “/” — for example /menu.</p>
+              </div>
+            )}
           </div>
-        ))}
+          )
+        })}
       </div>
       <button onClick={addLink} className="w-full h-11 border border-dashed border-gray-300 text-gray-600 font-medium rounded-xl hover:bg-gray-50 transition-colors">+ Add Link</button>
       <button onClick={saveLinks} disabled={saving} className="w-full h-12 bg-[#16A34A] text-white font-bold rounded-xl hover:bg-[#15803D] disabled:opacity-50 transition-colors">{saving ? 'Saving...' : saved ? 'Saved ✓' : 'Save'}</button>

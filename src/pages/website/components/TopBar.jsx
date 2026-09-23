@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import HoursModal from './HoursModal'
@@ -6,6 +6,7 @@ import OrderLink from './OrderLink'
 import { formatDisplayAddress } from '../utils/address'
 import { isMainDomain } from '../../../lib/customDomain'
 import { useLinkBase } from '../LinkBaseContext'
+import { groupWebsiteLinks, websiteLinkTarget } from '../utils/websiteLinks'
 
 const HERO_SHADOW = '[text-shadow:0_1px_2px_rgba(0,0,0,0.5)]'
 
@@ -34,6 +35,111 @@ function StatusPill({ isOpen, scrolled }) {
     >
       {isOpen ? 'OPEN' : 'CLOSED'}
     </span>
+  )
+}
+
+function Chevron({ className = '' }) {
+  return (
+    <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  )
+}
+
+// Desktop nav dropdown for one group.
+//
+// Opens on CLICK, not hover: hover alone is unreachable by keyboard and is a
+// trap on touch laptops, where the first tap would both open and immediately
+// follow. Closes on outside click and on Escape.
+//
+// The panel sets its OWN bg-white and text-gray-900 rather than inheriting
+// linkCls — linkCls carries textCls, which is white-with-text-shadow while the
+// bar is transparent over the hero. Inheriting it would paint white text on the
+// panel's white background.
+function NavDropdown({ name, links, base, linkCls }) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onPointerDown(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('touchstart', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('touchstart', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="true"
+        className={`${linkCls} inline-flex items-center gap-1`}
+      >
+        {name}
+        <Chevron className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-3 min-w-[13rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg z-50">
+          {links.map((link) => (
+            <Link
+              key={link.path}
+              to={websiteLinkTarget(link, base)}
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 hover:text-[var(--brand-color)] transition-colors"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Mobile drawer group — an inline expand, not a hover menu. The header toggles
+// its children in place and deliberately does NOT call onClose: closing the
+// whole drawer on the way to opening a submenu would make the group unusable.
+// Only the leaf links close it.
+function MobileNavGroup({ name, links, base, onClose }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
+      >
+        <span>{name}</span>
+        <Chevron className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="pl-4 pb-1">
+          {links.map((link) => (
+            <Link
+              key={link.path}
+              to={websiteLinkTarget(link, base)}
+              onClick={onClose}
+              className="block py-2.5 text-xl font-semibold uppercase tracking-wide text-gray-700"
+            >
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -91,17 +197,26 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
         >
           Menu
         </Link>
-        {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&
-          restaurant.website_links.map(link => (
+        {groupWebsiteLinks(restaurant.website_links).map(entry =>
+          entry.kind === 'group' ? (
+            <MobileNavGroup
+              key={`group-${entry.name}`}
+              name={entry.name}
+              links={entry.links}
+              base={base}
+              onClose={onClose}
+            />
+          ) : (
             <Link
-              key={link.path}
-              to={`${base}/${link.path}`}
+              key={entry.link.path}
+              to={websiteLinkTarget(entry.link, base)}
               onClick={onClose}
               className="block py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
             >
-              {link.label}
+              {entry.link.label}
             </Link>
-          ))}
+          )
+        )}
         <button
           onClick={() => { onClose(); onOpenHours() }}
           className="block w-full text-left py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
@@ -208,16 +323,25 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, 
             <Link to={`${base}/menu`} className={linkCls}>
               Menu
             </Link>
-            {Array.isArray(restaurant.website_links) && restaurant.website_links.length > 0 &&
-              restaurant.website_links.map(link => (
+            {groupWebsiteLinks(restaurant.website_links).map(entry =>
+              entry.kind === 'group' ? (
+                <NavDropdown
+                  key={`group-${entry.name}`}
+                  name={entry.name}
+                  links={entry.links}
+                  base={base}
+                  linkCls={linkCls}
+                />
+              ) : (
                 <Link
-                  key={link.path}
-                  to={`${base}/${link.path}`}
+                  key={entry.link.path}
+                  to={websiteLinkTarget(entry.link, base)}
                   className={linkCls}
                 >
-                  {link.label}
+                  {entry.link.label}
                 </Link>
-              ))}
+              )
+            )}
             <button onClick={openHoursModal} className={linkCls}>
               Hours
             </button>
