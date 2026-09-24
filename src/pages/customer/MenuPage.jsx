@@ -391,6 +391,36 @@ export default function MenuPage() {
     if (match) setSelectedItem(match)
   }, [menuLoading, items])
 
+  // Deep-link: /:slug?category=ID lands the customer on that category's
+  // section, so a website nav link can point at part of the menu. The FULL menu
+  // still renders — this is a scroll position, not a filter.
+  //
+  // Reuses handleCategorySelect rather than re-implementing the scroll: that
+  // also sets the active tab and arms the programmatic-scroll suppression, so
+  // the scroll-spy does not flicker through every section on the way down.
+  //
+  // Fires once. The deps alone are not enough — useMenu refetches on
+  // visibilitychange, so without the ref every return to the tab would yank the
+  // page back to the section long after the customer had scrolled elsewhere.
+  const categoryDeepLinkApplied = useRef(false)
+  useEffect(() => {
+    if (categoryDeepLinkApplied.current) return
+    if (menuLoading || visibleCategories.length === 0) return
+    categoryDeepLinkApplied.current = true
+
+    const categoryId = new URLSearchParams(window.location.search).get('category')
+    if (!categoryId) return
+    // Deleted, renamed away, or hidden because every item in it is
+    // unavailable: do nothing at all. No toast, no error — the customer simply
+    // lands at the top of the menu, which is where they would have landed
+    // without the parameter. A stale link degrades to an ordinary menu visit.
+    if (!visibleCategories.some(c => c.id === categoryId)) return
+
+    // Queued after the scroll-to-top effect above, which also uses rAF, so this
+    // runs second and its scroll is the one that survives.
+    requestAnimationFrame(() => handleCategorySelect(categoryId))
+  }, [menuLoading, visibleCategories, handleCategorySelect])
+
   // Restaurant fetch hit the 10s hard deadline (network stall) — we don't know
   // whether the restaurant exists, so offer a retry rather than a misleading
   // "not found". Only reachable when the restaurant never loaded.

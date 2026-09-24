@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import ImageUpload from '../../components/ImageUpload'
@@ -19,7 +19,8 @@ const PATH_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 // rather than imported: this is a tablet file, and the two are three lines
 // each; if the meaning of an absent key ever changes, change it in both.
 function typeOf(link) {
-  return link && link.type === 'page' ? 'page' : 'pdf'
+  const raw = link && typeof link.type === 'string' ? link.type : ''
+  return raw === 'page' || raw === 'category' ? raw : 'pdf'
 }
 function groupOf(link) {
   return link && typeof link.group === 'string' ? link.group.trim() : ''
@@ -55,6 +56,30 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const slug = restaurant?.slug
+
+  // Menu categories, for the picker a 'category' link shows instead of an
+  // upload. Fetched once per restaurant — nothing else on this screen needs
+  // them, and they are small (id + name). A failed load leaves the list empty,
+  // which the picker reports rather than silently offering no options.
+  const [categories, setCategories] = useState([])
+  useEffect(() => {
+    if (!restaurant?.id) return
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase
+        .from('menu_categories')
+        .select('id, name')
+        .eq('restaurant_id', restaurant.id)
+        .order('sort_order')
+      if (cancelled) return
+      if (error) {
+        console.error('[WebsiteLinksEditor] category load failed', error.message)
+        return
+      }
+      setCategories(data || [])
+    })()
+    return () => { cancelled = true }
+  }, [restaurant?.id])
 
   function updateLink(id, patch) {
     setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
@@ -101,6 +126,7 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
         if (!href) return `"${named}" is a page link — enter the page it opens, like /menu.`
         if (!href.startsWith('/')) return `"${named}" must open an internal path starting with "/" — for example /menu.`
       }
+      if (type === 'category' && !href) return `"${named}" is a category link — choose the menu category it opens.`
       if (!PATH_RE.test(path)) return `Path "${path}" can only use lowercase letters, numbers, and hyphens.`
       if (RESERVED_PATHS.includes(path)) return `"${path}" is a reserved path — choose another.`
       if (seen.has(path)) return `Duplicate path "${path}". Each link needs a unique path.`
@@ -181,6 +207,7 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
                 {[
                   { value: 'pdf', label: 'PDF' },
                   { value: 'page', label: 'Page' },
+                  { value: 'category', label: 'Category' },
                 ].map((opt) => (
                   <button
                     key={opt.value}
@@ -188,7 +215,7 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
                     // Switching type clears href: a storage URL is not an
                     // internal path and vice versa, so carrying it across would
                     // leave a value that passes neither validation.
-                    onClick={() => updateLink(link.id, { type: opt.value === 'pdf' ? undefined : 'page', href: '' })}
+                    onClick={() => updateLink(link.id, { type: opt.value === 'pdf' ? undefined : opt.value, href: '' })}
                     className={`flex-1 h-11 rounded-lg text-sm font-medium border transition-colors ${
                       type === opt.value
                         ? 'bg-[#16A34A] text-white border-[#16A34A]'
@@ -200,25 +227,52 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
                 ))}
               </div>
               <p className="text-xs text-gray-400 mt-1">
-                {type === 'pdf'
-                  ? 'Shows an uploaded PDF on its own page.'
-                  : 'Links straight to a page your site already has.'}
+                {type === 'pdf' && 'Shows an uploaded PDF on its own page.'}
+                {type === 'page' && 'Links straight to a page your site already has.'}
+                {type === 'category' && 'Opens the ordering menu at this category.'}
               </p>
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Group</label>
               <input type="text" value={link.group || ''} onChange={(e) => updateLink(link.id, { group: e.target.value })} placeholder="optional — links sharing a group become a dropdown" className="w-full h-11 px-3 border border-gray-300 rounded-lg text-sm" />
             </div>
-            {type === 'pdf' ? (
+            {type === 'pdf' && (
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">PDF</label>
                 <ImageUpload accept="pdf" maxSizeMB={10} currentImageUrl={link.href} bucketName="restaurant-files" storagePath={`${slug}/${link.id}.pdf`} onUpload={(url) => updateLink(link.id, { href: url })} placeholder={link.href ? 'Replace PDF' : 'Upload PDF'} />
               </div>
-            ) : (
+            )}
+            {type === 'page' && (
               <div>
                 <label className="text-xs text-gray-400 mb-1 block">Opens</label>
                 <input type="text" value={link.href || ''} onChange={(e) => updateLink(link.id, { href: e.target.value })} placeholder="/menu" className="w-full h-11 px-3 border border-gray-300 rounded-lg text-sm" />
                 <p className="text-xs text-gray-400 mt-1">A page on this site, starting with “/” — for example /menu.</p>
+              </div>
+            )}
+            {type === 'category' && (
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Category</label>
+                <select
+                  value={link.href || ''}
+                  onChange={(e) => updateLink(link.id, { href: e.target.value })}
+                  className="w-full h-11 px-3 border border-gray-300 rounded-lg text-sm bg-white"
+                >
+                  <option value="">Choose a category…</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                  {/* A category saved earlier and since deleted would otherwise
+                      vanish from the select, silently resetting the link to
+                      blank on the next save. Keep it visible and named. */}
+                  {link.href && !categories.some((c) => c.id === link.href) && (
+                    <option value={link.href}>Category no longer on the menu</option>
+                  )}
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  {categories.length === 0
+                    ? 'No menu categories found for this restaurant.'
+                    : 'Opens the ordering menu scrolled to this category.'}
+                </p>
               </div>
             )}
           </div>

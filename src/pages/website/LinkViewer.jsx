@@ -121,13 +121,17 @@ export default function LinkViewer({ restaurant: propRestaurant, hours: propHour
 
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
   const link = (restaurant.website_links || []).find(l => l.path === linkPath)
-  // A 'page' link points at a route that already exists, and the nav links
-  // straight there — this viewer is never its destination. If one arrives here
-  // anyway (hand-typed URL, an old bookmark, a path left behind after the type
-  // was switched), fall through to the not-found body below: its href is a
-  // route path, not a PDF, so PdfPages would fail to parse it and the Download
-  // button would offer a file that does not exist.
-  const pdfLink = link && link.type !== 'page' ? link : null
+  // Only a PDF link has a body to render here. A 'page' link points at a route
+  // that already exists and a 'category' link opens the ordering menu — the nav
+  // links straight to both, so this viewer is never their destination. If one
+  // arrives anyway (hand-typed URL, an old bookmark, a path left behind after
+  // the type was switched), fall through to the not-found body below: its href
+  // is a route path or a category id, not a PDF, so PdfPages would fail to
+  // parse it and the Download button would offer a file that does not exist.
+  //
+  // Tested as "absent or exactly 'pdf'" rather than "not 'page'", so any type
+  // added later is excluded here by default instead of reaching PdfPages.
+  const pdfLink = link && (!link.type || link.type === 'pdf') ? link : null
   const homeHref = isMainDomain() ? `/${restaurant.slug}/home` : '/'
 
   return (

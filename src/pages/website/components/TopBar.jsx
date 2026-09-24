@@ -6,7 +6,7 @@ import OrderLink from './OrderLink'
 import { formatDisplayAddress } from '../utils/address'
 import { isMainDomain } from '../../../lib/customDomain'
 import { useLinkBase } from '../LinkBaseContext'
-import { groupWebsiteLinks, websiteLinkTarget } from '../utils/websiteLinks'
+import { groupWebsiteLinks, websiteLinkTarget, isExternalTarget } from '../utils/websiteLinks'
 
 const HERO_SHADOW = '[text-shadow:0_1px_2px_rgba(0,0,0,0.5)]'
 
@@ -38,6 +38,20 @@ function StatusPill({ isOpen, scrolled }) {
   )
 }
 
+// A nav destination that may or may not be in this app.
+//
+// pdf and page links stay relative and keep react-router's client-side nav. A
+// category link opens the ordering page, which lives on the MAIN domain — from
+// a custom-domain site that is an absolute cross-origin URL, and handing that
+// to <Link> is not a navigation react-router owns. Same split OrderLink makes
+// for the Order button, applied to whichever entries need it.
+function NavTarget({ to, children, ...rest }) {
+  if (isExternalTarget(to)) {
+    return <a href={to} {...rest}>{children}</a>
+  }
+  return <Link to={to} {...rest}>{children}</Link>
+}
+
 function Chevron({ className = '' }) {
   return (
     <svg className={className} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -56,7 +70,7 @@ function Chevron({ className = '' }) {
 // linkCls — linkCls carries textCls, which is white-with-text-shadow while the
 // bar is transparent over the hero. Inheriting it would paint white text on the
 // panel's white background.
-function NavDropdown({ name, links, base, linkCls }) {
+function NavDropdown({ name, links, base, slug, linkCls }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
 
@@ -93,14 +107,14 @@ function NavDropdown({ name, links, base, linkCls }) {
       {open && (
         <div className="absolute right-0 top-full mt-3 min-w-[13rem] rounded-xl border border-gray-200 bg-white py-1 shadow-lg z-50">
           {links.map((link) => (
-            <Link
+            <NavTarget
               key={link.path}
-              to={websiteLinkTarget(link, base)}
+              to={websiteLinkTarget(link, base, slug)}
               onClick={() => setOpen(false)}
               className="block px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 hover:text-[var(--brand-color)] transition-colors"
             >
               {link.label}
-            </Link>
+            </NavTarget>
           ))}
         </div>
       )}
@@ -112,7 +126,7 @@ function NavDropdown({ name, links, base, linkCls }) {
 // its children in place and deliberately does NOT call onClose: closing the
 // whole drawer on the way to opening a submenu would make the group unusable.
 // Only the leaf links close it.
-function MobileNavGroup({ name, links, base, onClose }) {
+function MobileNavGroup({ name, links, base, slug, onClose }) {
   const [open, setOpen] = useState(false)
   return (
     <div>
@@ -128,14 +142,14 @@ function MobileNavGroup({ name, links, base, onClose }) {
       {open && (
         <div className="pl-4 pb-1">
           {links.map((link) => (
-            <Link
+            <NavTarget
               key={link.path}
-              to={websiteLinkTarget(link, base)}
+              to={websiteLinkTarget(link, base, slug)}
               onClick={onClose}
               className="block py-2.5 text-xl font-semibold uppercase tracking-wide text-gray-700"
             >
               {link.label}
-            </Link>
+            </NavTarget>
           ))}
         </div>
       )}
@@ -204,17 +218,18 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
               name={entry.name}
               links={entry.links}
               base={base}
+              slug={restaurant.slug}
               onClose={onClose}
             />
           ) : (
-            <Link
+            <NavTarget
               key={entry.link.path}
-              to={websiteLinkTarget(entry.link, base)}
+              to={websiteLinkTarget(entry.link, base, restaurant.slug)}
               onClick={onClose}
               className="block py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
             >
               {entry.link.label}
-            </Link>
+            </NavTarget>
           )
         )}
         <button
@@ -330,16 +345,17 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, 
                   name={entry.name}
                   links={entry.links}
                   base={base}
+                  slug={restaurant.slug}
                   linkCls={linkCls}
                 />
               ) : (
-                <Link
+                <NavTarget
                   key={entry.link.path}
-                  to={websiteLinkTarget(entry.link, base)}
+                  to={websiteLinkTarget(entry.link, base, restaurant.slug)}
                   className={linkCls}
                 >
                   {entry.link.label}
-                </Link>
+                </NavTarget>
               )
             )}
             <button onClick={openHoursModal} className={linkCls}>
