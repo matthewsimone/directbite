@@ -4,7 +4,7 @@
 //
 // An element is { id, label, path, href } plus two OPTIONAL keys:
 //
-//   type   'pdf' | 'page'   absent = 'pdf'
+//   type   'pdf' | 'page' | 'category'   absent = 'pdf'
 //   group  string           absent/blank = not grouped (a flat nav link)
 //
 // Absence is the default in both cases, and the editor writes absence as
@@ -16,12 +16,19 @@
 // A 'pdf' link's href is an uploaded PDF in Supabase Storage, and its `path`
 // is a route LinkViewer renders it at. A 'page' link's href is an INTERNAL
 // route that already exists (e.g. '/menu'); the nav links straight there and
-// LinkViewer is never its destination.
+// LinkViewer is never its destination. A 'category' link's href is a
+// menu_categories.id, and it opens the ORDERING page scrolled to that section —
+// the whole menu still renders, only the landing position differs.
+
+import { getOrderUrl } from '../../../lib/customDomain'
 
 // Absent, unknown, or malformed type reads as 'pdf' — the value every existing
-// row has by omission.
+// row has by omission. An unrecognised string falls back to 'pdf' too, so a
+// future type written by a newer client degrades to today's behavior rather
+// than rendering nothing.
 export function linkType(link) {
-  return link && link.type === 'page' ? 'page' : 'pdf'
+  const raw = link && typeof link.type === 'string' ? link.type : ''
+  return raw === 'page' || raw === 'category' ? raw : 'pdf'
 }
 
 // Normalized group name, or '' for "not grouped". Whitespace-only is blank:
@@ -32,18 +39,42 @@ export function linkGroup(link) {
 }
 
 // Where a nav entry for this link should point, given the site's link base
-// (`/${slug}` on the main domain, '' on a custom domain).
+// (`/${slug}` on the main domain, '' on a custom domain) and the restaurant's
+// slug (needed only by category links — see below).
 //
 // A page link's href is already a route path, so it is appended to the base as
 // written; a leading slash is added if the operator omitted one. A pdf link
-// keeps today's `${base}/${path}` target, which LinkViewer serves.
-export function websiteLinkTarget(link, base) {
-  if (linkType(link) === 'page') {
-    const href = link && typeof link.href === 'string' ? link.href.trim() : ''
+// keeps today's `${base}/${path}` target, which LinkViewer serves. Both stay
+// relative and are navigated by react-router.
+//
+// A category link is the one that leaves the website: ordering lives on the
+// MAIN domain, so from a custom-domain site this has to cross origins. That is
+// exactly what getOrderUrl already decides for every Order button on the site,
+// so it is reused rather than rebuilt here — it returns a relative path on the
+// main domain and an absolute https URL on a custom domain. `base` cannot
+// stand in for the slug, because base is '' on a custom domain.
+//
+// Callers must therefore test the result with isExternalTarget before choosing
+// between <Link> and <a>.
+export function websiteLinkTarget(link, base, slug) {
+  const type = linkType(link)
+  const href = link && typeof link.href === 'string' ? link.href.trim() : ''
+
+  if (type === 'category') {
+    return getOrderUrl(slug, `?category=${encodeURIComponent(href)}`)
+  }
+  if (type === 'page') {
     const path = href.startsWith('/') ? href : `/${href}`
     return `${base}${path}`
   }
   return `${base}/${link.path}`
+}
+
+// True when a target crosses origins and must be rendered as a plain <a>.
+// react-router's <Link> is for in-app paths; handing it an absolute URL to
+// another host is not a navigation it owns. Mirrors the split OrderLink makes.
+export function isExternalTarget(target) {
+  return typeof target === 'string' && /^https?:\/\//i.test(target)
 }
 
 /**
