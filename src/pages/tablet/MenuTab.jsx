@@ -132,7 +132,15 @@ export default function MenuTab({ restaurant }) {
 
   return (
     <div className="h-full overflow-y-auto p-4 space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Sticky so the 8-item limit stays visible while scrolling a long menu —
+          with the Feature toggle now on every row, the limit is much easier to
+          hit from far down the list.
+
+          The negative margins cancel the scroll container's p-4 and the padding
+          puts it back inside this element, so the bar spans the full width and
+          leaves no transparent strip above or beside it for rows to show
+          through as they scroll under. bg-white and z-10 do the covering. */}
+      <div className="sticky top-0 z-10 -mx-4 -mt-4 px-4 pt-4 pb-3 bg-white border-b border-gray-200 flex items-center justify-between">
         <p className="text-xs text-gray-500">Featured on website: <span className="font-semibold text-gray-700">{featuredCount} / {FEATURED_LIMIT}</span></p>
       </div>
       {categories.length === 0 ? (
@@ -153,41 +161,65 @@ export default function MenuTab({ restaurant }) {
                       !item.is_available ? 'opacity-40' : ''
                     }`}
                   >
-                    <div className="flex items-center justify-between">
+                    {/* items-start, not items-center: with a two- or three-line
+                        description the left block is tall, and centring floats
+                        the toggles halfway down it, away from the name they act
+                        on. A row with no description is unchanged either way. */}
+                    <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0 mr-4">
-                        <p className="font-medium text-base truncate">{item.name}</p>
+                        {/* No truncate, and no line-clamp on the description
+                            below it. The operator finds items with the
+                            browser's own Ctrl+F: clipped text is still in the
+                            DOM and still matches, but she lands on a result she
+                            cannot read and cannot confirm. Full text wraps. */}
+                        <p className="font-medium text-base">{item.name}</p>
+                        {item.description && (
+                          <p className="text-xs text-gray-500 mt-0.5">{item.description}</p>
+                        )}
                         {getMinPrice(item) && (
                           <p className="text-sm text-gray-500">{getMinPrice(item)}{item.item_sizes?.length > 1 ? '+' : ''}</p>
                         )}
                       </div>
-                      <button
-                        onClick={() => toggleAvailability(item)}
-                        disabled={togglingId === item.id}
-                        className={`relative w-14 h-8 rounded-full transition-colors shrink-0 disabled:opacity-60 ${
-                          item.is_available ? 'bg-[#16A34A]' : 'bg-gray-300'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
-                            item.is_available ? 'left-7' : 'left-1'
+                      {/* Both toggles on one line — the separate bordered
+                          Feature band below the row is gone, which is ~45px of
+                          height back per item across a long menu.
+
+                          They are told apart by size and by the label: the
+                          featured toggle is smaller (w-12 h-7) and captioned,
+                          availability is larger (w-14 h-8) and bare on the far
+                          right, where it has always been. Labelling both, or
+                          matching their sizes, is what would make them easy to
+                          confuse. */}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-400">Feature</span>
+                          <button
+                            onClick={() => toggleFeatured(item)}
+                            className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${
+                              item.featured_on_website ? 'bg-[#16A34A]' : 'bg-gray-300'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                                item.featured_on_website ? 'left-5.5' : 'left-0.5'
+                              }`}
+                            />
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => toggleAvailability(item)}
+                          disabled={togglingId === item.id}
+                          className={`relative w-14 h-8 rounded-full transition-colors shrink-0 disabled:opacity-60 ${
+                            item.is_available ? 'bg-[#16A34A]' : 'bg-gray-300'
                           }`}
-                        />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                      <span className="text-xs text-gray-500">Feature on Website</span>
-                      <button
-                        onClick={() => toggleFeatured(item)}
-                        className={`relative w-12 h-7 rounded-full transition-colors shrink-0 ${
-                          item.featured_on_website ? 'bg-[#16A34A]' : 'bg-gray-300'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${
-                            item.featured_on_website ? 'left-5.5' : 'left-0.5'
-                          }`}
-                        />
-                      </button>
+                        >
+                          <span
+                            className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                              item.is_available ? 'left-7' : 'left-1'
+                            }`}
+                          />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
