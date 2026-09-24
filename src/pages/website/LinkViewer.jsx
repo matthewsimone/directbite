@@ -121,13 +121,20 @@ export default function LinkViewer({ restaurant: propRestaurant, hours: propHour
 
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
   const link = (restaurant.website_links || []).find(l => l.path === linkPath)
+  // A 'page' link points at a route that already exists, and the nav links
+  // straight there — this viewer is never its destination. If one arrives here
+  // anyway (hand-typed URL, an old bookmark, a path left behind after the type
+  // was switched), fall through to the not-found body below: its href is a
+  // route path, not a PDF, so PdfPages would fail to parse it and the Download
+  // button would offer a file that does not exist.
+  const pdfLink = link && link.type !== 'page' ? link : null
   const homeHref = isMainDomain() ? `/${restaurant.slug}/home` : '/'
 
   return (
     <div className="min-h-dvh bg-white flex flex-col" style={{ '--brand-color': brandColor }}>
       <TopBar restaurant={restaurant} status={status} hours={hours} solid />
 
-      {!link ? (
+      {!pdfLink ? (
         <main className="flex-1 max-w-[900px] mx-auto w-full px-4 py-16 text-center">
           <h1 className="text-2xl font-bold text-gray-900 mb-3">Page not found</h1>
           <p className="text-gray-600 mb-6">This link doesn’t exist or may have been removed.</p>
@@ -138,9 +145,9 @@ export default function LinkViewer({ restaurant: propRestaurant, hours: propHour
       ) : (
         <main className="flex-1 max-w-[900px] mx-auto w-full px-4 py-8">
           <div className="flex items-center justify-between gap-4 mb-6">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{link.label}</h1>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">{pdfLink.label}</h1>
             <a
-              href={link.href}
+              href={pdfLink.href}
               download
               className="shrink-0 px-4 h-10 inline-flex items-center rounded-lg text-white font-semibold text-sm"
               style={{ backgroundColor: 'var(--brand-color)' }}
@@ -148,7 +155,7 @@ export default function LinkViewer({ restaurant: propRestaurant, hours: propHour
               Download PDF
             </a>
           </div>
-          <PdfPages key={link.href} url={link.href} />
+          <PdfPages key={pdfLink.href} url={pdfLink.href} />
         </main>
       )}
 
