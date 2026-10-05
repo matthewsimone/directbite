@@ -66,6 +66,15 @@ verify_jwt = false
 [functions.kh-webhook]
 verify_jwt = false
 
+# kh-backstop — scheduled every 2 min by pg_cron + pg_net. Re-sends KitchenHub
+# orders the webhook missed through kh-webhook. Authenticated by a static
+# x-ordr-cron-secret header compared constant-time against KH_BACKSTOP_SECRET;
+# pg_net carries no Supabase JWT, so platform JWT verification would 401 every
+# run before our code executes.
+
+[functions.kh-backstop]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Internal callees
