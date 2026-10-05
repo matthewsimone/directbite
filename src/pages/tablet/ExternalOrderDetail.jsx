@@ -5,6 +5,7 @@ import { formatPhone } from '../../utils/format'
 import { providerDisplay, dspOrderNumber } from '../../utils/dspProvider'
 import { printExternalOrder } from '../../utils/epsonPrint'
 import { writeExternalPrintResult } from '../../utils/externalPrintStatus'
+import { formatScheduledLabel } from '../../utils/scheduling'
 
 // DSP order detail. Full-screen overlay matching OrderDetail's frame.
 // Actions go to KitchenHub through the kh-order-action edge function:
@@ -163,6 +164,10 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
   const hasPrinter = !!restaurant?.printer_ip
   const provider = providerDisplay(order)
   const defaultPrepMinutes = restaurant?.estimated_pickup_minutes || 30
+  // Scheduled DSP orders (scheduled_for is only stored when asap === false)
+  // accept without a prep-time choice. KitchenHub still requires prep_time on
+  // every accept, so the restaurant's pickup estimate is sent as cooking time.
+  const isScheduled = !!order.scheduled_for
 
   useEffect(() => {
     if (!showOptions) return
@@ -291,14 +296,14 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
 
         {order.scheduled_for && (
           <div className="bg-amber-100 border border-amber-300 rounded-xl px-4 py-3">
-            <p className="text-base font-semibold text-amber-900">Scheduled for: {formatTime(order.scheduled_for)}</p>
+            <p className="text-base font-semibold text-amber-900">Scheduled for: {formatScheduledLabel(order.scheduled_for)}</p>
           </div>
         )}
 
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Customer</h3>
           <p className="text-lg font-medium">{order.customer_name || '—'}</p>
-          {order.customer_phone && <p className="text-lg text-gray-700">{order.customer_phone}</p>}
+          {order.customer_phone && <p className="text-lg text-gray-700">{formatPhone(order.customer_phone)}</p>}
         </div>
 
         {String(order.order_type || '').toLowerCase().includes('delivery') && (
@@ -373,20 +378,25 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
           </div>
         ) : showOptions ? (
           <div className="bg-gray-50 p-4 rounded-xl space-y-3">
-            <p className="font-semibold text-gray-800">Ready in</p>
-            <div className="max-h-[18rem] overflow-y-auto space-y-2 -mx-1 px-1">
-              {PICKUP_LADDER.map(min => (
-                <button
-                  key={min}
-                  onClick={() => runAction('accept', min)}
-                  disabled={!!acting}
-                  className="w-full h-14 rounded-xl border-2 border-gray-300 bg-white active:bg-gray-100 disabled:opacity-50 flex items-center justify-between px-5"
-                >
-                  <span className="text-base font-bold text-gray-900">{min} min</span>
-                  <span className="text-sm text-gray-500">{formatClock(nowTick + min * 60000)}</span>
-                </button>
-              ))}
-            </div>
+            {/* Scheduled orders have no prep-time choice: the sheet only offers Cancel / Back. */}
+            {!isScheduled && (
+              <>
+                <p className="font-semibold text-gray-800">Ready in</p>
+                <div className="max-h-[18rem] overflow-y-auto space-y-2 -mx-1 px-1">
+                  {PICKUP_LADDER.map(min => (
+                    <button
+                      key={min}
+                      onClick={() => runAction('accept', min)}
+                      disabled={!!acting}
+                      className="w-full h-14 rounded-xl border-2 border-gray-300 bg-white active:bg-gray-100 disabled:opacity-50 flex items-center justify-between px-5"
+                    >
+                      <span className="text-base font-bold text-gray-900">{min} min</span>
+                      <span className="text-sm text-gray-500">{formatClock(nowTick + min * 60000)}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
             <button
               onClick={() => setShowCancelConfirm(true)}
               disabled={!!acting}
@@ -412,13 +422,23 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
             >
               MORE OPTIONS
             </button>
-            <button
-              onClick={() => runAction('accept', defaultPrepMinutes)}
-              disabled={!!acting}
-              className="basis-[50%] h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
-            >
-              {acting === 'accept' ? 'CONFIRMING…' : `Confirm ${defaultPrepMinutes} min`}
-            </button>
+            {isScheduled ? (
+              <button
+                onClick={() => runAction('accept', defaultPrepMinutes)}
+                disabled={!!acting}
+                className="basis-[50%] h-14 rounded-xl bg-amber-500 text-white font-bold text-sm leading-tight px-2 disabled:opacity-50"
+              >
+                {acting === 'accept' ? 'ACCEPTING…' : `Accept (scheduled ${formatScheduledLabel(order.scheduled_for)})`}
+              </button>
+            ) : (
+              <button
+                onClick={() => runAction('accept', defaultPrepMinutes)}
+                disabled={!!acting}
+                className="basis-[50%] h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
+              >
+                {acting === 'accept' ? 'CONFIRMING…' : `Confirm ${defaultPrepMinutes} min`}
+              </button>
+            )}
           </div>
         ) : order.status === 'accepted' ? (
           <div className="flex gap-3">
