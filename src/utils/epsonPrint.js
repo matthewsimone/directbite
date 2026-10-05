@@ -3,6 +3,8 @@
 // TM-M30 80mm paper = 48 characters wide
 
 import { formatPhone } from './format'
+import { toPrinterAscii as A } from './printerAscii'
+import { providerDisplay } from './dspProvider'
 
 const W = 48
 const DW = W / 2 // double-width chars per line at 2x size = 24
@@ -579,6 +581,296 @@ async function _printOrder(printerIp, order, rest, copies = 1) {
       })
     } catch (err) {
       console.error('[EpsonPrint] Fatal error:', err)
+      resolve({ success: false, message: `Print error: ${err.message}`, code: null, status: null })
+    }
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DSP (KitchenHub) kitchen ticket. Separate builder + transport so the Ordr
+// ticket path above stays byte-identical. Shares printChain (one TM-M30
+// connection at a time) and asbFaultReason (phantom-success detection).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// "10/5 7:42 PM" in America/New_York — same pinning rationale as fmtScheduledForReceipt.
+function fmtPlacedNY(isoString) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(new Date(isoString)).replace(',', '')
+}
+
+// Provider charge value → "$x.xx" as given (no recomputation), or null when
+// absent. A non-numeric string prints sanitized rather than as $NaN.
+function chargeStr(v) {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? fmt(n) : A(v)
+}
+const isNonZero = v => v != null && v !== '' && Number(v) !== 0
+
+// Discount always reads as a deduction: a positive provider value prints as
+// -$x.xx, an already-negative one keeps its sign (also as -$x.xx).
+function discountStr(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? `-${fmt(Math.abs(n))}` : chargeStr(v)
+}
+
+// Prints `text` after `lead`, wrapping within width with a hanging indent.
+function addWrapped(printer, lead, text, width) {
+  const lines = wrapText(text, width - lead.length)
+  lines.forEach((l, i) => printer.addText((i === 0 ? lead : ' '.repeat(lead.length)) + l + '\n'))
+}
+
+// "  + <modifier>: <name>" per option; nested options indent 2 more spaces per
+// level. modifier_name is never dropped (it carries half placement, e.g.
+// "Left Half") unless the option name already starts with it.
+function addOptionLines(printer, options, depth) {
+  if (!Array.isArray(options)) return
+  for (const op of options) {
+    const name = A(op?.name)
+    if (name) {
+      const q = Number(op?.quantity) || 1
+      const mod = A(op?.modifier_name)
+      const label = mod && !name.toLowerCase().startsWith(mod.toLowerCase()) ? `${mod}: ${name}` : name
+      addWrapped(printer, ' '.repeat(2 + 2 * depth) + '+ ', (q > 1 ? `${q}x ` : '') + label, W)
+    }
+    addOptionLines(printer, op?.options, depth + 1)
+  }
+}
+
+// Builds ONE DSP kitchen ticket into the printer buffer (incl. feed + cut).
+// Every dynamic value goes through A() before it is composed into a line.
+function addExternalTicket(printer, order, rest) {
+  const sep = '-'.repeat(W)
+  const eqLine = '='.repeat(W)
+  const dotSep = '- '.repeat(W / 2)
+  const C = printer.ALIGN_CENTER
+  const L = printer.ALIGN_LEFT
+  const bold = (on) => printer.addTextStyle(false, false, on, printer.COLOR_1)
+  const provider = providerDisplay(order)
+  const providerLabel = A(provider.label)
+  const charges = order.charges && typeof order.charges === 'object' ? order.charges : {}
+
+  // ── 1. PROVIDER + RESTAURANT + ORDER # ──
+  printer.addTextAlign(C)
+  bold(true)
+  printer.addTextSize(2, 2)
+  for (const l of wrapText(providerLabel, DW)) printer.addText(l + '\n')
+  printer.addTextSize(1, 1)
+  bold(false)
+  for (const l of wrapText(A(rest?.name), W)) printer.addText(l + '\n')
+  printer.addText('\n')
+  bold(true)
+  printer.addTextSize(2, 2)
+  printer.addText(`#${A(order.order_number ?? order.daily_number ?? '')}\n`)
+  printer.addTextSize(1, 1)
+  bold(false)
+
+  // ── 1b. FUTURE ORDER BANNER (same style as the Ordr ticket) ──
+  if (order.scheduled_for) {
+    printer.addText(eqLine + '\n')
+    bold(true)
+    printer.addTextSize(2, 2)
+    printer.addText('*** FUTURE ORDER ***\n')
+    printer.addText(`*** ${fmtScheduledForReceipt(order.scheduled_for)} ***\n`)
+    printer.addTextSize(1, 1)
+    bold(false)
+    printer.addText(eqLine + '\n')
+  }
+  printer.addText('\n')
+
+  // ── 2. ORDER TYPE / DRIVER ──
+  printer.addTextAlign(L)
+  const isDelivery = String(order.order_type || '').toLowerCase().includes('delivery')
+  bold(true)
+  printer.addTextSize(2, 1)
+  printer.addText((isDelivery ? 'DELIVERY' : 'PICKUP') + '\n')
+  if (isDelivery && order.delivery_type === 'provider') {
+    for (const l of wrapText(`DRIVER: ${providerLabel}`, DW)) printer.addText(l + '\n')
+  } else if (isDelivery && order.delivery_type === 'restaurant') {
+    printer.addText('YOUR DRIVER\n')
+  }
+  printer.addTextSize(1, 1)
+  bold(false)
+  if (isDelivery && order.delivery_type === 'restaurant') {
+    const a = order.delivery?.address || {}
+    const unit = A(a.unit_number)
+    const cityLine = [A(a.city), [A(a.state), A(a.zipcode)].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    for (const line of [A(a.street), unit && (/^(apt|unit|suite|ste|#)/i.test(unit) ? unit : `Unit ${unit}`), cityLine]) {
+      if (line) for (const l of wrapText(line, W)) printer.addText(l + '\n')
+    }
+  }
+  printer.addText('\n')
+
+  // ── 3. PLACED + CUSTOMER ──
+  const placed = order.placed_at || order.created_at
+  if (placed) printer.addText(`Placed ${fmtPlacedNY(placed)}\n`)
+  printer.addText('\n')
+  bold(true)
+  printer.addText('CUSTOMER\n')
+  printer.addTextSize(2, 1)
+  for (const l of wrapText(A(order.customer_name), DW)) printer.addText(l + '\n')
+  printer.addTextSize(1, 1)
+  bold(false)
+  const phone = A(order.customer_phone)
+  if (phone) printer.addText(formatPhone(phone) + '\n')
+
+  // ── 4. NOTES (order-level) ──
+  const notes = A(order.notes)
+  if (notes) {
+    printer.addText('\n')
+    printer.addText(eqLine + '\n')
+    printer.addTextAlign(C)
+    bold(true)
+    printer.addText('*** NOTES ***\n')
+    printer.addTextAlign(L)
+    for (const l of wrapText(notes, W)) printer.addText(l + '\n')
+    bold(false)
+    printer.addText(eqLine + '\n')
+  }
+  printer.addText('\n')
+
+  // ── 5. ITEMS ──
+  printer.addText(sep + '\n')
+  const items = Array.isArray(order.items) ? order.items : []
+  for (let idx = 0; idx < items.length; idx++) {
+    const item = items[idx]
+    const qty = Number(item?.quantity) || 1
+    bold(true)
+    printer.addTextSize(2, 1)
+    addWrapped(printer, `${qty}x `, A(item?.name).toUpperCase(), DW)
+    printer.addTextSize(1, 1)
+    addOptionLines(printer, item?.options, 0)
+    const instructions = A(item?.instructions)
+    if (instructions) addWrapped(printer, '  ** ', instructions, W)
+    bold(false)
+    if (idx < items.length - 1) printer.addText(dotSep + '\n')
+  }
+
+  // ── 6. TOTALS (provider charges as given) ──
+  printer.addText(sep + '\n')
+  printer.addText(pad('Subtotal', chargeStr(charges.subtotal) ?? '') + '\n')
+  if (isNonZero(charges.discount)) printer.addText(pad('Discount', discountStr(charges.discount)) + '\n')
+  printer.addText(pad('Tax', chargeStr(charges.tax) ?? '') + '\n')
+  if (isNonZero(charges.delivery_fee)) printer.addText(pad('Delivery fee', chargeStr(charges.delivery_fee)) + '\n')
+  if (isNonZero(charges.tips)) printer.addText(pad('Tips', chargeStr(charges.tips)) + '\n')
+  printer.addText(sep + '\n')
+  const totalStr = chargeStr(charges.total ?? order.total) ?? ''
+  bold(true)
+  printer.addTextSize(2, 1)
+  printer.addText(padDW('TOTAL', totalStr) + '\n')
+  printer.addTextSize(1, 1)
+  bold(false)
+  printer.addText(sep + '\n')
+
+  // ── 7. PAYMENT ──
+  printer.addText('\n')
+  printer.addTextAlign(C)
+  bold(true)
+  printer.addTextSize(2, 1)
+  printer.addText((/cash/i.test(String(order.payment_method || '')) ? `COLLECT CASH ${totalStr}` : 'PAID - DO NOT CHARGE') + '\n')
+  printer.addTextSize(1, 1)
+  bold(false)
+
+  // ── 8. FOOTER ──
+  printer.addText('\n')
+  printer.addText(`via ${A(provider.name)} - Ordr\n`)
+  printer.addFeedLine(4)
+  printer.addCut(printer.CUT_FEED)
+}
+
+/**
+ * Print a DSP (KitchenHub) kitchen ticket. Same FIFO chain, same ASB fault
+ * override, same { success, message, code, status } result as printOrder.
+ * Never rejects.
+ */
+export async function printExternalOrder(...args) {
+  const run = printChain.then(() => _printExternalOrder(...args))
+  printChain = run.catch(() => {})
+  return run
+}
+
+function _printExternalOrder(printerIp, order, rest, copies = 1) {
+  const copyCount = Math.min(5, Math.max(1, parseInt(copies) || 1))
+  return sendTicket(printerIp, (printer) => {
+    for (let c = 0; c < copyCount; c++) addExternalTicket(printer, order, rest)
+  })
+}
+
+// connect → createDevice → build(printer) → send, with the same timeouts and
+// ASB fault override as _printOrder. A copy of _printOrder's transport rather
+// than a shared extraction so _printOrder stays byte-identical; fold them
+// together in a dedicated refactor. A throw inside build() is caught below
+// and resolves as a failed print.
+function sendTicket(printerIp, build) {
+  if (!printerIp) return Promise.resolve({ success: false, message: 'No printer IP configured', code: null, status: null })
+  if (!window.epson) return Promise.resolve({ success: false, message: 'Epson ePOS SDK not loaded', code: null, status: null })
+
+  return new Promise((resolve) => {
+    try {
+      const ePosDev = new window.epson.ePOSDevice()
+      const timeout = setTimeout(() => {
+        console.error('[EpsonPrint:DSP] Connection timed out to', printerIp)
+        resolve({ success: false, message: 'Printer connection timed out', code: null, status: null })
+      }, 10000)
+
+      ePosDev.connect(printerIp, 8008, (connectResult) => {
+        if (connectResult !== 'OK' && connectResult !== 'SSL_CONNECT_OK') {
+          clearTimeout(timeout)
+          console.error('[EpsonPrint:DSP] Connection failed:', connectResult)
+          resolve({ success: false, message: `Connection failed: ${connectResult}`, code: null, status: null })
+          return
+        }
+
+        ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, { crypto: false, buffer: false }, (printer, retcode) => {
+          clearTimeout(timeout)
+          if (retcode !== 'OK' || !printer) {
+            console.error('[EpsonPrint:DSP] Device creation failed:', retcode)
+            try { ePosDev.disconnect() } catch {}
+            resolve({ success: false, message: `Printer device error: ${retcode}`, code: null, status: null })
+            return
+          }
+
+          const sendTimeout = setTimeout(() => {
+            try { ePosDev.disconnect() } catch {}
+            resolve({ success: false, message: 'Printer send timed out', code: null, status: null })
+          }, 15000)
+
+          try {
+            build(printer)
+
+            printer.onreceive = (res) => {
+              clearTimeout(sendTimeout)
+              try { ePosDev.deleteDevice(printer) } catch {}
+              try { ePosDev.disconnect() } catch {}
+              const fault = asbFaultReason(res.status)
+              if (res.success && !fault) {
+                resolve({ success: true, message: 'Printed successfully', code: res.code, status: res.status })
+              } else {
+                const reason = fault ? `Printer fault: ${fault}` : `Print error: code ${res.code}`
+                resolve({ success: false, message: reason, code: res.code, status: res.status })
+              }
+            }
+
+            printer.onerror = (err) => {
+              clearTimeout(sendTimeout)
+              console.error('[EpsonPrint:DSP] Printer error:', err)
+              try { ePosDev.disconnect() } catch {}
+              resolve({ success: false, message: `Print error: ${err}`, code: null, status: null })
+            }
+
+            printer.send()
+          } catch (err) {
+            clearTimeout(sendTimeout)
+            console.error('[EpsonPrint:DSP] Send error:', err)
+            try { ePosDev.disconnect() } catch {}
+            resolve({ success: false, message: `Print error: ${err.message}`, code: null, status: null })
+          }
+        })
+      })
+    } catch (err) {
+      console.error('[EpsonPrint:DSP] Fatal error:', err)
       resolve({ success: false, message: `Print error: ${err.message}`, code: null, status: null })
     }
   })

@@ -1,0 +1,12 @@
+// DSP provider → display label/name + tablet badge classes. Plain module (no
+// React) so both the tablet tiles and the Epson ticket builder can use it.
+// provider_id values are KitchenHub's; matched loosely and falls back to
+// provider_name so an unexpected id still renders something readable.
+export function providerDisplay(o) {
+  const key = String(o?.provider_id || o?.provider_name || '').toLowerCase().replace(/[^a-z]/g, '')
+  if (key.includes('doordash')) return { label: 'DOORDASH', name: 'DoorDash', cls: 'bg-red-600 text-white', border: 'border-l-red-600' }
+  if (key.includes('uber')) return { label: 'UBER EATS', name: 'Uber Eats', cls: 'bg-black text-white', border: 'border-l-black' }
+  if (key.includes('grubhub')) return { label: 'GRUBHUB', name: 'Grubhub', cls: 'bg-orange-500 text-white', border: 'border-l-orange-500' }
+  const raw = String(o?.provider_name || o?.provider_id || 'DSP')
+  return { label: raw.toUpperCase(), name: raw, cls: 'bg-gray-700 text-white', border: 'border-l-gray-700' }
+}

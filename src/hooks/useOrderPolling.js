@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { printOrder } from '../utils/epsonPrint'
+import { printOrder, printExternalOrder } from '../utils/epsonPrint'
+import { writeExternalPrintResult } from '../utils/externalPrintStatus'
 import { isStuckUnacked } from '../utils/stuckStage'
 
 // Auto-print gate (B2 write-complete signal).
@@ -16,6 +17,17 @@ import { isStuckUnacked } from '../utils/stuckStage'
 // Escalation threshold: an order acknowledged but still not marked in-progress
 // after this many minutes drives the second (escalation) alert layer.
 const ESCALATION_MINUTES = 7
+
+// DSP (KitchenHub) orders: tablet window + hard cap on how long the tick may
+// wait for the external fetch before falling back to the previous set.
+const EXTERNAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const EXTERNAL_FETCH_TIMEOUT_MS = 4000
+const EXTERNAL_COLUMNS =
+  'id, restaurant_id, kh_order_id, provider_id, provider_name, order_number, daily_number, ' +
+  'order_type, status, asap, scheduled_for, pickup_at, placed_at, customer_name, customer_phone, ' +
+  'notes, delivery_type, delivery, items, charges, total, payment_method, prep_time_minutes, ' +
+  'acknowledged_at, accepted_at, completed_at, cancelled_at, cancelled_by, print_status, ' +
+  'print_attempts, last_event_at, created_at, updated_at'
 
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
@@ -76,6 +88,16 @@ function installGestureUnlock() {
 export function useOrderPolling(restaurant, hours) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  // DSP orders — populated only when restaurant.dsp_orders_enabled is true.
+  // The ref mirrors state so fetchOrders (memoized on [restaurant]) can read
+  // the last good set without a stale closure.
+  const [externalOrders, setExternalOrdersState] = useState([])
+  const externalOrdersRef = useRef([])
+  const setExternalOrders = useCallback(updater => {
+    externalOrdersRef.current =
+      typeof updater === 'function' ? updater(externalOrdersRef.current) : updater
+    setExternalOrdersState(externalOrdersRef.current)
+  }, [])
   const knownOrderIds = useRef(new Set())
   const isPlayingRef = useRef(false)
   const isEscalatingRef = useRef(false)
@@ -211,7 +233,58 @@ export function useOrderPolling(restaurant, hours) {
     if (statusErr) console.error('[AutoPrint] print_status write failed after retries:', statusErr)
   }
 
+  // Never rejects. On any failure (error, throw, timeout) it resolves to the
+  // previous set so the Ordr chime/print/retry path is unaffected.
+  function fetchExternalOrders() {
+    const run = (async () => {
+      try {
+        const since = new Date(Date.now() - EXTERNAL_WINDOW_MS).toISOString()
+        const { data, error } = await supabase
+          .from('external_orders')
+          .select(EXTERNAL_COLUMNS)
+          .eq('restaurant_id', restaurant.id)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+        if (error || !data) {
+          console.error('[POLL:EXT] fetch failed', error?.code, error?.message)
+          return externalOrdersRef.current
+        }
+        const tagged = data.map(o => ({ ...o, __source: 'external' }))
+        setExternalOrders(tagged)
+        return tagged
+      } catch (err) {
+        console.error('[POLL:EXT] exception', err)
+        return externalOrdersRef.current
+      }
+    })()
+    const timeout = new Promise(resolve =>
+      setTimeout(() => resolve(externalOrdersRef.current), EXTERNAL_FETCH_TIMEOUT_MS)
+    )
+    return Promise.race([run, timeout])
+  }
+
+  // DSP auto-print. Never rejects (printExternalOrder and
+  // writeExternalPrintResult both resolve on every path). No print_logs row:
+  // print_logs.order_id references orders.
+  async function autoPrintExternal(extOrder, copies) {
+    try {
+      const attempt = (extOrder.print_attempts || 0) + 1
+      const result = await printExternalOrder(restaurant.printer_ip, extOrder, { name: restaurant.name }, copies)
+      if (result.success) printedExternalIds.current.add(extOrder.id)
+      setExternalOrders(prev => prev.map(o => o.id === extOrder.id
+        ? { ...o, print_status: result.success ? 'printed' : 'failed', print_attempts: attempt }
+        : o))
+      await writeExternalPrintResult(extOrder.id, result, attempt)
+    } catch (err) {
+      console.error('[ExtPrint] auto-print exception', extOrder.id, err)
+    }
+  }
+
   const retryingIds = useRef(new Set())
+  // DSP ids that printed successfully this session. Guards against a stale
+  // external set (fetch timeout/error fallback, or a fetch that raced the
+  // status write) re-dispatching a ticket that already printed.
+  const printedExternalIds = useRef(new Set())
   const recheckTimer = useRef(null)
   const recheckCount = useRef(0)
   const realtimeDebounce = useRef(null)
@@ -226,6 +299,9 @@ export function useOrderPolling(restaurant, hours) {
     console.log('[POLL] tick', diagnostics.current.lastPollAt, 'isOpen=', isRestaurantOpen())
 
     try {
+      // Kicked off in parallel with the Ordr query; awaited only at the chime
+      // decision, after auto-print has already been dispatched.
+      const externalPromise = restaurant.dsp_orders_enabled === true ? fetchExternalOrders() : null
       const { data, error } = await supabase
         .from('orders')
         .select('*')
@@ -294,9 +370,13 @@ export function useOrderPolling(restaurant, hours) {
       // signals live in the DB (acknowledged_at / stuck_acknowledged_at), so
       // it's reload-safe: reload re-fetches, re-evaluates, re-plays as needed.
       const now = Date.now()
+      // DSP orders join the new-order chime only when the flag is on. The ternary
+      // means no await (no extra microtask) when the flag is off.
+      const ext = externalPromise ? await externalPromise : null
       const hasUnacked =
         data.some(o => o.status === 'new' && !o.acknowledged_at) ||
-        data.some(o => isStuckUnacked(o, now))
+        data.some(o => isStuckUnacked(o, now)) ||
+        (ext !== null && ext.some(o => o.status === 'new' && !o.acknowledged_at))
       syncAudioState(hasUnacked)
 
       // Escalation layer (independent of hasUnacked): an order acknowledged but
@@ -397,6 +477,33 @@ export function useOrderPolling(restaurant, hours) {
         }
       }
 
+      // ── DSP (KitchenHub) auto-print ────────────────────────────────────
+      // Flag-on only (ext is null otherwise). Fire-and-forget like autoPrint;
+      // in-flight guard reuses retryingIds under an `ext-` prefix so ids can't
+      // collide with Ordr orders. 30-min window so enabling the flag never
+      // prints a backlog — measured from arrival (created_at) in arrival mode,
+      // and from acceptance (accepted_at ?? last_event_at) in 'in_progress'
+      // mode, where a DSP ticket fires on accept.
+      if (ext !== null && restaurant.printer_ip) {
+        const extNow = Date.now()
+        const inProgressMode = restaurant?.print_trigger === 'in_progress'
+        const windowStart = o => new Date(inProgressMode ? (o.accepted_at ?? o.last_event_at) : o.created_at).getTime()
+        const toPrint = ext.filter(o =>
+          (inProgressMode ? o.status === 'accepted' : (o.status === 'new' || o.status === 'accepted')) &&
+          (o.print_status === 'pending' || o.print_status === 'failed') &&
+          (o.print_attempts || 0) < 3 &&
+          extNow - windowStart(o) < 30 * 60 * 1000 &&
+          !retryingIds.current.has(`ext-${o.id}`) &&
+          !printedExternalIds.current.has(o.id)
+        )
+        for (const o of toPrint) {
+          const key = `ext-${o.id}`
+          retryingIds.current.add(key)
+          autoPrintExternal(o, restaurant?.auto_print_copies || 1)
+            .finally(() => retryingIds.current.delete(key))
+        }
+      }
+
       // Mark every fetched order seen EXCEPT ones deferred as too-fresh above —
       // those stay eligible so a later poll can auto-print them once settled.
       knownOrderIds.current = new Set(
@@ -433,6 +540,8 @@ export function useOrderPolling(restaurant, hours) {
   // Polling loop — runs at TabletPage level, survives tab switches
   useEffect(() => {
     fetchOrders()
+    // DSP orders are also gated on Ordr hours. Pre-pilot: KitchenHub store hours
+    // must match Ordr hours, or DSP orders after close are not fetched.
     const interval = setInterval(() => {
       if (isRestaurantOpen()) fetchOrders()
     }, 10000)
@@ -465,11 +574,24 @@ export function useOrderPolling(restaurant, hours) {
         .subscribe()
     }
 
+    let extChannel = null
+    if (restaurant?.id && restaurant.dsp_orders_enabled === true) {
+      extChannel = supabase
+        .channel(`external-orders-rt-${restaurant.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'external_orders', filter: `restaurant_id=eq.${restaurant.id}` },
+          () => triggerRealtimeFetch()
+        )
+        .subscribe()
+    }
+
     return () => {
       clearInterval(interval)
       if (recheckTimer.current) { clearTimeout(recheckTimer.current); recheckTimer.current = null }
       if (realtimeDebounce.current) { clearTimeout(realtimeDebounce.current); realtimeDebounce.current = null }
       if (channel) supabase.removeChannel(channel)
+      if (extChannel) supabase.removeChannel(extChannel)
       // Don't tear down the audio element on unmount — it's module-level
       // and will be reused by the next mount. We do pause it so a stale
       // chime doesn't keep playing if the tablet navigates away mid-loop.
@@ -496,5 +618,7 @@ export function useOrderPolling(restaurant, hours) {
     loading,
     fetchOrders,
     diagnostics,
+    externalOrders,
+    setExternalOrders,
   }
 }

@@ -57,6 +57,15 @@ verify_jwt = false
 [functions.uber-webhook]
 verify_jwt = false
 
+# kh-webhook — KitchenHub DSP order webhook receiver. KitchenHub
+# authenticates with a static shared-secret header (x-ordr-kh-secret),
+# compared constant-time against KITCHENHUB_WEBHOOK_SECRET in the handler.
+# KitchenHub does not carry Supabase JWTs; platform-level JWT verification
+# would 401 every delivery before our code runs.
+
+[functions.kh-webhook]
+verify_jwt = false
+
 
 # ---------------------------------------------------------------------------
 # Internal callees
