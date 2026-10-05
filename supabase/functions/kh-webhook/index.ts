@@ -44,6 +44,11 @@ import {
   resolveStatus,
   toRow,
 } from "../_shared/khNormalize.ts";
+import {
+  PROVIDER_STATUS_TYPES,
+  providerStatusStoreIds,
+  toProviderStatusPatch,
+} from "../_shared/khProviderStatus.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,6 +100,86 @@ async function markEvent(
       fields,
       error,
     });
+  }
+}
+
+// Provider status events (IntegrationAccount / IntegrationAccountOnlineStatus)
+// → dsp_provider_status, for the tablet banner. Best-effort: never throws and
+// never changes the webhook response. Returns an error tag for the audit row,
+// or null on success.
+async function recordProviderStatus(
+  eventId: number | string,
+  webhookType: string,
+  // deno-lint-ignore no-explicit-any
+  payload: any,
+): Promise<string | null> {
+  try {
+    const patch = toProviderStatusPatch(webhookType, payload, Date.now());
+    if (!patch) {
+      console.warn("[kh-webhook] provider status dropped: bad_shape", {
+        event_id: eventId,
+        webhook_type: webhookType,
+      });
+      return "provider_status_bad_shape";
+    }
+    const storeIds = providerStatusStoreIds(payload);
+    if (storeIds.length === 0) {
+      console.warn("[kh-webhook] provider status dropped: no_store_id", { event_id: eventId });
+      return "unmapped_store";
+    }
+    // Enabled or not: the banner should still reflect a disabled integration.
+    const { data: store, error: storeErr } = await supabase
+      .from("kitchenhub_stores")
+      .select("restaurant_id")
+      .in("kh_store_id", storeIds)
+      .limit(1)
+      .maybeSingle();
+    if (storeErr) {
+      console.error("[kh-webhook] provider status store lookup failed", {
+        event_id: eventId,
+        error: storeErr,
+      });
+      return "store_lookup_failed";
+    }
+    if (!store) {
+      console.warn("[kh-webhook] provider status dropped: unmapped_store", {
+        event_id: eventId,
+        store_ids: storeIds,
+      });
+      return "unmapped_store";
+    }
+    const { error: upErr } = await supabase
+      .from("dsp_provider_status")
+      .upsert(
+        {
+          restaurant_id: store.restaurant_id,
+          provider_id: patch.provider_id,
+          ...patch.fields,
+          last_event_at: new Date().toISOString(),
+          raw: payload,
+        },
+        { onConflict: "restaurant_id,provider_id" },
+      );
+    if (upErr) {
+      console.error("[kh-webhook] provider status upsert failed", {
+        event_id: eventId,
+        error: upErr,
+      });
+      return `provider_status_upsert_failed: ${upErr.message}`;
+    }
+    console.log("[kh-webhook] provider status recorded", {
+      event_id: eventId,
+      restaurant_id: store.restaurant_id,
+      provider_id: patch.provider_id,
+      ...patch.fields,
+    });
+    return null;
+  } catch (err) {
+    console.error("[kh-webhook] provider status exception", {
+      event_id: eventId,
+      error: String(err),
+    });
+    return "provider_status_exception";
   }
 }
 
@@ -173,12 +258,17 @@ serve(async (req: Request) => {
 
   // -------- Step 5: non-order events --------
   if (eventType !== "Order") {
+    // Provider online/connection status → dsp_provider_status (best-effort;
+    // the response stays 200 regardless).
+    const statusErr = eventType && PROVIDER_STATUS_TYPES.includes(eventType)
+      ? await recordProviderStatus(eventId, eventType, payload)
+      : null;
     console.log("[kh-webhook] non-order event acknowledged", {
       event_id: eventId,
       event_type: eventType,
       event_status: eventStatus,
     });
-    await markEvent(eventId, { processed: true });
+    await markEvent(eventId, statusErr ? { processed: true, error: statusErr } : { processed: true });
     return ackResponse();
   }
 
