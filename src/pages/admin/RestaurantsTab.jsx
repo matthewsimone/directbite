@@ -5,6 +5,7 @@ import ImageUpload from '../../components/ImageUpload'
 import AddressAutocomplete from '../../components/AddressAutocomplete'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
 import QRRedirectPanel from '../../components/QRRedirectPanel'
+import KitchenHubPanel from './KitchenHubPanel'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
 
@@ -224,6 +225,10 @@ function ManagePanel({ restaurant, onClose, onUpdate }) {
           restaurant={data}
           onUpdate={updated => { setData(updated); onUpdate(updated) }}
         />
+
+        <hr />
+
+        <KitchenHubPanel restaurant={data} />
       </div>
 
       <div className="p-4 border-t">

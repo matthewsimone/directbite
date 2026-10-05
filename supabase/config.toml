@@ -179,6 +179,14 @@ verify_jwt = false
 [functions.kh-order-action]
 verify_jwt = false
 
+# kh-admin — admin-only KitchenHub location / store / provider management
+# (admin panel "Delivery apps"). JWT off; handler validates the caller's
+# Bearer JWT (getUser) and requires an admin_users row — the admin-refund
+# pattern without its tablet branch.
+
+[functions.kh-admin]
+verify_jwt = false
+
 # get-order-by-pi — anonymous customer-callable, read-only. Returns a single
 # order (scoped to the supplied stripe_payment_intent_id) with a non-PII
 # whitelist for the confirmation page. JWT off; uses the Bearer anon-key
