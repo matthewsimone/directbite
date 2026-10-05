@@ -1,4 +1,5 @@
 import { providerDisplay, dspOrderNumber, DSP_ESCALATION_MINUTES } from '../../utils/dspProvider'
+import { formatScheduledLabel } from '../../utils/scheduling'
 
 // DSP (KitchenHub) order tile. Mirrors OrderCard's container + un-acked
 // flash so DSP and Ordr tiles read as one queue. Display only.
@@ -50,6 +51,12 @@ export default function ExternalOrderCard({ order, onTap }) {
           {order.status === 'cancelled' && (
             <span className="px-2 py-0.5 rounded-full bg-red-600 text-white text-xs font-bold whitespace-nowrap">
               CANCELLED
+            </span>
+          )}
+          {/* Same pill as OrderCard's scheduled badge (OrdersTab.jsx). */}
+          {order.scheduled_for && (
+            <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-300 text-black text-xs font-semibold whitespace-nowrap">
+              Scheduled {formatScheduledLabel(order.scheduled_for)}
             </span>
           )}
         </div>

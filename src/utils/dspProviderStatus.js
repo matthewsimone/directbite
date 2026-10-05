@@ -8,10 +8,18 @@ import { providerDisplay } from './dspProvider.js'
 //   ok:       everything else (online, no data)
 // System keywords are checked before manual ones, so "paused by system" is
 // critical even though it also contains "paused by".
+// Reasons are normalized first (lowercase, underscores → spaces) so
+// KitchenHub's enum-style values match too: real values seen include
+// "PAUSED_BY_RESTAURANT", "Store is closed" and
+// "Manually stopped taking orders at 2:31 PM" (all manual → info).
 const CRITICAL_CONNECTION = new Set(['disabled', 'rejected'])
 const CONNECTING = new Set(['in_progress', 'waiting', 'waiting_menu'])
-const SYSTEM_PAUSE = /expired|cancel|system|deactivat|fail/i
-const MANUAL_PAUSE = /paused by|manual|merchant|busy/i
+const SYSTEM_PAUSE = /expired|cancel|system|deactivat|fail/
+const MANUAL_PAUSE = /paused by|manual|merchant|busy|paused by restaurant|store is closed|stopped taking orders/
+
+function normalizeReason(reason) {
+  return String(reason || '').toLowerCase().replace(/_/g, ' ').trim()
+}
 
 function connectionOf(row) {
   return String(row?.connection_status || '').toLowerCase()
@@ -23,7 +31,7 @@ export function providerSeverity(row) {
   if (CRITICAL_CONNECTION.has(connection)) return 'critical'
   if (CONNECTING.has(connection)) return 'info'
   if (row.online_status === 'offline') {
-    const reason = String(row.reason || '').trim()
+    const reason = normalizeReason(row.reason)
     if (!reason || SYSTEM_PAUSE.test(reason)) return 'critical'
     if (MANUAL_PAUSE.test(reason)) return 'info'
     return 'critical'
