@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { printOrder, printExternalOrder } from '../utils/epsonPrint'
 import { writeExternalPrintResult } from '../utils/externalPrintStatus'
 import { isStuckUnacked } from '../utils/stuckStage'
+import { DSP_ESCALATION_MINUTES } from '../utils/dspProvider'
 
 // Auto-print gate (B2 write-complete signal).
 // The webhook stamps orders.items_written_at as its FINAL write, after all
@@ -17,6 +18,9 @@ import { isStuckUnacked } from '../utils/stuckStage'
 // Escalation threshold: an order acknowledged but still not marked in-progress
 // after this many minutes drives the second (escalation) alert layer.
 const ESCALATION_MINUTES = 7
+// DSP orders escalate sooner (DSP_ESCALATION_MINUTES, 3 — imported from
+// utils/dspProvider so the tile and the audio share one value): providers
+// auto-cancel unaccepted orders within ~5-15 minutes.
 
 // DSP (KitchenHub) orders: tablet window + hard cap on how long the tick may
 // wait for the external fetch before falling back to the previous set.
@@ -387,7 +391,14 @@ export function useOrderPolling(restaurant, hours) {
         o.status === 'new' &&
         o.acknowledged_at != null &&
         (now - new Date(o.acknowledged_at).getTime()) >= ESCALATION_MINUTES * 60 * 1000
-      )
+      ) ||
+        // DSP orders (flag-on only; ext is null otherwise) — same `ext` the
+        // chime decision awaited above.
+        (ext !== null && ext.some(o =>
+          o.status === 'new' &&
+          o.acknowledged_at != null &&
+          (now - new Date(o.acknowledged_at).getTime()) >= DSP_ESCALATION_MINUTES * 60 * 1000
+        ))
       syncEscalationAudioState(hasEscalation)
 
       // Retry failed/pending prints on every poll cycle. Skipped entirely in

@@ -11,6 +11,13 @@ export function providerDisplay(o) {
   return { label: raw.toUpperCase(), name: raw, cls: 'bg-gray-700 text-white', border: 'border-l-gray-700' }
 }
 
+// Escalation threshold for DSP orders: acknowledged (tapped) but still 'new'
+// (not accepted) for this many minutes drives the escalation alert layer.
+// Shorter than the Ordr ESCALATION_MINUTES (7) because DoorDash / Uber Eats /
+// Grubhub auto-cancel unaccepted orders within ~5-15 minutes. Shared by
+// useOrderPolling (audio) and ExternalOrderCard (tile) so they can't drift.
+export const DSP_ESCALATION_MINUTES = 3
+
 // KitchenHub order numbers can arrive already prefixed ("#A1B2"); strip one
 // leading '#' so callers add their own without showing "##".
 export function dspOrderNumber(o) {
