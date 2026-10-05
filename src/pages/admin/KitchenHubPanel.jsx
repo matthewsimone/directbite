@@ -243,15 +243,17 @@ export default function KitchenHubPanel({ restaurant }) {
             <button className={`${btn} border-gray-300`} disabled={!!busy} onClick={() => run('sync', 'update_location')}>
               {busy === 'sync' ? 'Syncing…' : 'Sync name & address'}
             </button>
-            <button className={`${btn} border-red-300 text-red-600`} disabled={!!busy || !info.store}
+            <button className={`${btn} border-red-300 text-red-600`} disabled={!!busy || !info.store || ordersOn}
               onClick={() => ask('Delete the KitchenHub store? Connected providers stop sending orders.', () => run('delete-store', 'delete_store'))}>
               Delete store
             </button>
-            <button className={`${btn} border-red-300 text-red-600`} disabled={!!busy || !!info.store}
+            <button className={`${btn} border-red-300 text-red-600`} disabled={!!busy || !!info.store || ordersOn}
               onClick={() => ask('Delete the KitchenHub location and our mapping?', () => run('delete-location', 'delete_location'))}>
               Delete location
             </button>
           </div>
+          {/* kh-admin refuses these while orders are on (restaurant_live); this just makes it visible. */}
+          {ordersOn && <p className="text-xs text-gray-500">Turn orders off first</p>}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
