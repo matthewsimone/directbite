@@ -8,6 +8,8 @@ import { isUberActiveNow, isUberExtendedZoneActiveNow } from '../../utils/uberAc
 import ExternalOrderCard from './ExternalOrderCard'
 import ExternalOrderDetail from './ExternalOrderDetail'
 import DspProviderBanner from './DspProviderBanner'
+import AppIcon from './AppIcon'
+import { ORDR_ICON } from '../../utils/dspProvider'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -134,7 +136,7 @@ function externalTabOf(o, now) {
 }
 
 // ── Order Card ──
-function OrderCard({ order, onTap, onRetryPrint, printTrigger }) {
+function OrderCard({ order, onTap, onRetryPrint, printTrigger, leadingIcon }) {
   // Per-card busy state — the Retry button lives here while handleRetryPrint
   // lives in the parent, so we bracket the awaited call locally. This keeps the
   // busy feedback scoped to THIS card (a single parent flag would light up every
@@ -191,12 +193,11 @@ function OrderCard({ order, onTap, onRetryPrint, printTrigger }) {
     isDelivery && order.delivery_address ? order.delivery_address : null,
   ].filter(Boolean).join(', ')
 
-  return (
-    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${cardStateClass}`}>
-      <button
-        onClick={() => onTap(order)}
-        className="w-full text-left p-4"
-      >
+  // Tile content, exactly as before. leadingIcon (DSP-enabled restaurants
+  // only) wraps it in a flex row with the icon on the left and drops the
+  // colored left border; without it the tile renders exactly as before.
+  const content = (
+    <>
         <div className="flex items-center gap-2 mb-1">
           {isDelivery ? (
             <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -269,6 +270,23 @@ function OrderCard({ order, onTap, onRetryPrint, printTrigger }) {
                   : 'UberDirect · awaiting dispatch'}
           </div>
         )}
+    </>
+  )
+
+  return (
+    <div className={leadingIcon
+      ? `w-full text-left rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow ${cardStateClass}`
+      : `w-full text-left rounded-xl border border-gray-200 border-l-4 ${borderColor} shadow-sm hover:shadow-md transition-shadow ${cardStateClass}`}>
+      <button
+        onClick={() => onTap(order)}
+        className="w-full text-left p-4"
+      >
+        {leadingIcon ? (
+          <div className="flex items-start gap-3">
+            {leadingIcon}
+            <div className="flex-1 min-w-0">{content}</div>
+          </div>
+        ) : content}
       </button>
       {showRetry && (
         <div className="px-4 pb-3">
@@ -1872,7 +1890,8 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
 
   const renderTile = order => order.__source === 'external'
     ? <ExternalOrderCard key={`ext-${order.id}`} order={order} onTap={handleExternalTap} />
-    : <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger} />
+    : <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger}
+        leadingIcon={dspEnabled ? <AppIcon src={ORDR_ICON} initials="O" alt="Ordr" /> : undefined} />
 
   return (
     <div className="h-full flex flex-col">
