@@ -32,6 +32,23 @@ const EXTERNAL_COLUMNS =
   'notes, delivery_type, delivery, items, charges, total, payment_method, prep_time_minutes, ' +
   'acknowledged_at, accepted_at, completed_at, cancelled_at, cancelled_by, print_status, ' +
   'print_attempts, paid, last_event_at, created_at, updated_at'
+// After Ordr hours the interval-driven DSP-only tick runs at most this often.
+// Realtime pokes stay immediate (the primary path); this poll is the safety
+// net for a dropped socket.
+const DSP_AFTER_HOURS_INTERVAL_MS = 60_000
+
+// DSP alert predicates, shared by the full tick and the after-hours DSP-only
+// tick so the two can't drift.
+function dspHasUnacked(ext) {
+  return ext.some(o => o.status === 'new' && !o.acknowledged_at)
+}
+function dspHasEscalation(ext, now) {
+  return ext.some(o =>
+    o.status === 'new' &&
+    o.acknowledged_at != null &&
+    (now - new Date(o.acknowledged_at).getTime()) >= DSP_ESCALATION_MINUTES * 60 * 1000
+  )
+}
 
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
@@ -292,6 +309,43 @@ export function useOrderPolling(restaurant, hours) {
   const recheckTimer = useRef(null)
   const recheckCount = useRef(0)
   const realtimeDebounce = useRef(null)
+  // Ordr-only alert state from the most recent successful full fetch. The
+  // after-hours DSP-only tick ORs it with the DSP state so a legitimately
+  // playing Ordr chime/escalation is never silenced while the restaurant is
+  // closed (closed = no Ordr fetches, exactly as before).
+  const lastOrdrAlertRef = useRef({ unacked: false, escalation: false })
+  // When the interval last ran a DSP-only tick (throttle to
+  // DSP_AFTER_HOURS_INTERVAL_MS; realtime pokes are not throttled).
+  const lastDspOnlyTickRef = useRef(0)
+
+  // ── DSP (KitchenHub) auto-print ────────────────────────────────────
+  // Shared by the full fetchOrders tick and the after-hours DSP-only tick so
+  // eligibility can't drift. No-op when ext is null (flag off). Fire-and-forget
+  // like autoPrint; in-flight guard reuses retryingIds under an `ext-` prefix so
+  // ids can't collide with Ordr orders. 30-min window so enabling the flag never
+  // prints a backlog — measured from arrival (created_at) in arrival mode, and
+  // from acceptance (accepted_at ?? last_event_at) in 'in_progress' mode, where
+  // a DSP ticket fires on accept.
+  function dispatchExternalPrints(ext) {
+    if (ext === null || !restaurant.printer_ip) return
+    const extNow = Date.now()
+    const inProgressMode = restaurant?.print_trigger === 'in_progress'
+    const windowStart = o => new Date(inProgressMode ? (o.accepted_at ?? o.last_event_at) : o.created_at).getTime()
+    const toPrint = ext.filter(o =>
+      (inProgressMode ? o.status === 'accepted' : (o.status === 'new' || o.status === 'accepted')) &&
+      (o.print_status === 'pending' || o.print_status === 'failed') &&
+      (o.print_attempts || 0) < 3 &&
+      extNow - windowStart(o) < 30 * 60 * 1000 &&
+      !retryingIds.current.has(`ext-${o.id}`) &&
+      !printedExternalIds.current.has(o.id)
+    )
+    for (const o of toPrint) {
+      const key = `ext-${o.id}`
+      retryingIds.current.add(key)
+      autoPrintExternal(o, restaurant?.auto_print_copies || 1)
+        .finally(() => retryingIds.current.delete(key))
+    }
+  }
 
   const fetchOrders = useCallback(async () => {
     if (!restaurant) return
@@ -377,28 +431,26 @@ export function useOrderPolling(restaurant, hours) {
       // DSP orders join the new-order chime only when the flag is on. The ternary
       // means no await (no extra microtask) when the flag is off.
       const ext = externalPromise ? await externalPromise : null
-      const hasUnacked =
+      const ordrUnacked =
         data.some(o => o.status === 'new' && !o.acknowledged_at) ||
-        data.some(o => isStuckUnacked(o, now)) ||
-        (ext !== null && ext.some(o => o.status === 'new' && !o.acknowledged_at))
+        data.some(o => isStuckUnacked(o, now))
+      const hasUnacked = ordrUnacked || (ext !== null && dspHasUnacked(ext))
       syncAudioState(hasUnacked)
 
       // Escalation layer (independent of hasUnacked): an order acknowledged but
       // still 'new' — not yet marked in-progress — for >= ESCALATION_MINUTES.
       // Mutually exclusive with the new-order chime per order (that requires
       // !acknowledged_at; this requires acknowledged_at != null).
-      const hasEscalation = data.some(o =>
+      const ordrEscalation = data.some(o =>
         o.status === 'new' &&
         o.acknowledged_at != null &&
         (now - new Date(o.acknowledged_at).getTime()) >= ESCALATION_MINUTES * 60 * 1000
-      ) ||
+      )
+      const hasEscalation = ordrEscalation ||
         // DSP orders (flag-on only; ext is null otherwise) — same `ext` the
         // chime decision awaited above.
-        (ext !== null && ext.some(o =>
-          o.status === 'new' &&
-          o.acknowledged_at != null &&
-          (now - new Date(o.acknowledged_at).getTime()) >= DSP_ESCALATION_MINUTES * 60 * 1000
-        ))
+        (ext !== null && dspHasEscalation(ext, now))
+      lastOrdrAlertRef.current = { unacked: ordrUnacked, escalation: ordrEscalation }
       syncEscalationAudioState(hasEscalation)
 
       // Retry failed/pending prints on every poll cycle. Skipped entirely in
@@ -488,32 +540,8 @@ export function useOrderPolling(restaurant, hours) {
         }
       }
 
-      // ── DSP (KitchenHub) auto-print ────────────────────────────────────
-      // Flag-on only (ext is null otherwise). Fire-and-forget like autoPrint;
-      // in-flight guard reuses retryingIds under an `ext-` prefix so ids can't
-      // collide with Ordr orders. 30-min window so enabling the flag never
-      // prints a backlog — measured from arrival (created_at) in arrival mode,
-      // and from acceptance (accepted_at ?? last_event_at) in 'in_progress'
-      // mode, where a DSP ticket fires on accept.
-      if (ext !== null && restaurant.printer_ip) {
-        const extNow = Date.now()
-        const inProgressMode = restaurant?.print_trigger === 'in_progress'
-        const windowStart = o => new Date(inProgressMode ? (o.accepted_at ?? o.last_event_at) : o.created_at).getTime()
-        const toPrint = ext.filter(o =>
-          (inProgressMode ? o.status === 'accepted' : (o.status === 'new' || o.status === 'accepted')) &&
-          (o.print_status === 'pending' || o.print_status === 'failed') &&
-          (o.print_attempts || 0) < 3 &&
-          extNow - windowStart(o) < 30 * 60 * 1000 &&
-          !retryingIds.current.has(`ext-${o.id}`) &&
-          !printedExternalIds.current.has(o.id)
-        )
-        for (const o of toPrint) {
-          const key = `ext-${o.id}`
-          retryingIds.current.add(key)
-          autoPrintExternal(o, restaurant?.auto_print_copies || 1)
-            .finally(() => retryingIds.current.delete(key))
-        }
-      }
+      // DSP (KitchenHub) auto-print — flag-on only; no-op when ext is null.
+      dispatchExternalPrints(ext)
 
       // Mark every fetched order seen EXCEPT ones deferred as too-fresh above —
       // those stay eligible so a later poll can auto-print them once settled.
@@ -548,13 +576,44 @@ export function useOrderPolling(restaurant, hours) {
     }
   }, [restaurant])
 
+  // After-hours DSP-only tick. Runs only when dsp_orders_enabled and the
+  // restaurant is CLOSED per Ordr hours (the full tick is gated off then).
+  // DSP providers keep their own hours; without this a DSP order after Ordr
+  // close is never fetched, chimed or printed. Touches nothing Ordr: no orders
+  // query, no Ordr print/retry/take-fire/wake-up.
+  const dspOnlyTick = useCallback(async () => {
+    if (!restaurant || restaurant.dsp_orders_enabled !== true) return
+    console.log('[POLL:DSP] after-hours tick', new Date().toISOString())
+    try {
+      const ext = await fetchExternalOrders() // never rejects; timeout race intact
+      // Read the last-known Ordr state AFTER the await so a full fetch that
+      // completed meanwhile is honoured.
+      const now = Date.now()
+      const last = lastOrdrAlertRef.current
+      syncAudioState(last.unacked || dspHasUnacked(ext))
+      syncEscalationAudioState(last.escalation || dspHasEscalation(ext, now))
+      dispatchExternalPrints(ext)
+    } catch (err) {
+      console.error('[POLL:DSP] after-hours tick failed', err)
+    }
+  }, [restaurant])
+
   // Polling loop — runs at TabletPage level, survives tab switches
   useEffect(() => {
     fetchOrders()
-    // DSP orders are also gated on Ordr hours. Pre-pilot: KitchenHub store hours
-    // must match Ordr hours, or DSP orders after close are not fetched.
+    // Closed per Ordr hours → the full tick is skipped (no Ordr fetch, no Ordr
+    // printing — unchanged). DSP providers keep their own hours, so a
+    // DSP-enabled restaurant still runs the DSP-only tick, throttled to
+    // DSP_AFTER_HOURS_INTERVAL_MS (realtime below is the primary path).
     const interval = setInterval(() => {
       if (isRestaurantOpen()) fetchOrders()
+      else if (
+        restaurant?.dsp_orders_enabled === true &&
+        Date.now() - lastDspOnlyTickRef.current >= DSP_AFTER_HOURS_INTERVAL_MS
+      ) {
+        lastDspOnlyTickRef.current = Date.now()
+        dspOnlyTick()
+      }
     }, 10000)
 
     // Realtime poke: an orders-table change triggers an EARLY fetchOrders() so
@@ -570,6 +629,7 @@ export function useOrderPolling(restaurant, hours) {
       realtimeDebounce.current = setTimeout(() => {
         realtimeDebounce.current = null
         if (isRestaurantOpen()) fetchOrders()
+        else if (restaurant?.dsp_orders_enabled === true) dspOnlyTick()
       }, 250)
     }
 
@@ -621,7 +681,7 @@ export function useOrderPolling(restaurant, hours) {
         isEscalatingRef.current = false
       }
     }
-  }, [fetchOrders])
+  }, [fetchOrders, dspOnlyTick])
 
   return {
     orders,
