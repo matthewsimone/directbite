@@ -27,6 +27,11 @@ eq('paused by merchant info', providerSeverity(off('Paused by merchant')), 'info
 eq('manual info', providerSeverity(off('Manual pause')), 'info')
 eq('busy info', providerSeverity(off('Kitchen busy')), 'info')
 eq('unknown reason critical', providerSeverity(off('xyz123')), 'critical')
+eq('KH PAUSED_BY_RESTAURANT info', providerSeverity(off('PAUSED_BY_RESTAURANT')), 'info')
+eq('KH Store is closed info', providerSeverity(off('Store is closed')), 'info')
+eq('KH Manually stopped taking orders info', providerSeverity(off('Manually stopped taking orders at 2:31 PM')), 'info')
+eq('KH system pause after expired orders critical',
+  providerSeverity(off('The system paused the provider for 24 hours after 2 orders were expired')), 'critical')
 eq('text disconnected', providerBannerText({ provider_id: 'doordash', connection_status: 'disabled' }),
   'DOORDASH DISCONNECTED — orders are not coming in. Contact Ordr support.')
 eq('text connecting in_progress', providerBannerText({ provider_id: 'grubhub', connection_status: 'in_progress' }),
