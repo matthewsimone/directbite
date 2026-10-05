@@ -108,6 +108,13 @@ eq('toRow: excludes status', 'status' in toRow(extractOrder(v2)), false);
 eq('toRow: excludes restaurant_id', 'restaurant_id' in toRow(extractOrder(v2)), false);
 eq('toRow: excludes print_status', 'print_status' in toRow(extractOrder(v2)), false);
 eq('toRow: excludes acknowledged_at', 'acknowledged_at' in toRow(extractOrder(v2)), false);
+eq('toRow: paid true', toRow({ order: { paid: true } }).paid, true);
+eq('toRow: paid false kept (not null)', toRow({ order: { paid: false } }).paid, false);
+eq('toRow: paid missing -> null', toRow({ order: {} }).paid, null);
+eq('toRow: paid null -> null', toRow({ order: { paid: null } }).paid, null);
+eq('toRow: paid "false" string -> null', toRow({ order: { paid: 'false' } }).paid, null);
+eq('toRow: paid from v2 envelope',
+  toRow(extractOrder({ order: { order: { id: 9, paid: false }, store: { id: 's' } } })).paid, false);
 
 let failures = 0;
 for (const c of cases) {

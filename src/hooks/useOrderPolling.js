@@ -27,7 +27,7 @@ const EXTERNAL_COLUMNS =
   'order_type, status, asap, scheduled_for, pickup_at, placed_at, customer_name, customer_phone, ' +
   'notes, delivery_type, delivery, items, charges, total, payment_method, prep_time_minutes, ' +
   'acknowledged_at, accepted_at, completed_at, cancelled_at, cancelled_by, print_status, ' +
-  'print_attempts, last_event_at, created_at, updated_at'
+  'print_attempts, paid, last_event_at, created_at, updated_at'
 
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during

@@ -4,7 +4,7 @@
 
 import { formatPhone } from './format'
 import { toPrinterAscii as A } from './printerAscii'
-import { providerDisplay } from './dspProvider'
+import { providerDisplay, dspOrderNumber } from './dspProvider'
 
 const W = 48
 const DW = W / 2 // double-width chars per line at 2x size = 24
@@ -663,7 +663,7 @@ function addExternalTicket(printer, order, rest) {
   printer.addText('\n')
   bold(true)
   printer.addTextSize(2, 2)
-  printer.addText(`#${A(order.order_number ?? order.daily_number ?? '')}\n`)
+  printer.addText(`#${A(dspOrderNumber(order) ?? '')}\n`)
   printer.addTextSize(1, 1)
   bold(false)
 
@@ -769,7 +769,8 @@ function addExternalTicket(printer, order, rest) {
   printer.addTextAlign(C)
   bold(true)
   printer.addTextSize(2, 1)
-  printer.addText((/cash/i.test(String(order.payment_method || '')) ? `COLLECT CASH ${totalStr}` : 'PAID - DO NOT CHARGE') + '\n')
+  const collectPayment = order.paid === false || /cash/i.test(String(order.payment_method || ''))
+  printer.addText((collectPayment ? `COLLECT PAYMENT ${totalStr}` : 'PAID - DO NOT CHARGE') + '\n')
   printer.addTextSize(1, 1)
   bold(false)
 

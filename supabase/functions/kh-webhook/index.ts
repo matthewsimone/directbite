@@ -68,6 +68,7 @@ const PRESERVE_ON_NULL = [
   "delivery_type",
   "customer_phone",
   "customer_phone_code",
+  "paid",
 ] as const;
 
 function ackResponse(): Response {
