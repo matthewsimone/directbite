@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { formatMoney } from './ExternalOrderCard'
+import { formatPhone } from '../../utils/format'
 import { providerDisplay, dspOrderNumber } from '../../utils/dspProvider'
 import { printExternalOrder } from '../../utils/epsonPrint'
 import { writeExternalPrintResult } from '../../utils/externalPrintStatus'
@@ -99,6 +100,46 @@ function OptionLines({ options, depth }) {
       <OptionLines options={op?.options} depth={depth + 1} />
     </div>
   ))
+}
+
+// Driver status line for a provider-delivered order. Delivery progress wins
+// over courier assignment: delivered > arriving > assigned > not assigned.
+function driverStatusLine(delivery) {
+  if (delivery?.status === 'delivered') return 'Delivered'
+  if (delivery?.status === 'arriving') return 'Driver arriving'
+  if (delivery?.courier?.status === 'assigned') return 'Driver assigned'
+  return 'Driver not assigned yet'
+}
+
+// Delivery section (delivery orders only). Provider-delivered: courier name,
+// phone and status. Restaurant-delivered: address + delivery notes. Every
+// field is optional; a missing delivery object renders just the label.
+function DeliverySection({ order, providerName }) {
+  const delivery = order.delivery && typeof order.delivery === 'object' ? order.delivery : {}
+  if (delivery.type === 'restaurant') {
+    const a = delivery.address && typeof delivery.address === 'object' ? delivery.address : {}
+    const cityLine = [a.city, [a.state, a.zipcode].filter(Boolean).join(' ')].filter(Boolean).join(', ')
+    return (
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Delivery</h3>
+        <p className="text-lg font-medium">Your driver</p>
+        {a.street && <p className="text-gray-700">{a.street}</p>}
+        {a.unit_number && <p className="text-gray-700">{a.unit_number}</p>}
+        {cityLine && <p className="text-gray-700">{cityLine}</p>}
+        {delivery.notes && <p className="text-sm italic text-gray-500">{delivery.notes}</p>}
+      </div>
+    )
+  }
+  const courier = delivery.courier && typeof delivery.courier === 'object' ? delivery.courier : {}
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Delivery</h3>
+      <p className="text-lg font-medium">{providerName} driver</p>
+      {courier.name && <p className="text-gray-700">{courier.name}</p>}
+      {courier.phone_number && <p className="text-gray-700">{formatPhone(courier.phone_number)}</p>}
+      <p className="text-sm font-semibold text-gray-600">{driverStatusLine(delivery)}</p>
+    </div>
+  )
 }
 
 function Row({ label, value, className = '' }) {
@@ -259,6 +300,10 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
           <p className="text-lg font-medium">{order.customer_name || '—'}</p>
           {order.customer_phone && <p className="text-lg text-gray-700">{order.customer_phone}</p>}
         </div>
+
+        {String(order.order_type || '').toLowerCase().includes('delivery') && (
+          <DeliverySection order={order} providerName={provider.name} />
+        )}
 
         {order.notes && (
           <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4">
