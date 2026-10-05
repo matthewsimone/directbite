@@ -10,3 +10,12 @@ export function providerDisplay(o) {
   const raw = String(o?.provider_name || o?.provider_id || 'DSP')
   return { label: raw.toUpperCase(), name: raw, cls: 'bg-gray-700 text-white', border: 'border-l-gray-700' }
 }
+
+// KitchenHub order numbers can arrive already prefixed ("#A1B2"); strip one
+// leading '#' so callers add their own without showing "##".
+export function dspOrderNumber(o) {
+  const raw = o?.order_number ?? o?.daily_number
+  if (raw == null) return null
+  const s = String(raw).trim().replace(/^#/, '')
+  return s || null
+}

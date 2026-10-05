@@ -112,6 +112,8 @@ export function toRow(o: any): Record<string, unknown> {
     order_type: order?.type ?? null,
     kh_status_raw: order?.status ?? null,
     asap: order?.asap ?? null,
+    // Strict boolean: a string like "false" must not reach Postgres' cast.
+    paid: typeof order?.paid === "boolean" ? order.paid : null,
     notes: order?.notes ?? null,
     prep_time_minutes: order?.prep_time_minutes ?? null,
     cancelled_by: order?.cancelled_by ?? null,

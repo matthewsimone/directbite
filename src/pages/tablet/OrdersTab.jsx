@@ -1835,7 +1835,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     // Derived each render so the open detail tracks the poll; if the row ages
     // out of the 7-day window we fall through to the list.
     const ext = (externalOrders || []).find(o => o.id === selectedExternalId)
-    if (ext) return <ExternalOrderDetail order={ext} restaurant={restaurant} onBack={() => setSelectedExternalId(null)} />
+    if (ext) return <ExternalOrderDetail order={ext} restaurant={restaurant} setExternalOrders={setExternalOrders} fetchOrders={fetchOrders} onBack={() => setSelectedExternalId(null)} />
   }
 
   if (selectedOrder) {

@@ -1,11 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 import { formatMoney } from './ExternalOrderCard'
-import { providerDisplay } from '../../utils/dspProvider'
+import { providerDisplay, dspOrderNumber } from '../../utils/dspProvider'
 import { printExternalOrder } from '../../utils/epsonPrint'
 import { writeExternalPrintResult } from '../../utils/externalPrintStatus'
 
 // DSP order detail. Full-screen overlay matching OrderDetail's frame.
-// Actions: REPRINT and Back. Accept/Ready/Cancel come with KitchenHub write-back.
+// Actions go to KitchenHub through the kh-order-action edge function:
+//   new                  → Confirm N min (accept with prep time) / MORE OPTIONS
+//                          (prep-time ladder + Cancel Order with confirm)
+//   accepted             → MARK READY (KitchenHub 'complete')
+//   completed/cancelled  → REPRINT and Back only
+
+// Prep time is cooking time for every DSP order — the courier owns delivery —
+// so pickup and delivery orders both use the pickup ladder and default.
+// Keep in sync with PICKUP_LADDER in OrdersTab.jsx (Ordr ready-time bar).
+const PICKUP_LADDER = [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 75, 90]
 
 // KitchenHub Charges keys, in display order. Values pass through as given.
 const CHARGE_LABELS = [
@@ -31,9 +41,50 @@ const STATUS_PILL = {
   cancelled: 'bg-red-100 text-red-800',
 }
 
+// Status each action moves the order to — local patch applies only when the
+// server reports this exact status back.
+const TARGET = { accept: 'accepted', complete: 'completed', cancel: 'cancelled' }
+
 function formatTime(dateStr) {
   if (!dateStr) return ''
   return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+}
+
+function formatClock(ms) {
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(new Date(ms))
+}
+
+// Local mirror of the server write so the tile + detail update before the
+// next poll; the poll and realtime reconcile right after.
+function localStamps(action, prepTime) {
+  const now = new Date().toISOString()
+  if (action === 'accept') return { accepted_at: now, prep_time_minutes: prepTime }
+  if (action === 'complete') return { completed_at: now }
+  return { cancelled_at: now, cancelled_by: 'restaurant' }
+}
+
+function actionErrorMessage(result, providerName) {
+  switch (result?.error) {
+    case 'conflict':
+      return `${providerName} already has this order as ${result.status}. The tablet has been updated.`
+    case 'invalid_status':
+      return `This order is already ${result.status}.`
+    case 'not_main_account':
+      return result.message
+    case 'store_not_enabled':
+      return 'DSP order actions are not enabled for this store.'
+    case 'kitchenhub_error':
+      return `${providerName} did not accept the update${result.http ? ` (HTTP ${result.http})` : ''}. Try again, or use the ${providerName} tablet.`
+    case 'forbidden':
+      return 'This order belongs to a different restaurant.'
+    case 'missing_auth':
+    case 'invalid_auth':
+      return 'Session expired. Please log in again.'
+    default:
+      return 'Update failed. Please try again.'
+  }
 }
 
 function OptionLines({ options, depth }) {
@@ -59,10 +110,33 @@ function Row({ label, value, className = '' }) {
   )
 }
 
-export default function ExternalOrderDetail({ order, restaurant, onBack }) {
+export default function ExternalOrderDetail({ order, restaurant, onBack, setExternalOrders, fetchOrders }) {
   const [printing, setPrinting] = useState(false)
   const [printError, setPrintError] = useState(null)
+  const [acting, setActing] = useState(null) // null | 'accept' | 'complete' | 'cancel'
+  const [actionError, setActionError] = useState(null)
+  const [showOptions, setShowOptions] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  // Ticks only while the ladder is open so each row's clock time stays honest.
+  const [nowTick, setNowTick] = useState(() => Date.now())
   const hasPrinter = !!restaurant?.printer_ip
+  const provider = providerDisplay(order)
+  const defaultPrepMinutes = restaurant?.estimated_pickup_minutes || 30
+
+  useEffect(() => {
+    if (!showOptions) return
+    const t = setInterval(() => setNowTick(Date.now()), 15000)
+    return () => clearInterval(t)
+  }, [showOptions])
+
+  // A webhook (or another tablet) can move the order while a sheet is open;
+  // the accept/cancel sheets only make sense for 'new'.
+  useEffect(() => {
+    if (order.status !== 'new') {
+      setShowOptions(false)
+      setShowCancelConfirm(false)
+    }
+  }, [order.status])
 
   async function handleReprint() {
     if (!hasPrinter || printing) return
@@ -81,7 +155,59 @@ export default function ExternalOrderDetail({ order, restaurant, onBack }) {
     }
   }
 
-  const provider = providerDisplay(order)
+  async function runAction(action, prepTime) {
+    if (acting) return
+    setActing(action)
+    setActionError(null)
+    try {
+      const { data: { session }, error: refreshError } = await supabase.auth.refreshSession()
+      if (refreshError || !session) {
+        setActionError('Session expired. Please log in again.')
+        return
+      }
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/kh-order-action`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            external_order_id: order.id,
+            action,
+            ...(action === 'accept' ? { prep_time: prepTime } : {}),
+          }),
+        }
+      )
+      const result = await res.json().catch(() => null)
+      if (result?.ok) {
+        const stamps = result.status === TARGET[action] ? localStamps(action, prepTime) : {}
+        setExternalOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: result.status, ...stamps } : o))
+        setShowOptions(false)
+        setShowCancelConfirm(false)
+        fetchOrders()
+        return
+      }
+      // conflict / invalid_status carry KitchenHub's (or our) current status.
+      if (result?.status) {
+        setExternalOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: result.status } : o))
+      }
+      setActionError(actionErrorMessage(result, provider.name))
+    } catch (err) {
+      console.error('[ExtAction] request failed', err)
+      setActionError('Request failed. Please try again.')
+    } finally {
+      setActing(null)
+    }
+  }
+
+  const reprintButton = (className, compact) => (
+    <button onClick={handleReprint} disabled={!hasPrinter || printing || !!acting} className={className}>
+      {!hasPrinter ? 'NO PRINTER' : printing ? (compact ? '…' : 'PRINTING…') : 'REPRINT'}
+    </button>
+  )
+
   const items = Array.isArray(order.items) ? order.items : []
   const charges = order.charges && typeof order.charges === 'object' ? order.charges : {}
   const otherFees = charges.other_fee && typeof charges.other_fee === 'object' ? Object.entries(charges.other_fee) : []
@@ -102,7 +228,10 @@ export default function ExternalOrderDetail({ order, restaurant, onBack }) {
         <div>
           <div className="flex items-center gap-2">
             <span className={`px-2 py-0.5 rounded text-xs font-bold tracking-wide ${provider.cls}`}>{provider.label}</span>
-            <h2 className="text-xl font-bold">#{order.order_number ?? order.daily_number ?? '—'}</h2>
+            <h2 className="text-xl font-bold">#{dspOrderNumber(order) ?? '—'}</h2>
+            {order.paid === false && (
+              <span className="px-2 py-0.5 rounded text-xs font-bold tracking-wide bg-amber-400 text-black">UNPAID</span>
+            )}
           </div>
           <p className="text-sm text-gray-500">{formatTime(order.placed_at || order.created_at)}</p>
         </div>
@@ -173,18 +302,98 @@ export default function ExternalOrderDetail({ order, restaurant, onBack }) {
 
       <div className="shrink-0 px-4 pt-4 border-t border-gray-200 bg-white space-y-2" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
         {printError && <p className="text-sm text-red-600 text-center">Reprint failed: {printError}</p>}
-        <div className="flex gap-3">
-          <button
-            onClick={handleReprint}
-            disabled={!hasPrinter || printing}
-            className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base disabled:opacity-60"
-          >
-            {!hasPrinter ? 'NO PRINTER' : printing ? 'PRINTING…' : 'REPRINT'}
-          </button>
-          <button onClick={onBack} className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base">
-            Back
-          </button>
-        </div>
+        {actionError && <p className="text-sm text-red-600 text-center">{actionError}</p>}
+
+        {showCancelConfirm ? (
+          <div className="bg-red-50 p-4 rounded-xl space-y-3">
+            <p className="text-center font-medium text-red-800">
+              Cancel this {provider.name} order? {provider.name} will notify the customer.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowCancelConfirm(false)}
+                disabled={!!acting}
+                className="flex-1 h-12 rounded-xl border-2 border-gray-400 bg-white font-semibold disabled:opacity-50"
+              >
+                No
+              </button>
+              <button
+                onClick={() => runAction('cancel')}
+                disabled={!!acting}
+                className="flex-1 h-12 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50"
+              >
+                {acting === 'cancel' ? 'CANCELLING…' : 'Yes, Cancel'}
+              </button>
+            </div>
+          </div>
+        ) : showOptions ? (
+          <div className="bg-gray-50 p-4 rounded-xl space-y-3">
+            <p className="font-semibold text-gray-800">Ready in</p>
+            <div className="max-h-[18rem] overflow-y-auto space-y-2 -mx-1 px-1">
+              {PICKUP_LADDER.map(min => (
+                <button
+                  key={min}
+                  onClick={() => runAction('accept', min)}
+                  disabled={!!acting}
+                  className="w-full h-14 rounded-xl border-2 border-gray-300 bg-white active:bg-gray-100 disabled:opacity-50 flex items-center justify-between px-5"
+                >
+                  <span className="text-base font-bold text-gray-900">{min} min</span>
+                  <span className="text-sm text-gray-500">{formatClock(nowTick + min * 60000)}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowCancelConfirm(true)}
+              disabled={!!acting}
+              className="w-full h-12 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-50"
+            >
+              Cancel Order
+            </button>
+            <button
+              onClick={() => setShowOptions(false)}
+              disabled={!!acting}
+              className="w-full h-12 rounded-xl border border-gray-300 font-semibold disabled:opacity-50"
+            >
+              Back
+            </button>
+          </div>
+        ) : order.status === 'new' ? (
+          <div className="flex gap-3">
+            {reprintButton('basis-[18%] h-14 rounded-xl border-2 border-gray-300 font-bold text-xs disabled:opacity-60', true)}
+            <button
+              onClick={() => { setNowTick(Date.now()); setShowOptions(true) }}
+              disabled={!!acting}
+              className="basis-[32%] h-14 rounded-xl border-2 border-gray-300 font-bold text-sm disabled:opacity-50"
+            >
+              MORE OPTIONS
+            </button>
+            <button
+              onClick={() => runAction('accept', defaultPrepMinutes)}
+              disabled={!!acting}
+              className="basis-[50%] h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
+            >
+              {acting === 'accept' ? 'CONFIRMING…' : `Confirm ${defaultPrepMinutes} min`}
+            </button>
+          </div>
+        ) : order.status === 'accepted' ? (
+          <div className="flex gap-3">
+            {reprintButton('flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base disabled:opacity-60', false)}
+            <button
+              onClick={() => runAction('complete')}
+              disabled={!!acting}
+              className="flex-1 h-14 rounded-xl bg-[#16A34A] text-white font-bold text-base disabled:opacity-50"
+            >
+              {acting === 'complete' ? 'MARKING…' : 'MARK READY'}
+            </button>
+          </div>
+        ) : (
+          <div className="flex gap-3">
+            {reprintButton('flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base disabled:opacity-60', false)}
+            <button onClick={onBack} className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base">
+              Back
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

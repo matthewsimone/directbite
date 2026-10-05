@@ -1,4 +1,4 @@
-import { providerDisplay } from '../../utils/dspProvider'
+import { providerDisplay, dspOrderNumber } from '../../utils/dspProvider'
 
 // DSP (KitchenHub) order tile. Mirrors OrderCard's container + un-acked
 // flash so DSP and Ordr tiles read as one queue. Display only.
@@ -47,7 +47,7 @@ export default function ExternalOrderCard({ order, onTap }) {
           <div className="text-sm text-gray-500 mb-1 truncate">{order.customer_name}</div>
         )}
         <div className="flex justify-between items-center text-gray-600 text-sm">
-          <span className="font-medium text-gray-900">#{order.order_number ?? order.daily_number ?? '—'}</span>
+          <span className="font-medium text-gray-900">#{dspOrderNumber(order) ?? '—'}</span>
           <span>{formatAge(order)}</span>
         </div>
         <div className="flex justify-between items-center text-gray-600 text-sm mt-1">
