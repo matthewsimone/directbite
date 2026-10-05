@@ -1,19 +1,7 @@
+import { providerDisplay } from '../../utils/dspProvider'
+
 // DSP (KitchenHub) order tile. Mirrors OrderCard's container + un-acked
 // flash so DSP and Ordr tiles read as one queue. Display only.
-
-// provider_id values are KitchenHub's; matched loosely and falls back to
-// provider_name so an unexpected id still renders a readable badge.
-export function providerDisplay(o) {
-  const key = String(o.provider_id || o.provider_name || '').toLowerCase().replace(/[^a-z]/g, '')
-  if (key.includes('doordash')) return { label: 'DOORDASH', cls: 'bg-red-600 text-white', border: 'border-l-red-600' }
-  if (key.includes('uber')) return { label: 'UBER EATS', cls: 'bg-black text-white', border: 'border-l-black' }
-  if (key.includes('grubhub')) return { label: 'GRUBHUB', cls: 'bg-orange-500 text-white', border: 'border-l-orange-500' }
-  return {
-    label: String(o.provider_name || o.provider_id || 'DSP').toUpperCase(),
-    cls: 'bg-gray-700 text-white',
-    border: 'border-l-gray-700',
-  }
-}
 
 export function formatMoney(v) {
   if (v == null || v === '') return null

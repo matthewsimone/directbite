@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { printOrder } from '../utils/epsonPrint'
+import { printOrder, printExternalOrder } from '../utils/epsonPrint'
+import { writeExternalPrintResult } from '../utils/externalPrintStatus'
 import { isStuckUnacked } from '../utils/stuckStage'
 
 // Auto-print gate (B2 write-complete signal).
@@ -26,7 +27,7 @@ const EXTERNAL_COLUMNS =
   'order_type, status, asap, scheduled_for, pickup_at, placed_at, customer_name, customer_phone, ' +
   'notes, delivery_type, delivery, items, charges, total, payment_method, prep_time_minutes, ' +
   'acknowledged_at, accepted_at, completed_at, cancelled_at, cancelled_by, print_status, ' +
-  'print_attempts, created_at, updated_at'
+  'print_attempts, last_event_at, created_at, updated_at'
 
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
@@ -262,7 +263,28 @@ export function useOrderPolling(restaurant, hours) {
     return Promise.race([run, timeout])
   }
 
+  // DSP auto-print. Never rejects (printExternalOrder and
+  // writeExternalPrintResult both resolve on every path). No print_logs row:
+  // print_logs.order_id references orders.
+  async function autoPrintExternal(extOrder, copies) {
+    try {
+      const attempt = (extOrder.print_attempts || 0) + 1
+      const result = await printExternalOrder(restaurant.printer_ip, extOrder, { name: restaurant.name }, copies)
+      if (result.success) printedExternalIds.current.add(extOrder.id)
+      setExternalOrders(prev => prev.map(o => o.id === extOrder.id
+        ? { ...o, print_status: result.success ? 'printed' : 'failed', print_attempts: attempt }
+        : o))
+      await writeExternalPrintResult(extOrder.id, result, attempt)
+    } catch (err) {
+      console.error('[ExtPrint] auto-print exception', extOrder.id, err)
+    }
+  }
+
   const retryingIds = useRef(new Set())
+  // DSP ids that printed successfully this session. Guards against a stale
+  // external set (fetch timeout/error fallback, or a fetch that raced the
+  // status write) re-dispatching a ticket that already printed.
+  const printedExternalIds = useRef(new Set())
   const recheckTimer = useRef(null)
   const recheckCount = useRef(0)
   const realtimeDebounce = useRef(null)
@@ -452,6 +474,33 @@ export function useOrderPolling(restaurant, hours) {
           retryingIds.current.add(order.id)
           autoPrint(order, restaurant?.auto_print_copies || 1)
             .finally(() => retryingIds.current.delete(order.id))
+        }
+      }
+
+      // ── DSP (KitchenHub) auto-print ────────────────────────────────────
+      // Flag-on only (ext is null otherwise). Fire-and-forget like autoPrint;
+      // in-flight guard reuses retryingIds under an `ext-` prefix so ids can't
+      // collide with Ordr orders. 30-min window so enabling the flag never
+      // prints a backlog — measured from arrival (created_at) in arrival mode,
+      // and from acceptance (accepted_at ?? last_event_at) in 'in_progress'
+      // mode, where a DSP ticket fires on accept.
+      if (ext !== null && restaurant.printer_ip) {
+        const extNow = Date.now()
+        const inProgressMode = restaurant?.print_trigger === 'in_progress'
+        const windowStart = o => new Date(inProgressMode ? (o.accepted_at ?? o.last_event_at) : o.created_at).getTime()
+        const toPrint = ext.filter(o =>
+          (inProgressMode ? o.status === 'accepted' : (o.status === 'new' || o.status === 'accepted')) &&
+          (o.print_status === 'pending' || o.print_status === 'failed') &&
+          (o.print_attempts || 0) < 3 &&
+          extNow - windowStart(o) < 30 * 60 * 1000 &&
+          !retryingIds.current.has(`ext-${o.id}`) &&
+          !printedExternalIds.current.has(o.id)
+        )
+        for (const o of toPrint) {
+          const key = `ext-${o.id}`
+          retryingIds.current.add(key)
+          autoPrintExternal(o, restaurant?.auto_print_copies || 1)
+            .finally(() => retryingIds.current.delete(key))
         }
       }
 

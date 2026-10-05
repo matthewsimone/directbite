@@ -1,7 +1,11 @@
-import { providerDisplay, formatMoney } from './ExternalOrderCard'
+import { useState } from 'react'
+import { formatMoney } from './ExternalOrderCard'
+import { providerDisplay } from '../../utils/dspProvider'
+import { printExternalOrder } from '../../utils/epsonPrint'
+import { writeExternalPrintResult } from '../../utils/externalPrintStatus'
 
 // DSP order detail. Full-screen overlay matching OrderDetail's frame.
-// Read-only for now: Back is the only action.
+// Actions: REPRINT and Back. Accept/Ready/Cancel come with KitchenHub write-back.
 
 // KitchenHub Charges keys, in display order. Values pass through as given.
 const CHARGE_LABELS = [
@@ -55,7 +59,28 @@ function Row({ label, value, className = '' }) {
   )
 }
 
-export default function ExternalOrderDetail({ order, onBack }) {
+export default function ExternalOrderDetail({ order, restaurant, onBack }) {
+  const [printing, setPrinting] = useState(false)
+  const [printError, setPrintError] = useState(null)
+  const hasPrinter = !!restaurant?.printer_ip
+
+  async function handleReprint() {
+    if (!hasPrinter || printing) return
+    setPrinting(true)
+    setPrintError(null)
+    try {
+      const attempt = (order.print_attempts || 0) + 1
+      const result = await printExternalOrder(restaurant.printer_ip, order, { name: restaurant.name }, 1)
+      // Mirrors the Ordr reprint: in 'in_progress' print mode an untaken order
+      // must stay 'pending' or its on-accept auto-print would be skipped.
+      const awaitingTake = restaurant?.print_trigger === 'in_progress' && order.status === 'new'
+      if (!awaitingTake) await writeExternalPrintResult(order.id, result, attempt)
+      if (!result.success) setPrintError(result.message)
+    } finally {
+      setPrinting(false)
+    }
+  }
+
   const provider = providerDisplay(order)
   const items = Array.isArray(order.items) ? order.items : []
   const charges = order.charges && typeof order.charges === 'object' ? order.charges : {}
@@ -146,10 +171,20 @@ export default function ExternalOrderDetail({ order, onBack }) {
         </div>
       </div>
 
-      <div className="shrink-0 px-4 pt-4 border-t border-gray-200 bg-white" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
-        <button onClick={onBack} className="w-full h-14 rounded-xl border-2 border-gray-300 font-bold text-base">
-          Back
-        </button>
+      <div className="shrink-0 px-4 pt-4 border-t border-gray-200 bg-white space-y-2" style={{ paddingBottom: 'max(16px, env(safe-area-inset-bottom, 16px))' }}>
+        {printError && <p className="text-sm text-red-600 text-center">Reprint failed: {printError}</p>}
+        <div className="flex gap-3">
+          <button
+            onClick={handleReprint}
+            disabled={!hasPrinter || printing}
+            className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base disabled:opacity-60"
+          >
+            {!hasPrinter ? 'NO PRINTER' : printing ? 'PRINTING…' : 'REPRINT'}
+          </button>
+          <button onClick={onBack} className="flex-1 h-14 rounded-xl border-2 border-gray-300 font-bold text-base">
+            Back
+          </button>
+        </div>
       </div>
     </div>
   )
