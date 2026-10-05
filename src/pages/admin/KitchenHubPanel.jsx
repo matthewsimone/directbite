@@ -33,6 +33,80 @@ function describeError(r) {
   return `${r?.error || 'error'}${r?.step ? ` (${r.step})` : ''}${r?.http ? ` · HTTP ${r.http}` : ''}${r?.detail ? ` · ${r.detail}` : ''}${kh}`
 }
 
+const isNotFound = err => err?.http === 404
+
+// Read-only browser of every KitchenHub location on the account (checklist:
+// list locations, list stores in a location). Closed by default.
+function AllLocations({ ownLocationId }) {
+  const [open, setOpen] = useState(false)
+  const [locations, setLocations] = useState(null)
+  const [stores, setStores] = useState({}) // location id → 'loading' | array | { error }
+  const [error, setError] = useState(null)
+
+  async function toggle() {
+    if (open) { setOpen(false); return }
+    setOpen(true); setError(null); setLocations(null); setStores({})
+    const r = await callKhAdmin('list_locations')
+    if (!r.ok) setError(describeError(r))
+    else setLocations(r.locations || [])
+  }
+
+  async function showStores(id) {
+    setStores(s => ({ ...s, [id]: 'loading' }))
+    const r = await callKhAdmin('list_stores', { location_id: id })
+    setStores(s => ({ ...s, [id]: r.ok ? (r.stores || []) : { error: describeError(r) } }))
+  }
+
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={toggle} className="text-xs font-semibold text-gray-500 hover:text-gray-700">
+        {open ? 'Hide all KitchenHub locations' : 'Show all KitchenHub locations'}
+      </button>
+      {open && (
+        <div className="space-y-2">
+          {error && <p className="text-xs text-red-700 bg-red-50 rounded p-2 break-words">{error}</p>}
+          {!error && locations === null && <p className="text-xs text-gray-400">Loading…</p>}
+          {locations?.length === 0 && <p className="text-xs text-gray-400">No locations</p>}
+          {locations?.map(l => {
+            const s = stores[l.id]
+            return (
+              <div key={l.id} className="border border-gray-200 rounded-lg p-2 text-xs space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm">{l.location_name}</span>
+                  {l.id === ownLocationId && (
+                    <span className="px-1.5 py-0.5 rounded bg-green-100 text-green-800 font-semibold">this restaurant</span>
+                  )}
+                </div>
+                <p className="text-gray-600">
+                  {[l.location_street, l.location_city, l.location_state, l.location_zipcode].filter(Boolean).join(', ')}
+                </p>
+                <p className="text-gray-400 break-all">id {l.id} · {l.location_status || 'status —'}</p>
+                {s === undefined ? (
+                  <button type="button" onClick={() => showStores(l.id)} className="font-semibold text-gray-500 hover:text-gray-700">
+                    Show stores
+                  </button>
+                ) : s === 'loading' ? (
+                  <p className="text-gray-400">Loading stores…</p>
+                ) : s.error ? (
+                  <p className="text-red-700 break-words">{s.error}</p>
+                ) : s.length === 0 ? (
+                  <p className="text-gray-400">No stores</p>
+                ) : (
+                  <ul className="pl-3 space-y-0.5">
+                    {s.map(st => (
+                      <li key={st.id} className="break-all">{st.name || st.store_name} <span className="text-gray-400">· {st.id}</span></li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Pill({ value, good }) {
   if (!value) return <span className="text-xs text-gray-400">—</span>
   return (
@@ -62,6 +136,7 @@ export default function KitchenHubPanel({ restaurant }) {
       else setError(describeError(p))
     } else {
       setAccounts([])
+      setConnect(null)
     }
   }, [restaurant.id])
 
@@ -70,8 +145,10 @@ export default function KitchenHubPanel({ restaurant }) {
     load()
   }, [load])
 
+  // Any action closes an open connect box (startConnect reopens it with the
+  // new link after its own run completes).
   async function run(key, action, payload = {}) {
-    setBusy(key); setError(null)
+    setBusy(key); setError(null); setConnect(null)
     try {
       const r = await callKhAdmin(action, { restaurant_id: restaurant.id, ...payload })
       if (!r.ok) setError(describeError(r))
@@ -144,6 +221,8 @@ export default function KitchenHubPanel({ restaurant }) {
                 </p>
                 <p className="text-xs text-gray-400 break-all">id {info.location.id} · {info.location.location_status || 'status —'}</p>
               </>
+            ) : isNotFound(info.location_error) ? (
+              <p className="text-xs text-gray-500">No location (deleted)</p>
             ) : (
               <p className="text-xs text-red-600 break-words">{info.location_error ? JSON.stringify(info.location_error) : 'not found'}</p>
             )}
@@ -153,6 +232,8 @@ export default function KitchenHubPanel({ restaurant }) {
                 <p>{info.store.store_name}</p>
                 <p className="text-xs text-gray-400 break-all">id {info.store.id} · routing {info.mapping?.enabled ? 'enabled' : 'disabled'}</p>
               </>
+            ) : isNotFound(info.store_error) ? (
+              <p className="text-xs text-gray-500">No store (deleted)</p>
             ) : (
               <p className="text-xs text-red-600 break-words">{info.store_error ? JSON.stringify(info.store_error) : 'not found'}</p>
             )}
@@ -258,6 +339,8 @@ export default function KitchenHubPanel({ restaurant }) {
           {connect.qr && <img src={connect.qr} alt={`${connect.label} connection QR code`} className="w-44 h-44" />}
         </div>
       )}
+
+      <AllLocations ownLocationId={info?.mapping?.kh_location_id ?? null} />
     </div>
   )
 }
