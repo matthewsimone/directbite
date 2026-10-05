@@ -17,6 +17,17 @@ import { isStuckUnacked } from '../utils/stuckStage'
 // after this many minutes drives the second (escalation) alert layer.
 const ESCALATION_MINUTES = 7
 
+// DSP (KitchenHub) orders: tablet window + hard cap on how long the tick may
+// wait for the external fetch before falling back to the previous set.
+const EXTERNAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const EXTERNAL_FETCH_TIMEOUT_MS = 4000
+const EXTERNAL_COLUMNS =
+  'id, restaurant_id, kh_order_id, provider_id, provider_name, order_number, daily_number, ' +
+  'order_type, status, asap, scheduled_for, pickup_at, placed_at, customer_name, customer_phone, ' +
+  'notes, delivery_type, delivery, items, charges, total, payment_method, prep_time_minutes, ' +
+  'acknowledged_at, accepted_at, completed_at, cancelled_at, cancelled_by, print_status, ' +
+  'print_attempts, created_at, updated_at'
+
 // ── Looping audio element (module-level singleton) ──
 // Created lazily on first call so the constructor doesn't run during
 // SSR / non-browser test contexts. Lives at module scope so re-mounts
@@ -76,6 +87,16 @@ function installGestureUnlock() {
 export function useOrderPolling(restaurant, hours) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  // DSP orders — populated only when restaurant.dsp_orders_enabled is true.
+  // The ref mirrors state so fetchOrders (memoized on [restaurant]) can read
+  // the last good set without a stale closure.
+  const [externalOrders, setExternalOrdersState] = useState([])
+  const externalOrdersRef = useRef([])
+  const setExternalOrders = useCallback(updater => {
+    externalOrdersRef.current =
+      typeof updater === 'function' ? updater(externalOrdersRef.current) : updater
+    setExternalOrdersState(externalOrdersRef.current)
+  }, [])
   const knownOrderIds = useRef(new Set())
   const isPlayingRef = useRef(false)
   const isEscalatingRef = useRef(false)
@@ -211,6 +232,36 @@ export function useOrderPolling(restaurant, hours) {
     if (statusErr) console.error('[AutoPrint] print_status write failed after retries:', statusErr)
   }
 
+  // Never rejects. On any failure (error, throw, timeout) it resolves to the
+  // previous set so the Ordr chime/print/retry path is unaffected.
+  function fetchExternalOrders() {
+    const run = (async () => {
+      try {
+        const since = new Date(Date.now() - EXTERNAL_WINDOW_MS).toISOString()
+        const { data, error } = await supabase
+          .from('external_orders')
+          .select(EXTERNAL_COLUMNS)
+          .eq('restaurant_id', restaurant.id)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+        if (error || !data) {
+          console.error('[POLL:EXT] fetch failed', error?.code, error?.message)
+          return externalOrdersRef.current
+        }
+        const tagged = data.map(o => ({ ...o, __source: 'external' }))
+        setExternalOrders(tagged)
+        return tagged
+      } catch (err) {
+        console.error('[POLL:EXT] exception', err)
+        return externalOrdersRef.current
+      }
+    })()
+    const timeout = new Promise(resolve =>
+      setTimeout(() => resolve(externalOrdersRef.current), EXTERNAL_FETCH_TIMEOUT_MS)
+    )
+    return Promise.race([run, timeout])
+  }
+
   const retryingIds = useRef(new Set())
   const recheckTimer = useRef(null)
   const recheckCount = useRef(0)
@@ -226,6 +277,9 @@ export function useOrderPolling(restaurant, hours) {
     console.log('[POLL] tick', diagnostics.current.lastPollAt, 'isOpen=', isRestaurantOpen())
 
     try {
+      // Kicked off in parallel with the Ordr query; awaited only at the chime
+      // decision, after auto-print has already been dispatched.
+      const externalPromise = restaurant.dsp_orders_enabled === true ? fetchExternalOrders() : null
       const { data, error } = await supabase
         .from('orders')
         .select('*')
@@ -294,9 +348,13 @@ export function useOrderPolling(restaurant, hours) {
       // signals live in the DB (acknowledged_at / stuck_acknowledged_at), so
       // it's reload-safe: reload re-fetches, re-evaluates, re-plays as needed.
       const now = Date.now()
+      // DSP orders join the new-order chime only when the flag is on. The ternary
+      // means no await (no extra microtask) when the flag is off.
+      const ext = externalPromise ? await externalPromise : null
       const hasUnacked =
         data.some(o => o.status === 'new' && !o.acknowledged_at) ||
-        data.some(o => isStuckUnacked(o, now))
+        data.some(o => isStuckUnacked(o, now)) ||
+        (ext !== null && ext.some(o => o.status === 'new' && !o.acknowledged_at))
       syncAudioState(hasUnacked)
 
       // Escalation layer (independent of hasUnacked): an order acknowledged but
@@ -433,6 +491,8 @@ export function useOrderPolling(restaurant, hours) {
   // Polling loop — runs at TabletPage level, survives tab switches
   useEffect(() => {
     fetchOrders()
+    // DSP orders are also gated on Ordr hours. Pre-pilot: KitchenHub store hours
+    // must match Ordr hours, or DSP orders after close are not fetched.
     const interval = setInterval(() => {
       if (isRestaurantOpen()) fetchOrders()
     }, 10000)
@@ -465,11 +525,24 @@ export function useOrderPolling(restaurant, hours) {
         .subscribe()
     }
 
+    let extChannel = null
+    if (restaurant?.id && restaurant.dsp_orders_enabled === true) {
+      extChannel = supabase
+        .channel(`external-orders-rt-${restaurant.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'external_orders', filter: `restaurant_id=eq.${restaurant.id}` },
+          () => triggerRealtimeFetch()
+        )
+        .subscribe()
+    }
+
     return () => {
       clearInterval(interval)
       if (recheckTimer.current) { clearTimeout(recheckTimer.current); recheckTimer.current = null }
       if (realtimeDebounce.current) { clearTimeout(realtimeDebounce.current); realtimeDebounce.current = null }
       if (channel) supabase.removeChannel(channel)
+      if (extChannel) supabase.removeChannel(extChannel)
       // Don't tear down the audio element on unmount — it's module-level
       // and will be reused by the next mount. We do pause it so a stale
       // chime doesn't keep playing if the tablet navigates away mid-loop.
@@ -496,5 +569,7 @@ export function useOrderPolling(restaurant, hours) {
     loading,
     fetchOrders,
     diagnostics,
+    externalOrders,
+    setExternalOrders,
   }
 }

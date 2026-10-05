@@ -5,6 +5,8 @@ import { formatPhone } from '../../utils/format'
 import { formatScheduledLabel, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
 import { getStuckStage } from '../../utils/stuckStage'
 import { isUberActiveNow, isUberExtendedZoneActiveNow } from '../../utils/uberActive'
+import ExternalOrderCard from './ExternalOrderCard'
+import ExternalOrderDetail from './ExternalOrderDetail'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -117,6 +119,17 @@ function formatEtaSuffix(order) {
 // the badge, tab filter, and tab counts.
 function isScheduledSelfDeliver(o) {
   return o.status === 'self_delivering' && o.scheduled_for != null
+}
+
+// DSP (KitchenHub) order → sub-tab key. Status vocabulary is new / accepted /
+// completed / cancelled (khNormalize), distinct from Ordr's.
+function externalTabOf(o, now) {
+  if (o.status === 'new') return 'new'
+  if (o.status === 'accepted') {
+    return o.scheduled_for && new Date(o.scheduled_for).getTime() > now ? 'scheduled' : 'in_progress'
+  }
+  if (o.status === 'completed' || o.status === 'cancelled') return 'complete'
+  return null // unknown status: not shown rather than mis-filed
 }
 
 // ── Order Card ──
@@ -1656,10 +1669,12 @@ function Row({ label, value, className = '' }) {
 
 // ── Main OrdersTab ──
 // Polling, chime, and auto-print are handled by useOrderPolling in TabletPage
-export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, fetchOrders }) {
+export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, fetchOrders, externalOrders, setExternalOrders }) {
   const [subTab, setSubTab] = useState('new')
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [showOlder, setShowOlder] = useState(false)
+  const [selectedExternalId, setSelectedExternalId] = useState(null)
+  const dspEnabled = restaurant?.dsp_orders_enabled === true
 
   // Keep an open detail view in sync with the 10s poll so it auto-escalates
   // (e.g. stuck stage 2 → 3) without the operator re-opening it. The orders
@@ -1709,6 +1724,23 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
         .update({ stuck_acknowledged_at: stuckAt })
         .eq('id', order.id)
       if (error) console.error('[StuckAck] write failed', error)
+    }
+  }
+
+  async function handleExternalTap(order) {
+    setSelectedExternalId(order.id)
+    if (order.status === 'new' && !order.acknowledged_at) {
+      const ackAt = new Date().toISOString()
+      setExternalOrders(prev => prev.map(o => o.id === order.id ? { ...o, acknowledged_at: ackAt } : o))
+      // .select('id') surfaces the RLS case where the update matches zero rows
+      // without an error — the next poll would silently revert the ack.
+      const { data, error } = await supabase
+        .from('external_orders')
+        .update({ acknowledged_at: ackAt })
+        .eq('id', order.id)
+        .select('id')
+      if (error) console.error('[ExtAck] write failed', error)
+      else if (!data || data.length === 0) console.error('[ExtAck] no rows updated', order.id)
     }
   }
 
@@ -1764,14 +1796,31 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     return filtered
   })()
 
+  // DSP merge. Flag off → the exact same array reference as before.
+  const visibleOrders = (() => {
+    if (!dspEnabled) return filteredOrders
+    const now = Date.now()
+    const ext = (externalOrders || []).filter(o => externalTabOf(o, now) === subTab)
+    if (ext.length === 0) return filteredOrders
+    const merged = [...filteredOrders, ...ext]
+    return subTab === 'scheduled'
+      ? merged.sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime())
+      : merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  })()
+
   // Complete tab: cap at last 30 days unless "Load older" expanded, then
   // bucket by NY-time calendar day for the date-grouped section headers.
   // Skips work entirely for other tabs via the early return.
   const groupedComplete = useMemo(() => {
     if (subTab !== 'complete') return null
-    const completeFiltered = orders.filter(
+    const ordrComplete = orders.filter(
       o => o.status === 'complete' || o.status === 'cancelled'
     )
+    // Re-sort after merging: groupOrdersByCreatedAtNy groups in iteration order.
+    const completeFiltered = dspEnabled
+      ? [...ordrComplete, ...(externalOrders || []).filter(o => o.status === 'completed' || o.status === 'cancelled')]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      : ordrComplete
     const cutoff = Date.now() - 30 * DAY_MS
     const visible = showOlder
       ? completeFiltered
@@ -1780,7 +1829,14 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
       groups: groupOrdersByCreatedAtNy(visible),
       hasMore: !showOlder && completeFiltered.length > visible.length,
     }
-  }, [orders, subTab, showOlder])
+  }, [orders, subTab, showOlder, dspEnabled, externalOrders])
+
+  if (dspEnabled && selectedExternalId) {
+    // Derived each render so the open detail tracks the poll; if the row ages
+    // out of the 7-day window we fall through to the list.
+    const ext = (externalOrders || []).find(o => o.id === selectedExternalId)
+    if (ext) return <ExternalOrderDetail order={ext} onBack={() => setSelectedExternalId(null)} />
+  }
 
   if (selectedOrder) {
     return (
@@ -1812,6 +1868,10 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
   // read, same 10s-poll refresh cadence. Mutually exclusive with uberActive:
   // that one is false for in_house by definition, this one is true only for it.
   const uberExtendedZone = restaurant ? isUberExtendedZoneActiveNow(restaurant) : false
+
+  const renderTile = order => order.__source === 'external'
+    ? <ExternalOrderCard key={`ext-${order.id}`} order={order} onTap={handleExternalTap} />
+    : <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger} />
 
   return (
     <div className="h-full flex flex-col">
@@ -1893,7 +1953,10 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
                     ? (o.status === 'scheduled' || isScheduledSelfDeliver(o))
                     : o.status === tab.key
               )
-              if (tabOrders.length === 0) return null
+              const extCount = dspEnabled
+                ? (externalOrders || []).filter(o => externalTabOf(o, now) === tab.key).length
+                : 0
+              if (tabOrders.length + extCount === 0) return null
               // Per-tab urgency → badge color. Default neutral grey.
               let color = 'bg-gray-200 text-gray-700'
               if (tab.key === 'new') {
@@ -1908,7 +1971,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
               // Scheduled: always grey (no urgency state).
               return (
                 <span className={`ml-2 text-xs rounded-full px-2 py-0.5 ${color}`}>
-                  {tabOrders.length}
+                  {tabOrders.length + extCount}
                 </span>
               )
             })()}
@@ -1946,9 +2009,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
                       {group.label}
                     </div>
                     <div className="space-y-3">
-                      {group.orders.map(order => (
-                        <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger} />
-                      ))}
+                      {group.orders.map(renderTile)}
                     </div>
                   </div>
                 ))}
@@ -1963,12 +2024,10 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
               </>
             )}
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : visibleOrders.length === 0 ? (
           <p className="text-center text-gray-400 mt-8">No {subTab === 'in_progress' ? 'in progress' : subTab} orders</p>
         ) : (
-          filteredOrders.map(order => (
-            <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger} />
-          ))
+          visibleOrders.map(renderTile)
         )}
       </div>
     </div>
