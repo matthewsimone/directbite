@@ -7,6 +7,7 @@ import { getStuckStage } from '../../utils/stuckStage'
 import { isUberActiveNow, isUberExtendedZoneActiveNow } from '../../utils/uberActive'
 import ExternalOrderCard from './ExternalOrderCard'
 import ExternalOrderDetail from './ExternalOrderDetail'
+import DspProviderBanner from './DspProviderBanner'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -1669,7 +1670,7 @@ function Row({ label, value, className = '' }) {
 
 // ── Main OrdersTab ──
 // Polling, chime, and auto-print are handled by useOrderPolling in TabletPage
-export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, fetchOrders, externalOrders, setExternalOrders }) {
+export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders, ordersLoading: loading, fetchOrders, externalOrders, setExternalOrders, providerStatus }) {
   const [subTab, setSubTab] = useState('new')
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [showOlder, setShowOlder] = useState(false)
@@ -1875,6 +1876,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
 
   return (
     <div className="h-full flex flex-col">
+      {dspEnabled && <DspProviderBanner rows={providerStatus} />}
       {/* Delivery toggle */}
       <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-100">
         {/* Left: delivery status + context-aware descriptor / Uber badge */}

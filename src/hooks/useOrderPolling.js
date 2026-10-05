@@ -113,6 +113,8 @@ export function useOrderPolling(restaurant, hours) {
   // The ref mirrors state so fetchOrders (memoized on [restaurant]) can read
   // the last good set without a stale closure.
   const [externalOrders, setExternalOrdersState] = useState([])
+  // dsp_provider_status rows for the provider banner (flag-on only).
+  const [providerStatus, setProviderStatus] = useState([])
   const externalOrdersRef = useRef([])
   const setExternalOrders = useCallback(updater => {
     externalOrdersRef.current =
@@ -284,6 +286,29 @@ export function useOrderPolling(restaurant, hours) {
     return Promise.race([run, timeout])
   }
 
+  // Provider online/connection status for the DSP banner. Fire-and-forget:
+  // never awaited by a tick and never rejects, so it can't delay or fail the
+  // Ordr or DSP paths (stronger isolation than the external-orders timeout
+  // race, which exists only because that promise IS awaited). On any failure
+  // the previous rows stay, so a transient error can't make a banner vanish.
+  function fetchProviderStatus() {
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('dsp_provider_status')
+          .select('provider_id, online_status, connection_status, reason, pause_until, last_event_at')
+          .eq('restaurant_id', restaurant.id)
+        if (error || !data) {
+          console.error('[POLL:DSP-STATUS] fetch failed', error?.code, error?.message)
+          return
+        }
+        setProviderStatus(data)
+      } catch (err) {
+        console.error('[POLL:DSP-STATUS] exception', err)
+      }
+    })()
+  }
+
   // DSP auto-print. Never rejects (printExternalOrder and
   // writeExternalPrintResult both resolve on every path). No print_logs row:
   // print_logs.order_id references orders.
@@ -360,6 +385,7 @@ export function useOrderPolling(restaurant, hours) {
       // Kicked off in parallel with the Ordr query; awaited only at the chime
       // decision, after auto-print has already been dispatched.
       const externalPromise = restaurant.dsp_orders_enabled === true ? fetchExternalOrders() : null
+      if (externalPromise) fetchProviderStatus()
       const { data, error } = await supabase
         .from('orders')
         .select('*')
@@ -585,6 +611,7 @@ export function useOrderPolling(restaurant, hours) {
     if (!restaurant || restaurant.dsp_orders_enabled !== true) return
     console.log('[POLL:DSP] after-hours tick', new Date().toISOString())
     try {
+      fetchProviderStatus()
       const ext = await fetchExternalOrders() // never rejects; timeout race intact
       // Read the last-known Ordr state AFTER the await so a full fetch that
       // completed meanwhile is honoured.
@@ -654,6 +681,11 @@ export function useOrderPolling(restaurant, hours) {
           { event: '*', schema: 'public', table: 'external_orders', filter: `restaurant_id=eq.${restaurant.id}` },
           () => triggerRealtimeFetch()
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'dsp_provider_status', filter: `restaurant_id=eq.${restaurant.id}` },
+          () => triggerRealtimeFetch()
+        )
         .subscribe()
     }
 
@@ -691,5 +723,6 @@ export function useOrderPolling(restaurant, hours) {
     diagnostics,
     externalOrders,
     setExternalOrders,
+    providerStatus,
   }
 }
