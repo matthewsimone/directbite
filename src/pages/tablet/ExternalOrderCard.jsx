@@ -1,4 +1,4 @@
-import { providerDisplay, dspOrderNumber } from '../../utils/dspProvider'
+import { providerDisplay, dspOrderNumber, DSP_ESCALATION_MINUTES } from '../../utils/dspProvider'
 
 // DSP (KitchenHub) order tile. Mirrors OrderCard's container + un-acked
 // flash so DSP and Ordr tiles read as one queue. Display only.
@@ -27,11 +27,21 @@ function formatAge(o) {
 export default function ExternalOrderCard({ order, onTap }) {
   const provider = providerDisplay(order)
   const isUnacked = order.status === 'new' && !order.acknowledged_at
+  // Same treatment as OrderCard's isEscalating, on the DSP window: tapped but
+  // still not accepted for >= DSP_ESCALATION_MINUTES (same window as
+  // hasEscalation in useOrderPolling). Mutually exclusive with isUnacked.
+  const isEscalating =
+    order.status === 'new' &&
+    order.acknowledged_at != null &&
+    (Date.now() - new Date(order.acknowledged_at).getTime()) >= DSP_ESCALATION_MINUTES * 60 * 1000
   const count = itemCount(order.items)
   const total = formatMoney(order.total)
+  const stateClass = isUnacked ? 'animate-flash-green'
+    : isEscalating ? 'animate-flash-yellow'
+    : 'bg-white'
 
   return (
-    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${provider.border} shadow-sm hover:shadow-md transition-shadow ${isUnacked ? 'animate-flash-green' : 'bg-white'}`}>
+    <div className={`w-full text-left rounded-xl border border-gray-200 border-l-4 ${provider.border} shadow-sm hover:shadow-md transition-shadow ${stateClass}`}>
       <button onClick={() => onTap(order)} className="w-full text-left p-4">
         <div className="flex items-center gap-2 mb-1">
           <span className={`px-2 py-0.5 rounded text-xs font-bold tracking-wide whitespace-nowrap ${provider.cls}`}>
