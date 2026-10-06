@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { formatMoney } from './ExternalOrderCard'
 import { formatPhone } from '../../utils/format'
-import { providerDisplay, dspOrderNumber } from '../../utils/dspProvider'
+import { providerDisplay, providerIcon, dspOrderNumber } from '../../utils/dspProvider'
+import AppIcon from './AppIcon'
 import { printExternalOrder } from '../../utils/epsonPrint'
 import { writeExternalPrintResult } from '../../utils/externalPrintStatus'
 import { formatScheduledLabel } from '../../utils/scheduling'
@@ -35,6 +36,10 @@ const CHARGE_LABELS = [
   ['tax_payout', 'Tax payout'],
   ['payout', 'Payout'],
 ]
+
+// A charge that is numerically zero ("0", "0.00", 0) is hidden; blanks are
+// already hidden by formatMoney returning null. Total is never filtered.
+const isZeroAmount = v => v != null && v !== '' && Number(v) === 0
 
 const STATUS_PILL = {
   new: 'bg-yellow-100 text-yellow-800',
@@ -163,6 +168,7 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
   const [nowTick, setNowTick] = useState(() => Date.now())
   const hasPrinter = !!restaurant?.printer_ip
   const provider = providerDisplay(order)
+  const icon = providerIcon(order)
   const defaultPrepMinutes = restaurant?.estimated_pickup_minutes || 30
   // Scheduled DSP orders (scheduled_for is only stored when asap === false)
   // accept without a prep-time choice. KitchenHub still requires prep_time on
@@ -273,7 +279,8 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
         </button>
         <div>
           <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 rounded text-xs font-bold tracking-wide ${provider.cls}`}>{provider.label}</span>
+            <AppIcon src={icon.src} initials={icon.initials} alt={icon.name} size={32} />
+            <span className="text-sm font-semibold text-gray-700">{provider.name}</span>
             <h2 className="text-xl font-bold">#{dspOrderNumber(order) ?? '—'}</h2>
             {order.paid === false && (
               <span className="px-2 py-0.5 rounded text-xs font-bold tracking-wide bg-amber-400 text-black">UNPAID</span>
@@ -333,10 +340,12 @@ export default function ExternalOrderDetail({ order, restaurant, onBack, setExte
         <div className="space-y-1 border-t border-gray-200 pt-4">
           <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">Provider charges</h3>
           {CHARGE_LABELS.map(([key, label]) => {
+            if (isZeroAmount(charges[key])) return null
             const v = formatMoney(charges[key])
             return v ? <Row key={key} label={label} value={v} /> : null
           })}
           {otherFees.map(([k, v]) => {
+            if (isZeroAmount(v)) return null
             const fv = formatMoney(v)
             return fv ? <Row key={`other-${k}`} label={k} value={fv} /> : null
           })}
