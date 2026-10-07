@@ -309,6 +309,10 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
 }
 
 // ── Topping Group Editor Panel ──
+// Hides the browser's number-input stepper arrows (WebKit/Blink and Firefox);
+// typing and keyboard up/down still work.
+const NO_SPINNER = '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+
 function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   const [name, setName] = useState(group?.name || '')
   const [placementType, setPlacementType] = useState(group?.placement_type || 'pizza')
@@ -327,6 +331,11 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   const [sizeLoadError, setSizeLoadError] = useState(false)
   const [activeSize, setActiveSize] = useState('default')
   const [fillAll, setFillAll] = useState('')
+
+  // Fill all applies to one size; a value typed for Large shouldn't carry
+  // over to Small. Covers every setActiveSize path (size buttons, the
+  // Price by size toggle, the missing-Default guard, group change).
+  useEffect(() => { setFillAll('') }, [activeSize])
 
   useEffect(() => {
     setActiveSize('default')
@@ -398,6 +407,7 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
       const sp = t.size_prices && typeof t.size_prices === 'object' ? t.size_prices : {}
       return { ...t, size_prices: { ...sp, [activeSize]: { ...(sp[activeSize] || {}), price: fillAll } } }
     }))
+    setFillAll('')
   }
 
   // Single-select addon groups can have at most one default. When
@@ -648,8 +658,8 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
             <div key={t._key} className="mb-3">
               <div className="flex gap-2">
                 <input value={t.name} onChange={e => updateTopping(t._key, 'name', e.target.value)}
-                  placeholder="Topping name" className="flex-1 h-9 px-3 border border-gray-300 rounded-lg text-sm" />
-                <div className="relative w-20">
+                  placeholder="Topping name" className="flex-1 min-w-0 h-9 px-3 border border-gray-300 rounded-lg text-sm" />
+                <div className="relative w-20 shrink-0">
                   <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                   <input type="number" step="0.01"
                     value={sizeMode ? (entry.price ?? '') : t.price}
@@ -657,10 +667,10 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
                       ? updateSizePrice(t._key, activeSize, 'price', e.target.value)
                       : updateTopping(t._key, 'price', e.target.value)}
                     placeholder={sizeMode ? 'Default' : 'Whole'} title="Whole-pizza price"
-                    className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-lg text-sm" />
+                    className={`w-full h-9 pl-5 pr-2 border border-gray-300 rounded-lg text-sm ${NO_SPINNER}`} />
                 </div>
                 {placementType === 'pizza' && (
-                  <div className="relative w-20">
+                  <div className="relative w-20 shrink-0">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <input
                       type="number" step="0.01"
@@ -670,7 +680,7 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
                         : updateTopping(t._key, 'price_half', e.target.value)}
                       placeholder={sizeMode && entryWhole != null ? round2(entryWhole / 2).toFixed(2) : 'Half'}
                       title="Half-pizza price (optional, defaults to whole / 2)"
-                      className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-lg text-sm"
+                      className={`w-full h-9 pl-5 pr-2 border border-gray-300 rounded-lg text-sm ${NO_SPINNER}`}
                     />
                   </div>
                 )}
