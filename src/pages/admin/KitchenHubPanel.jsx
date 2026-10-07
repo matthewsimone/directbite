@@ -172,6 +172,8 @@ export default function KitchenHubPanel({ restaurant }) {
   // "On" only when both flags agree; a mismatch shows OFF and the toggle sets both.
   const ordersOn = info?.provisioned && info.mapping?.enabled === true && info.dsp_orders_enabled === true
   const flagsMismatch = info?.provisioned && (info.mapping?.enabled === true) !== (info.dsp_orders_enabled === true)
+  // KitchenHub store setting; null when the store didn't report it ("—", toggling turns it on).
+  const autoComplete = typeof info?.store?.auto_complete_enabled === 'boolean' ? info.store.auto_complete_enabled : null
 
   return (
     <div className="space-y-3">
@@ -238,6 +240,28 @@ export default function KitchenHubPanel({ restaurant }) {
               <p className="text-xs text-red-600 break-words">{info.store_error ? JSON.stringify(info.store_error) : 'not found'}</p>
             )}
           </div>
+
+          {info.store && (
+            <button
+              type="button"
+              disabled={!!busy}
+              onClick={() => ask(
+                autoComplete === true
+                  ? 'Turn OFF auto-complete? KitchenHub requires it on by default; DSP orders will stay open in KitchenHub until completed.'
+                  : 'Turn ON auto-complete? KitchenHub will complete DSP orders automatically.',
+                () => run('auto-complete', 'set_auto_complete', { enabled: autoComplete !== true })
+              )}
+              className={`w-full h-9 rounded-lg text-sm font-semibold border transition-colors disabled:opacity-50 ${
+                autoComplete === true
+                  ? 'bg-[#16A34A] text-white border-[#16A34A] hover:bg-[#15803D]'
+                  : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {busy === 'auto-complete'
+                ? 'Saving…'
+                : `Auto-complete orders: ${autoComplete === true ? 'ON' : autoComplete === false ? 'OFF' : '—'}`}
+            </button>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <button className={`${btn} border-gray-300`} disabled={!!busy} onClick={() => run('sync', 'update_location')}>

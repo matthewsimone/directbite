@@ -6,7 +6,8 @@
 // Body: { action, restaurant_id?, ... }. Covers KitchenHub's acceptance
 // checklist: locations (create/list/get/edit/delete), stores (create/list/
 // delete), provider connections (create link/list/status/pause/resume/delete),
-// plus set_enabled (routing + tablet flag together).
+// plus set_enabled (routing + tablet flag together) and set_auto_complete
+// (the store's auto_complete_enabled; on by default, as KitchenHub requires).
 //
 // JWT setting: verify_jwt = false (declared in supabase/config.toml). The
 // handler validates the caller manually — getUser(token) → admin_users — the
@@ -209,8 +210,8 @@ serve(async (req: Request) => {
             store_name: name,
             partner_store_id: restaurant.id,
             auto_accept_enabled: false,
-            // KitchenHub defaults this to true; the tablet's MARK READY owns completion.
-            auto_complete_enabled: false,
+            // KitchenHub requires auto-complete on by default; set_auto_complete changes it.
+            auto_complete_enabled: true,
           }),
         });
         if (!c.ok) {
@@ -309,12 +310,26 @@ serve(async (req: Request) => {
       if (!loc.ok) return khFail("update_location", loc);
       const st = await kh(`/v2/stores/${encodeURIComponent(mapping.kh_store_id)}/`, {
         method: "PATCH",
-        // auto_complete_enabled: false also fixes stores created in the
-        // KitchenHub dashboard with its default of true.
-        body: JSON.stringify({ store_name: name, auto_complete_enabled: false }),
+        // Name only; auto-complete is changed through set_auto_complete.
+        body: JSON.stringify({ store_name: name }),
       });
       if (!st.ok) return khFail("update_store", st);
       return json({ ok: true, location: loc.data, store: st.data });
+    }
+
+    case "set_auto_complete": {
+      if (!mapping) return needMapping();
+      if (typeof body?.enabled !== "boolean") {
+        return json({ ok: false, error: "invalid_inputs", detail: "enabled_boolean_required" }, 400);
+      }
+      const enabled: boolean = body.enabled;
+      const st = await kh(`/v2/stores/${encodeURIComponent(mapping.kh_store_id)}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ auto_complete_enabled: enabled }),
+      });
+      if (!st.ok) return khFail("set_auto_complete", st);
+      console.log("[kh-admin] set_auto_complete", { restaurant_id: restaurant.id, enabled });
+      return json({ ok: true, store: st.data });
     }
 
     case "delete_store": {
