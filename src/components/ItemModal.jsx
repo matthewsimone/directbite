@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { formatCurrency } from '../utils/format'
 import { isCategoryAvailableNow } from '../utils/categoryAvailability'
+import { getToppingPrices, resolveToppingPrice } from '../utils/toppingPrice'
 
 // Compute pre-selected toppings from each group's is_default flags.
 // Runs once at modal mount via lazy useState initializer.
@@ -102,8 +103,23 @@ export default function ItemModal({
 
   const selectedSize = sizes.find(s => s.id === selectedSizeId)
   const basePrice = selectedSize ? Number(selectedSize.price) : 0
+  const sizeName = selectedSize?.name ?? null
 
-  const toppingsTotal = selectedToppings.reduce((sum, t) => sum + (parseFloat(t.price) || 0), 0)
+  // Pizza-placement toppings are priced from their source row for the
+  // currently selected size, at render and add-to-cart time
+  // (src/utils/toppingPrice.js). A size change therefore reprices every
+  // selected pizza topping, including defaults selected before the first size
+  // was picked, and the charged price always equals the displayed one. The
+  // price fields stored on a selection are only a fallback if the source row
+  // can't be found. Add-on toppings keep their stored price, unchanged.
+  function chargeFor(t) {
+    if (t.placementType !== 'pizza') return t.price
+    const source = (getToppingsForGroup(t.groupId) || []).find(x => x.id === t.toppingId)
+    if (!source) return t.price
+    return resolveToppingPrice(source, sizeName, t.placement)
+  }
+
+  const toppingsTotal = selectedToppings.reduce((sum, t) => sum + (parseFloat(chargeFor(t)) || 0), 0)
 
   const isExempt = item.discount_exempt === true
   const hasDiscount = promotion && Number(promotion.discount_percentage) > 0 && !isExempt
@@ -262,14 +278,17 @@ export default function ItemModal({
       quantity,
       discount_exempt: isExempt,
       specialInstructions: specialInstructions.trim() || null,
-      toppings: orderedToppings.map(t => ({
-        toppingId: t.toppingId,
-        toppingName: t.toppingName,
-        placement: t.placement,
-        price: t.price * discountMultiplier,
-        fullPrice: t.price,
-        placementType: t.placementType || 'pizza',
-      })),
+      toppings: orderedToppings.map(t => {
+        const charge = chargeFor(t)
+        return {
+          toppingId: t.toppingId,
+          toppingName: t.toppingName,
+          placement: t.placement,
+          price: charge * discountMultiplier,
+          fullPrice: charge,
+          placementType: t.placementType || 'pizza',
+        }
+      }),
     }
     onAddToCart(cartItem)
     setTimeout(() => handleClose(), 50)
@@ -384,6 +403,7 @@ export default function ItemModal({
                 group={group}
                 groupToppings={groupToppings}
                 selectedToppings={selectedToppings}
+                sizeName={sizeName}
                 onToggle={topping => handlePizzaToppingToggle(topping, group)}
                 onPlacementChange={handlePlacementChange}
               />
@@ -461,7 +481,7 @@ export default function ItemModal({
 }
 
 // ── Pizza Topping Group (existing behavior) ──
-function PizzaToppingGroup({ group, groupToppings, selectedToppings, onToggle, onPlacementChange }) {
+function PizzaToppingGroup({ group, groupToppings, selectedToppings, sizeName, onToggle, onPlacementChange }) {
   return (
     <div className="mt-6">
       <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-3">
@@ -470,6 +490,8 @@ function PizzaToppingGroup({ group, groupToppings, selectedToppings, onToggle, o
       <div className="space-y-2">
         {groupToppings.map(topping => {
           const selected = selectedToppings.find(t => t.toppingId === topping.id)
+          // Same resolver as the charge (ItemModal chargeFor), so shown = charged.
+          const prices = getToppingPrices(topping, sizeName)
           return (
             <div key={topping.id}>
               <button
@@ -482,7 +504,7 @@ function PizzaToppingGroup({ group, groupToppings, selectedToppings, onToggle, o
               >
                 <span className="font-medium text-gray-900">{topping.name}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">+{formatCurrency(topping.price)}</span>
+                  <span className="text-sm text-gray-600">+{formatCurrency(prices.whole)}</span>
                   {!selected && (
                     <div className="w-7 h-7 rounded-full bg-[#16A34A] flex items-center justify-center">
                       <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -508,8 +530,8 @@ function PizzaToppingGroup({ group, groupToppings, selectedToppings, onToggle, o
                       {p}
                       <span className="block text-xs mt-0.5 opacity-80">
                         {p === 'whole'
-                          ? formatCurrency(topping.price)
-                          : formatCurrency(topping.price_half ?? topping.price / 2)}
+                          ? formatCurrency(prices.whole)
+                          : formatCurrency(prices.half)}
                       </span>
                     </button>
                   ))}
