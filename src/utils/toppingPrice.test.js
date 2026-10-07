@@ -6,7 +6,10 @@
 // reorder.js (:116-119) charge today. legacyCharge() below is a copy of that
 // arithmetic and is checked against a grid of cent-precision inputs.
 
-import { normalizeSizeKey, getToppingPrices, resolveToppingPrice } from './toppingPrice.js';
+import {
+  normalizeSizeKey, getToppingPrices, resolveToppingPrice,
+  centsOrNull, buildSizePrices, orderSizeOptions,
+} from './toppingPrice.js';
 
 const round2 = n => Math.round(n * 100) / 100;
 
@@ -136,6 +139,91 @@ eq('strings: legacy price + price_half', getToppingPrices({ price: '2.00', price
 eq('strings: legacy price, null half', getToppingPrices({ price: '2.50', price_half: null }, 'Large'), { whole: 2.5, half: 1.25 });
 eq('strings: override price + half', getToppingPrices({ price: 2, size_prices: { large: { price: '3.00', half: '1.75' } } }, 'Large'), { whole: 3, half: 1.75 });
 eq('strings: override price "0" = free', getToppingPrices({ price: 2, size_prices: { large: { price: '0', half: null } } }, 'Large'), { whole: 0, half: 0 });
+
+// ---- centsOrNull (admin editor inputs) ----
+eq('cents: "" -> null', centsOrNull(''), null);
+eq('cents: "   " -> null', centsOrNull('   '), null);
+eq('cents: null -> null', centsOrNull(null), null);
+eq('cents: undefined -> null', centsOrNull(undefined), null);
+eq('cents: "abc" -> null', centsOrNull('abc'), null);
+eq('cents: -1 -> null', centsOrNull(-1), null);
+eq('cents: 0 -> 0', centsOrNull(0), 0);
+eq('cents: "0" -> 0', centsOrNull('0'), 0);
+eq('cents: 3 -> 3', centsOrNull(3), 3);
+eq('cents: "1.256" -> 1.26', centsOrNull('1.256'), 1.26);
+eq('cents: 4.999 -> 5', centsOrNull(4.999), 5);
+
+// ---- buildSizePrices (editor state -> stored size_prices) ----
+const KNOWN = new Set(['small', 'medium', 'large']);
+eq('build: rounds price and half to the cent',
+  buildSizePrices({ large: { price: '3.256', half: '1.754' } }, KNOWN),
+  { large: { price: 3.26, half: 1.75 } });
+eq('build: blank half -> null',
+  buildSizePrices({ large: { price: '3', half: '' } }, KNOWN),
+  { large: { price: 3, half: null } });
+eq('build: missing half -> null',
+  buildSizePrices({ large: { price: 3 } }, KNOWN),
+  { large: { price: 3, half: null } });
+eq('build: entry with blank price and blank half dropped',
+  buildSizePrices({ large: { price: '3', half: '' }, small: { price: '', half: '' } }, KNOWN),
+  { large: { price: 3, half: null } });
+eq('build: entry with invalid price and invalid half dropped',
+  buildSizePrices({ small: { price: 'abc', half: -2 } }, KNOWN),
+  null);
+eq('build: half-only entry kept (whole falls back to Default)',
+  buildSizePrices({ medium: { price: '', half: '0.75' } }, KNOWN),
+  { medium: { price: null, half: 0.75 } });
+eq('build: free (0) price kept',
+  buildSizePrices({ small: { price: '0', half: '' } }, KNOWN),
+  { small: { price: 0, half: null } });
+const unknownEntry = { price: 9.999, half: 'junk', extra: true };
+eq('build: unknown key copied untouched (no rounding, no cleanup)',
+  buildSizePrices({ 'x-large': unknownEntry, large: { price: '3' } }, KNOWN),
+  { 'x-large': unknownEntry, large: { price: 3, half: null } });
+eq('build: only unknown keys -> copied, not null',
+  buildSizePrices({ 'x-large': unknownEntry }, KNOWN),
+  { 'x-large': unknownEntry });
+eq('build: {} -> null', buildSizePrices({}, KNOWN), null);
+eq('build: null -> null', buildSizePrices(null, KNOWN), null);
+eq('build: all known entries empty -> null',
+  buildSizePrices({ small: { price: '', half: '' }, large: {} }, KNOWN),
+  null);
+eq('build: knownKeys as array works',
+  buildSizePrices({ large: { price: '2.5' } }, ['large']),
+  { large: { price: 2.5, half: null } });
+eq('build: knownKeys empty -> every key treated as unknown (copied untouched)',
+  buildSizePrices({ large: { price: '2.5' } }, new Set()),
+  { large: { price: '2.5' } });
+
+// ---- orderSizeOptions (linked-size dedupe + order) ----
+const itemRow = (...sizes) => ({ menu_items: { item_sizes: sizes.map(([name, sort_order]) => ({ name, sort_order })) } });
+eq('order: 2-size + 3-size items -> Small, Medium, Large',
+  orderSizeOptions([
+    itemRow(['Small', 0], ['Large', 1]),
+    itemRow(['Large', 2], ['Small', 0], ['Medium', 1]),
+  ]),
+  [{ key: 'small', label: 'Small' }, { key: 'medium', label: 'Medium' }, { key: 'large', label: 'Large' }]);
+eq('order: "Large " and "Large" dedupe to one key',
+  orderSizeOptions([
+    itemRow(['Small', 0], ['Large ', 1]),
+    itemRow(['Large', 0]),
+  ]),
+  [{ key: 'small', label: 'Small' }, { key: 'large', label: 'Large' }]);
+eq('order: blank names skipped',
+  orderSizeOptions([itemRow(['', 0], ['   ', 1], [null, 2], ['Regular', 3])]),
+  [{ key: 'regular', label: 'Regular' }]);
+eq('order: remaining keys appended by sort_order, then label',
+  orderSizeOptions([
+    itemRow(['Small', 0], ['Medium', 1], ['Large', 2]),
+    itemRow(['Personal', 0], ['XL', 3], ['Family', 3]),
+  ]),
+  [{ key: 'small', label: 'Small' }, { key: 'medium', label: 'Medium' }, { key: 'large', label: 'Large' },
+   { key: 'personal', label: 'Personal' }, { key: 'family', label: 'Family' }, { key: 'xl', label: 'XL' }]);
+eq('order: key normalization ("  Extra   Large")',
+  orderSizeOptions([itemRow(['  Extra   Large', 0])]),
+  [{ key: 'extra large', label: 'Extra   Large' }]);
+eq('order: null / empty rows -> []', orderSizeOptions(null), []);
+eq('order: row with null menu_items skipped', orderSizeOptions([{ menu_items: null }, itemRow(['Small', 0])]), [{ key: 'small', label: 'Small' }]);
 
 let failures = 0;
 for (const c of cases) {

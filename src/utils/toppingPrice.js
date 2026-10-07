@@ -24,7 +24,7 @@
 // Numeric strings are accepted. Halves are computed from the unrounded whole
 // and rounded once, as the legacy code does.
 
-const round2 = n => Math.round(n * 100) / 100
+export const round2 = n => Math.round(n * 100) / 100
 
 // Trim, lowercase, collapse inner whitespace. null/undefined/'' → ''.
 export function normalizeSizeKey(name) {
@@ -75,4 +75,87 @@ export function getToppingPrices(topping, sizeName) {
 export function resolveToppingPrice(topping, sizeName, placement) {
   const { whole, half } = getToppingPrices(topping, sizeName)
   return placement === 'whole' ? whole : half
+}
+
+// ── Admin editor helpers (MenuManagementTab "Price by size") ──
+
+// Cent-rounded number for a price input, or null when blank / invalid /
+// negative. Accepts numeric strings.
+export function centsOrNull(v) {
+  const n = toPrice(v)
+  return isValidPrice(n) ? round2(n) : null
+}
+
+// Editor state → stored toppings.size_prices. Entries whose key is in
+// knownKeys (Set or array of normalized size keys) are normalized:
+// { price, half } rounded to the cent, blank/invalid → null, and dropped when
+// neither a valid price nor a valid half is left (a half-only entry is kept).
+// Entries whose key is NOT known (e.g. a renamed size) are copied through
+// untouched. Returns null when nothing is left.
+export function buildSizePrices(raw, knownKeys) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const known = knownKeys instanceof Set ? knownKeys : new Set(knownKeys || [])
+  const out = {}
+  for (const [key, entry] of Object.entries(raw)) {
+    if (!known.has(key)) { out[key] = entry; continue }
+    if (!entry || typeof entry !== 'object') continue
+    const price = centsOrNull(entry.price)
+    const half = centsOrNull(entry.half)
+    if (price == null && half == null) continue
+    out[key] = { price, half }
+  }
+  return Object.keys(out).length ? out : null
+}
+
+// Size options for a topping group from the raw rows of
+//   item_topping_groups.select('menu_items(item_sizes(name, sort_order))')
+// → [{ key, label }]. Deduped by normalizeSizeKey, labelled with the trimmed
+// original name, blank names skipped. Order: the linked item with the most
+// sizes first (its sizes by sort_order; first such item wins a tie), then any
+// remaining keys by their lowest sort_order, then label. Anchoring on one
+// item keeps that item's own order (Small, Medium, Large) instead of mixing
+// sort_order values from items with different size counts.
+export function orderSizeOptions(rows) {
+  const items = []
+  for (const row of rows || []) {
+    const mi = row?.menu_items
+    for (const m of Array.isArray(mi) ? mi : (mi ? [mi] : [])) {
+      const sizes = (m?.item_sizes || [])
+        .map(s => {
+          const label = String(s?.name ?? '').trim()
+          return { key: normalizeSizeKey(label), label, sort: Number(s?.sort_order) || 0 }
+        })
+        .filter(s => s.key)
+        .sort((a, b) => a.sort - b.sort)
+      items.push(sizes)
+    }
+  }
+
+  let primary = []
+  let best = -1
+  for (const sizes of items) {
+    const n = new Set(sizes.map(s => s.key)).size
+    if (n > best) { best = n; primary = sizes }
+  }
+
+  const out = []
+  const seen = new Set()
+  for (const s of primary) {
+    if (seen.has(s.key)) continue
+    seen.add(s.key)
+    out.push({ key: s.key, label: s.label })
+  }
+
+  const rest = new Map()
+  for (const sizes of items) {
+    for (const s of sizes) {
+      if (seen.has(s.key)) continue
+      const prev = rest.get(s.key)
+      if (!prev || s.sort < prev.sort) rest.set(s.key, s)
+    }
+  }
+  for (const s of [...rest.values()].sort((a, b) => a.sort - b.sort || a.label.localeCompare(b.label))) {
+    out.push({ key: s.key, label: s.label })
+  }
+  return out
 }
