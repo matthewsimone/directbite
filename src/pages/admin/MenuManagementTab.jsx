@@ -5,8 +5,22 @@ import ImageUpload from '../../components/ImageUpload'
 import MenuImportModal from '../../components/MenuImportModal'
 import CategoryAvailabilityModal from '../../components/CategoryAvailabilityModal'
 import { formatAvailabilityLabel } from '../../utils/categoryAvailability'
+import { round2, centsOrNull, buildSizePrices, orderSizeOptions } from '../../utils/toppingPrice'
 
 function formatMoney(v) { return `$${Number(v).toFixed(2)}` }
+
+// Per-size topping prices (toppings.size_prices, migration 095).
+function hasSizePrices(t) {
+  return !!t?.size_prices && typeof t.size_prices === 'object' && Object.keys(t.size_prices).length > 0
+}
+
+const isBlank = v => v == null || String(v).trim() === ''
+
+// Any size entry on this row with a non-blank price or half.
+function hasAnySizeValue(t) {
+  if (!hasSizePrices(t)) return false
+  return Object.values(t.size_prices).some(e => e && typeof e === 'object' && (!isBlank(e.price) || !isBlank(e.half)))
+}
 
 // ── Item Editor Panel ──
 const FEATURED_LIMIT = 8
@@ -295,6 +309,10 @@ function ItemEditor({ item, categoryId, restaurantId, restaurantSlug, toppingGro
 }
 
 // ── Topping Group Editor Panel ──
+// Hides the browser's number-input stepper arrows (WebKit/Blink and Firefox);
+// typing and keyboard up/down still work.
+const NO_SPINNER = '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+
 function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   const [name, setName] = useState(group?.name || '')
   const [placementType, setPlacementType] = useState(group?.placement_type || 'pizza')
@@ -303,16 +321,61 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
   const [maxSelections, setMaxSelections] = useState(group?.max_selections || '')
   const [toppings, setToppings] = useState([])
   const [saving, setSaving] = useState(false)
+  // Price by size (pizza groups only). Loads ON when any topping already has
+  // size_prices. sizeOptions: distinct sizes across items linked to the group
+  // (null while loading or after a load error). activeSize: 'default' or a
+  // normalized size key.
+  const [sizePricing, setSizePricing] = useState(false)
+  const [hadSizePrices, setHadSizePrices] = useState(false)
+  const [sizeOptions, setSizeOptions] = useState(null)
+  const [sizeLoadError, setSizeLoadError] = useState(false)
+  const [activeSize, setActiveSize] = useState('default')
+  const [fillAll, setFillAll] = useState('')
+
+  // Fill all applies to one size; a value typed for Large shouldn't carry
+  // over to Small. Covers every setActiveSize path (size buttons, the
+  // Price by size toggle, the missing-Default guard, group change).
+  useEffect(() => { setFillAll('') }, [activeSize])
 
   useEffect(() => {
-    if (group) fetchToppings()
-    else setToppings([{ name: '', price: '', price_half: '', is_default: false, _key: Math.random().toString(36).slice(2) }])
+    setActiveSize('default')
+    setFillAll('')
+    setSizeLoadError(false)
+    if (group) {
+      setSizeOptions(null)
+      fetchToppings()
+      fetchLinkedSizes()
+    } else {
+      setToppings([{ name: '', price: '', price_half: '', is_default: false, _key: Math.random().toString(36).slice(2) }])
+      setSizePricing(false)
+      setHadSizePrices(false)
+      setSizeOptions([]) // a new group has no linked items yet
+    }
   }, [group?.id])
 
   async function fetchToppings() {
     const { data } = await supabase.from('toppings').select('*')
       .eq('topping_group_id', group.id).order('sort_order')
-    setToppings((data || []).map(t => ({ ...t, _key: t.id })))
+    const rows = data || []
+    const anySizePrices = rows.some(hasSizePrices)
+    setHadSizePrices(anySizePrices)
+    setSizePricing(anySizePrices)
+    setToppings(rows.map(t => ({ ...t, _key: t.id })))
+  }
+
+  // Distinct sizes across every item linked to this group
+  // (src/utils/toppingPrice.js orderSizeOptions).
+  async function fetchLinkedSizes() {
+    const { data, error } = await supabase.from('item_topping_groups')
+      .select('menu_items(item_sizes(name, sort_order))')
+      .eq('topping_group_id', group.id)
+    if (error) {
+      console.error('[ToppingGroupEditor] linked sizes load failed', error)
+      setSizeLoadError(true)
+      setSizeOptions(null)
+      return
+    }
+    setSizeOptions(orderSizeOptions(data))
   }
 
   function addTopping() {
@@ -325,6 +388,26 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
 
   function updateTopping(key, field, value) {
     setToppings(prev => prev.map(t => t._key === key ? { ...t, [field]: value } : t))
+  }
+
+  // Edits size_prices[sizeKey][field] ('price' | 'half') as the raw input
+  // string; normalized on save (buildSizePrices).
+  function updateSizePrice(key, sizeKey, field, value) {
+    setToppings(prev => prev.map(t => {
+      if (t._key !== key) return t
+      const sp = t.size_prices && typeof t.size_prices === 'object' ? t.size_prices : {}
+      return { ...t, size_prices: { ...sp, [sizeKey]: { ...(sp[sizeKey] || {}), [field]: value } } }
+    }))
+  }
+
+  // Fill all: whole price for every topping at the selected size.
+  function applyFillAll() {
+    if (activeSize === 'default' || fillAll.trim() === '') return
+    setToppings(prev => prev.map(t => {
+      const sp = t.size_prices && typeof t.size_prices === 'object' ? t.size_prices : {}
+      return { ...t, size_prices: { ...sp, [activeSize]: { ...(sp[activeSize] || {}), price: fillAll } } }
+    }))
+    setFillAll('')
   }
 
   // Single-select addon groups can have at most one default. When
@@ -343,6 +426,29 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
 
   async function handleSave() {
     if (!name.trim()) return
+
+    // A named row with size prices but no Default price would be silently
+    // skipped below (and its stored row deleted), losing the size prices.
+    // Rows with a blank name keep today's behavior.
+    const missingDefault = toppings.find(t => !isBlank(t.name) && isBlank(t.price) && hasAnySizeValue(t))
+    if (missingDefault) {
+      toast.error(`${missingDefault.name.trim()} needs a Default price`)
+      setActiveSize('default')
+      return
+    }
+
+    // Size prices are written only for a pizza group with the switch on.
+    // Turning the switch off, or switching to Add-Ons, clears them — confirm
+    // first if any were stored. If the linked sizes failed to load, stored
+    // size_prices are never written (sizePayload stays {}). With nothing stored
+    // and the switch off, the payloads below send no size_prices, as before.
+    const sizePricingOn = sizePricing && placementType === 'pizza'
+    const clearSizePrices = !sizeLoadError && !sizePricingOn && hadSizePrices
+    if (clearSizePrices && !window.confirm(
+      'This removes the per-size prices from every topping in this group. Toppings will charge their Default prices. Continue?'
+    )) return
+    const knownSizeKeys = new Set((sizeOptions || []).map(o => o.key))
+
     setSaving(true)
 
     let groupId = group?.id
@@ -381,13 +487,20 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
     // Upsert toppings
     for (let i = 0; i < valid.length; i++) {
       const t = valid[i]
-      const priceHalf = (t.price_half === '' || t.price_half == null) ? null : parseFloat(t.price_half)
+      // Cents only: sub-cent values (4.999, 0.02225) previously reached live data.
+      const priceHalf = (t.price_half === '' || t.price_half == null) ? null : round2(parseFloat(t.price_half))
+      const priceWhole = round2(parseFloat(t.price))
+      const sizePayload = sizeLoadError ? {}
+        : sizePricingOn ? { size_prices: buildSizePrices(t.size_prices, knownSizeKeys) }
+        : clearSizePrices ? { size_prices: null }
+        : {}
       if (t.id) {
-        await supabase.from('toppings').update({ name: t.name, price: parseFloat(t.price), price_half: priceHalf, sort_order: i, is_default: !!t.is_default }).eq('id', t.id)
+        await supabase.from('toppings').update({ name: t.name, price: priceWhole, price_half: priceHalf, sort_order: i, is_default: !!t.is_default, ...sizePayload }).eq('id', t.id)
       } else {
         await supabase.from('toppings').insert({
           topping_group_id: groupId, restaurant_id: restaurantId,
-          name: t.name, price: parseFloat(t.price), price_half: priceHalf, sort_order: i, is_default: !!t.is_default,
+          name: t.name, price: priceWhole, price_half: priceHalf, sort_order: i, is_default: !!t.is_default,
+          ...sizePayload,
         })
       }
     }
@@ -395,6 +508,15 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
     setSaving(false)
     onSaved()
   }
+
+  const sizeMode = sizePricing && placementType === 'pizza' && activeSize !== 'default'
+  // Stored size keys that no linked item has (e.g. a renamed size): kept on
+  // save, but they fall back to Default, so the owner is told. Suppressed
+  // while sizes are loading or failed to load.
+  const unknownSizeKeys = (sizePricing && sizeOptions && !sizeLoadError)
+    ? [...new Set(toppings.flatMap(t => (hasSizePrices(t) ? Object.keys(t.size_prices) : [])))]
+        .filter(k => !sizeOptions.some(o => o.key === k))
+    : []
 
   return (
     <div className="h-full flex flex-col border-l border-gray-200 bg-white">
@@ -426,6 +548,59 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
             {placementType === 'pizza' ? 'Shows Left / Whole / Right placement, half price for L/R' : 'Simple select/deselect, no placement options'}
           </p>
         </div>
+
+        {/* Price by size (pizza toppings only) */}
+        {placementType === 'pizza' && (
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer w-fit">
+              <input type="checkbox" checked={sizePricing}
+                onChange={e => { setSizePricing(e.target.checked); setActiveSize('default') }}
+                className="accent-[#16A34A] w-4 h-4" />
+              <span className="text-sm">Price by size</span>
+            </label>
+            {sizePricing && sizeLoadError && (
+              <p className="text-xs text-red-600 mt-2">Couldn't load sizes. Close and reopen this group.</p>
+            )}
+            {sizePricing && !sizeLoadError && sizeOptions !== null && (
+              sizeOptions.length === 0 ? (
+                <p className="text-xs text-gray-400 mt-2">No sizes found on the items linked to this group, so only Default prices apply.</p>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {[{ key: 'default', label: 'Default' }, ...sizeOptions].map(o => (
+                      <button key={o.key} onClick={() => setActiveSize(o.key)}
+                        className={`h-8 px-3 rounded-lg text-xs font-semibold transition-colors ${
+                          activeSize === o.key ? 'bg-[#16A34A] text-white' : 'border border-gray-300 text-gray-700'
+                        }`}>{o.label}</button>
+                    ))}
+                  </div>
+                  {activeSize !== 'default' && (
+                    <>
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="relative w-24">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                          <input type="number" step="0.01" value={fillAll} onChange={e => setFillAll(e.target.value)}
+                            placeholder="Fill all"
+                            className="w-full h-8 pl-6 pr-2 border border-gray-300 rounded-lg text-sm" />
+                        </div>
+                        <button onClick={applyFillAll} disabled={fillAll.trim() === ''}
+                          className="h-8 px-3 rounded-lg text-xs font-semibold border border-[#16A34A] text-[#16A34A] disabled:opacity-50">
+                          Apply to all
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">Blank whole = this size uses the Default whole price.</p>
+                    </>
+                  )}
+                </>
+              )
+            )}
+            {unknownSizeKeys.length > 0 && (
+              <p className="text-xs text-amber-600 mt-2">
+                Saved prices for sizes no linked item has: {unknownSizeKeys.join(', ')}. Those charge Default prices; re-enter them under the current size name.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Addon-specific options */}
         {placementType === 'addon' && (
@@ -476,27 +651,36 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
               Half price is optional — leave blank to charge whole / 2 for left or right placements.
             </p>
           )}
-          {toppings.map(t => (
+          {toppings.map(t => {
+            const entry = sizeMode && hasSizePrices(t) ? (t.size_prices[activeSize] || {}) : {}
+            const entryWhole = sizeMode ? centsOrNull(entry.price) : null
+            return (
             <div key={t._key} className="mb-3">
               <div className="flex gap-2">
                 <input value={t.name} onChange={e => updateTopping(t._key, 'name', e.target.value)}
-                  placeholder="Topping name" className="flex-1 h-9 px-3 border border-gray-300 rounded-lg text-sm" />
-                <div className="relative w-20">
+                  placeholder="Topping name" className="flex-1 min-w-0 h-9 px-3 border border-gray-300 rounded-lg text-sm" />
+                <div className="relative w-20 shrink-0">
                   <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                  <input type="number" step="0.01" value={t.price} onChange={e => updateTopping(t._key, 'price', e.target.value)}
-                    placeholder="Whole" title="Whole-pizza price"
-                    className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-lg text-sm" />
+                  <input type="number" step="0.01"
+                    value={sizeMode ? (entry.price ?? '') : t.price}
+                    onChange={e => sizeMode
+                      ? updateSizePrice(t._key, activeSize, 'price', e.target.value)
+                      : updateTopping(t._key, 'price', e.target.value)}
+                    placeholder={sizeMode ? 'Default' : 'Whole'} title="Whole-pizza price"
+                    className={`w-full h-9 pl-5 pr-2 border border-gray-300 rounded-lg text-sm ${NO_SPINNER}`} />
                 </div>
                 {placementType === 'pizza' && (
-                  <div className="relative w-20">
+                  <div className="relative w-20 shrink-0">
                     <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                     <input
                       type="number" step="0.01"
-                      value={t.price_half ?? ''}
-                      onChange={e => updateTopping(t._key, 'price_half', e.target.value)}
-                      placeholder="Half"
+                      value={sizeMode ? (entry.half ?? '') : (t.price_half ?? '')}
+                      onChange={e => sizeMode
+                        ? updateSizePrice(t._key, activeSize, 'half', e.target.value)
+                        : updateTopping(t._key, 'price_half', e.target.value)}
+                      placeholder={sizeMode && entryWhole != null ? round2(entryWhole / 2).toFixed(2) : 'Half'}
                       title="Half-pizza price (optional, defaults to whole / 2)"
-                      className="w-full h-9 pl-6 pr-2 border border-gray-300 rounded-lg text-sm"
+                      className={`w-full h-9 pl-5 pr-2 border border-gray-300 rounded-lg text-sm ${NO_SPINNER}`}
                     />
                   </div>
                 )}
@@ -512,7 +696,8 @@ function ToppingGroupEditor({ group, restaurantId, onClose, onSaved }) {
                 <span className="text-xs text-gray-500">Default selected</span>
               </label>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
       <div className="p-4 border-t">

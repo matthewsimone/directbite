@@ -1,3 +1,5 @@
+import { resolveToppingPrice } from '../utils/toppingPrice'
+
 // Rebuilds cart lines from a historical order against TODAY's menu.
 //
 // Order rows carry frozen copies of the name and price at order time. Those
@@ -40,7 +42,7 @@ export async function resolveOrderToCart(supabase, restaurantId, order) {
       .eq('menu_items.restaurant_id', restaurantId),
     supabase
       .from('toppings')
-      .select('id, name, price, price_half, is_available')
+      .select('id, name, price, price_half, size_prices, is_available')
       .eq('restaurant_id', restaurantId),
     // Same query usePromotion runs; the date window is applied below because
     // it lives in that hook's JS rather than in the query.
@@ -113,10 +115,12 @@ export async function resolveOrderToCart(supabase, restaurantId, order) {
         droppedToppings.push(t.topping_name)
         continue
       }
-      // ItemModal's rule: halves fall back to whole/2 when price_half is null.
-      const whole = Number(topping.price) || 0
-      const half = topping.price_half != null ? Number(topping.price_half) : whole / 2
-      const price = round2(t.placement === 'whole' ? whole : half)
+      // Same resolver as ItemModal (src/utils/toppingPrice.js): pizza-placement
+      // toppings price for this line's size (`size`, resolved above; a line
+      // whose size failed to resolve was already dropped). Add-ons ignore
+      // size, as they do in ItemModal.
+      const isAddon = (t.placement_type || 'pizza') === 'addon'
+      const price = resolveToppingPrice(topping, isAddon ? null : size?.name, t.placement)
       toppings.push({
         toppingId: topping.id,
         toppingName: topping.name,
