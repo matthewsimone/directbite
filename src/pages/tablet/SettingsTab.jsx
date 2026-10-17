@@ -244,6 +244,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   const [uberActive, setUberActive] = useState(restaurant?.uber_direct_active || false)
   const [passthroughMode, setPassthroughMode] = useState(restaurant?.uber_passthrough_mode || 'customer_full')
   const [passthroughValue, setPassthroughValue] = useState(restaurant?.uber_passthrough_value ?? 0)
+  const [scheduledLeadMinutes, setScheduledLeadMinutes] = useState(String(restaurant?.uber_scheduled_lead_minutes ?? 25))
   const [schedule, setSchedule] = useState(
     restaurant?.uber_schedule && Object.keys(restaurant.uber_schedule).length > 0
       ? restaurant.uber_schedule
@@ -603,6 +604,11 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   // success, 2-second "Saved ✓" indicator, toast.error on failure.
   async function saveUberSettings() {
     if (savingUberSettings) return
+    const leadMinutes = Number(scheduledLeadMinutes)
+    if (!Number.isInteger(leadMinutes) || leadMinutes < 10 || leadMinutes > 60) {
+      toast.error('Scheduled delivery lead time must be a whole number between 10 and 60.')
+      return
+    }
     setSavingUberSettings(true)
     setSavedUberSettings(false)
     try {
@@ -620,6 +626,7 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
           uber_passthrough_value: ['customer_full', 'restaurant_full'].includes(passthroughMode)
             ? 0
             : (parseFloat(passthroughValue) || 0),
+          uber_scheduled_lead_minutes: leadMinutes,
         })
         .eq('id', restaurant.id)
         .select()
@@ -978,6 +985,20 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
               </div>
             )}
 
+            {/* Scheduled delivery lead time — how far before the customer's
+                chosen slot Uber is asked to pick up (uber_scheduled_lead_minutes). */}
+            {(mode === 'uber_direct' || mode === 'both' || mode === 'extend') && (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Scheduled delivery lead time (minutes)</p>
+                <input type="number" min="10" max="60" step="1" value={scheduledLeadMinutes}
+                  onChange={e => setScheduledLeadMinutes(e.target.value)}
+                  className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                <p className="text-xs text-gray-500">
+                  For scheduled deliveries, Uber is asked to pick up this many minutes before the customer's chosen time. Default 25.
+                </p>
+              </div>
+            )}
+
             {/* Delivery Mode — 4 radio buttons */}
             <div className="space-y-2 pt-2 border-t border-gray-100">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Delivery Mode</p>
@@ -1185,6 +1206,20 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                     onChange={e => setDeliveryMinimumUD(e.target.value)}
                     className="w-full h-11 pl-7 pr-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
                 </div>
+              </div>
+            )}
+
+            {/* Scheduled delivery lead time — how far before the customer's
+                chosen slot Uber is asked to pick up (uber_scheduled_lead_minutes). */}
+            {(mode === 'uber_direct' || mode === 'both' || mode === 'extend') && (
+              <div className="space-y-2 pt-2 border-t border-gray-100">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Scheduled delivery lead time (minutes)</p>
+                <input type="number" min="10" max="60" step="1" value={scheduledLeadMinutes}
+                  onChange={e => setScheduledLeadMinutes(e.target.value)}
+                  className="w-full h-11 px-3 border border-gray-300 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]" />
+                <p className="text-xs text-gray-500">
+                  For scheduled deliveries, Uber is asked to pick up this many minutes before the customer's chosen time. Default 25.
+                </p>
               </div>
             )}
 

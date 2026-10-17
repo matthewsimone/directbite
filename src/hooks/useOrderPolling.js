@@ -524,7 +524,7 @@ export function useOrderPolling(restaurant, hours) {
         o.delivery_fulfillment_method === 'uber_direct' &&
         o.uber_delivery_id != null &&
         o.scheduled_for != null &&
-        wakeNow >= new Date(o.scheduled_for).getTime() - prepLeadMs
+        wakeNow >= new Date(o.uber_pickup_ready_dt ?? o.scheduled_for).getTime() - prepLeadMs
       )
       for (const o of toWake) {
         supabase

@@ -109,7 +109,7 @@ function formatEtaSuffix(order) {
     return ''
   }
   if ((!order.uber_status || order.uber_status === 'pending') && order.uber_pickup_ready_dt) {
-    return ` · Scheduled ${formatTimeNY(order.uber_pickup_ready_dt)}`
+    return ` · Uber pickup ${formatTimeNY(order.uber_pickup_ready_dt)}`
   }
   return ''
 }
