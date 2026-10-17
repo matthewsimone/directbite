@@ -127,7 +127,16 @@ serve(async (req: Request) => {
     return jsonResponse({ success: false, error: "restaurant_not_found" }, 404);
   }
   if (restaurant.tablet_email !== user.email) {
-    return jsonResponse({ success: false, error: "forbidden" }, 403);
+    // Not the restaurant's tablet — allow admin_users (same check as
+    // admin-refund). Only queried on this fallback path.
+    const { data: adminUser } = await supabase
+      .from("admin_users")
+      .select("email")
+      .eq("email", user.email)
+      .maybeSingle();
+    if (!adminUser) {
+      return jsonResponse({ success: false, error: "forbidden" }, 403);
+    }
   }
   // Past this point, caller is authorized.
 
