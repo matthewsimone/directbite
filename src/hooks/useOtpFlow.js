@@ -44,6 +44,9 @@ export function useOtpFlow({ restaurantId, onVerified }) {
   // re-fire on every unrelated render.
   const lastSentRef = useRef(null)
   const lastVerifiedRef = useRef(null)
+  // Set by cancelCode: keeps lastSentRef so the unchanged number isn't
+  // re-sent the moment the phone step returns.
+  const resendLockedRef = useRef(false)
   const codeInputRef = useRef(null)
 
   useEffect(() => {
@@ -112,7 +115,14 @@ export function useOtpFlow({ restaurantId, onVerified }) {
   }, [step])
 
   function handlePhoneChange(e) {
-    setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+    // After cancelCode, the first edit releases the sent-number guard so the
+    // corrected number (or the same one, retyped) can auto-send again.
+    if (resendLockedRef.current && digits !== lastSentRef.current) {
+      resendLockedRef.current = false
+      lastSentRef.current = null
+    }
+    setPhone(digits)
     setError(null)
   }
 
@@ -133,6 +143,18 @@ export function useOtpFlow({ restaurantId, onVerified }) {
     lastVerifiedRef.current = null
   }, [])
 
+  // "Change" from the code step: back to editing the phone. Unlike reset, the
+  // sent-number guard survives until the digits are edited, so the 10 digits
+  // still in place don't immediately re-fire a send.
+  const cancelCode = useCallback(() => {
+    setStep('phone')
+    setCode('')
+    setError(null)
+    setVerifying(false)
+    lastVerifiedRef.current = null
+    resendLockedRef.current = true
+  }, [])
+
   return {
     phone,
     code,
@@ -147,5 +169,6 @@ export function useOtpFlow({ restaurantId, onVerified }) {
     handleSend,
     handleVerify,
     reset,
+    cancelCode,
   }
 }

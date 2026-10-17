@@ -189,7 +189,7 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed, onVerifiedSwap, onPayingChange }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed, onVerifiedSwap, onPayingChange, onFlushOrderData }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -281,6 +281,8 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   const onWalletCustomerRef = useRef(onWalletCustomer)
   const paymentIntentIdRef = useRef(paymentIntentId)
   const onValidateDeliveryRef = useRef(onValidateDelivery)
+  const onFlushOrderDataRef = useRef(onFlushOrderData)
+  useEffect(() => { onFlushOrderDataRef.current = onFlushOrderData }, [onFlushOrderData])
   useEffect(() => { clientSecretRef.current = clientSecret }, [clientSecret])
   useEffect(() => { onSuccessRef.current = onSuccess }, [onSuccess])
   useEffect(() => { onWalletCustomerRef.current = onWalletCustomer }, [onWalletCustomer])
@@ -427,6 +429,16 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       onPayingChange?.(false)
       return
     }
+    // A US number: 10 digits (a leading country-code 1 is dropped), area code
+    // starting 2-9. Catches a stray SMS code or partial number before charging.
+    let phoneDigits = String(customerInfo.phone).replace(/\D/g, '')
+    if (phoneDigits.length === 11 && phoneDigits[0] === '1') phoneDigits = phoneDigits.slice(1)
+    if (phoneDigits.length !== 10 || !/^[2-9]/.test(phoneDigits)) {
+      toast.error('Please enter a valid 10-digit phone number')
+      submittedRef.current = false
+      onPayingChange?.(false)
+      return
+    }
     if (!customerInfo.email.trim()) {
       toast.error('Please enter your email address')
       submittedRef.current = false
@@ -447,6 +459,16 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     }
 
     setLoading(true)
+
+    // Save what's on screen to pending_orders before charging — the order is
+    // built from that row, not from the form. Best effort: a failed, skipped
+    // or slow save is logged and the payment goes ahead regardless.
+    try {
+      const flush = await onFlushOrderDataRef.current?.()
+      if (flush && !flush.ok) console.warn('[checkout] order data not saved before charge; continuing:', flush.reason)
+    } catch (err) {
+      console.warn('[checkout] order data save threw before charge; continuing:', err)
+    }
 
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
@@ -556,14 +578,29 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
                  triggers is what prefills the two fields below. With the flag
                  off this is the plain input it has always been: no
                  formatting, no send, writing straight to customerInfo. */}
-          <input
-            type="tel"
-            {...(signinEnabled ? { inputMode: 'numeric', autoComplete: 'tel' } : {})}
-            value={signinEnabled ? formatPhone(otp.phone) : customerInfo.phone}
-            onChange={signinEnabled ? handlePhoneInput : e => customerInfo.setPhone(e.target.value)}
-            placeholder="Phone Number"
-            className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
-          />
+          {/* Once a code is sent the number is locked to read-only text, so
+              an SMS code can't land in the phone field; "Change" reopens it. */}
+          {signinEnabled && otp.step === 'code' ? (
+            <div className="w-full flex items-center justify-between px-4 py-3.5 bg-gray-100 rounded-xl">
+              <span className="text-base text-gray-900">{formatPhone(otp.phone)}</span>
+              <button
+                type="button"
+                onClick={otp.cancelCode}
+                className="text-sm text-[#16A34A]"
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <input
+              type="tel"
+              {...(signinEnabled ? { inputMode: 'numeric', autoComplete: 'tel' } : {})}
+              value={signinEnabled ? formatPhone(otp.phone) : customerInfo.phone}
+              onChange={signinEnabled ? handlePhoneInput : e => customerInfo.setPhone(e.target.value)}
+              placeholder="Phone Number"
+              className="w-full px-4 py-3.5 bg-gray-100 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-[#16A34A]/40"
+            />
+          )}
 
           {/* A failed send leaves step at 'phone', so its error has to render
               here — the code block below never mounts to show it. */}
@@ -1789,75 +1826,101 @@ export default function CheckoutPage() {
 
   // Update payment intent metadata when order details change
   const updateTimer = useRef(null)
+
+  // M6.5b: Skip create-payment-intent when server-side resolveMode would
+  // reject this request shape. Avoids the invalid POST that produces a
+  // toast for the customer. Conservatively handles 'both' mode by predicting
+  // uber_direct when client hasn't yet resolved.
+  // M-uz: a configured-in_house restaurant whose address took the extended-zone
+  // fall-through needs its quote first too, or the POST carries in-house
+  // order_data and the server's distance guard rejects it as out of range.
+  // resolvedMode covers the resolved case, extendedZoneRef the pending one;
+  // the ref is cleared in every non-uber settle branch, so it cannot strand an
+  // ordinary in-house order. resolvedMode === null is deliberately NOT a block
+  // here — for in_house that is the state every ordinary order sits in.
+  // Shared by the debounced update below and the card Pay flush.
+  const orderDataPushBlocked = () =>
+    orderType === 'delivery' &&
+    !uberQuoteId &&
+    (restaurant?.delivery_fulfillment === 'uber_direct' ||
+     (restaurant?.delivery_fulfillment === 'both' &&
+      (resolvedMode === 'uber_direct' || resolvedMode === null)) ||
+     (restaurant?.delivery_fulfillment === 'in_house' &&
+      (resolvedMode === 'uber_direct' || extendedZoneRef.current === true)))
+
+  // One update request: writes buildOrderData() into this intent's
+  // pending_orders row. Never throws — resolves { ok } or { ok: false, reason,
+  // errData? } so each caller decides what a failure means.
+  const pushOrderData = useCallback(async () => {
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+      const res = await fetch(
+        `${supabaseUrl}/functions/v1/create-payment-intent`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+          },
+          body: JSON.stringify({
+            restaurant_id: restaurant.id,
+            amount: Math.round(total * 100),
+            order_data: buildOrderData(),
+            payment_intent_id: paymentIntentId,
+            // Required on EVERY call that carries order_data, not just the
+            // first: the update path re-runs the same validation block,
+            // including the redemption ownership gate, so omitting the token
+            // here would reject a signed-in customer's own reward.
+            session_token: getSessionTokenForPayment(),
+          }),
+        }
+      )
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        return { ok: false, reason: errData.error || res.status, errData }
+      }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, reason: err }
+    }
+  }, [restaurant, total, buildOrderData, paymentIntentId, getSessionTokenForPayment])
+
   useEffect(() => {
-    // M6.5b: Skip create-payment-intent when server-side resolveMode would
-    // reject this request shape. Avoids the invalid POST that produces a
-    // toast for the customer. Conservatively handles 'both' mode by predicting
-    // uber_direct when client hasn't yet resolved.
-    // M-uz: a configured-in_house restaurant whose address took the extended-zone
-    // fall-through needs its quote first too, or the POST carries in-house
-    // order_data and the server's distance guard rejects it as out of range.
-    // resolvedMode covers the resolved case, extendedZoneRef the pending one;
-    // the ref is cleared in every non-uber settle branch, so it cannot strand an
-    // ordinary in-house order. resolvedMode === null is deliberately NOT a block
-    // here — for in_house that is the state every ordinary order sits in.
-    const wouldRejectOnServer =
-      orderType === 'delivery' &&
-      !uberQuoteId &&
-      (restaurant?.delivery_fulfillment === 'uber_direct' ||
-       (restaurant?.delivery_fulfillment === 'both' &&
-        (resolvedMode === 'uber_direct' || resolvedMode === null)) ||
-       (restaurant?.delivery_fulfillment === 'in_house' &&
-        (resolvedMode === 'uber_direct' || extendedZoneRef.current === true)))
-    if (wouldRejectOnServer) return
+    if (orderDataPushBlocked()) return
     if (!paymentIntentId || !restaurant) return
 
     // Debounce updates
     clearTimeout(updateTimer.current)
     updateTimer.current = setTimeout(async () => {
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-        const res = await fetch(
-          `${supabaseUrl}/functions/v1/create-payment-intent`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseAnonKey}`,
-            },
-            body: JSON.stringify({
-              restaurant_id: restaurant.id,
-              amount: Math.round(total * 100),
-              order_data: buildOrderData(),
-              payment_intent_id: paymentIntentId,
-              // Required on EVERY call that carries order_data, not just the
-              // first: the update path re-runs the same validation block,
-              // including the redemption ownership gate, so omitting the token
-              // here would reject a signed-in customer's own reward.
-              session_token: getSessionTokenForPayment(),
-            }),
-          }
-        )
-        // M6: server-side quote validation rejection — surface as a
-        // re-quote prompt. Other failures stay silent (per pre-M6 behavior).
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}))
-          if (errData.error === 'quote_validation_failed') {
-            handleQuoteValidationFailure(errData.reason)
-            return
-          }
-          console.warn('Failed to update payment intent metadata:', errData.error || res.status)
-        }
-      } catch (err) {
-        // Silent fail on metadata update — the initial data is already stored
-        console.warn('Failed to update payment intent metadata:', err)
+      const result = await pushOrderData()
+      if (result.ok) return
+      // M6: server-side quote validation rejection — surface as a
+      // re-quote prompt. Other failures stay silent (per pre-M6 behavior).
+      if (result.errData?.error === 'quote_validation_failed') {
+        handleQuoteValidationFailure(result.errData.reason)
+        return
       }
+      // Silent fail on metadata update — the initial data is already stored
+      console.warn('Failed to update payment intent metadata:', result.reason)
     }, 800)
 
     return () => clearTimeout(updateTimer.current)
-  }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, includeUtensils, specialInstructions, buildOrderData])
+  }, [paymentIntentId, orderType, tip, customerName, customerPhone, customerEmail, fullDeliveryAddress, restaurant, total, includeUtensils, specialInstructions, buildOrderData, pushOrderData])
+
+  // Card Pay path: cancel any pending debounced update and push the current
+  // form now, so the order is built from what the customer sees. Same skip
+  // rules as the effect. Capped at 5s so a hung request can't hold the charge.
+  async function flushOrderData() {
+    clearTimeout(updateTimer.current)
+    if (orderDataPushBlocked()) return { ok: false, reason: 'skipped: would reject on server' }
+    if (!paymentIntentId || !restaurant) return { ok: false, reason: 'skipped: no payment intent yet' }
+    return Promise.race([
+      pushOrderData(),
+      new Promise(resolve => setTimeout(() => resolve({ ok: false, reason: 'timeout' }), 5000)),
+    ])
+  }
 
   // Replace the guest intent with one on the verified customer's Stripe
   // Customer. Create-then-cancel, never the reverse: the replacement is proven
@@ -2542,6 +2605,7 @@ export default function CheckoutPage() {
                 onSavedProfile={handleSavedProfile}
                 onVerifiedSwap={swapIntentForVerifiedCustomer}
                 onPayingChange={handlePayingChange}
+                onFlushOrderData={flushOrderData}
                 contactCollapsed={contactCollapsed}
                 onWalletCustomer={async (name, email, phone) => {
                   // Synchronous, so success cannot outrun it. See walletContactRef.
