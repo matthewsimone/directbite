@@ -220,11 +220,12 @@ serve(async (req: Request) => {
       accepted_at, restaurant_id, customer_name, customer_phone,
       delivery_address, special_instructions,
       dropoff_lat, dropoff_lng,
-      subtotal, tip_amount,
+      subtotal, tip_amount, scheduled_for,
       restaurants:restaurant_id (
         id, name, address, phone, latitude, longitude,
         uber_customer_id, uber_environment, uber_billing_mode,
         uber_passthrough_mode, uber_passthrough_value,
+        uber_scheduled_lead_minutes,
         tablet_email
       )
     `)
@@ -253,6 +254,30 @@ serve(async (req: Request) => {
   }
   // Past this point, caller is authorized.
 
+  // -------- Scheduled lead time (migration 096) --------
+  // Scheduled path only: ask Uber to pick up uber_scheduled_lead_minutes
+  // before the customer's slot instead of at it, floored to now + 5 min.
+  // NULL lead → pickup_ready_dt passes through unchanged.
+  let effectivePickupReadyDt = pickup_ready_dt;
+  if (hasPickupDt) {
+    const leadRaw = restaurant.uber_scheduled_lead_minutes;
+    if (order.scheduled_for && leadRaw != null) {
+      const lead = Math.min(60, Math.max(10, Number(leadRaw)));
+      const target = Date.parse(order.scheduled_for) - lead * 60_000;
+      const floor = Date.now() + 5 * 60_000;
+      effectivePickupReadyDt = new Date(Math.max(target, floor)).toISOString();
+      console.log(JSON.stringify({
+        fn: "uber-create-delivery",
+        event: "scheduled_lead_applied",
+        order_id: order.id,
+        scheduled_for: order.scheduled_for,
+        lead_minutes: lead,
+        requested_pickup_ready_dt: pickup_ready_dt,
+        effective_pickup_ready_dt: effectivePickupReadyDt,
+      }));
+    }
+  }
+
   // -------- Delegate to shared core --------
   // All Uber business logic (fulfillment-mode check, idempotency, quote
   // resolve/refresh, price guard, manifest, POST, DB write) lives in
@@ -267,7 +292,7 @@ serve(async (req: Request) => {
     restaurant,
     hasPickupDt
       ? {
-          pickupReadyDt: pickup_ready_dt,
+          pickupReadyDt: effectivePickupReadyDt,
           pickupDeadlineMinutes: pickup_deadline_minutes,
           acceptedQuoteId: accepted_quote_id,
           postWriteStatus: "scheduled",
