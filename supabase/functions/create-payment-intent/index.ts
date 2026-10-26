@@ -554,13 +554,22 @@ serve(async (req: Request) => {
       );
       pending_order_id = existing.metadata?.pending_order_id || "";
 
-      if (pending_order_id && order_data) {
-        await supabase
-          .from("pending_orders")
-          .update({ order_data })
-          .eq("id", pending_order_id);
+      // A late update (e.g. a checkout remount that reset the tip) must not
+      // rewrite the order once the customer has started paying: the webhook
+      // builds the order from pending_orders, not from the charge.
+      if (existing.status !== "requires_payment_method" && existing.status !== "requires_confirmation") {
+        console.warn("[create-payment-intent] update refused, PI locked", {
+          pi: existing.id,
+          status: existing.status,
+          pending_order_id,
+        });
+        return new Response(
+          JSON.stringify({ error: "payment_locked", status: existing.status }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
+      // PI first: if Stripe refuses the update, pending_orders stays as it was.
       const updated = await stripe.paymentIntents.update(
         payment_intent_id,
         {
@@ -576,6 +585,24 @@ serve(async (req: Request) => {
         },
         { stripeAccount: restaurant.stripe_account_id }
       );
+
+      if (pending_order_id && order_data) {
+        const { error: poUpdateErr } = await supabase
+          .from("pending_orders")
+          .update({ order_data })
+          .eq("id", pending_order_id);
+        if (poUpdateErr) {
+          console.error("[create-payment-intent] pending_orders update failed", {
+            pi: payment_intent_id,
+            pending_order_id,
+            error: poUpdateErr.message,
+          });
+          return new Response(
+            JSON.stringify({ error: poUpdateErr.message }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+      }
 
       return new Response(
         JSON.stringify({
