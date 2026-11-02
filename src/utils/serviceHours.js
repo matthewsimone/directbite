@@ -131,6 +131,17 @@ export function getEffectiveSchedule(restaurant, hoursRows, type) {
   throw new Error(`getEffectiveSchedule: unknown type "${type}"`)
 }
 
+/**
+ * True when either stored per-service schedule is valid. Unconfigured
+ * restaurants keep every legacy `hours` code path unchanged.
+ */
+export function isServiceConfigured(restaurant) {
+  return !!restaurant && (
+    normalizeSchedule(restaurant.pickup_schedule) !== null ||
+    normalizeSchedule(restaurant.delivery_schedule) !== null
+  )
+}
+
 function atMinutes(date, min) {
   const out = new Date(date)
   out.setHours(Math.floor(min / 60), min % 60, 0, 0)

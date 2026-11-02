@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { isServiceConfigured } from '../utils/serviceHours'
 import { printOrder, printExternalOrder } from '../utils/epsonPrint'
 import { writeExternalPrintResult } from '../utils/externalPrintStatus'
 import { isStuckUnacked } from '../utils/stuckStage'
@@ -145,6 +146,11 @@ export function useOrderPolling(restaurant, hours) {
   useEffect(() => { installGestureUnlock() }, [])
 
   function isRestaurantOpen() {
+    // Configured restaurants poll around the clock. Their windows can extend
+    // past the legacy `hours`, and a scheduled-Uber wake-up can fall before
+    // the first window. This matches what unconfigured tablets do in practice:
+    // the `hours` captured below is usually still [] (= open).
+    if (isServiceConfigured(restaurant)) return true
     if (!hours || hours.length === 0) return true
     const now = new Date()
     const dayOfWeek = now.getDay()

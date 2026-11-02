@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
+import { buildLegacyHoursRows, normalizeSchedule, isServiceConfigured } from '../../utils/serviceHours'
+import {
+  MAX_WINDOWS, initialDrafts, hasSecondWindow, draftToStored, legacyRowsFromDraft,
+  validateDraft, planHoursWrites, uberScheduleDefaults, configuredDaySeed,
+} from './hoursDraft'
 import ImageUpload from '../../components/ImageUpload'
 import WebsiteSettingsPanel from '../../components/WebsiteSettingsPanel'
 import ReportsView from './ReportsView'
@@ -10,20 +15,8 @@ import WebsiteLinksEditor from './WebsiteLinksEditor'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
-// Default Uber Direct schedule buffer (minutes): stop accepting Uber deliveries
-// this long before the restaurant's posted close, so a courier isn't still
-// inbound at closing. Applied only to the AUTO-DERIVED default end time — the
-// operator can override per day. Clamps at 00:00 (no wrap to the prior day).
-const UBER_SCHEDULE_CLOSE_BUFFER_MIN = 30
-function bufferBeforeClose(hhmm, bufferMin = UBER_SCHEDULE_CLOSE_BUFFER_MIN) {
-  const [h, m] = hhmm.split(':').map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm
-  let total = h * 60 + m - bufferMin
-  if (total < 0) total = 0
-  const bh = String(Math.floor(total / 60)).padStart(2, '0')
-  const bm = String(total % 60).padStart(2, '0')
-  return `${bh}:${bm}`
-}
+// Uber Direct schedule buffer + defaultsFromHours now live in ./hoursDraft
+// (moved verbatim, parity-tested against main).
 
 // M5b — Fallback Uber Direct schedule used when the restaurant's `hours`
 // table is empty or hasn't loaded yet. In normal operation, schedule
@@ -133,39 +126,22 @@ function passthroughPreview(mode, value, feeCents = PASSTHROUGH_DEMO_FEE_CENTS) 
 }
 
 export default function SettingsTab({ restaurant, setRestaurant }) {
-  // M5b — Derive an uber_schedule jsonb object from the restaurant's
-  // existing Hours table. If a day is open in hours → enabled with that
-  // day's open_time/close_time (normalized to HH:MM). Otherwise disabled.
-  // Returns `fallback` when hours is empty/unloaded (DEFAULT_UBER_SCHEDULE
-  // is the canonical fallback).
-  function defaultsFromHours(hoursArray, fallback) {
-    if (!hoursArray || hoursArray.length === 0) return fallback
-    const result = {}
-    for (let dow = 0; dow <= 6; dow++) {
-      const dayHours = hoursArray.find(h => h.day_of_week === dow)
-      if (dayHours?.is_open && dayHours.open_time && dayHours.close_time) {
-        // hours.open_time/close_time may be stored as "HH:MM:SS"; truncate
-        // to "HH:MM" to match the uber_schedule jsonb convention. Default the
-        // end 30 min before close (buffer) so Uber isn't dispatching right up
-        // to closing — but only if that still leaves a valid window; otherwise
-        // fall back to the raw close time.
-        const start = dayHours.open_time.slice(0, 5)
-        const close = dayHours.close_time.slice(0, 5)
-        const buffered = bufferBeforeClose(close)
-        result[String(dow)] = {
-          enabled: true,
-          start,
-          end: buffered > start ? buffered : close,
-        }
-      } else {
-        result[String(dow)] = { enabled: false }
-      }
-    }
-    return result
-  }
-
   const [hours, setHours] = useState([])
   const [loadingHours, setLoadingHours] = useState(true)
+
+  // Split-hours editor (restaurants.split_hours_enabled). Off = the legacy
+  // editor + saveHours below, unchanged. hoursRows = the raw DB rows (ids).
+  const splitHoursEnabled = restaurant?.split_hours_enabled === true
+  const [hoursRows, setHoursRows] = useState([])
+  const [pickupDraft, setPickupDraft] = useState(null)
+  const [deliveryDraft, setDeliveryDraft] = useState(null)
+  const [deliverySameAsPickup, setDeliverySameAsPickup] = useState(true)
+  const [hoursTab, setHoursTab] = useState('pickup')
+  const [hoursError, setHoursError] = useState(null)
+
+  // Rows the Uber defaults read for an unconfigured restaurant: the legacy
+  // editor's state, or the split editor's window-1 rows when that's on.
+  const legacyHoursView = splitHoursEnabled && pickupDraft ? legacyRowsFromDraft(pickupDraft) : hours
 
   // Section save states
   const [savingHours, setSavingHours] = useState(false)
@@ -262,13 +238,21 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
   // defaults. Ensures the first time an operator picks 'both' mode, they
   // see their actual operating hours pre-populated rather than the
   // hardcoded fallback. Only runs when uber_schedule is null/empty.
+  // Deps are the schedule columns by VALUE (a reloaded row carries new object
+  // identities even when unchanged), so a restaurant reload that leaves them
+  // unchanged doesn't overwrite unsaved Uber edits. legacyHoursView is
+  // derived from hours/pickupDraft each render.
+  const uberScheduleKey = JSON.stringify(restaurant?.uber_schedule ?? null)
+  const pickupScheduleKey = JSON.stringify(restaurant?.pickup_schedule ?? null)
+  const deliveryScheduleKey = JSON.stringify(restaurant?.delivery_schedule ?? null)
   useEffect(() => {
     if (!restaurant?.uber_schedule || Object.keys(restaurant.uber_schedule).length === 0) {
-      if (hours && hours.length > 0) {
-        setSchedule(defaultsFromHours(hours, DEFAULT_UBER_SCHEDULE))
+      if (legacyHoursView && legacyHoursView.length > 0) {
+        setSchedule(uberScheduleDefaults(restaurant, hoursRows, legacyHoursView, DEFAULT_UBER_SCHEDULE))
       }
     }
-  }, [hours, restaurant?.uber_schedule])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hours, pickupDraft, hoursRows, splitHoursEnabled, uberScheduleKey, pickupScheduleKey, deliveryScheduleKey])
 
   async function fetchHours() {
     if (!restaurant) return
@@ -292,6 +276,14 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       }))
       setHours(defaults)
     }
+    // Split editor state, used only when split_hours_enabled. No rows →
+    // draftFromRows gives the same 7 closed 09:00-21:00 days as above.
+    const rows = data || []
+    setHoursRows(rows)
+    const d = initialDrafts(restaurant, rows)
+    setPickupDraft(d.pickup)
+    setDeliveryDraft(d.delivery)
+    setDeliverySameAsPickup(d.sameAsPickup)
     setLoadingHours(false)
   }
 
@@ -335,6 +327,84 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
     setSavingHours(false)
     setSavedHours(true)
     setTimeout(() => setSavedHours(false), 2000)
+  }
+
+  // ---- Split-hours editor (split_hours_enabled only) ----------------------
+  function editDay(which, dow, fn) {
+    const set = which === 'pickup' ? setPickupDraft : setDeliveryDraft
+    set(prev => ({ ...prev, [String(dow)]: fn(prev[String(dow)]) }))
+    setHoursError(null)
+  }
+  const setDayOpen = (which, dow, open) => editDay(which, dow, d => ({ ...d, open }))
+  const setWindowTime = (which, dow, i, field, value) => editDay(which, dow, d => ({
+    ...d, windows: d.windows.map((w, j) => (j === i ? { ...w, [field]: value } : w)),
+  }))
+  const addWindow = (which, dow) => editDay(which, dow, d =>
+    d.windows.length >= MAX_WINDOWS ? d : { ...d, windows: [...d.windows, { start: '16:00', end: '21:00' }] })
+  const removeWindow = (which, dow) => editDay(which, dow, d => ({ ...d, windows: d.windows.slice(0, 1) }))
+  function toggleSameAsPickup(next) {
+    setDeliverySameAsPickup(next)
+    if (!next) setDeliveryDraft(JSON.parse(JSON.stringify(pickupDraft)))
+    setHoursError(null)
+  }
+
+  // Runs planHoursWrites. Throws on the first error.
+  async function writeHoursRows(rows, opts) {
+    for (const op of planHoursWrites(rows, hoursRows, opts)) {
+      if (op.type === 'update') {
+        const { error } = await supabase.from('hours').update(op.values).eq('id', op.id)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.from('hours')
+          .insert({ restaurant_id: restaurant.id, ...op.values })
+          .select().single()
+        if (error) throw error
+        setHoursRows(prev => [...prev, data])
+      }
+    }
+  }
+
+  async function saveSplitHours() {
+    const err = validateDraft(pickupDraft, 'Pickup')
+      || (!deliverySameAsPickup && validateDraft(deliveryDraft, 'Delivery'))
+    if (err) { setHoursError(err); return }
+    setHoursError(null)
+    setSavingHours(true)
+    setSavedHours(false)
+    try {
+      if (!hasSecondWindow(pickupDraft) && deliverySameAsPickup) {
+        // Simple hours: legacy rows only. Rows first, so a failure never
+        // unconfigures onto stale rows. Closed days update is_open only.
+        await writeHoursRows(legacyRowsFromDraft(pickupDraft), { preserveClosedTimes: true })
+        if (restaurant.pickup_schedule != null || restaurant.delivery_schedule != null) {
+          const { data, error } = await supabase.from('restaurants')
+            .update({ pickup_schedule: null, delivery_schedule: null })
+            .eq('id', restaurant.id).select().single()
+          if (error) throw error
+          setRestaurant(data)
+        }
+      } else {
+        // Per-service schedules first (they drive ordering), then mirror the
+        // per-day span into `hours`. Closed days update is_open only.
+        const pickup = draftToStored(pickupDraft)
+        const delivery = deliverySameAsPickup ? null : draftToStored(deliveryDraft)
+        const { data, error } = await supabase.from('restaurants')
+          .update({ pickup_schedule: pickup, delivery_schedule: delivery })
+          .eq('id', restaurant.id).select().single()
+        if (error) throw error
+        setRestaurant(data)
+        const effPickup = normalizeSchedule(pickup)
+        const effDelivery = delivery ? normalizeSchedule(delivery) : effPickup
+        await writeHoursRows(buildLegacyHoursRows(effPickup, effDelivery), { preserveClosedTimes: true })
+      }
+      setSavedHours(true)
+      setTimeout(() => setSavedHours(false), 2000)
+    } catch (e) {
+      console.error('[Hours] save failed', e)
+      toast.error("Couldn't save hours. Try again.")
+    } finally {
+      setSavingHours(false)
+    }
   }
 
   async function saveOrdering() {
@@ -585,8 +655,12 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
       const updated = { ...currentDay, [field]: value }
       if (field === 'enabled' && value === true && !currentDay.enabled) {
         if (!updated.start || !updated.end) {
-          const dayHours = hours?.find(h => h.day_of_week === dayIndex)
-          if (dayHours?.is_open && dayHours.open_time && dayHours.close_time) {
+          const seed = configuredDaySeed(restaurant, hoursRows, dayIndex)
+          const dayHours = legacyHoursView?.find(h => h.day_of_week === dayIndex)
+          if (seed) {
+            if (!updated.start) updated.start = seed.start
+            if (!updated.end) updated.end = seed.end
+          } else if (!isServiceConfigured(restaurant) && dayHours?.is_open && dayHours.open_time && dayHours.close_time) {
             if (!updated.start) updated.start = dayHours.open_time.slice(0, 5)
             if (!updated.end) updated.end = dayHours.close_time.slice(0, 5)
           } else {
@@ -737,10 +811,15 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
         <WebsiteLinksEditor restaurant={restaurant} setRestaurant={setRestaurant} />
 
         {/* Hours */}
-        <Section title="Hours" onSave={saveHours} saving={savingHours} saved={savedHours}>
+        <Section
+          title="Hours"
+          onSave={splitHoursEnabled ? saveSplitHours : saveHours}
+          saving={savingHours}
+          saved={savedHours}
+        >
           {loadingHours ? (
             <p className="text-gray-400 text-sm">Loading...</p>
-          ) : (
+          ) : !splitHoursEnabled ? (
             <div className="space-y-3">
               {hours.map(h => (
                 <div key={h.day_of_week} className="flex items-center gap-2">
@@ -770,6 +849,97 @@ export default function SettingsTab({ restaurant, setRestaurant }) {
                   )}
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                {[['pickup', 'Pickup'], ['delivery', 'Delivery']].map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setHoursTab(key)}
+                    className={`flex-1 h-10 rounded-lg text-sm font-semibold transition-colors ${
+                      hoursTab === key ? 'bg-[#16A34A] text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {hoursTab === 'delivery' && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Same as pickup</span>
+                  <Toggle value={deliverySameAsPickup} onChange={toggleSameAsPickup} />
+                </div>
+              )}
+
+              {hoursTab === 'delivery' && deliverySameAsPickup ? (
+                <p className="text-sm text-gray-500">Delivery follows your pickup hours.</p>
+              ) : (
+                <div className="space-y-3">
+                  {[0, 1, 2, 3, 4, 5, 6].map(dow => {
+                    const which = hoursTab
+                    const d = (which === 'pickup' ? pickupDraft : deliveryDraft)[String(dow)]
+                    const timeInputs = (i) => (
+                      <div className="flex items-center gap-1 flex-1 min-w-0">
+                        <input
+                          type="time"
+                          value={(d.windows[i].start || '09:00').slice(0, 5)}
+                          onChange={e => setWindowTime(which, dow, i, 'start', e.target.value)}
+                          className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                        />
+                        <span className="text-gray-400 text-xs shrink-0">to</span>
+                        <input
+                          type="time"
+                          value={(d.windows[i].end || '21:00').slice(0, 5)}
+                          onChange={e => setWindowTime(which, dow, i, 'end', e.target.value)}
+                          className="h-10 px-1 border border-gray-300 rounded-lg text-xs flex-1 min-w-0"
+                        />
+                      </div>
+                    )
+                    return (
+                      <div key={dow} className="space-y-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-16 text-xs font-medium shrink-0">{DAY_NAMES[dow].slice(0, 3)}</span>
+                          <Toggle value={d.open} onChange={val => setDayOpen(which, dow, val)} />
+                          {d.open ? timeInputs(0) : <span className="text-sm text-gray-400">Closed</span>}
+                        </div>
+                        {d.open && d.windows.length > 1 && (
+                          <div className="flex items-center gap-2">
+                            <span className="w-16 shrink-0" />
+                            <span className="w-14 shrink-0" />
+                            {timeInputs(1)}
+                            <button
+                              type="button"
+                              onClick={() => removeWindow(which, dow)}
+                              aria-label="Remove second window"
+                              className="h-10 w-8 shrink-0 text-lg text-gray-400 hover:text-red-600"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        )}
+                        {d.open && d.windows.length < MAX_WINDOWS && (
+                          <div className="flex items-center gap-2">
+                            <span className="w-16 shrink-0" />
+                            <span className="w-14 shrink-0" />
+                            <button
+                              type="button"
+                              onClick={() => addWindow(which, dow)}
+                              className="text-xs font-semibold text-[#16A34A] hover:text-[#15803D]"
+                            >
+                              + Add second window
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {hoursError && <p className="text-sm text-red-600">{hoursError}</p>}
             </div>
           )}
         </Section>

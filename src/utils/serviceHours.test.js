@@ -17,6 +17,7 @@ import {
   getNextOpen,
   getDaySpan,
   buildLegacyHoursRows,
+  isServiceConfigured,
 } from './serviceHours.js';
 
 const at = (day, h, m = 0, s = 0) => new Date(2026, 10, day, h, m, s);
@@ -225,6 +226,19 @@ const cases = [
     got: (() => { try { getEffectiveSchedule(favale, [], 'dine_in'); return 'no throw'; } catch { return 'threw'; } })(),
     expect: 'threw',
   },
+
+  // isServiceConfigured
+  { name: 'isServiceConfigured: null → false', got: isServiceConfigured(null), expect: false },
+  { name: 'isServiceConfigured: undefined → false', got: isServiceConfigured(undefined), expect: false },
+  { name: 'isServiceConfigured: {} → false', got: isServiceConfigured({}), expect: false },
+  { name: 'isServiceConfigured: both null → false', got: isServiceConfigured({ pickup_schedule: null, delivery_schedule: null }), expect: false },
+  { name: 'isServiceConfigured: both invalid ("banana", []) → false', got: isServiceConfigured({ pickup_schedule: 'banana', delivery_schedule: [] }), expect: false },
+  { name: 'isServiceConfigured: 3-window blob → false', got: isServiceConfigured({ pickup_schedule: days([3], ['08:00', '09:00'], ['10:00', '11:00'], ['12:00', '13:00']) }), expect: false },
+  { name: 'isServiceConfigured: one bad day in an otherwise valid blob → false', got: isServiceConfigured({ pickup_schedule: { ...days([2], ['11:00', '15:00']), ...days([3], ['20:00', '11:00']) } }), expect: false },
+  { name: 'isServiceConfigured: valid pickup only → true', got: isServiceConfigured({ pickup_schedule: favalePickupRaw }), expect: true },
+  { name: 'isServiceConfigured: valid delivery only → true', got: isServiceConfigured({ delivery_schedule: favaleDeliveryRaw }), expect: true },
+  { name: 'isServiceConfigured: valid pickup + invalid delivery → true', got: isServiceConfigured({ pickup_schedule: favalePickupRaw, delivery_schedule: 'banana' }), expect: true },
+  { name: 'isServiceConfigured: empty object blob is valid (all closed) → true', got: isServiceConfigured({ pickup_schedule: {} }), expect: true },
 ];
 
 let failures = 0;

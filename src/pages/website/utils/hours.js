@@ -1,7 +1,10 @@
 // Hours status utilities for the restaurant website.
 // Pure functions — easy to test, no React.
 
-import { normalizeSchedule, getEffectiveSchedule, getWindowsForDate, getNextOpen } from '../../../utils/serviceHours.js'
+import { isServiceConfigured, getEffectiveSchedule, getWindowsForDate, getNextOpen } from '../../../utils/serviceHours.js'
+
+// Re-exported so HoursModal / Footer / HomePage keep importing it from here.
+export { isServiceConfigured }
 
 const DAY_ABBR = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -21,16 +24,6 @@ function toMinutes(t) {
   if (!t) return null
   const [h, m] = t.split(':')
   return parseInt(h, 10) * 60 + parseInt(m, 10)
-}
-
-// A restaurant is "configured" when either per-service schedule is valid —
-// the same test useRestaurant uses. Unconfigured restaurants take the legacy
-// `hours` paths below, unchanged.
-export function isServiceConfigured(restaurant) {
-  return !!restaurant && (
-    normalizeSchedule(restaurant.pickup_schedule) !== null ||
-    normalizeSchedule(restaurant.delivery_schedule) !== null
-  )
 }
 
 // Effective schedules for display. showDeliveryTab: delivery is offered AND

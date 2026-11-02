@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { boundedFetch } from '../lib/boundedFetch'
-import { normalizeSchedule, getEffectiveSchedule, isOpenAt, getNextOpen } from '../utils/serviceHours'
+import { isServiceConfigured, getEffectiveSchedule, isOpenAt, getNextOpen } from '../utils/serviceHours'
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -125,10 +125,7 @@ export function useRestaurant(slug) {
       // manual is_open toggle gates both, as it gates isOpen below. A null
       // schedule (no config, no hours) is closed here — isOpenAt(null) is
       // "no info = open", which would flip empty-hours restaurants to Open.
-      const configured =
-        normalizeSchedule(rest.pickup_schedule) !== null ||
-        normalizeSchedule(rest.delivery_schedule) !== null
-      if (configured) {
+      if (isServiceConfigured(rest)) {
         const pickupOpen = !!rest.is_open && pickup !== null && isOpenAt(pickup, now)
         const deliveryOpen = !!rest.is_open && delivery !== null && isOpenAt(delivery, now)
         const anyOpen = pickupOpen || (!!rest.delivery_available && deliveryOpen)
