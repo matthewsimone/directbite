@@ -1,11 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { boundedFetch } from '../lib/boundedFetch'
+import { normalizeSchedule, getEffectiveSchedule, isOpenAt, getNextOpen } from '../utils/serviceHours'
+
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 export function useRestaurant(slug) {
   const [restaurant, setRestaurant] = useState(null)
   const [hours, setHours] = useState([])
   const [isOpen, setIsOpen] = useState(false)
+  // Per-service open state + effective schedules (serviceHours.js). For a
+  // restaurant with no pickup_schedule/delivery_schedule, both services
+  // mirror isOpen and both schedules are the legacy `hours` schedule.
+  const [isPickupOpen, setIsPickupOpen] = useState(false)
+  const [isDeliveryOpen, setIsDeliveryOpen] = useState(false)
+  const [pickupSchedule, setPickupSchedule] = useState(null)
+  const [deliverySchedule, setDeliverySchedule] = useState(null)
   const [nextOpenTime, setNextOpenTime] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -93,13 +103,52 @@ export function useRestaurant(slug) {
         if (hoursErr) console.error('useRestaurant: hours load failed', hoursErr)
         setHoursUnknown(true)
         setHours([])
+        // Configured schedules don't need `hours`; unconfigured ones resolve
+        // to null here (no slots), same as hours = [] today. Open states are
+        // deliberately left untouched, exactly like isOpen.
+        setPickupSchedule(getEffectiveSchedule(rest, [], 'pickup'))
+        setDeliverySchedule(getEffectiveSchedule(rest, [], 'delivery'))
         setNextOpenTime(null)
         return
       }
       const hoursData = hoursGrp.results[0].data || []
       setHours(hoursData || [])
 
+      const pickup = getEffectiveSchedule(rest, hoursData, 'pickup')
+      const delivery = getEffectiveSchedule(rest, hoursData, 'delivery')
+      setPickupSchedule(pickup)
+      setDeliverySchedule(delivery)
+
       const now = new Date()
+
+      // Configured restaurant: each service follows its own schedule. The
+      // manual is_open toggle gates both, as it gates isOpen below. A null
+      // schedule (no config, no hours) is closed here — isOpenAt(null) is
+      // "no info = open", which would flip empty-hours restaurants to Open.
+      const configured =
+        normalizeSchedule(rest.pickup_schedule) !== null ||
+        normalizeSchedule(rest.delivery_schedule) !== null
+      if (configured) {
+        const pickupOpen = !!rest.is_open && pickup !== null && isOpenAt(pickup, now)
+        const deliveryOpen = !!rest.is_open && delivery !== null && isOpenAt(delivery, now)
+        const anyOpen = pickupOpen || (!!rest.delivery_available && deliveryOpen)
+        setIsPickupOpen(pickupOpen)
+        setIsDeliveryOpen(deliveryOpen)
+        setIsOpen(anyOpen)
+        if (anyOpen) {
+          setNextOpenTime(null)
+        } else {
+          // daysAhead 6 = today..today+6, the same range as the legacy loop.
+          const starts = [pickup, rest.delivery_available ? delivery : null]
+            .map(s => getNextOpen(s, now, 6))
+            .filter(Boolean)
+          const next = starts.length > 0 ? new Date(Math.min(...starts.map(d => d.getTime()))) : null
+          setNextOpenTime(next ? formatNextOpen(next, now) : null)
+        }
+        return
+      }
+
+      // Unconfigured: legacy `hours` logic, unchanged.
       const dayOfWeek = now.getDay()
       const currentTime = now.toLocaleTimeString('en-US', {
         hour12: false,
@@ -116,6 +165,8 @@ export function useRestaurant(slug) {
       }
 
       setIsOpen(open)
+      setIsPickupOpen(open)
+      setIsDeliveryOpen(open)
 
       if (!open) {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -166,7 +217,10 @@ export function useRestaurant(slug) {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [load])
 
-  return { restaurant, hours, isOpen, nextOpenTime, loading, error, stalled, failed, hoursUnknown, retry }
+  return {
+    restaurant, hours, isOpen, nextOpenTime, loading, error, stalled, failed, hoursUnknown, retry,
+    pickupSchedule, deliverySchedule, isPickupOpen, isDeliveryOpen,
+  }
 }
 
 function formatTime(timeStr) {
@@ -175,4 +229,11 @@ function formatTime(timeStr) {
   const ampm = hour >= 12 ? 'PM' : 'AM'
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour
   return `${h12}:${m} ${ampm}`
+}
+
+// Same "today at 4:30 PM" / "Thursday at 4:30 PM" wording as the legacy loop.
+function formatNextOpen(next, now) {
+  const hhmm = `${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`
+  const day = next.toDateString() === now.toDateString() ? 'today' : DAY_NAMES[next.getDay()]
+  return `${day} at ${formatTime(hhmm)}`
 }

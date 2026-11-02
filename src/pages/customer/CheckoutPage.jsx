@@ -750,7 +750,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 export default function CheckoutPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { restaurant, hours, isOpen, loading: restLoading } = useRestaurant(slug)
+  const { restaurant, isPickupOpen, isDeliveryOpen, pickupSchedule, deliverySchedule, loading: restLoading } = useRestaurant(slug)
   // Sent with the CREATE call only, so a returning signed-in customer's
   // existing Stripe Customer is reused rather than duplicated.
   const { getSessionTokenForPayment, isLoggedIn, saveProfile } = useCustomerAuth()
@@ -1191,19 +1191,60 @@ export default function CheckoutPage() {
   // prep estimates so we don't offer slots the kitchen can't honor.
   const leadTimeMinutes = Math.max(Number(estimatedTime) || 30, 30)
 
+  // Slots, prefill and ASAP follow the CURRENT order type's schedule. For a
+  // restaurant with no per-service schedules, both are the legacy hours and
+  // both open flags equal useRestaurant's isOpen.
+  const typeSchedule = orderType === 'delivery' ? deliverySchedule : pickupSchedule
+  const isTypeOpen = orderType === 'delivery' ? isDeliveryOpen : isPickupOpen
+
+  // True while scheduledFor holds a time the prefill effect chose (not the
+  // user). Cleared when the user picks a time in TimePickerModal.
+  const autoPrefilledRef = useRef(false)
+
   // Pre-populate scheduledFor with the first available slot when the
-  // restaurant is closed — there's no ASAP option in that state, so the
-  // button must already show a real future time.
+  // selected order type is closed — there's no ASAP option in that state,
+  // so the button must already show a real future time. Also covers
+  // switching from an open type with ASAP to a closed one.
   useEffect(() => {
     if (!restaurant) return
-    if (isOpen) return
+    if (isTypeOpen) return
     if (scheduledFor) return
-    const dates = getAvailableDates(hours, { leadTimeMinutes })
+    const dates = getAvailableDates(typeSchedule, { leadTimeMinutes })
     if (dates.length === 0) return
-    const slots = getAvailableTimeSlots(dates[0].date, hours, { leadTimeMinutes })
+    const slots = getAvailableTimeSlots(dates[0].date, typeSchedule, { leadTimeMinutes })
     if (slots.length === 0) return
+    autoPrefilledRef.current = true
     setScheduledFor(slots[0].value)
-  }, [restaurant, isOpen, hours, leadTimeMinutes, scheduledFor])
+  }, [restaurant, isTypeOpen, typeSchedule, leadTimeMinutes, scheduledFor])
+
+  // On an order-type switch, a scheduled time chosen for the other type may
+  // not be a valid slot for this one; reset to this type's first slot. An
+  // auto-prefilled time goes back to ASAP when the new type is open now.
+  // Skipped when both types share one schedule (every unconfigured
+  // restaurant), so switching keeps today's behavior exactly.
+  const schedulesDiffer = useMemo(
+    () => JSON.stringify(pickupSchedule) !== JSON.stringify(deliverySchedule),
+    [pickupSchedule, deliverySchedule]
+  )
+  const prevOrderTypeRef = useRef(orderType)
+  useEffect(() => {
+    if (prevOrderTypeRef.current === orderType) return
+    prevOrderTypeRef.current = orderType
+    if (!schedulesDiffer || !scheduledFor) return
+    if (autoPrefilledRef.current && isTypeOpen) {
+      autoPrefilledRef.current = false
+      setScheduledFor(null)
+      return
+    }
+    const stillValid = getAvailableTimeSlots(new Date(scheduledFor), typeSchedule, { leadTimeMinutes })
+      .some(s => s.value === scheduledFor)
+    if (stillValid) return
+    const dates = getAvailableDates(typeSchedule, { leadTimeMinutes })
+    const first = dates.length > 0
+      ? getAvailableTimeSlots(dates[0].date, typeSchedule, { leadTimeMinutes })[0]?.value
+      : null
+    setScheduledFor(first ?? null)
+  }, [orderType, schedulesDiffer, scheduledFor, isTypeOpen, typeSchedule, leadTimeMinutes])
 
   // Build full delivery address string
   const fullDeliveryAddress = orderType === 'delivery' && deliveryAddress.trim()
@@ -2227,7 +2268,7 @@ export default function CheckoutPage() {
               </button>
             )}
           </div>
-          {!scheduledFor && isOpen && (
+          {!scheduledFor && isTypeOpen && (
             <p className="mt-2 text-sm text-gray-500">
               {orderType === 'pickup'
                 ? `Ready in approximately ${restaurant.estimated_pickup_minutes} mins`
@@ -2643,10 +2684,10 @@ export default function CheckoutPage() {
       <TimePickerModal
         open={showTimePicker}
         onClose={() => setShowTimePicker(false)}
-        onUpdate={value => setScheduledFor(value)}
+        onUpdate={value => { autoPrefilledRef.current = false; setScheduledFor(value) }}
         orderType={orderType}
-        hours={hours}
-        isOpen={isOpen}
+        schedule={typeSchedule}
+        isOpen={isTypeOpen}
         leadTimeMinutes={leadTimeMinutes}
         scheduledFor={scheduledFor}
       />

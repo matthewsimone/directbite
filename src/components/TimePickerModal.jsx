@@ -9,14 +9,14 @@ export default function TimePickerModal({
   onClose,
   onUpdate,
   orderType,
-  hours,
+  schedule,
   isOpen,
   leadTimeMinutes,
   scheduledFor,
 }) {
   const availableDates = useMemo(
-    () => getAvailableDates(hours, { leadTimeMinutes }),
-    [hours, leadTimeMinutes]
+    () => getAvailableDates(schedule, { leadTimeMinutes }),
+    [schedule, leadTimeMinutes]
   )
 
   const [dateIdx, setDateIdx] = useState(0)
@@ -49,15 +49,15 @@ export default function TimePickerModal({
 
   const selectedDate = availableDates[dateIdx]?.date || null
   const slots = useMemo(
-    () => (selectedDate ? getAvailableTimeSlots(selectedDate, hours, { leadTimeMinutes }) : []),
-    [selectedDate, hours, leadTimeMinutes]
+    () => (selectedDate ? getAvailableTimeSlots(selectedDate, schedule, { leadTimeMinutes }) : []),
+    [selectedDate, schedule, leadTimeMinutes]
   )
 
   const isTodaySelected =
     selectedDate && selectedDate.toDateString() === new Date().toDateString()
-  // ASAP is offered only when the picked date is today and the
-  // restaurant is currently open. A future date or a closed restaurant
-  // hides ASAP regardless.
+  // ASAP is offered only when the picked date is today and the selected
+  // order type (`schedule` / `isOpen` come from the caller for that type) is
+  // currently open. A future date or a closed service hides ASAP regardless.
   const showAsap = isTodaySelected && isOpen
 
   // If the user switched dates and the prior pick is no longer valid,

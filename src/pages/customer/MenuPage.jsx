@@ -72,17 +72,22 @@ function MenuSkeleton() {
 export default function MenuPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { restaurant, hours, isOpen, nextOpenTime, loading: restLoading, error, stalled: restStalled, failed: restFailed, hoursUnknown, retry: restRetry } = useRestaurant(slug)
+  const { restaurant, pickupSchedule, deliverySchedule, isOpen, nextOpenTime, loading: restLoading, error, stalled: restStalled, failed: restFailed, hoursUnknown, retry: restRetry } = useRestaurant(slug)
 
-  // First bookable slot for the closed-state banner. Uses a 30-min lead
-  // floor — checkout will recompute against the order-type's prep time.
+  // First bookable slot for the closed-state banner: earliest across pickup
+  // and (if offered) delivery. Uses a 30-min lead floor — checkout will
+  // recompute against the order-type's prep time and schedule.
   const nextSlotLabel = (() => {
-    if (isOpen || !hours || hours.length === 0) return null
-    const dates = getAvailableDates(hours, { leadTimeMinutes: 30 })
-    if (dates.length === 0) return null
-    const slots = getAvailableTimeSlots(dates[0].date, hours, { leadTimeMinutes: 30 })
-    if (slots.length === 0) return null
-    return formatScheduledLabel(slots[0].value)
+    if (isOpen) return null
+    const schedules = restaurant?.delivery_available ? [pickupSchedule, deliverySchedule] : [pickupSchedule]
+    let first = null
+    for (const s of schedules) {
+      const dates = getAvailableDates(s, { leadTimeMinutes: 30 })
+      if (dates.length === 0) continue
+      const slot = getAvailableTimeSlots(dates[0].date, s, { leadTimeMinutes: 30 })[0]
+      if (slot && (first === null || slot.value < first)) first = slot.value // ISO strings sort chronologically
+    }
+    return first ? formatScheduledLabel(first) : null
   })()
   // Pre-detect Apple Pay / Google Pay availability (caches in sessionStorage)
   useWalletDetection(restaurant?.stripe_account_id)
