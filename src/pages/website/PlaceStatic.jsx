@@ -50,11 +50,11 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
   // static CLOSED placeholder; the live value settles on the post-hydrate tick).
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
   useEffect(() => {
-    function tick() { setStatus(getStatus(hours || [], new Date())) }
+    function tick() { setStatus(getStatus(hours || [], new Date(), restaurant)) }
     tick()
     const interval = setInterval(tick, 60000)
     return () => clearInterval(interval)
-  }, [hours])
+  }, [hours, restaurant])
 
   // Promo banner — async/effect-based hook (initial null). During renderToString
   // the effect doesn't run → promotion stays null → PromoBar renders nothing, so
@@ -75,7 +75,7 @@ export default function PlaceStatic({ restaurant, hours, town, siblingTowns, fea
     href: `${base}/places/${s.slug}`,
   }))
   const faqQas = buildRestaurantFaq(restaurant, {
-    hoursText: formatWeekHours(hours),
+    hoursText: formatWeekHours(hours, restaurant),
     town,
     delivers,
     tagLinks,

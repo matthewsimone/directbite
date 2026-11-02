@@ -45,11 +45,11 @@ export default function TagStatic({ restaurant, hours, tag, siblingTags, tagItem
   // the static CLOSED placeholder; the live value settles post-hydrate).
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
   useEffect(() => {
-    function tick() { setStatus(getStatus(hours || [], new Date())) }
+    function tick() { setStatus(getStatus(hours || [], new Date(), restaurant)) }
     tick()
     const interval = setInterval(tick, 60000)
     return () => clearInterval(interval)
-  }, [hours])
+  }, [hours, restaurant])
 
   // Promo — effect-based (initial null); during renderToString the effect
   // doesn't run, so no time-sensitive promo is baked into the static file.

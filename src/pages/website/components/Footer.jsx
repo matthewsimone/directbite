@@ -1,17 +1,9 @@
+import { useSyncExternalStore } from 'react'
 import DirectBiteLogo from '../../../components/DirectBiteLogo'
 import OrderLink from './OrderLink'
-import { formatTime } from '../utils/hours'
+import { isServiceConfigured, getWebsiteSchedules, getDisplayDays } from '../utils/hours'
+import HoursDayList from './HoursDayList'
 import { formatDisplayAddress } from '../utils/address'
-
-const DAY_ROWS = [
-  { idx: 1, label: 'Mon' },
-  { idx: 2, label: 'Tue' },
-  { idx: 3, label: 'Wed' },
-  { idx: 4, label: 'Thu' },
-  { idx: 5, label: 'Fri' },
-  { idx: 6, label: 'Sat' },
-  { idx: 0, label: 'Sun' },
-]
 
 function formatPhone(raw) {
   if (!raw) return null
@@ -42,26 +34,29 @@ function FacebookIcon() {
   )
 }
 
-function HoursList({ hours }) {
-  const today = new Date().getDay()
-  return (
-    <div className="text-sm leading-relaxed">
-      {DAY_ROWS.map(({ idx, label }) => {
-        const h = (hours || []).find(hr => hr.day_of_week === idx)
-        const closed = !h?.is_open || !h.open_time || !h.close_time
-        const isToday = idx === today
-        const tone = isToday ? 'font-bold text-green-700' : 'text-gray-600'
-        return (
-          <div key={idx} className={`flex justify-between ${tone}`}>
-            <span>{label}</span>
-            <span>
-              {closed ? 'Closed' : `${formatTime(h.open_time)} - ${formatTime(h.close_time)}`}
-            </span>
-          </div>
-        )
-      })}
-    </div>
-  )
+// Client-only day of week: null on the server and during hydration, the real
+// value right after. Keeps a build-time "Today" label out of static HTML.
+const noopSubscribe = () => () => {}
+function useClientToday() {
+  return useSyncExternalStore(noopSubscribe, () => new Date().getDay(), () => null)
+}
+
+function HoursList({ restaurant, hours }) {
+  const configured = isServiceConfigured(restaurant)
+  const clientToday = useClientToday()
+  // Unconfigured: today computed at render, exactly as before.
+  const today = configured ? clientToday : new Date().getDay()
+  if (configured && getWebsiteSchedules(restaurant, hours).showDeliveryTab) {
+    return (
+      <>
+        <p className="text-xs font-semibold text-gray-500 mb-1">Pickup</p>
+        <HoursDayList days={getDisplayDays(restaurant, hours, 'pickup')} variant="footer" today={today} configured />
+        <p className="text-xs font-semibold text-gray-500 mt-3 mb-1">Delivery</p>
+        <HoursDayList days={getDisplayDays(restaurant, hours, 'delivery')} variant="footer" today={today} configured />
+      </>
+    )
+  }
+  return <HoursDayList days={getDisplayDays(restaurant, hours)} variant="footer" today={today} configured={configured} />
 }
 
 export default function Footer({ restaurant, hours }) {
@@ -95,7 +90,7 @@ export default function Footer({ restaurant, hours }) {
           <div className="flex flex-col items-center md:items-start">
             <div className="w-56">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Hours</h3>
-              <HoursList hours={hours} />
+              <HoursList restaurant={restaurant} hours={hours} />
             </div>
           </div>
 

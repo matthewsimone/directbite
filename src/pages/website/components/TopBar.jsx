@@ -395,6 +395,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, 
         open={hoursModalOpen}
         onClose={() => setHoursModalOpen(false)}
         hours={hours}
+        restaurant={restaurant}
       />
     </header>
   )

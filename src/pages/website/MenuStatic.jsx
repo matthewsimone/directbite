@@ -34,11 +34,11 @@ export default function MenuStatic({ restaurant, hours, categories, items, lowes
 
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
   useEffect(() => {
-    function tick() { setStatus(getStatus(hours || [], new Date())) }
+    function tick() { setStatus(getStatus(hours || [], new Date(), restaurant)) }
     tick()
     const interval = setInterval(tick, 60000)
     return () => clearInterval(interval)
-  }, [hours])
+  }, [hours, restaurant])
 
   const brandColor = restaurant.primary_color || DEFAULT_BRAND_COLOR
 

@@ -14,7 +14,7 @@ import Location from './components/Location'
 import FaqSection from './components/FaqSection'
 import Footer from './components/Footer'
 import StickyMobileCTA from './components/StickyMobileCTA'
-import { getStatus, formatWeekHours } from './utils/hours'
+import { getStatus, formatWeekHours, isServiceConfigured, getWebsiteSchedules } from './utils/hours'
 import { parseAddress } from './utils/address'
 import { canonicalHost } from './utils/seoHead'
 import { isMainDomain, MAIN_DOMAIN } from '../../lib/customDomain'
@@ -61,14 +61,24 @@ function buildSchemaJsonLd(restaurant, hours) {
     }
   }
 
-  const openHours = (hours || [])
-    .filter(h => h.is_open && h.open_time && h.close_time)
-    .map(h => ({
-      '@type': 'OpeningHoursSpecification',
-      dayOfWeek: SCHEMA_DAY_NAMES[h.day_of_week],
-      opens: h.open_time.slice(0, 5),
-      closes: h.close_time.slice(0, 5),
-    }))
+  // Configured: one spec per window per day from the pickup schedule
+  // (= business hours). Unconfigured: legacy `hours` rows, unchanged.
+  const openHours = isServiceConfigured(restaurant)
+    ? Object.entries(getWebsiteSchedules(restaurant, hours).pickup || {}).flatMap(([dow, windows]) =>
+        windows.map(w => ({
+          '@type': 'OpeningHoursSpecification',
+          dayOfWeek: SCHEMA_DAY_NAMES[Number(dow)],
+          opens: w.start,
+          closes: w.end,
+        })))
+    : (hours || [])
+        .filter(h => h.is_open && h.open_time && h.close_time)
+        .map(h => ({
+          '@type': 'OpeningHoursSpecification',
+          dayOfWeek: SCHEMA_DAY_NAMES[h.day_of_week],
+          opens: h.open_time.slice(0, 5),
+          closes: h.close_time.slice(0, 5),
+        }))
   if (openHours.length > 0) data.openingHoursSpecification = openHours
 
   const sameAs = [restaurant.instagram_url, restaurant.facebook_url].filter(Boolean)
@@ -111,12 +121,12 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours,
   // Recompute open/closed every 60s so the banner stays current.
   useEffect(() => {
     function tick() {
-      setStatus(getStatus(hours, new Date()))
+      setStatus(getStatus(hours, new Date(), restaurant))
     }
     tick()
     const interval = setInterval(tick, 60000)
     return () => clearInterval(interval)
-  }, [hours])
+  }, [hours, restaurant])
 
   // iOS Safari bfcache + hash-nav viewport recomputation fix.
   // After bfcache restore (back-nav from a custom-domain "Order Online"
@@ -185,7 +195,7 @@ export default function HomePage({ restaurant: propRestaurant, hours: propHours,
   const effectiveTagLinks = tagLinks || embedded.tagLinks
   const effectiveTownLinks = townLinks || embedded.townLinks
   const faqQas = buildRestaurantFaq(restaurant, {
-    hoursText: formatWeekHours(hours),
+    hoursText: formatWeekHours(hours, restaurant),
     categoriesText: '',
     tagLinks: effectiveTagLinks,
     townLinks: effectiveTownLinks,

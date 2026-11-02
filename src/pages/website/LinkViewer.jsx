@@ -97,11 +97,11 @@ export default function LinkViewer({ restaurant: propRestaurant, hours: propHour
 
   const [status, setStatus] = useState({ isOpen: false, statusText: 'CLOSED', todaysHours: null })
   useEffect(() => {
-    function tick() { setStatus(getStatus(hours || [], new Date())) }
+    function tick() { setStatus(getStatus(hours || [], new Date(), restaurant)) }
     tick()
     const interval = setInterval(tick, 60000)
     return () => clearInterval(interval)
-  }, [hours])
+  }, [hours, restaurant])
 
   if (loading) {
     return (
