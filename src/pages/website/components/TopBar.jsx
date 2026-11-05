@@ -6,7 +6,7 @@ import OrderLink from './OrderLink'
 import { formatDisplayAddress } from '../utils/address'
 import { isMainDomain } from '../../../lib/customDomain'
 import { useLinkBase } from '../LinkBaseContext'
-import { groupWebsiteLinks, websiteLinkTarget, isExternalTarget } from '../utils/websiteLinks'
+import { groupWebsiteLinks, websiteLinkTarget, isExternalTarget, linkType } from '../utils/websiteLinks'
 
 const HERO_SHADOW = '[text-shadow:0_1px_2px_rgba(0,0,0,0.5)]'
 
@@ -45,9 +45,15 @@ function StatusPill({ isOpen, scrolled }) {
 // a custom-domain site that is an absolute cross-origin URL, and handing that
 // to <Link> is not a navigation react-router owns. Same split OrderLink makes
 // for the Order button, applied to whichever entries need it.
-function NavTarget({ to, children, ...rest }) {
+//
+// newTab is passed only for 'external' links — a category link is also an
+// absolute URL from a custom domain, but it is this restaurant's own ordering
+// page and stays in the same tab. The attributes are spread in only when set,
+// so every other link's markup is unchanged.
+function NavTarget({ to, newTab = false, children, ...rest }) {
   if (isExternalTarget(to)) {
-    return <a href={to} {...rest}>{children}</a>
+    const tabProps = newTab ? { target: '_blank', rel: 'noopener noreferrer' } : {}
+    return <a href={to} {...tabProps} {...rest}>{children}</a>
   }
   return <Link to={to} {...rest}>{children}</Link>
 }
@@ -110,6 +116,7 @@ function NavDropdown({ name, links, base, slug, linkCls }) {
             <NavTarget
               key={link.path}
               to={websiteLinkTarget(link, base, slug)}
+              newTab={linkType(link) === 'external'}
               onClick={() => setOpen(false)}
               className="block px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 hover:text-[var(--brand-color)] transition-colors"
             >
@@ -145,6 +152,7 @@ function MobileNavGroup({ name, links, base, slug, onClose }) {
             <NavTarget
               key={link.path}
               to={websiteLinkTarget(link, base, slug)}
+              newTab={linkType(link) === 'external'}
               onClick={onClose}
               className="block py-2.5 text-xl font-semibold uppercase tracking-wide text-gray-700"
             >
@@ -225,6 +233,7 @@ function MobileDrawer({ open, onClose, restaurant, status, onOpenHours }) {
             <NavTarget
               key={entry.link.path}
               to={websiteLinkTarget(entry.link, base, restaurant.slug)}
+              newTab={linkType(entry.link) === 'external'}
               onClick={onClose}
               className="block py-3 text-2xl font-bold uppercase tracking-wide text-gray-900"
             >
@@ -352,6 +361,7 @@ export default function TopBar({ restaurant, status, hours, onDrawerOpenChange, 
                 <NavTarget
                   key={entry.link.path}
                   to={websiteLinkTarget(entry.link, base, restaurant.slug)}
+                  newTab={linkType(entry.link) === 'external'}
                   className={linkCls}
                 >
                   {entry.link.label}
