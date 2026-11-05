@@ -20,7 +20,7 @@ const PATH_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 // each; if the meaning of an absent key ever changes, change it in both.
 function typeOf(link) {
   const raw = link && typeof link.type === 'string' ? link.type : ''
-  return raw === 'page' || raw === 'category' ? raw : 'pdf'
+  return raw === 'page' || raw === 'category' || raw === 'external' ? raw : 'pdf'
 }
 function groupOf(link) {
   return link && typeof link.group === 'string' ? link.group.trim() : ''
@@ -127,6 +127,9 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
         if (!href.startsWith('/')) return `"${named}" must open an internal path starting with "/" — for example /menu.`
       }
       if (type === 'category' && !href) return `"${named}" is a category link — choose the menu category it opens.`
+      // https only: rejects javascript:, data: and plain http: before the URL
+      // ever reaches an <a href> on the website.
+      if (type === 'external' && !/^https:\/\/[^\s]+$/i.test(href)) return 'Link URL must start with https://'
       if (!PATH_RE.test(path)) return `Path "${path}" can only use lowercase letters, numbers, and hyphens.`
       if (RESERVED_PATHS.includes(path)) return `"${path}" is a reserved path — choose another.`
       if (seen.has(path)) return `Duplicate path "${path}". Each link needs a unique path.`
@@ -208,6 +211,7 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
                   { value: 'pdf', label: 'PDF' },
                   { value: 'page', label: 'Page' },
                   { value: 'category', label: 'Category' },
+                  { value: 'external', label: 'Link' },
                 ].map((opt) => (
                   <button
                     key={opt.value}
@@ -230,6 +234,7 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
                 {type === 'pdf' && 'Shows an uploaded PDF on its own page.'}
                 {type === 'page' && 'Links straight to a page your site already has.'}
                 {type === 'category' && 'Opens the ordering menu at this category.'}
+                {type === 'external' && 'Opens a page on another website in a new tab.'}
               </p>
             </div>
             <div>
@@ -247,6 +252,13 @@ export default function WebsiteLinksEditor({ restaurant, setRestaurant }) {
                 <label className="text-xs text-gray-400 mb-1 block">Opens</label>
                 <input type="text" value={link.href || ''} onChange={(e) => updateLink(link.id, { href: e.target.value })} placeholder="/menu" className="w-full h-11 px-3 border border-gray-300 rounded-lg text-sm" />
                 <p className="text-xs text-gray-400 mt-1">A page on this site, starting with “/” — for example /menu.</p>
+              </div>
+            )}
+            {type === 'external' && (
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Opens</label>
+                <input type="text" inputMode="url" autoCapitalize="off" autoCorrect="off" value={link.href || ''} onChange={(e) => updateLink(link.id, { href: e.target.value })} placeholder="https://…" className="w-full h-11 px-3 border border-gray-300 rounded-lg text-sm" />
+                <p className="text-xs text-gray-400 mt-1">A full web address starting with https://</p>
               </div>
             )}
             {type === 'category' && (

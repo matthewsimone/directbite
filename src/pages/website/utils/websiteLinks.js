@@ -4,7 +4,7 @@
 //
 // An element is { id, label, path, href } plus two OPTIONAL keys:
 //
-//   type   'pdf' | 'page' | 'category'   absent = 'pdf'
+//   type   'pdf' | 'page' | 'category' | 'external'   absent = 'pdf'
 //   group  string           absent/blank = not grouped (a flat nav link)
 //
 // Absence is the default in both cases, and the editor writes absence as
@@ -18,7 +18,9 @@
 // route that already exists (e.g. '/menu'); the nav links straight there and
 // LinkViewer is never its destination. A 'category' link's href is a
 // menu_categories.id, and it opens the ORDERING page scrolled to that section —
-// the whole menu still renders, only the landing position differs.
+// the whole menu still renders, only the landing position differs. An
+// 'external' link's href is an absolute https URL on another site; it opens
+// in a new tab, and its path is kept only as the element's identifier.
 
 import { getOrderUrl } from '../../../lib/customDomain'
 
@@ -28,7 +30,7 @@ import { getOrderUrl } from '../../../lib/customDomain'
 // than rendering nothing.
 export function linkType(link) {
   const raw = link && typeof link.type === 'string' ? link.type : ''
-  return raw === 'page' || raw === 'category' ? raw : 'pdf'
+  return raw === 'page' || raw === 'category' || raw === 'external' ? raw : 'pdf'
 }
 
 // Normalized group name, or '' for "not grouped". Whitespace-only is blank:
@@ -66,6 +68,12 @@ export function websiteLinkTarget(link, base, slug) {
   if (type === 'page') {
     const path = href.startsWith('/') ? href : `/${href}`
     return `${base}${path}`
+  }
+  // An external link's href is an absolute https URL on another site (the
+  // editor enforces https://), returned as stored. Its path is only an
+  // identifier — LinkViewer never serves it.
+  if (type === 'external') {
+    return link.href
   }
   return `${base}/${link.path}`
 }
