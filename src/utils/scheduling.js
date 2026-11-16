@@ -76,6 +76,46 @@ export function formatDueClock(isoString, now = new Date()) {
   }
 }
 
+// Tablet Scheduled tab: how far past due an order can be before it stops
+// competing for the top of the list.
+export const STALE_OVERDUE_MINUTES = 60
+
+// scheduled_for as epoch ms, or NaN when missing/unparseable. null is checked
+// explicitly: new Date(null) is 1970, which would read as a real time.
+function dueMs(order) {
+  const v = order?.scheduled_for
+  if (v == null || v === '') return NaN
+  return new Date(v).getTime()
+}
+
+// Sort comparator for the tablet Scheduled tab.
+//   1. Live (due in the future, or overdue by <= STALE_OVERDUE_MINUTES):
+//      first, soonest due on top.
+//   2. Stale (overdue by more than STALE_OVERDUE_MINUTES): below them, least
+//      stale first.
+//   3. Missing/invalid scheduled_for: last of all.
+// Ties return 0, so Array.prototype.sort (stable) keeps the incoming order.
+// Never throws: any failure compares as equal. Pass the same `now` for every
+// comparison in one sort — the default exists only for one-off calls.
+export function compareScheduledForTablet(a, b, now = new Date()) {
+  try {
+    const nowMs = now instanceof Date ? now.getTime() : Number(now)
+    const cutoff = nowMs - STALE_OVERDUE_MINUTES * 60 * 1000
+    const ta = dueMs(a)
+    const tb = dueMs(b)
+    const aBad = !Number.isFinite(ta)
+    const bBad = !Number.isFinite(tb)
+    if (aBad || bBad) return aBad === bBad ? 0 : aBad ? 1 : -1
+    // A NaN cutoff (bad `now`) makes both false: everything sorts as live.
+    const aStale = ta < cutoff
+    const bStale = tb < cutoff
+    if (aStale !== bStale) return aStale ? 1 : -1
+    return aStale ? tb - ta : ta - tb
+  } catch {
+    return 0
+  }
+}
+
 // Build slots inside each [start, end] window in `intervalMinutes`
 // increments. OPEN_BUFFER_MINUTES applies at the start of EVERY window. For
 // today, a window's earliest slot is max(start + buffer, now + lead), rounded

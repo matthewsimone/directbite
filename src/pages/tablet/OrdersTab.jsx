@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { printOrder } from '../../utils/epsonPrint'
 import { formatPhone } from '../../utils/format'
-import { formatScheduledLabel, formatDueClock, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
+import { formatScheduledLabel, formatDueClock, compareScheduledForTablet, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
 import { getStuckStage } from '../../utils/stuckStage'
 import { isUberActiveNow, isUberExtendedZoneActiveNow } from '../../utils/uberActive'
 import ExternalOrderCard from './ExternalOrderCard'
@@ -1808,12 +1808,12 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
       return o.status === subTab
     })
     // Scheduled tab: next-up first so the kitchen sees the most urgent
-    // upcoming order at the top. Other tabs keep the polling-query order
-    // (created_at DESC).
+    // upcoming order at the top; orders more than STALE_OVERDUE_MINUTES past
+    // due sink below them (compareScheduledForTablet). Other tabs keep the
+    // polling-query order (created_at DESC).
     if (subTab === 'scheduled') {
-      return [...filtered].sort(
-        (a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime()
-      )
+      const sortNow = new Date() // once per sort, not per comparison
+      return [...filtered].sort((a, b) => compareScheduledForTablet(a, b, sortNow))
     }
     return filtered
   })()
@@ -1825,9 +1825,11 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     const ext = (externalOrders || []).filter(o => externalTabOf(o, now) === subTab)
     if (ext.length === 0) return filteredOrders
     const merged = [...filteredOrders, ...ext]
-    return subTab === 'scheduled'
-      ? merged.sort((a, b) => new Date(a.scheduled_for).getTime() - new Date(b.scheduled_for).getTime())
-      : merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    if (subTab === 'scheduled') {
+      const sortNow = new Date() // once per sort, not per comparison
+      return merged.sort((a, b) => compareScheduledForTablet(a, b, sortNow))
+    }
+    return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   })()
 
   // Complete tab: cap at last 30 days unless "Load older" expanded, then
