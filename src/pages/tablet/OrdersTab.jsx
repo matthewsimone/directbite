@@ -1807,13 +1807,11 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
       if (subTab === 'in_progress') return o.status === 'in_progress' || (o.status === 'self_delivering' && !isScheduledSelfDeliver(o))
       return o.status === subTab
     })
-    // Scheduled tab: next-up first so the kitchen sees the most urgent
-    // upcoming order at the top; orders more than STALE_OVERDUE_MINUTES past
-    // due sink below them (compareScheduledForTablet). Other tabs keep the
-    // polling-query order (created_at DESC).
+    // Scheduled tab: furthest-out due date on top, most overdue at the bottom
+    // (compareScheduledForTablet). Other tabs keep the polling-query order
+    // (created_at DESC).
     if (subTab === 'scheduled') {
-      const sortNow = new Date() // once per sort, not per comparison
-      return [...filtered].sort((a, b) => compareScheduledForTablet(a, b, sortNow))
+      return [...filtered].sort(compareScheduledForTablet)
     }
     return filtered
   })()
@@ -1826,8 +1824,7 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
     if (ext.length === 0) return filteredOrders
     const merged = [...filteredOrders, ...ext]
     if (subTab === 'scheduled') {
-      const sortNow = new Date() // once per sort, not per comparison
-      return merged.sort((a, b) => compareScheduledForTablet(a, b, sortNow))
+      return merged.sort(compareScheduledForTablet)
     }
     return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   })()
