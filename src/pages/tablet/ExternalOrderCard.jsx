@@ -1,5 +1,5 @@
 import { providerIcon, dspOrderNumber, DSP_ESCALATION_MINUTES } from '../../utils/dspProvider'
-import { formatScheduledLabel } from '../../utils/scheduling'
+import { formatScheduledLabel, formatDueClock } from '../../utils/scheduling'
 import AppIcon from './AppIcon'
 
 // DSP (KitchenHub) order tile: provider app icon on the left, then order
@@ -21,10 +21,12 @@ function formatClock(dateStr) {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
 }
 
-export default function ExternalOrderCard({ order, onTap }) {
+export default function ExternalOrderCard({ order, onTap, showDueTime = false }) {
   const icon = providerIcon(order)
   const isDelivery = String(order.order_type || '').toLowerCase().includes('delivery')
   const isUnacked = order.status === 'new' && !order.acknowledged_at
+  // Scheduled tab only; null keeps the placed time exactly as before.
+  const due = showDueTime ? formatDueClock(order.scheduled_for) : null
   // Same treatment as OrderCard's isEscalating, on the DSP window: tapped but
   // still not accepted for >= DSP_ESCALATION_MINUTES (same window as
   // hasEscalation in useOrderPolling). Mutually exclusive with isUnacked.
@@ -61,7 +63,7 @@ export default function ExternalOrderCard({ order, onTap }) {
             )}
             <div className="flex justify-between items-center text-gray-600 text-sm">
               <span className="font-medium text-gray-900">#{dspOrderNumber(order) ?? '—'}</span>
-              <span>{formatClock(order.placed_at || order.created_at)}</span>
+              <span className={due?.overdue ? 'text-red-700' : undefined}>{due ? due.text : formatClock(order.placed_at || order.created_at)}</span>
             </div>
           </div>
         </div>

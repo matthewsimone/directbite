@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { printOrder } from '../../utils/epsonPrint'
 import { formatPhone } from '../../utils/format'
-import { formatScheduledLabel, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
+import { formatScheduledLabel, formatDueClock, groupOrdersByCreatedAtNy } from '../../utils/scheduling'
 import { getStuckStage } from '../../utils/stuckStage'
 import { isUberActiveNow, isUberExtendedZoneActiveNow } from '../../utils/uberActive'
 import ExternalOrderCard from './ExternalOrderCard'
@@ -136,7 +136,7 @@ function externalTabOf(o, now) {
 }
 
 // ── Order Card ──
-function OrderCard({ order, onTap, onRetryPrint, printTrigger, leadingIcon }) {
+function OrderCard({ order, onTap, onRetryPrint, printTrigger, leadingIcon, showDueTime = false }) {
   // Per-card busy state — the Retry button lives here while handleRetryPrint
   // lives in the parent, so we bracket the awaited call locally. This keeps the
   // busy feedback scoped to THIS card (a single parent flag would light up every
@@ -144,6 +144,9 @@ function OrderCard({ order, onTap, onRetryPrint, printTrigger, leadingIcon }) {
   const [printing, setPrinting] = useState(false)
   const isDelivery = order.order_type === 'delivery'
   const borderColor = isDelivery ? 'border-l-blue-500' : 'border-l-[#16A34A]'
+  // Scheduled tab only: right-hand time is the due time. null (other tabs, or
+  // missing/invalid scheduled_for) keeps the placed time exactly as before.
+  const due = showDueTime ? formatDueClock(order.scheduled_for) : null
   const isUnacked = order.status === 'new' && !order.acknowledged_at
   // Escalation window: acknowledged but still 'new' (not yet in-progress) for
   // >= 7 min. Same window as hasEscalation in useOrderPolling.js — keep this
@@ -234,7 +237,7 @@ function OrderCard({ order, onTap, onRetryPrint, printTrigger, leadingIcon }) {
             {order.print_status === 'failed' && <span className="text-red-500 text-xs">⚠</span>}
             {order.print_status === 'pending' && !awaitingTake && <span className="text-gray-400 text-xs">⏳</span>}
           </div>
-          <span>{formatTime(order.created_at)}</span>
+          <span className={due?.overdue ? 'text-red-700' : undefined}>{due ? due.text : formatTime(order.created_at)}</span>
         </div>
         {/* UI-polish: Uber Direct status line, now BELOW the order number and
             larger/bolder than the old grey text-xs treatment. Single line,
@@ -1888,10 +1891,13 @@ export default function OrdersTab({ restaurant, setRestaurant, orders, setOrders
   // that one is false for in_house by definition, this one is true only for it.
   const uberExtendedZone = restaurant ? isUberExtendedZoneActiveNow(restaurant) : false
 
+  // Right-hand tile time: due time on the Scheduled tab only (by tab, not by
+  // status — a scheduled order sitting in New still shows its placed time).
+  const showDueTime = subTab === 'scheduled'
   const renderTile = order => order.__source === 'external'
-    ? <ExternalOrderCard key={`ext-${order.id}`} order={order} onTap={handleExternalTap} />
+    ? <ExternalOrderCard key={`ext-${order.id}`} order={order} onTap={handleExternalTap} showDueTime={showDueTime} />
     : <OrderCard key={order.id} order={order} onTap={handleOrderTap} onRetryPrint={restaurant?.printer_ip ? handleRetryPrint : null} printTrigger={restaurant?.print_trigger}
-        leadingIcon={dspEnabled ? <AppIcon src={ORDR_ICON} initials="O" alt="Ordr" /> : undefined} />
+        leadingIcon={dspEnabled ? <AppIcon src={ORDR_ICON} initials="O" alt="Ordr" /> : undefined} showDueTime={showDueTime} />
 
   return (
     <div className="h-full flex flex-col">

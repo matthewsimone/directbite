@@ -46,6 +46,36 @@ export function formatScheduledLabel(isoString) {
   return `${formatDateLabel(d)} at ${formatTimeLabel(d)}`
 }
 
+// Tablet Scheduled-tab tile: when the order is due, in the tile's clock style
+// (tablet local time, "7:30 PM" — not formatTimeLabel's "7:30PM").
+//   past                    → "Overdue · 7:30 PM" today, else "Overdue · 9/30 5:00 PM"
+//   later today             → "7:30 PM"
+//   1-6 calendar days out   → "Fri 7:30 PM"
+//   7+ calendar days out    → "11/26 7:30 PM"
+// Returns { text, overdue }, or null when missing, unparseable, or anything
+// throws — the caller then shows the placed time it shows today. `now` is
+// injectable for tests, same convention as isCategoryAvailableNow.
+export function formatDueClock(isoString, now = new Date()) {
+  try {
+    if (!isoString) return null
+    const d = new Date(isoString)
+    if (Number.isNaN(d.getTime())) return null
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+    // Calendar-day distance in local time; round absorbs a DST-shortened day.
+    const dayStart = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+    const diffDays = Math.round((dayStart(d) - dayStart(now)) / DAY_MS)
+    const monthDay = `${d.getMonth() + 1}/${d.getDate()} ${time}`
+    if (d.getTime() < now.getTime()) {
+      return { text: `Overdue · ${diffDays === 0 ? time : monthDay}`, overdue: true }
+    }
+    if (diffDays === 0) return { text: time, overdue: false }
+    if (diffDays > 6) return { text: monthDay, overdue: false }
+    return { text: `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${time}`, overdue: false }
+  } catch {
+    return null
+  }
+}
+
 // Build slots inside each [start, end] window in `intervalMinutes`
 // increments. OPEN_BUFFER_MINUTES applies at the start of EVERY window. For
 // today, a window's earliest slot is max(start + buffer, now + lead), rounded
