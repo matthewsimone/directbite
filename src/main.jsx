@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.jsx'
 import { IS_NATIVE } from './lib/native'
 import { hydrateToken } from './lib/tokenStore'
+import { installExternalLinkHandler } from './lib/externalLinks'
 
 const rootEl = document.getElementById('root')
 const app = (
@@ -15,6 +16,7 @@ const app = (
 // Native shell marker. index.css scopes every safe-area rule to html.native,
 // so none of it can match on web.
 if (IS_NATIVE) document.documentElement.classList.add('native')
+installExternalLinkHandler()
 
 // Prerendered routes (SSG, e.g. /test/home) ship HTML inside #root → hydrate
 // it. Every other route ships an empty #root → createRoot exactly as before
