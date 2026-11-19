@@ -210,8 +210,9 @@ allowlist.
 
 ## Deploy log (2026-11-19, project `euqhnetswowbfxwwlmry`)
 
-**Status: steps 0–6 and the `872cb2d` redeploy are done. Step 7 (the Test
-Pizza orders) is pending.** Nothing below is reported as observed unless it was.
+**Status: steps 0–7 done.** Shadow mode is live for Test Pizza only. No
+checkout was affected, and nothing was charged during step 7 (no refunds
+needed).
 
 | Step | Result |
 |---|---|
@@ -226,7 +227,7 @@ Pizza orders) is pending.** Nothing below is reported as observed unless it was.
 | Log watch (10 min from 17:24:48Z) | **Not performed by Claude**: CLI v2.90 has no logs command and no management token was available. **Pending Matt's Dashboard check.** Outcome: not yet known. |
 | Log watch, done by Matt | Since 17:24:48Z: 1 successful live checkout (200), **no new error types**. The 500s seen ("application_fee_amount cannot be updated … after a capture") were already happening before the deploy (11:27, 11:40 ×2, 11:55, 12:17), see web issue 0. Rollback not needed. |
 | 6b Redeploy `872cb2d` (Matt's OK) | Both functions, **17:33:28–17:33:31Z**. `shadow.ts` was in the upload again. Downloaded back: 21 files byte-identical to branch HEAD `d9903fb`. Live quotes for the planned carts: (a) **456**; (c) **456** (`in_house`, 1.0 mi, tier-1 50). Both match the plan to the cent. A first attempt at (c) returned `topping_not_allowed`: Test Pizza has two "Peppers" toppings, and the test script picked the add-on in an unlinked combo group, so the integrity check was working correctly. |
-| 7 Test Pizza orders | **Pending:** Matt is placing them now. |
+| 7 Test Pizza checkouts | Matt went to checkout and set the tip **without paying**, so no refunds. 22 `pricing_shadow_log` rows (12:37–12:40 ET), all with hash `11d8ec06`. **All four expectations met**; details below. |
 
 **Step 5 live checks:**
 - **Test Pizza, empty cart:** 200, with `pricingModuleHash` `11d8ec06…a7a5` and
@@ -281,10 +282,34 @@ exemption paths are not exercised there.
 | (b) | Promo paused, same cart, 18% tip | $31.20 / $31.19 | `compared`, `percent_tip`, delta −1¢ (18% of $23.75 = $4.275; web $4.27, exact $4.28) |
 | (c) | Promo on, in-house delivery under 3 mi (tier-1 $0.50): Margherita Pizza Medium + Peppers on the whole pie, 18% tip | $4.56 / $4.56 | `compared`, no classes, delta 0, `in_house` |
 
-**Observed shadow rows:** none yet.
-**Refunds to issue:** after the orders are placed, refund the actual charged
-amounts (expected $4.56, $31.19 and $4.56), confirmed against the Stripe
-charges.
+**Observed (Matt's checkouts, not paid):**
+
+| Checkout | PI (last 8) | Matching row (ET) | client / server | Classes |
+|---|---|---|---|---|
+| (a′) different pizza, Sausage left + Coke, 18%, shown $4.05 | `1c81HRTU` | 12:37:17 update | 405 / 405 | none, delta 0 ✅ |
+| (a) Pepperoni L + Sausage left + Coke, 18%, shown $4.56 | `18S8hqmH` | 12:38:16 update | 456 / 456 | none, delta 0 ✅ |
+| (b) promo paused, same cart, 18%, shown $31.19 (tip $4.27) | `0S8HbBY0` | 12:39:12 update | 3119 / 3120 | `percent_tip`, delta −1, tip 427 vs 428 ✅ |
+| (c) delivery 0.7 mi, Margherita M + Peppers whole, 18%, shown $4.56 | `1bm65yaW` | 12:40:22 update | 456 / 456 | none, delta 0, `in_house` 0.68 mi, delivery 50 ✅ |
+
+**Other rows, all explained:**
+- **The first `create` row of every checkout** is classed `promo`, with the
+  client at full price (e.g. 2260 vs 370). It is corrected by the next
+  `update` about 2–3 s later. This is a web race: the intent is created before
+  `usePromotion` loads (web issue 0b). The classifier's "D14" note is wrong for
+  this cause.
+- **12:38:45 and 12:39:24 `promo` rows** come from pausing and re-enabling the
+  promo while a checkout was open. They are correct mismatches.
+- **5 `no_coords` rows for (c)** (12:40:09–17) come from updates sent before
+  the address was chosen. The client amount already included the $0.50 default
+  fee with no address (D18; web issue 0c).
+
+**Shadow failures:** every create/update in the window produced a row, so the
+dynamic import, the loader and the insert all worked live. A failed attempt
+would only appear in the logs (`pos-v1 shadow failed`); a Dashboard search
+since 17:33Z would confirm there were none.
+
+**Refunds to issue:** none. Nothing was paid; the PaymentIntents were never
+paid and expire unused.
 
 **Rollback** (the 0a copy, which is byte-identical to `main@5111267`):
 ```
@@ -367,6 +392,16 @@ from `POS_V1_SHADOW_RESTAURANTS`.
    - Likely fix: treat this Stripe error (and any non-updatable PI status) as
      "already paid" and return the existing intent instead of a 500. Not fixed
      in this session.
+0b. **The initial PaymentIntent is created before the promo loads.** At Test
+    Pizza, every checkout's first `create-payment-intent` call carried
+    `discount_amount` 0 and the full price, e.g. 2260¢ instead of 370¢ under a
+    90% promo. The next update corrected it about 2–3 s later. A customer who
+    pays during that window (for example by wallet) could be charged the
+    undiscounted amount. Server pricing fixes this by construction.
+0c. **Delivery checkouts update the PaymentIntent before an address exists**,
+    using the tier-1 fallback fee (D18). The Pay button is gated, but the
+    intent amount includes a delivery fee for no address. Enforcement rejects
+    this (`delivery_location_required`).
 1. **Anon-readable restaurant secrets.** The `anon_read_restaurants` policy
    exposes `uber_client_secret` and `uber_webhook_signing_secret`. Already
    tracked in STATUS. pos-v1 selects explicit columns and returns none.
