@@ -1,33 +1,10 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
-
-// New keys use the ordr_ prefix. The cart's directbite_ prefix predates the
-// domain migration and is deliberately NOT followed here.
-const STORAGE_KEY = 'ordr_customer_token'
+import { readToken, writeToken, clearToken } from '../lib/tokenStore'
 
 // Sent with every 'send' request as the consent proof the edge function
 // records alongside the verification. Must match the copy shown to the
 // customer at the point they tap send.
 const CONSENT_TEXT = 'By continuing you agree to receive a one-time verification code by SMS. Message and data rates may apply.'
-
-function readToken() {
-  try {
-    return localStorage.getItem(STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
-function writeToken(token) {
-  try {
-    localStorage.setItem(STORAGE_KEY, token)
-  } catch { /* storage full or blocked — ignore */ }
-}
-
-function clearToken() {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-  } catch { /* storage blocked — ignore */ }
-}
 
 // Customers have no Supabase session, so every call authenticates with the
 // anon key alone — sent as both `apikey` and `Authorization`, matching

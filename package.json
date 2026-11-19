@@ -19,6 +19,7 @@
     "@capacitor/android": "^8.6.2",
     "@capacitor/core": "^8.6.2",
     "@capacitor/ios": "^8.6.2",
+    "@capacitor/preferences": "^8.0.1",
     "@googlemaps/js-api-loader": "^2.0.2",
     "@stripe/react-stripe-js": "^6.1.0",
     "@stripe/stripe-js": "^9.1.0",

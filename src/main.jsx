@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot, hydrateRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { IS_NATIVE } from './lib/native'
+import { hydrateToken } from './lib/tokenStore'
 
 const rootEl = document.getElementById('root')
 const app = (
@@ -13,8 +15,19 @@ const app = (
 // Prerendered routes (SSG, e.g. /test/home) ship HTML inside #root → hydrate
 // it. Every other route ships an empty #root → createRoot exactly as before
 // (byte-identical to the prior behavior).
-if (rootEl.hasChildNodes()) {
-  hydrateRoot(rootEl, app)
+function mount() {
+  if (rootEl.hasChildNodes()) {
+    hydrateRoot(rootEl, app)
+  } else {
+    createRoot(rootEl).render(app)
+  }
+}
+
+// Native: load the stored session token before first render so reads stay
+// synchronous. Capped at 1.5s — a stuck plugin mounts logged-out, never blank.
+// Web mounts immediately, exactly as before.
+if (IS_NATIVE) {
+  Promise.race([hydrateToken(), new Promise((r) => setTimeout(r, 1500))]).finally(mount)
 } else {
-  createRoot(rootEl).render(app)
+  mount()
 }
