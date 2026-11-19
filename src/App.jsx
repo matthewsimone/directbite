@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useParams, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { CartProvider } from './hooks/useCart'
 import { CustomerAuthProvider } from './hooks/useCustomerAuth'
 import { isMainDomain } from './lib/customDomain'
+import { APP_SLUG } from './lib/native'
 import LandingPage from './pages/LandingPage'
 import MenuPage from './pages/customer/MenuPage'
 import CheckoutPage from './pages/customer/CheckoutPage'
@@ -39,7 +40,7 @@ function SlugLinkBase({ children }) {
 function MainRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={APP_SLUG ? <Navigate to={`/${APP_SLUG}`} replace /> : <LandingPage />} />
       <Route
         path="/applepay-test"
         element={

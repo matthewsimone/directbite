@@ -25,6 +25,7 @@ import TimePickerModal from '../../components/TimePickerModal'
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
 import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 import { calcRecoup } from '../../utils/recoup'
+import { getPublicOrigin } from '../../lib/native'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
@@ -473,7 +474,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}/${slug}/confirmation`,
+        return_url: `${getPublicOrigin()}/${slug}/confirmation`,
         payment_method_data: {
           billing_details: {
             name: customerInfo.name.trim() || undefined,
