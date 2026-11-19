@@ -691,7 +691,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       </p>
 
       {/* Floating payment bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-5 py-4">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-5 py-4 ordr-bar-bottom">
         <div className="max-w-lg mx-auto">
           <div className="text-center mb-3">
             <span className="text-2xl font-bold text-gray-900">{showPlaceholder ? '—' : formatCurrency(total)}</span>
@@ -2227,7 +2227,7 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-white pb-40">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-5 py-4 flex items-center gap-3">
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-5 py-4 flex items-center gap-3 ordr-safe-top">
         <button
           onClick={() => navigate(`/${slug}`)}
           className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"

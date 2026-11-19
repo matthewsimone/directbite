@@ -86,7 +86,7 @@ export default function TimePickerModal({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 shadow-xl">
+      <div className="relative w-full sm:max-w-md bg-white rounded-t-2xl sm:rounded-2xl p-6 shadow-xl ordr-sheet-bottom">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-gray-900">{labelText} Time</h2>
           <button

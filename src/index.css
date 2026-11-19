@@ -94,3 +94,37 @@ input, textarea, select {
   max-height: 90vh;
   max-height: 90dvh;
 }
+
+/* ── Native shell safe areas ─────────────────────────────────────────
+   Scoped to html.native, set only inside the Capacitor app (main.jsx).
+   Unlayered, so these win over Tailwind utilities inside the app; on web
+   html.native never exists and nothing here matches. */
+html.native body {
+  padding-top: env(safe-area-inset-top);
+}
+html.native body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: #ffffff;
+  z-index: 45;
+  pointer-events: none;
+}
+html.native .ordr-safe-top {
+  top: env(safe-area-inset-top);
+}
+html.native .ordr-bar-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+html.native .ordr-pad-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+html.native .ordr-sheet-bottom {
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+html.native .ordr-float-bottom {
+  bottom: max(1.25rem, calc(env(safe-area-inset-bottom) + 0.5rem));
+}

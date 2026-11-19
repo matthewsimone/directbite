@@ -69,7 +69,7 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
 
       <div
         onClick={e => e.stopPropagation()}
-        className={`relative w-full max-w-lg bg-white rounded-t-2xl max-h-[85vh] flex flex-col transition-transform duration-300 ease-out ${
+        className={`relative w-full max-w-lg bg-white rounded-t-2xl max-h-[85vh] flex flex-col transition-transform duration-300 ease-out ordr-pad-bottom ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
       >

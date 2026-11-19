@@ -12,6 +12,10 @@ const app = (
   </StrictMode>
 )
 
+// Native shell marker. index.css scopes every safe-area rule to html.native,
+// so none of it can match on web.
+if (IS_NATIVE) document.documentElement.classList.add('native')
+
 // Prerendered routes (SSG, e.g. /test/home) ship HTML inside #root → hydrate
 // it. Every other route ships an empty #root → createRoot exactly as before
 // (byte-identical to the prior behavior).

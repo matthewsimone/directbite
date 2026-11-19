@@ -20,7 +20,7 @@ export default function CategoryTabs({ categories, activeId, onSelect }) {
   return (
     <div
       ref={scrollRef}
-      className="sticky top-0 z-30 bg-white border-b border-gray-200 overflow-x-auto scrollbar-hide"
+      className="sticky top-0 z-30 bg-white border-b border-gray-200 overflow-x-auto scrollbar-hide ordr-safe-top"
     >
       <div className="flex gap-6 px-6 sm:px-8 min-w-max max-w-[1100px] mx-auto">
         {categories.map(cat => (
