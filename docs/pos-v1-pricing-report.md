@@ -210,9 +210,8 @@ allowlist.
 
 ## Deploy log (2026-11-19, project `euqhnetswowbfxwwlmry`)
 
-**Status: steps 0–6 done. Step 7 NOT run yet.** It is waiting on Matt's OK to
-redeploy the `discount_exempt` fix (`872cb2d`) and on the Dashboard log check.
-Nothing below is reported as observed unless it was.
+**Status: steps 0–6 and the `872cb2d` redeploy are done. Step 7 (the Test
+Pizza orders) is pending.** Nothing below is reported as observed unless it was.
 
 | Step | Result |
 |---|---|
@@ -225,7 +224,9 @@ Nothing below is reported as observed unless it was.
 | 5 `pos-v1-price-order` deploy | Deployed via `npm run deploy:functions` (drift check passed) shortly before step 6; exact time not recorded. Live checks below. |
 | 6 `create-payment-intent` deploy | **17:24:46–17:24:48Z**, function code of `3c82004` (branch HEAD `f9049bd`). Details below. |
 | Log watch (10 min from 17:24:48Z) | **Not performed by Claude**: CLI v2.90 has no logs command and no management token was available. **Pending Matt's Dashboard check.** Outcome: not yet known. |
-| 7 Test Pizza orders | **Not run.** Planned orders below. |
+| Log watch, done by Matt | Since 17:24:48Z: 1 successful live checkout (200), **no new error types**. The 500s seen ("application_fee_amount cannot be updated … after a capture") were already happening before the deploy (11:27, 11:40 ×2, 11:55, 12:17), see web issue 0. Rollback not needed. |
+| 6b Redeploy `872cb2d` (Matt's OK) | Both functions, **17:33:28–17:33:31Z**. `shadow.ts` was in the upload again. Downloaded back: 21 files byte-identical to branch HEAD `d9903fb`. Live quotes for the planned carts: (a) **456**; (c) **456** (`in_house`, 1.0 mi, tier-1 50). Both match the plan to the cent. A first attempt at (c) returned `topping_not_allowed`: Test Pizza has two "Peppers" toppings, and the test script picked the add-on in an unlinked combo group, so the integrity check was working correctly. |
+| 7 Test Pizza orders | **Pending:** Matt is placing them now. |
 
 **Step 5 live checks:**
 - **Test Pizza, empty cart:** 200, with `pricingModuleHash` `11d8ec06…a7a5` and
