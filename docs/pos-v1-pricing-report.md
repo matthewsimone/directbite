@@ -262,6 +262,13 @@ allowlist.
 8. **Category availability windows are enforced only in the browser**, at
    add-to-cart time; no server check.
 9. **Checkout points preview** ignores a discount reward (D20).
-10. **Test data in production:** Test Pizza has a 90% perpetual promo, and KH
+10. **Migration history 024–098 not recorded; repair needs per-migration
+    verification first.** Production's `supabase_migrations.schema_migrations`
+    records only 001–023. 024–098 were applied by hand, so
+    `supabase migration list` shows them as pending, and `supabase db push`
+    would try to re-run them, some non-idempotently. Do not `db push` until the
+    history is repaired, and repair each migration only after verifying it is
+    live. 099 and 100 were applied by hand the same way (option A).
+11. **Test data in production:** Test Pizza has a 90% perpetual promo, and KH
     Testing Location has `tax_rate` 0. Both are expected for test restaurants;
     confirm neither is reachable by real customers.
