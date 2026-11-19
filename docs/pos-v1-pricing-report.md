@@ -269,6 +269,15 @@ allowlist.
     would try to re-run them, some non-idempotently. Do not `db push` until the
     history is repaired, and repair each migration only after verifying it is
     live. 099 and 100 were applied by hand the same way (option A).
-11. **Test data in production:** Test Pizza has a 90% perpetual promo, and KH
+11. **Backup tables in `public`.** 21 backup tables live in `public`. Six had
+    RLS off and were anon-readable: `orders_bak_20261116_sched`,
+    `customer_identities_bak_20261116`, `restaurants_web_backup_20261102`,
+    `restaurants_web_backup_20261104`, `restaurants_tablet_email_backup_20261104`,
+    `menu_items_featured_backup_20261104`. Matt enabled RLS and revoked
+    anon/authenticated on 2026-11-19 (out of band). Still to do: move or drop
+    all 21 out of `public`, and never back up into `public`. The restaurant
+    backups may also hold copies of the Uber secrets, so **rotating the Uber
+    secrets (issue 1) is the more urgent item.**
+12. **Test data in production:** Test Pizza has a 90% perpetual promo, and KH
     Testing Location has `tax_rate` 0. Both are expected for test restaurants;
     confirm neither is reachable by real customers.
