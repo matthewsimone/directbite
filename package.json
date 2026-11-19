@@ -9,7 +9,10 @@
     "gen-domain-map": "node scripts/gen-domain-map.mjs",
     "vercel-build": "node scripts/gen-domain-map.mjs && vite build && node scripts/prerender-test-home.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:ordr-core": "node scripts/check-ordr-core.mjs",
+    "vendor:ordr-core": "node scripts/vendor-ordr-core.mjs",
+    "deploy:functions": "node scripts/deploy-functions.mjs"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^2.0.2",
