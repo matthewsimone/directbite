@@ -1,0 +1,12 @@
+{
+  "sourceRepo": "https://github.com/matthewsimone/ordr-pos.git",
+  "sourceCommit": "72d5544de9f08ac380eb0d47d6874dcd4c2cdf1b",
+  "files": {
+    "money.ts": "7be665a86541c5705e424e67c6c181b339b5f2ce5f80ff9a7b265275a06448b0",
+    "order/errors.ts": "c27ab43fbdecce22669dc3ca445b12820ebb0edfdf4cce27a2c55f52be31c836",
+    "order/index.ts": "cdfa3179acbbcd350b3a3babb0162065069272518078f3b2bdaaf7a8a1495814",
+    "order/price.ts": "25cdcec2d21ea54f6717e3b59c0156c76edafc28d4b3cf66347fae0124a402f8",
+    "order/toppings.ts": "2a6a573b69c9b2cfb075d9df6a0b9eaa245554671eba1cedbf996db572c40d71",
+    "order/types.ts": "9f46aa6169f58e49b9ed915f1929bae057192140b6d02c88aa8f3b74d2e762bf"
+  }
+}

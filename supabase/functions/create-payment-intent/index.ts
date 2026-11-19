@@ -3,6 +3,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import Stripe from "https://esm.sh/stripe@17.7.0";
 import { resolveMode, RestaurantForMode } from "../_shared/uberMode.ts";
 import { applyPassthrough } from "../_shared/uberPassthrough.ts";
+// pos-v1 SHADOW MODE (no enforcement). Only this zero-import guard is loaded
+// statically; the pricing code is imported dynamically inside the background
+// task, so nothing about it can block, delay, throw into or change a charge.
+import {
+  parseShadowAllowlist,
+  SHADOW_TIMEOUT_MS,
+  takeShadowSnapshot,
+  withShadow,
+} from "../_shared/pos-v1/shadowGuard.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
@@ -10,6 +19,40 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
+
+// Restaurants whose checkouts are re-priced in the background by pos-v1 and
+// compared with what the client charged. Comma-separated restaurant ids.
+// Empty / unset = shadow mode off (the default).
+const SHADOW_ALLOWLIST = parseShadowAllowlist(Deno.env.get("POS_V1_SHADOW_RESTAURANTS"));
+const shadowOpts = {
+  timeoutMs: SHADOW_TIMEOUT_MS,
+  log: (event: string, data: Record<string, unknown>) =>
+    console.log(`[create-payment-intent] pos-v1 ${event}`, JSON.stringify(data)),
+};
+
+// Builds the background task, or null. Never throws (it is evaluated inside a
+// return statement on the charge path).
+function shadowTask(
+  snapshot: unknown,
+  input: {
+    restaurantId: string;
+    clientAmount: unknown;
+    sessionToken: unknown;
+    paymentIntentId: string | null;
+    pendingOrderId: string | null;
+    path: "create" | "update";
+  }
+): (() => Promise<unknown>) | null {
+  try {
+    if (snapshot === null) return null;
+    return async () => {
+      const { runShadow } = await import("../_shared/pos-v1/shadow.ts");
+      await runShadow(supabase, { ...input, orderData: snapshot }, shadowOpts.log);
+    };
+  } catch {
+    return null;
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -113,6 +156,11 @@ serve(async (req: Request) => {
     // persisted wholesale into pending_orders, and a session token written
     // there would be a 365-day credential sitting in plaintext.
     const { restaurant_id, amount, order_data, payment_intent_id, idempotency_key, session_token, cancel_payment_intent_id } = await req.json();
+
+    // pos-v1 shadow: deep copy of the client's order_data BEFORE this function
+    // mutates it below (coord backfill, uber-field clearing). null unless the
+    // restaurant is in POS_V1_SHADOW_RESTAURANTS. Never throws.
+    const shadowSnapshot = takeShadowSnapshot(SHADOW_ALLOWLIST, restaurant_id, order_data ?? null);
 
     if (!restaurant_id || !amount) {
       return new Response(
@@ -604,13 +652,25 @@ serve(async (req: Request) => {
         }
       }
 
-      return new Response(
-        JSON.stringify({
-          clientSecret: updated.client_secret,
+      // pos-v1 shadow: returns this exact Response; re-pricing runs after it.
+      return withShadow(
+        new Response(
+          JSON.stringify({
+            clientSecret: updated.client_secret,
+            paymentIntentId: updated.id,
+            stripeAccount: restaurant.stripe_account_id,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        ),
+        shadowTask(shadowSnapshot, {
+          restaurantId: restaurant_id,
+          clientAmount: amount,
+          sessionToken: session_token,
           paymentIntentId: updated.id,
-          stripeAccount: restaurant.stripe_account_id,
+          pendingOrderId: pending_order_id || null,
+          path: "update",
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        shadowOpts
       );
     }
 
@@ -803,14 +863,26 @@ serve(async (req: Request) => {
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        clientSecret: paymentIntent.client_secret,
+    // pos-v1 shadow: returns this exact Response; re-pricing runs after it.
+    return withShadow(
+      new Response(
+        JSON.stringify({
+          clientSecret: paymentIntent.client_secret,
+          paymentIntentId: paymentIntent.id,
+          stripeAccount: restaurant.stripe_account_id,
+          customerSessionClientSecret,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      ),
+      shadowTask(shadowSnapshot, {
+        restaurantId: restaurant_id,
+        clientAmount: amount,
+        sessionToken: session_token,
         paymentIntentId: paymentIntent.id,
-        stripeAccount: restaurant.stripe_account_id,
-        customerSessionClientSecret,
+        pendingOrderId: pending_order_id,
+        path: "create",
       }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      shadowOpts
     );
   } catch (err: any) {
     console.error("create-payment-intent error:", err.message);
