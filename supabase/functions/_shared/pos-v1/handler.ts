@@ -9,7 +9,7 @@ import { priceOrder, PricingError, type PricingBreakdown } from '../ordr-core/or
 import type { PricingDb } from './db.ts';
 import { ApiError, fromPricingError } from './errors.ts';
 import { loadPricingInput, type Channel, type Resolved } from './loader.ts';
-import { pricingModuleHash, SOURCE_COMMIT } from './moduleInfo.ts';
+import { PRICING_MODULE_HASH, SOURCE_COMMIT } from './moduleInfo.ts';
 import { MAX_BODY_BYTES, parsePriceRequest } from './request.ts';
 
 export const API_VERSION = 1;
@@ -79,7 +79,7 @@ export async function handlePriceRequest(input: HandlerInput, deps: HandlerDeps)
       status: 200,
       body: {
         apiVersion: API_VERSION,
-        pricingModuleHash: await pricingModuleHash(),
+        pricingModuleHash: PRICING_MODULE_HASH,
         sourceCommit: SOURCE_COMMIT,
         breakdown,
         resolved: loaded.resolved,

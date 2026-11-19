@@ -6,6 +6,7 @@
  * `deno check` run offline); the function's index.ts passes the real client.
  */
 import {
+  type CategoryRow,
   type ItemSizeRow,
   type ItemToppingGroupRow,
   type MenuItemRow,
@@ -61,7 +62,14 @@ export function supabasePricingDb(client: SupabaseLike): PricingDb {
     async getMenuItems(restaurantId, ids) {
       return rows<MenuItemRow>('menu_items', await client
         .from('menu_items')
-        .select('id,restaurant_id,is_available,discount_exempt')
+        .select('id,restaurant_id,category_id,is_available,discount_exempt')
+        .eq('restaurant_id', restaurantId)
+        .in('id', ids));
+    },
+    async getCategories(restaurantId, ids) {
+      return rows<CategoryRow>('menu_categories', await client
+        .from('menu_categories')
+        .select('id,restaurant_id,availability')
         .eq('restaurant_id', restaurantId)
         .in('id', ids));
     },

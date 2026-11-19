@@ -73,8 +73,16 @@ export interface RestaurantRow {
 export interface MenuItemRow {
   id: string;
   restaurant_id: string;
+  category_id: string | null;
   is_available: boolean;
   discount_exempt: boolean;
+}
+
+export interface CategoryRow {
+  id: string;
+  restaurant_id: string;
+  /** jsonb availability window (migration 086); null = always. */
+  availability: unknown;
 }
 
 export interface ItemSizeRow {
@@ -152,6 +160,7 @@ export interface UberQuoteRow {
 export interface PricingDb {
   getRestaurant(id: string): Promise<RestaurantRow | null>;
   getMenuItems(restaurantId: string, ids: string[]): Promise<MenuItemRow[]>;
+  getCategories(restaurantId: string, ids: string[]): Promise<CategoryRow[]>;
   getItemSizes(itemIds: string[]): Promise<ItemSizeRow[]>;
   getToppings(restaurantId: string, ids: string[]): Promise<ToppingRow[]>;
   getToppingGroups(restaurantId: string, ids: string[]): Promise<ToppingGroupRow[]>;

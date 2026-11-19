@@ -36,6 +36,7 @@ import type {
 } from '../ordr-core/order/index.ts';
 import { resolveMode, type RestaurantForMode } from '../uberMode.ts';
 import { applyPassthrough } from '../uberPassthrough.ts';
+import { isCategoryAvailableAt } from './categoryWindow.ts';
 import type { PricingDb, PromotionRow, RestaurantRow, ToppingRow } from './db.ts';
 import { ApiError, configError } from './errors.ts';
 import type { PriceRequest, RequestTip } from './request.ts';
@@ -54,6 +55,16 @@ const CHANNEL_POLICY: Record<Channel, { baseServiceFee: Cents; recoup: boolean; 
 
 /** Uber quotes this close to expiry are refused (same buffer as create-payment-intent). */
 const QUOTE_EXPIRY_BUFFER_MS = 60 * 1000;
+/**
+ * How far the request's delivery coordinates may sit from the cached Uber
+ * quote's dropoff before it counts as a different address. The quote stores
+ * the exact coordinates the checkout sent, so the same address re-selected
+ * matches to ~0; 0.05 mi (~80 m, about one building lot) absorbs geocoder
+ * jitter between two Places lookups of the same address while catching a
+ * changed address. Diagnostic only for now (shadow class `uber_dropoff`);
+ * enforcement will reject.
+ */
+export const UBER_DROPOFF_TOLERANCE_MILES = 0.05;
 /** Default extended-zone radius when uber_max_radius_miles is null (create-payment-intent parity). */
 const DEFAULT_UBER_MAX_RADIUS_MILES = 10;
 
@@ -95,10 +106,22 @@ export interface Resolved {
   lines: ResolvedLine[];
 }
 
+/**
+ * Policy findings that do NOT change the price and do not reject (yet). Never
+ * returned by the public endpoint; shadow mode logs them as their own classes.
+ */
+export interface Diagnostics {
+  /** Lines whose category is outside its availability window at quote time. */
+  categoryWindow: { lineIndex: number; menuItemId: string; categoryId: string }[];
+  /** Set only when the request coords are farther than the tolerance from the quote's dropoff. */
+  uberDropoff: { milesFromQuote: number; toleranceMiles: number } | null;
+}
+
 export interface Loaded {
   order: OrderInput;
   config: RestaurantPricingConfig;
   resolved: Resolved;
+  diagnostics: Diagnostics;
 }
 
 // ---- small helpers -------------------------------------------------------------
@@ -292,7 +315,9 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
   const r = await db.getRestaurant(req.restaurantId);
   if (!r) throw new ApiError('restaurant_not_found', 'restaurant not found');
   if (!isValidTimeZone(r.timezone)) throw configError(`restaurants.timezone is ${JSON.stringify(r.timezone)} (migration 099 applied?)`);
-  const localDate = localDateIn(r.timezone, ctx.now);
+  const timeZone: string = r.timezone;
+  const localDate = localDateIn(timeZone, ctx.now);
+  const diagnostics: Diagnostics = { categoryWindow: [], uberDropoff: null };
 
   // -- promo (restaurant-local date)
   const promo = resolvePromotion(await db.getActivePromotions(r.id), localDate);
@@ -352,6 +377,9 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
   const groups = groupIds.length ? await db.getToppingGroups(r.id, groupIds) : [];
 
   const itemById = new Map(items.filter((i) => i.restaurant_id === r.id).map((i) => [i.id, i]));
+  const categoryIds = [...new Set([...itemById.values()].map((i) => i.category_id).filter((c): c is string => !!c))];
+  const categories = categoryIds.length ? await db.getCategories(r.id, categoryIds) : [];
+  const categoryById = new Map(categories.filter((c) => c.restaurant_id === r.id).map((c) => [c.id, c]));
   const toppingById = new Map(toppings.filter((t) => t.restaurant_id === r.id).map((t) => [t.id, t]));
   const groupById = new Map(groups.filter((g) => g.restaurant_id === r.id).map((g) => [g.id, g]));
   const linked = new Set(links.map((l) => `${l.item_id}|${l.topping_group_id}`));
@@ -363,6 +391,10 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
     const item = itemById.get(reqLine.menuItemId);
     if (!item) throw new ApiError('item_not_found', `${where}: menu item not found`);
     if (item.is_available !== true) throw new ApiError('item_unavailable', `${where}: item is unavailable`);
+    const category = item.category_id ? categoryById.get(item.category_id) : undefined;
+    if (category && !isCategoryAvailableAt(category.availability, ctx.now, timeZone)) {
+      diagnostics.categoryWindow.push({ lineIndex: i, menuItemId: item.id, categoryId: category.id });
+    }
 
     const itemSizes = sizes.filter((s) => s.item_id === item.id);
     let basePrice: Cents;
@@ -449,6 +481,12 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
       if (recomputed.customer_cents !== q.customer_delivery_fee_cents) {
         throw new ApiError('quote_passthrough_changed', 'delivery pricing changed; get a new quote');
       }
+      if (typeof q.dropoff_lat === 'number' && typeof q.dropoff_lng === 'number') {
+        const milesFromQuote = haversineDistanceMiles(d.lat, d.lng, q.dropoff_lat, q.dropoff_lng);
+        if (milesFromQuote > UBER_DROPOFF_TOLERANCE_MILES) {
+          diagnostics.uberDropoff = { milesFromQuote: Math.round(milesFromQuote * 1000) / 1000, toleranceMiles: UBER_DROPOFF_TOLERANCE_MILES };
+        }
+      }
       // The quote was priced at its own coordinates; those are authoritative.
       const lat = typeof q.dropoff_lat === 'number' ? q.dropoff_lat : d.lat;
       const lng = typeof q.dropoff_lng === 'number' ? q.dropoff_lng : d.lng;
@@ -487,6 +525,7 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
   return {
     order,
     config,
+    diagnostics,
     resolved: {
       channel: ctx.channel,
       restaurantId: r.id,

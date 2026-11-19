@@ -14,6 +14,9 @@
 // was copied. Default commit is HEAD; without --commit the source's src/core
 // must be clean, so HEAD really is what the developer is looking at.
 //
+// Also writes _shared/pos-v1/ordrCoreInfo.generated.ts (PRICING_MODULE_HASH,
+// SOURCE_COMMIT) so the function needs no JSON import.
+//
 // Files previously vendored but no longer in the source set are removed.
 // Never hand-edit the output: fix ordr-pos and re-run this.
 // ============================================================================
@@ -23,9 +26,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   MANIFEST_PATH,
+  MODULE_INFO_PATH,
   SOURCE_ROOT,
   VENDOR_DIR,
   isVendoredPath,
+  renderModuleInfo,
   serializeManifest,
   sha256,
 } from './lib/ordrCore.mjs';
@@ -94,5 +99,7 @@ for (const rel of relPaths) {
 }
 
 fs.writeFileSync(MANIFEST_PATH, serializeManifest({ sourceRepo, sourceCommit: commit, files }));
+fs.mkdirSync(path.dirname(MODULE_INFO_PATH), { recursive: true });
+fs.writeFileSync(MODULE_INFO_PATH, renderModuleInfo({ sourceRepo, sourceCommit: commit, files }));
 console.log(`vendored ${relPaths.length} files from ${sourceRepo} @ ${commit}`);
 for (const rel of relPaths) console.log(`  ${files[rel]}  ${rel}`);

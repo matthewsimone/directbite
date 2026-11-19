@@ -7,6 +7,7 @@
  * the loader were handed more than RESTAURANT_COLUMNS.
  */
 import type {
+  CategoryRow,
   ItemSizeRow,
   ItemToppingGroupRow,
   MenuItemRow,
@@ -38,6 +39,7 @@ export function id(label: string): string {
 export interface Tables {
   restaurants: Record<string, unknown>[];
   menu_items: MenuItemRow[];
+  menu_categories: CategoryRow[];
   item_sizes: ItemSizeRow[];
   toppings: ToppingRow[];
   topping_groups: ToppingGroupRow[];
@@ -51,7 +53,7 @@ export interface Tables {
 
 export function emptyTables(): Tables {
   return {
-    restaurants: [], menu_items: [], item_sizes: [], toppings: [], topping_groups: [], item_topping_groups: [],
+    restaurants: [], menu_items: [], menu_categories: [], item_sizes: [], toppings: [], topping_groups: [], item_topping_groups: [],
     promotions: [], loyalty_redemptions: [], loyalty_rewards: [], customer_sessions: [], uber_quotes: [],
   };
 }
@@ -65,6 +67,9 @@ export class FakeDb implements PricingDb {
   }
   getMenuItems(restaurantId: string, list: string[]) {
     return Promise.resolve(this.t.menu_items.filter((i) => i.restaurant_id === restaurantId && list.includes(i.id)));
+  }
+  getCategories(restaurantId: string, list: string[]) {
+    return Promise.resolve(this.t.menu_categories.filter((c) => c.restaurant_id === restaurantId && list.includes(c.id)));
   }
   getItemSizes(itemIds: string[]) {
     return Promise.resolve(this.t.item_sizes.filter((s) => itemIds.includes(s.item_id)));
@@ -164,8 +169,9 @@ const TOPPINGS: Record<string, { price: string; price_half: string | null; size_
 /** Adds the standard pizzeria menu to restaurant `rk` (labels are prefixed by rk). */
 export function addMenu(t: Tables, rk: string): void {
   const rid = id(rk);
+  t.menu_categories.push({ id: id(`${rk}:cat:main`), restaurant_id: rid, availability: null });
   const item = (key: string, sizes: [string, string][], exempt = false) => {
-    t.menu_items.push({ id: id(`${rk}:item:${key}`), restaurant_id: rid, is_available: true, discount_exempt: exempt });
+    t.menu_items.push({ id: id(`${rk}:item:${key}`), restaurant_id: rid, category_id: id(`${rk}:cat:main`), is_available: true, discount_exempt: exempt });
     for (const [name, price] of sizes) {
       t.item_sizes.push({ id: id(`${rk}:size:${key}:${name}`), item_id: id(`${rk}:item:${key}`), name, price });
     }

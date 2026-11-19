@@ -56,6 +56,24 @@ export interface PriceRequest {
   delivery: RequestDelivery | null;
 }
 
+/** A cap the request exceeded (report mode only; enforce mode throws). */
+export interface CapHit {
+  cap: 'lines' | 'modifiers' | 'quantity';
+  limit: number;
+  actual: number;
+  lineIndex?: number;
+}
+
+interface ParseCtx {
+  caps: 'enforce' | 'report';
+  capHits: CapHit[];
+}
+
+function capExceeded(ctx: ParseCtx, hit: CapHit, err: ApiError): void {
+  if (ctx.caps === 'enforce') throw err;
+  ctx.capHits.push(hit);
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECIMAL = /^\d{1,3}(\.\d{1,4})?$/;
 
@@ -92,7 +110,7 @@ function parseModifier(raw: unknown, where: string): RequestModifier {
   return { toppingId: uuid(raw.toppingId, `${where}.toppingId`), placement: (placement ?? null) as RequestPlacement | null };
 }
 
-function parseLine(raw: unknown, i: number): RequestLine {
+function parseLine(raw: unknown, i: number, ctx: ParseCtx): RequestLine {
   const where = `lines[${i}]`;
   if (!isObject(raw)) bad(`${where} must be an object`);
   onlyKeys(raw, ['menuItemId', 'itemSizeId', 'quantity', 'modifiers'], where);
@@ -100,11 +118,15 @@ function parseLine(raw: unknown, i: number): RequestLine {
   if (typeof q !== 'number' || !Number.isSafeInteger(q) || q < 1) {
     throw new ApiError('invalid_quantity', `${where}.quantity must be a positive integer`);
   }
-  if (q > MAX_QUANTITY) throw new ApiError('quantity_too_large', `${where}.quantity exceeds ${MAX_QUANTITY}`);
+  if (q > MAX_QUANTITY) {
+    capExceeded(ctx, { cap: 'quantity', limit: MAX_QUANTITY, actual: q, lineIndex: i },
+      new ApiError('quantity_too_large', `${where}.quantity exceeds ${MAX_QUANTITY}`));
+  }
   const mods = raw.modifiers ?? [];
   if (!Array.isArray(mods)) bad(`${where}.modifiers must be an array`);
   if (mods.length > MAX_MODIFIERS_PER_LINE) {
-    throw new ApiError('too_many_modifiers', `${where} has more than ${MAX_MODIFIERS_PER_LINE} modifiers`);
+    capExceeded(ctx, { cap: 'modifiers', limit: MAX_MODIFIERS_PER_LINE, actual: mods.length, lineIndex: i },
+      new ApiError('too_many_modifiers', `${where} has more than ${MAX_MODIFIERS_PER_LINE} modifiers`));
   }
   return {
     menuItemId: uuid(raw.menuItemId, `${where}.menuItemId`),
@@ -158,8 +180,22 @@ function parseDelivery(raw: unknown): RequestDelivery {
   return { lat, lng, uberQuoteId: (q ?? null) as string | null, extendedZone: raw.extendedZone === true };
 }
 
-/** Parse a decoded JSON body. Throws ApiError (4xx) on any problem. */
+/** Parse a decoded JSON body. Throws ApiError (4xx) on any problem, caps included. */
 export function parsePriceRequest(body: unknown): PriceRequest {
+  return parse(body, { caps: 'enforce', capHits: [] });
+}
+
+/**
+ * Shadow mode only: same validation, but the line / modifier / quantity caps
+ * are reported instead of thrown, so an over-cap cart is still priced and
+ * logged (class `cap_hit`). The public endpoint never uses this.
+ */
+export function parsePriceRequestReportingCaps(body: unknown): { req: PriceRequest; capHits: CapHit[] } {
+  const ctx: ParseCtx = { caps: 'report', capHits: [] };
+  return { req: parse(body, ctx), capHits: ctx.capHits };
+}
+
+function parse(body: unknown, ctx: ParseCtx): PriceRequest {
   if (!isObject(body)) bad('body must be a JSON object');
   onlyKeys(body, ['restaurantId', 'orderType', 'lines', 'tip', 'loyaltyRedemptionId', 'sessionToken', 'delivery'], 'body');
 
@@ -168,7 +204,9 @@ export function parsePriceRequest(body: unknown): PriceRequest {
     bad('orderType must be pickup or delivery');
   }
   if (!Array.isArray(body.lines)) bad('lines must be an array');
-  if (body.lines.length > MAX_LINES) throw new ApiError('too_many_lines', `more than ${MAX_LINES} lines`);
+  if (body.lines.length > MAX_LINES) {
+    capExceeded(ctx, { cap: 'lines', limit: MAX_LINES, actual: body.lines.length }, new ApiError('too_many_lines', `more than ${MAX_LINES} lines`));
+  }
 
   const token = body.sessionToken;
   if (token !== undefined && token !== null && (typeof token !== 'string' || token.length > 512)) {
@@ -182,7 +220,7 @@ export function parsePriceRequest(body: unknown): PriceRequest {
   return {
     restaurantId: uuid(body.restaurantId, 'restaurantId'),
     orderType,
-    lines: body.lines.map(parseLine),
+    lines: body.lines.map((l, i) => parseLine(l, i, ctx)),
     tip: parseTip(body.tip),
     loyaltyRedemptionId: optionalUuid(body.loyaltyRedemptionId, 'loyaltyRedemptionId'),
     sessionToken: typeof token === 'string' && token.trim() ? token : null,

@@ -7,7 +7,7 @@ import { PricingError, type PricingErrorCode } from '../../ordr-core/order/index
 import { RESTAURANT_COLUMNS } from '../db.ts';
 import { API_ERROR_STATUS, fromPricingError } from '../errors.ts';
 import { handlePriceRequest, type QuoteResponse } from '../handler.ts';
-import { pricingModuleHash, SOURCE_COMMIT } from '../moduleInfo.ts';
+import { PRICING_MODULE_HASH, SOURCE_COMMIT } from '../moduleInfo.ts';
 import { MAX_BODY_BYTES, MAX_LINES, MAX_MODIFIERS_PER_LINE, MAX_QUANTITY } from '../request.ts';
 import { supabasePricingDb } from '../supabaseDb.ts';
 import { isOriginAllowed, parseOriginList } from '../cors.ts';
@@ -154,7 +154,7 @@ Deno.test('pricingModuleHash = sha256 of the vendored files in sha256sum format;
   }
   const expected = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))))
     .map((b) => b.toString(16).padStart(2, '0')).join('');
-  assertEquals(await pricingModuleHash(), expected);
+  assertEquals(PRICING_MODULE_HASH, expected);
   const r = (await call(body())).body as QuoteResponse;
   assertEquals([r.apiVersion, r.pricingModuleHash, r.sourceCommit], [1, expected, manifest.sourceCommit]);
   assertEquals(SOURCE_COMMIT, '72d5544de9f08ac380eb0d47d6874dcd4c2cdf1b');

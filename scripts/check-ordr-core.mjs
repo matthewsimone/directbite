@@ -9,6 +9,8 @@
 // Always: every file in VENDORED.json exists under _shared/ordr-core/ with
 // the recorded sha256, and nothing else lives in that directory. Catches a
 // hand edit of a vendored file, or a non-vendored file placed beside them.
+// Also: _shared/pos-v1/ordrCoreInfo.generated.ts equals what the manifest
+// renders to (PRICING_MODULE_HASH + SOURCE_COMMIT).
 //
 // With --source: also byte-compares each vendored file with the ordr-pos
 // working tree (src/core/<path>), and fails if the source's vendorable set
@@ -21,7 +23,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { MANIFEST_PATH, SOURCE_ROOT, VENDOR_DIR, isVendoredPath, sha256 } from './lib/ordrCore.mjs';
+import { MANIFEST_PATH, MODULE_INFO_PATH, SOURCE_ROOT, VENDOR_DIR, isVendoredPath, renderModuleInfo, sha256 } from './lib/ordrCore.mjs';
 
 const args = process.argv.slice(2);
 let sourcePath = null;
@@ -71,7 +73,15 @@ for (const rel of walk(VENDOR_DIR)) {
   if (rel !== 'VENDORED.json' && !(rel in files)) problems.push(`unexpected file in ordr-core/ (not vendored): ${rel}`);
 }
 
-// 3. Optional: byte-compare against an ordr-pos checkout.
+// 3. The generated identity constants match the manifest (byte-exact).
+const expectedInfo = renderModuleInfo(manifest);
+if (!fs.existsSync(MODULE_INFO_PATH)) {
+  problems.push(`missing generated file: ${path.relative(process.cwd(), MODULE_INFO_PATH)}`);
+} else if (fs.readFileSync(MODULE_INFO_PATH, 'utf8') !== expectedInfo) {
+  problems.push(`${path.relative(process.cwd(), MODULE_INFO_PATH)} does not match VENDORED.json (re-run vendor-ordr-core.mjs; never hand-edit)`);
+}
+
+// 4. Optional: byte-compare against an ordr-pos checkout.
 if (sourcePath) {
   const srcRoot = path.join(sourcePath, SOURCE_ROOT);
   if (!fs.existsSync(srcRoot)) {
