@@ -351,6 +351,21 @@ from `POS_V1_SHADOW_RESTAURANTS`.
 
 ## Web issues found (not fixed: out of scope)
 
+0. **PRIORITY: `create-payment-intent` returns 500 "application_fee_amount
+   cannot be updated on a PaymentIntent after a capture".** It happened before
+   pos-v1 was deployed: Matt's Dashboard check on 2026-11-19 found it at 11:27,
+   11:40 ×2, 11:55 and 12:17, all before the 17:24:48Z deploy, and no new error
+   types after it.
+   - The update path re-sends `application_fee_amount` on
+     `paymentIntents.update` for platform-billed orders.
+   - The PI-status guard (`requires_payment_method` / `requires_confirmation`)
+     runs on a `retrieve` **before** the update, so a retry, double-submit or
+     late remount that races the confirm can reach `update` after the charge is
+     captured.
+   - **Customers may see an error after they were already charged.**
+   - Likely fix: treat this Stripe error (and any non-updatable PI status) as
+     "already paid" and return the existing intent instead of a 500. Not fixed
+     in this session.
 1. **Anon-readable restaurant secrets.** The `anon_read_restaurants` policy
    exposes `uber_client_secret` and `uber_webhook_signing_secret`. Already
    tracked in STATUS. pos-v1 selects explicit columns and returns none.
