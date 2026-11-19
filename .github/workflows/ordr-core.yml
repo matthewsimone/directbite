@@ -21,3 +21,5 @@ jobs:
           deno-version: v2.8.3
       # The module type-checks under Deno, as the edge functions run it.
       - run: deno check --no-lock supabase/functions/_shared/ordr-core/money.ts supabase/functions/_shared/ordr-core/order/*.ts
+      # pos-v1 pricing function: loader, handler and the 13 POS golden orders.
+      - run: deno test --no-lock --allow-read=supabase/functions/_shared supabase/functions/_shared/pos-v1/tests/

@@ -230,3 +230,11 @@ verify_jwt = true
 
 [functions.stripe-settlement-report]
 verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# pos-v1-price-order — server-authoritative order pricing (stateless quote).
+# Same anonymous-customer pattern as create-payment-intent: called by the web
+# checkout with the anon key, no user JWT. No writes; explicit-column reads.
+# ---------------------------------------------------------------------------
+[functions.pos-v1-price-order]
+verify_jwt = false
