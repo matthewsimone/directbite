@@ -208,6 +208,112 @@ to move it aside first.
 **9. Monitor.** Watch for 24–48 h before proposing a live restaurant for the
 allowlist.
 
+## Deploy log (2026-11-19, project `euqhnetswowbfxwwlmry`)
+
+**Status: steps 0–6 done. Step 7 NOT run yet.** It is waiting on Matt's OK to
+redeploy the `discount_exempt` fix (`872cb2d`) and on the Dashboard log check.
+Nothing below is reported as observed unless it was.
+
+| Step | Result |
+|---|---|
+| 0a Live functions vs `main` | Live `create-payment-intent` + `_shared/uberMode.ts` + `_shared/uberPassthrough.ts` **byte-identical** to `main@5111267`. `pos-v1-price-order` did not exist (404). The download is kept as the rollback artifact. |
+| 0b Migration history | Remote history records only 001–023; 024–098 were applied by hand (verified live: 7/7 sample columns). **Option A:** 099 and 100 applied by hand, no `db push` / `migration repair`. |
+| 0c Functions tree | Clean apart from the exempt `stripe-settlement-probe/` (Matt's WIP, unreferenced; named deploys only). |
+| 2 Migration 099 (Matt) | `America/New_York` × 33. |
+| 3 Migration 100 (Matt) | Cron job id 2; RLS on; 0 policies; 0 anon/authenticated grants; retention job present. |
+| 4 Secrets | `POS_V1_SHADOW_RESTAURANTS` = Test Pizza `00000000-0000-0000-0000-000000000001`, digest `7ac1b8d7…`. `POS_V1_ALLOWED_ORIGINS` = ordr.co, www.ordr.co, directbite.co, www.directbite.co, digest `1eef8cd2…`. Both digests verified against the intended values. |
+| 5 `pos-v1-price-order` deploy | Deployed via `npm run deploy:functions` (drift check passed) shortly before step 6; exact time not recorded. Live checks below. |
+| 6 `create-payment-intent` deploy | **17:24:46–17:24:48Z**, function code of `3c82004` (branch HEAD `f9049bd`). Details below. |
+| Log watch (10 min from 17:24:48Z) | **Not performed by Claude**: CLI v2.90 has no logs command and no management token was available. **Pending Matt's Dashboard check.** Outcome: not yet known. |
+| 7 Test Pizza orders | **Not run.** Planned orders below. |
+
+**Step 5 live checks:**
+- **Test Pizza, empty cart:** 200, with `pricingModuleHash` `11d8ec06…a7a5` and
+  `sourceCommit` `72d5544…`. Service fee 150, tax 10 at 0.06625, total 160.
+  Local date 2026-11-19, and it resolved the 90% promo (`1b72011f…`).
+- **Rejections all correct:**
+  - no version header / version `2` → 400 `unsupported_api_version`;
+  - unknown restaurant → 404;
+  - `dine_in` → 400 `unsupported_order_type`;
+  - a client `total` field → 400 `invalid_request`;
+  - `https://evil.example` → 403 `origin_not_allowed`.
+- **CORS:** preflights from `https://ordr.co` and from the custom domains
+  `algierispizza.com` / `www.algierispizza.com` → 204 with the origin echoed;
+  `http://algierispizza.com` → 403.
+- **No secrets:** the response contains no secret, Stripe or Uber column names.
+
+**Step 6 details:**
+- **Upload list (19 assets):** `create-payment-intent/index.ts`;
+  `_shared/pos-v1/{shadowGuard,shadow,supabaseDb,errors,db,request,moduleInfo,ordrCoreInfo.generated,loader,categoryWindow}.ts`;
+  `_shared/ordr-core/{money,order/index,order/types,order/toppings,order/errors,order/price}.ts`;
+  `_shared/{uberMode,uberPassthrough}.ts`. **`shadow.ts` is included, so the
+  dynamic import was bundled.**
+- **Deployed bundle downloaded back:** 18 files, all byte-identical to the
+  branch. The 19th, `order/types.ts`, is type-only and erased at bundle time.
+- **Smoke test** (no auth, `{}`): 400 `restaurant_id and amount are required`.
+  The new imports boot, and `verify_jwt` is still false.
+- **Non-allowlisted check (partial):** KH Testing Location
+  (`ce50667b…`) → 400 "Restaurant has not connected Stripe" in 0.40 s, before
+  anything is created. That proves boot plus the restaurant lookup but **not**
+  the success path. The planned proof is any 200 for another restaurant's real
+  checkout after 17:24:48Z in the Dashboard Invocations tab (pending).
+
+**Defect found during step 6/7 prep:** production has no
+`menu_items.discount_exempt` column. Promo exemption is
+`menu_categories.discount_exempt` (052).
+- In the code deployed at step 6, any non-empty cart fails in the loader:
+  `pos-v1-price-order` returns 500, and Test Pizza's shadow task logs
+  `pos-v1 shadow failed`, so no comparison rows are written.
+- **Checkouts are unaffected.** The shadow path is isolated, and the quote
+  endpoint has no callers.
+- Fixed in **`872cb2d`, NOT deployed yet.** All other loader columns were
+  verified against the live schema.
+
+**Step 7 plan.** Place these after the `872cb2d` redeploy and a clean log check.
+Totals are computed ahead of time and are *expected*, not observed. Test Pizza
+has no odd-cent toppings and no exempt categories, so the half-topping (D3) and
+exemption paths are not exercised there.
+
+| # | Order | Expected server / web total | Expected shadow row |
+|---|---|---|---|
+| (a) | 90% promo on, pickup: Pepperoni Pizza Large + Sausage on the left half, Coke Can, 18% tip | $4.56 / $4.56 | `compared`, no classes, delta 0 |
+| (b) | Promo paused, same cart, 18% tip | $31.20 / $31.19 | `compared`, `percent_tip`, delta −1¢ (18% of $23.75 = $4.275; web $4.27, exact $4.28) |
+| (c) | Promo on, in-house delivery under 3 mi (tier-1 $0.50): Margherita Pizza Medium + Peppers on the whole pie, 18% tip | $4.56 / $4.56 | `compared`, no classes, delta 0, `in_house` |
+
+**Observed shadow rows:** none yet.
+**Refunds to issue:** after the orders are placed, refund the actual charged
+amounts (expected $4.56, $31.19 and $4.56), confirmed against the Stripe
+charges.
+
+**Rollback** (the 0a copy, which is byte-identical to `main@5111267`):
+```
+cd /private/tmp/claude-501/-Users-matthewsimone-Desktop-directbite/6266b14e-1e20-4a66-bba3-86c9b6a26d22/scratchpad/live-functions && supabase functions deploy create-payment-intent --project-ref euqhnetswowbfxwwlmry --no-verify-jwt --workdir .
+```
+If the scratch dir has been cleared, deploy `create-payment-intent` +
+`_shared/uberMode.ts` + `_shared/uberPassthrough.ts` from `5111267` with
+`--no-verify-jwt`. To turn shadow mode off without a redeploy, remove Test Pizza
+from `POS_V1_SHADOW_RESTAURANTS`.
+
+### Next steps
+
+1. **Pending now:** Matt's Dashboard log check of the step-6 window, and his OK
+   to redeploy `872cb2d` (both functions). Then run step 7, verify the shadow
+   rows, and issue the refunds.
+2. **Merge the PR to `main` after review.** The Vercel production deploy of
+   `main` is harmless: the only web-side changes are new `package.json` script
+   entries, new `scripts/*.mjs`, docs and a CI workflow, none of which
+   `vercel-build` uses. There are no `src/` or `public/` changes. Supabase
+   functions are deployed only by the CLI, never by Vercel.
+3. **Check Vercel preview environment variables before pushing future
+   branches**, so a preview build cannot point at production with unintended
+   settings.
+4. **Set up a staging Supabase project before enforcement.** Today every
+   edge-function deploy goes straight to production for all restaurants.
+5. **Collect 24–48 h of shadow data before allowlisting any live restaurant.**
+6. **Vendored `ordr-core` files are owned by ordr-pos and are never edited in
+   directbite.** Re-vendor only (`node scripts/vendor-ordr-core.mjs
+   <ordr-pos> --commit <sha>`); the drift check and CI enforce this.
+
 ## Open items
 
 - **Pending approval:** deploy, and applying 099 and 100.
