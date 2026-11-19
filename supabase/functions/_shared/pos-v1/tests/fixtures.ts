@@ -169,9 +169,11 @@ const TOPPINGS: Record<string, { price: string; price_half: string | null; size_
 /** Adds the standard pizzeria menu to restaurant `rk` (labels are prefixed by rk). */
 export function addMenu(t: Tables, rk: string): void {
   const rid = id(rk);
-  t.menu_categories.push({ id: id(`${rk}:cat:main`), restaurant_id: rid, availability: null });
+  // Promo exemption is a category flag (migration 052): drinks are exempt.
+  t.menu_categories.push({ id: id(`${rk}:cat:main`), restaurant_id: rid, availability: null, discount_exempt: false });
+  t.menu_categories.push({ id: id(`${rk}:cat:drinks`), restaurant_id: rid, availability: null, discount_exempt: true });
   const item = (key: string, sizes: [string, string][], exempt = false) => {
-    t.menu_items.push({ id: id(`${rk}:item:${key}`), restaurant_id: rid, category_id: id(`${rk}:cat:main`), is_available: true, discount_exempt: exempt });
+    t.menu_items.push({ id: id(`${rk}:item:${key}`), restaurant_id: rid, category_id: id(`${rk}:cat:${exempt ? 'drinks' : 'main'}`), is_available: true });
     for (const [name, price] of sizes) {
       t.item_sizes.push({ id: id(`${rk}:size:${key}:${name}`), item_id: id(`${rk}:item:${key}`), name, price });
     }

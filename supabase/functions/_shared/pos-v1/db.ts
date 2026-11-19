@@ -75,7 +75,6 @@ export interface MenuItemRow {
   restaurant_id: string;
   category_id: string | null;
   is_available: boolean;
-  discount_exempt: boolean;
 }
 
 export interface CategoryRow {
@@ -83,6 +82,12 @@ export interface CategoryRow {
   restaurant_id: string;
   /** jsonb availability window (migration 086); null = always. */
   availability: unknown;
+  /**
+   * Migration 052: promo exemption is a CATEGORY flag. There is no
+   * menu_items.discount_exempt (PRICING-SPEC §2.2 says otherwise; the schema
+   * and the web, useMenu.js, read it from the category).
+   */
+  discount_exempt: boolean;
 }
 
 export interface ItemSizeRow {

@@ -225,6 +225,12 @@ allowlist.
 - **Stale POS docs:** PRICING-SPEC Q2 says "recoup is off for every restaurant
   today". Recoup is **on** at Pazza (3.2%), Stella (3.5%) and Favale's
   Trattoria (3.5%). Shadow mode expects `recoup` 1¢ deltas there.
+- **PRICING-SPEC §2.2 names the wrong table.** It says `discountExempt` comes
+  from `menu_items.discount_exempt`, but production has no such column. Promo
+  exemption is a **category** flag, `menu_categories.discount_exempt`
+  (migration 052); the web reads it the same way (`useMenu.js`). This was found
+  on the 2026-11-19 Test Pizza deploy, before any priced cart ran, and fixed in
+  the loader. The POS sync and schema should read the category flag too.
 - **Decisions taken in pos-v1, for the POS spec:**
   - `redemption_wrong_restaurant` is 409 (only session/customer failures are 403);
   - the reward line is synthesized server-side;

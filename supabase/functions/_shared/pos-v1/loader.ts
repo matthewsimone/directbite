@@ -392,6 +392,8 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
     if (!item) throw new ApiError('item_not_found', `${where}: menu item not found`);
     if (item.is_available !== true) throw new ApiError('item_unavailable', `${where}: item is unavailable`);
     const category = item.category_id ? categoryById.get(item.category_id) : undefined;
+    // Promo exemption comes from the item's category (migration 052; useMenu.js).
+    const discountExempt = category?.discount_exempt === true;
     if (category && !isCategoryAvailableAt(category.availability, ctx.now, timeZone)) {
       diagnostics.categoryWindow.push({ lineIndex: i, menuItemId: item.id, categoryId: category.id });
     }
@@ -438,13 +440,13 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
       }
     });
 
-    lines.push({ quantity: reqLine.quantity, basePrice, sizeName, discountExempt: item.discount_exempt === true, modifiers, reward: null });
+    lines.push({ quantity: reqLine.quantity, basePrice, sizeName, discountExempt, modifiers, reward: null });
     resolvedLines.push({
       menuItemId: item.id,
       itemSizeId: reqLine.itemSizeId,
       sizeName,
       quantity: reqLine.quantity,
-      discountExempt: item.discount_exempt === true,
+      discountExempt,
       reward: null,
       modifiers: resolvedMods,
     });

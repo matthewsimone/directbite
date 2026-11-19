@@ -135,6 +135,11 @@ Deno.test('RESTAURANT_COLUMNS is explicit and excludes secrets; supabaseDb selec
   assertEquals(err.code, 'pricing_config_invalid');
   assertEquals(selects.restaurants, RESTAURANT_COLUMNS.join(','));
   await db.getMenuItems(id(rk), [id('x')]);
+  await db.getCategories(id(rk), [id('x')]);
+  // Live schema (found on the 2026-11-19 Test Pizza deploy): discount_exempt is
+  // on menu_categories (052), and menu_items has no such column.
+  assertEquals(selects.menu_items, 'id,restaurant_id,category_id,is_available');
+  assertEquals(selects.menu_categories, 'id,restaurant_id,availability,discount_exempt');
   await db.getToppings(id(rk), [id('x')]);
   await db.getRedemption(id('x'));
   for (const cols of Object.values(selects)) assert(!cols.includes('*'), cols);

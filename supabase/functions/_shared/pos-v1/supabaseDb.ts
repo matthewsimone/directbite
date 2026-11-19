@@ -62,14 +62,14 @@ export function supabasePricingDb(client: SupabaseLike): PricingDb {
     async getMenuItems(restaurantId, ids) {
       return rows<MenuItemRow>('menu_items', await client
         .from('menu_items')
-        .select('id,restaurant_id,category_id,is_available,discount_exempt')
+        .select('id,restaurant_id,category_id,is_available')
         .eq('restaurant_id', restaurantId)
         .in('id', ids));
     },
     async getCategories(restaurantId, ids) {
       return rows<CategoryRow>('menu_categories', await client
         .from('menu_categories')
-        .select('id,restaurant_id,availability')
+        .select('id,restaurant_id,availability,discount_exempt')
         .eq('restaurant_id', restaurantId)
         .in('id', ids));
     },
