@@ -1,3 +1,177 @@
+diff --git a/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/StripePlugin.kt b/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/StripePlugin.kt
+index 252e128..4f91824 100644
+--- a/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/StripePlugin.kt
++++ b/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/StripePlugin.kt
+@@ -17,6 +17,7 @@ import com.stripe.android.PaymentConfiguration
+ import com.stripe.android.Stripe
+ import com.stripe.android.core.AppInfo
+ import com.stripe.android.googlepaylauncher.GooglePayLauncher
++import com.stripe.android.googlepaylauncher.GooglePayPaymentMethodLauncher
+ import com.stripe.android.paymentsheet.PaymentSheet
+ import com.stripe.android.paymentsheet.PaymentSheetResult
+ 
+@@ -26,6 +27,7 @@ class StripePlugin : Plugin() {
+     private var paymentSheetCallbackId: String? = null
+     private var paymentFlowCallbackId: String? = null
+     private var googlePayCallbackId: String? = null
++    private var googlePayPmCallbackId: String? = null
+ 
+     private val identityVerificationCallbackId: String? = null
+ 
+@@ -94,6 +96,29 @@ class StripePlugin : Plugin() {
+                     )
+                 }
+             )
++
++            // DirectBite: PaymentMethod-only Google Pay (JS confirms server-side).
++            // Captures publishable key + stripe_account from PaymentConfiguration
++            // (manifest values, initialized above) at construction.
++            googlePayExecutor.googlePayPmLauncher = GooglePayPaymentMethodLauncher(
++                activity,
++                GooglePayPaymentMethodLauncher.Config(
++                    metaData.googlePayEnvironment!!,
++                    metaData.countryCode!!,
++                    metaData.displayName!!,
++                    metaData.emailAddressRequired!!,
++                    GooglePayPaymentMethodLauncher.BillingAddressConfig(
++                        metaData.billingAddressRequired!!,
++                        GooglePayPaymentMethodLauncher.BillingAddressConfig.Format.Min,
++                        metaData.phoneNumberRequired!!
++                    ),
++                    metaData.existingPaymentMethodRequired!!
++                ),
++                { isReady: Boolean -> googlePayExecutor.onPmReady(isReady) },
++                { result: GooglePayPaymentMethodLauncher.Result ->
++                    googlePayExecutor.onPmResult(bridge, googlePayPmCallbackId, result)
++                }
++            )
+         } else {
+             Logger.info("Plugin didn't prepare Google Pay.")
+         }
+@@ -215,6 +240,19 @@ class StripePlugin : Plugin() {
+         googlePayExecutor.presentGooglePay(call)
+     }
+ 
++    @PluginMethod
++    fun isGooglePayPaymentMethodAvailable(call: PluginCall) {
++        googlePayExecutor.isGooglePayPaymentMethodAvailable(call)
++    }
++
++    @PluginMethod
++    fun presentGooglePayPaymentMethod(call: PluginCall) {
++        googlePayPmCallbackId = call.callbackId
++        bridge.saveCall(call)
++
++        googlePayExecutor.presentGooglePayPaymentMethod(call, bridge)
++    }
++
+     companion object {
+         private const val APP_INFO_NAME = "@capacitor-community/stripe"
+     }
+diff --git a/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt b/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt
+index 14d7243..804cc2b 100644
+--- a/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt
++++ b/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt
+@@ -2,6 +2,8 @@ package com.getcapacitor.community.stripe.googlepay
+ 
+ import android.app.Activity
+ import android.content.Context
++import android.os.Handler
++import android.os.Looper
+ import androidx.core.util.Supplier
+ import com.getcapacitor.Bridge
+ import com.getcapacitor.JSObject
+@@ -9,6 +11,7 @@ import com.getcapacitor.PluginCall
+ import com.getcapacitor.community.stripe.models.EventNotifier
+ import com.getcapacitor.community.stripe.models.Executor
+ import com.stripe.android.googlepaylauncher.GooglePayLauncher
++import com.stripe.android.googlepaylauncher.GooglePayPaymentMethodLauncher
+ 
+ class GooglePayExecutor(
+     contextSupplier: Supplier<Context>,
+@@ -89,4 +92,82 @@ class GooglePayExecutor(
+             call?.resolve(JSObject().put("paymentResult", GooglePayEvents.Failed.webEventName))
+         }
+     }
++
++    // ---- DirectBite: PaymentMethod-only Google Pay -------------------------
++    // All state below is touched only on the main thread (ready/result
++    // callbacks already arrive there; plugin-method bodies are posted to it).
++    var googlePayPmLauncher: GooglePayPaymentMethodLauncher? = null
++    private var pmReady: Boolean? = null
++    private val pendingPmReadyCalls = mutableListOf<PluginCall>()
++    private val mainHandler = Handler(Looper.getMainLooper())
++
++    fun onPmReady(isReady: Boolean) {
++        pmReady = isReady
++        val calls = pendingPmReadyCalls.toList()
++        pendingPmReadyCalls.clear()
++        calls.forEach { it.resolve(JSObject().put("available", isReady)) }
++    }
++
++    fun isGooglePayPaymentMethodAvailable(call: PluginCall) {
++        mainHandler.post {
++            val ready = pmReady
++            if (googlePayPmLauncher == null) {
++                call.resolve(JSObject().put("available", false))
++            } else if (ready != null) {
++                call.resolve(JSObject().put("available", ready))
++            } else {
++                pendingPmReadyCalls.add(call)
++                mainHandler.postDelayed({
++                    if (pendingPmReadyCalls.remove(call)) {
++                        call.resolve(JSObject().put("available", false))
++                    }
++                }, 5000)
++            }
++        }
++    }
++
++    fun presentGooglePayPaymentMethod(call: PluginCall, bridge: Bridge) {
++        val currency = call.getString("currency", "USD")!!
++        val amount = call.getLong("amount")
++        mainHandler.post {
++            val launcher = googlePayPmLauncher
++            when {
++                amount == null -> rejectAndRelease(call, bridge, "amount (Long, cents) is required")
++                launcher == null -> rejectAndRelease(call, bridge, "Google Pay is not configured")
++                pmReady != true -> rejectAndRelease(call, bridge, "Google Pay is not available")
++                else -> try {
++                    launcher.present(currency, amount)
++                } catch (e: Exception) {
++                    rejectAndRelease(call, bridge, e.localizedMessage ?: "present failed")
++                }
++            }
++        }
++    }
++
++    private fun rejectAndRelease(call: PluginCall, bridge: Bridge, msg: String) {
++        call.reject(msg)
++        bridge.releaseCall(call)
++    }
++
++    fun onPmResult(bridge: Bridge, callbackId: String?, result: GooglePayPaymentMethodLauncher.Result) {
++        val call = bridge.getSavedCall(callbackId) ?: return
++        val ret = JSObject()
++        when (result) {
++            is GooglePayPaymentMethodLauncher.Result.Completed -> {
++                val pm = result.paymentMethod
++                ret.put("status", "completed")
++                ret.put("paymentMethodId", pm.id)
++                ret.put("name", pm.billingDetails?.name)
++                ret.put("email", pm.billingDetails?.email)
++                ret.put("phone", pm.billingDetails?.phone)
++            }
++            is GooglePayPaymentMethodLauncher.Result.Canceled -> ret.put("status", "canceled")
++            is GooglePayPaymentMethodLauncher.Result.Failed -> {
++                ret.put("status", "failed")
++                ret.put("error", result.error.localizedMessage)
++            }
++        }
++        call.resolve(ret)
++        bridge.releaseCall(call)
++    }
+ }
 diff --git a/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/ApplePay/ApplePayExecutor.swift b/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/ApplePay/ApplePayExecutor.swift
 index 3f13388..aa5f5ac 100644
 --- a/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/ApplePay/ApplePayExecutor.swift
