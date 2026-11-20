@@ -40,6 +40,7 @@ export default function AccountView({
   onRedeem = () => {},
   onStartOrder = () => {},
   onSignOut = () => {},
+  section = null,
 }) {
   // Platform green, not the restaurant's primary_color. The ordering flow is
   // green throughout and says so in three places — CartSheet, CheckoutPage and
@@ -100,6 +101,8 @@ export default function AccountView({
   const nextTierRate = Math.round((Number(nextTier?.multiplier) || 1) * pointsPerDollar * 10) / 10
 
   const [tab, setTab] = useState('rewards')
+  // Native tab bar drives the view via `section`; web leaves it null and keeps the in-page switch.
+  const activeTab = section === 'orders' || section === 'rewards' ? section : tab
   const [tiersOpen, setTiersOpen] = useState(false)
   const [expandedOrders, setExpandedOrders] = useState(() => new Set())
   const [reorderingId, setReorderingId] = useState(null)
@@ -360,30 +363,32 @@ export default function AccountView({
 
         {loyaltyEnabled ? (
           <>
-            <div role="tablist" className="flex gap-2 mt-4">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'rewards'}
-                onClick={() => setTab('rewards')}
-                className={`flex-1 h-10 rounded-full text-sm ${tab === 'rewards' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
-                style={tab === 'rewards' ? { backgroundColor: brandColor } : undefined}
-              >
-                Rewards
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'orders'}
-                onClick={() => setTab('orders')}
-                className={`flex-1 h-10 rounded-full text-sm ${tab === 'orders' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
-                style={tab === 'orders' ? { backgroundColor: brandColor } : undefined}
-              >
-                Orders
-              </button>
-            </div>
+            {section == null && (
+              <div role="tablist" className="flex gap-2 mt-4">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'rewards'}
+                  onClick={() => setTab('rewards')}
+                  className={`flex-1 h-10 rounded-full text-sm ${activeTab === 'rewards' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
+                  style={activeTab === 'rewards' ? { backgroundColor: brandColor } : undefined}
+                >
+                  Rewards
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'orders'}
+                  onClick={() => setTab('orders')}
+                  className={`flex-1 h-10 rounded-full text-sm ${activeTab === 'orders' ? 'text-white font-medium' : 'bg-gray-100 text-gray-600'}`}
+                  style={activeTab === 'orders' ? { backgroundColor: brandColor } : undefined}
+                >
+                  Orders
+                </button>
+              </div>
+            )}
 
-            {tab === 'rewards' ? (
+            {activeTab === 'rewards' ? (
               <div className="grid grid-cols-1 md:grid-cols-[1.35fr_1fr] gap-5 mt-5">
                 {/* Left: what this balance already covers, then what it doesn't. */}
                 <div>

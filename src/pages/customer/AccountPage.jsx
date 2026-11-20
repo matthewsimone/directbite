@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate, Navigate } from 'react-router-dom'
+import { useParams, useNavigate, Navigate, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { supabase } from '../../lib/supabase'
 import { useRestaurant } from '../../hooks/useRestaurant'
@@ -8,6 +8,7 @@ import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import { useCart } from '../../hooks/useCart'
 import { useRewardLineReconcile } from '../../hooks/useRewardLineReconcile'
 import { resolveOrderToCart } from '../../lib/reorder'
+import { IS_NATIVE } from '../../lib/native'
 import AccountView from '../../components/AccountView'
 
 // How long sign-out waits on the redemption cancel before giving up on it.
@@ -24,6 +25,8 @@ const SIGN_OUT_CANCEL_TIMEOUT_MS = 3000
 export default function AccountPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const section = IS_NATIVE ? (searchParams.get('section') === 'orders' ? 'orders' : 'rewards') : null
   const { restaurant, loading: restLoading, error, failed: restFailed, retry: restRetry } = useRestaurant(slug)
   const { loading: authLoading, isLoggedIn, loadSessionState, loadHistory, redeemReward, cancelRedemption, logout } = useCustomerAuth()
   const { addItem, items, updateQuantity } = useCart()
@@ -423,6 +426,7 @@ export default function AccountPage() {
           onRedeem={handleRedeem}
           onStartOrder={() => navigate(`/${slug}`)}
           onSignOut={handleSignOut}
+          section={section}
         />
       </div>
     </div>
