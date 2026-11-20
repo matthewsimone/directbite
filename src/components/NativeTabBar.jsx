@@ -75,6 +75,12 @@ function TabBarInner({ slug }) {
     }
   }, [])
 
+  // Lets html.native CSS react to the keyboard (e.g. hide the floating cart).
+  useEffect(() => {
+    document.documentElement.classList.toggle('ordr-kb', keyboardOpen)
+    return () => document.documentElement.classList.remove('ordr-kb')
+  }, [keyboardOpen])
+
   const base = `/${slug}`
   const { pathname } = location
   const sub = pathname.startsWith(base) ? pathname.slice(base.length).replace(/\/$/, '') : null

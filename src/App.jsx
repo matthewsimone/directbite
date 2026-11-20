@@ -22,6 +22,7 @@ import PlaceStaticRoute from './pages/website/PlaceStaticRoute'
 import TagStaticRoute from './pages/website/TagStaticRoute'
 import CustomDomainShell from './CustomDomainShell'
 import NativeTabBar from './components/NativeTabBar'
+import NativeAuthGate from './components/NativeAuthGate'
 import { LinkBaseProvider } from './pages/website/LinkBaseContext'
 
 // Dev-only diagnostic route. Lazy-loaded so its `@stripe/stripe-js`
@@ -85,8 +86,10 @@ export default function App() {
       <Toaster position="top-center" toastOptions={{ duration: 2000 }} />
       <CartProvider>
         <CustomerAuthProvider>
-          {isMainDomain() ? <MainRoutes /> : <CustomDomainShell />}
-          <NativeTabBar />
+          <NativeAuthGate>
+            {isMainDomain() ? <MainRoutes /> : <CustomDomainShell />}
+            <NativeTabBar />
+          </NativeAuthGate>
         </CustomerAuthProvider>
       </CartProvider>
     </BrowserRouter>

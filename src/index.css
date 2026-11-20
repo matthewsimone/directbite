@@ -175,3 +175,21 @@ html.native .ordr-above-tabbar {
   bottom: calc(4rem + max(0.5rem, env(safe-area-inset-bottom)));
   padding-bottom: 0.75rem;
 }
+html.native .ordr-welcome {
+  position: fixed;
+  top: env(safe-area-inset-top);
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+html.native .ordr-welcome-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);
+}
+html.native.ordr-lock,
+html.native.ordr-lock body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+html.native.ordr-kb .ordr-float-bottom {
+  display: none;
+}
