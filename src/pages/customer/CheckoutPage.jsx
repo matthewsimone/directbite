@@ -28,7 +28,7 @@ import googlePayButton from '../../assets/payment-marks/google-pay-button-plain-
 import { calcRecoup } from '../../utils/recoup'
 import { getPublicOrigin, IS_NATIVE } from '../../lib/native'
 import { isNativeApplePayAvailable, payWithNativeApplePay } from '../../lib/nativeApplePay'
-import { isNativeGooglePayAvailable, presentNativeGooglePay } from '../../lib/nativeGooglePay'
+import { isNativeGooglePayAvailable, presentNativeGooglePay, mountGooglePayButton } from '../../lib/nativeGooglePay'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
@@ -283,6 +283,13 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   const [nativeApplePay, setNativeApplePay] = useState(false)
   // Android shell only: patched plugin reports Google Pay usable. False on web.
   const [nativeGooglePay, setNativeGooglePay] = useState(false)
+  // Google's pay.js button; falls back to the static PNG if it can't render.
+  const [gpayButtonFailed, setGpayButtonFailed] = useState(false)
+  // Bumped after each sheet so pay.js renders a fresh button (it leaves
+  // 'hover focus' classes on the old one after a touch).
+  const [gpayMountKey, setGpayMountKey] = useState(0)
+  const gpayContainerRef = useRef(null)
+  const handleNativeGooglePayRef = useRef(null)
 
   // Refs for values needed in paymentmethod event handler (avoids stale closures)
   const clientSecretRef = useRef(clientSecret)
@@ -519,6 +526,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     submittedRef.current = true // blocks double tap while the sheet is up
 
     const r = await presentNativeGooglePay({ amountCents: Math.round(total * 100) })
+    setGpayMountKey((k) => k + 1)
     console.log('[NativeGooglePay] result', { status: r.status, hasName: !!r.name, hasEmail: !!r.email, hasPhone: !!r.phone })
 
     if (r.status !== 'completed') {
@@ -587,6 +595,25 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       onSuccessRef.current(paymentIntent.id)
     }
   }
+
+  // Keep Google's onClick pointed at the latest handler (fresh closures over
+  // total / stripe / props).
+  useEffect(() => { handleNativeGooglePayRef.current = handleNativeGooglePay })
+
+  // Mount Google's button into the container whenever it is (re)rendered.
+  // When the native branch isn't showing, the container doesn't exist → no-op.
+  useEffect(() => {
+    const el = gpayContainerRef.current
+    if (!nativeGooglePay || !el) return
+    let cancelled = false
+    mountGooglePayButton(el, (e) => {
+      e?.preventDefault?.() // Google's <button> sits inside our <form>; never submit it
+      handleNativeGooglePayRef.current?.()
+    }).then((ok) => {
+      if (!cancelled && !ok) setGpayButtonFailed(true)
+    })
+    return () => { cancelled = true }
+  }, [nativeGooglePay, payMethod, showPlaceholder, externalDisabled, gpayMountKey])
 
   // Card payment submit
   async function handleSubmit(e) {
@@ -904,14 +931,18 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               disabled={externalDisabled || showPlaceholder}
             />
           ) : payMethod === 'wallet' && nativeGooglePay && !showPlaceholder && !externalDisabled ? (
-            <button
-              type="button"
-              className="ordr-google-pay-btn"
-              aria-label="Pay with Google Pay"
-              onClick={handleNativeGooglePay}
-            >
-              <img src={googlePayButton} alt="Google Pay" style={{ height: 52, width: 'auto', display: 'block' }} />
-            </button>
+            gpayButtonFailed ? (
+              <button
+                type="button"
+                className="ordr-google-pay-btn"
+                aria-label="Pay with Google Pay"
+                onClick={handleNativeGooglePay}
+              >
+                <img src={googlePayButton} alt="Google Pay" style={{ height: 52, width: 'auto', display: 'block' }} />
+              </button>
+            ) : (
+              <div ref={gpayContainerRef} className="ordr-google-pay-btn" />
+            )
           ) : (
             <button
               type="submit"
@@ -2416,7 +2447,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-40">
+    <div className="min-h-screen bg-white pb-40 ordr-checkout-pad">
       {/* Header */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 px-5 py-4 flex items-center gap-3 ordr-safe-top">
         <button

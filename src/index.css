@@ -122,6 +122,9 @@ html.native .ordr-bar-bottom {
 html.native .ordr-pad-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+html.native .ordr-checkout-pad {
+  padding-bottom: calc(10rem + env(safe-area-inset-bottom));
+}
 html.native .ordr-sheet-bottom {
   padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
 }
@@ -134,7 +137,7 @@ html.native .ordr-apple-pay-btn {
   -apple-pay-button-style: black;
   display: block;
   width: 100%;
-  height: 52px;
+  height: 60px;
   border-radius: 12px;
 }
 html.native .ordr-google-pay-btn {
@@ -142,8 +145,12 @@ html.native .ordr-google-pay-btn {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 52px;
+  height: 60px;
   background: transparent;
   border: 0;
   padding: 0;
+}
+html.native .ordr-google-pay-btn > * {
+  width: 100%;
+  height: 100%;
 }
