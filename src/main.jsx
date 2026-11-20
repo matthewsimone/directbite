@@ -5,6 +5,7 @@ import App from './App.jsx'
 import { IS_NATIVE } from './lib/native'
 import { hydrateToken } from './lib/tokenStore'
 import { installExternalLinkHandler } from './lib/externalLinks'
+import { installNativeBackHandler } from './lib/nativeBack'
 
 const rootEl = document.getElementById('root')
 const app = (
@@ -33,6 +34,7 @@ function mount() {
 // synchronous. Capped at 1.5s — a stuck plugin mounts logged-out, never blank.
 // Web mounts immediately, exactly as before.
 if (IS_NATIVE) {
+  installNativeBackHandler()
   Promise.race([hydrateToken(), new Promise((r) => setTimeout(r, 1500))]).finally(mount)
 } else {
   mount()

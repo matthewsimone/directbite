@@ -5,6 +5,7 @@ import { useCart } from '../hooks/useCart'
 // Safe to call here: CartSheet mounts only inside MenuPage, which routes at
 // /:slug under CustomerAuthProvider. It never renders on a custom domain.
 import { useCustomerAuth } from '../hooks/useCustomerAuth'
+import { useNativeBack } from '../lib/nativeBack'
 
 // Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
 function withAlpha(hex, alpha) {
@@ -30,6 +31,8 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
     setVisible(false)
     setTimeout(onClose, 300)
   }
+
+  useNativeBack(true, handleClose)
 
   function handleCheckout() {
     setVisible(false)

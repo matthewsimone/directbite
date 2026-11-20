@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { getAvailableDates, getAvailableTimeSlots } from '../utils/scheduling'
+import { useNativeBack } from '../lib/nativeBack'
 
 // Modal time picker. Caller passes the current `scheduledFor` (null = ASAP)
 // and `onUpdate(value)` is fired with null for ASAP or an ISO timestamp
@@ -46,6 +47,8 @@ export default function TimePickerModal({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, onClose])
+
+  useNativeBack(open, onClose)
 
   const selectedDate = availableDates[dateIdx]?.date || null
   const slots = useMemo(

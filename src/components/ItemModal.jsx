@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { formatCurrency } from '../utils/format'
 import { isCategoryAvailableNow } from '../utils/categoryAvailability'
 import { getToppingPrices, resolveToppingPrice } from '../utils/toppingPrice'
+import { useNativeBack } from '../lib/nativeBack'
 
 // Compute pre-selected toppings from each group's is_default flags.
 // Runs once at modal mount via lazy useState initializer.
@@ -69,6 +70,8 @@ export default function ItemModal({
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true))
   }, [])
+
+  useNativeBack(true, handleClose)
 
   // Swipe-to-dismiss — only from the drag handle
   function handleHandleTouchStart(e) {

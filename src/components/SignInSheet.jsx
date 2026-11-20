@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useOtpFlow, formatPhone } from '../hooks/useOtpFlow'
+import { useNativeBack } from '../lib/nativeBack'
 
 // Must match the consent copy the edge function records alongside the
 // verification — it is shown at the point the customer triggers the send.
@@ -46,6 +47,8 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
     setVisible(false)
     setTimeout(onClose, 300)
   }
+
+  useNativeBack(open, handleClose)
 
   if (!open) return null
 
