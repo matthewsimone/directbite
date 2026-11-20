@@ -87,7 +87,7 @@ function HeroAuthButtons({ isLoggedIn, profile, loyaltyEnabled, onSignIn, onAcco
     // flex row now, and clipping it would clip the icon too. The icon's
     // shrink-0 keeps it at full size while the text gives way.
     return (
-      <div className="flex items-center gap-2 mt-4 h-8 min-w-0">
+      <div className="flex items-center gap-2 mt-4 h-8 min-w-0 ordr-native-hide">
         <button
           type="button"
           onClick={onAccount}
@@ -101,7 +101,7 @@ function HeroAuthButtons({ isLoggedIn, profile, loyaltyEnabled, onSignIn, onAcco
   }
 
   return (
-    <div className="flex items-center gap-2 mt-4 h-8">
+    <div className="flex items-center gap-2 mt-4 h-8 ordr-native-hide">
       <button type="button" onClick={onSignIn} className={pill}>
         <PersonIcon />
         Sign In

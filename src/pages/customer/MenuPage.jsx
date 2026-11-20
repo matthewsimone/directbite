@@ -454,7 +454,7 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-24">
+    <div className="min-h-screen bg-white pb-24 ordr-tab-page">
       {restaurant && <PromotionBanner promotion={promotion} />}
       {restaurant ? (
         <HeroSection

@@ -4,13 +4,14 @@ import { Toaster } from 'react-hot-toast'
 import { CartProvider } from './hooks/useCart'
 import { CustomerAuthProvider } from './hooks/useCustomerAuth'
 import { isMainDomain } from './lib/customDomain'
-import { APP_SLUG } from './lib/native'
+import { APP_SLUG, IS_NATIVE } from './lib/native'
 import LandingPage from './pages/LandingPage'
 import MenuPage from './pages/customer/MenuPage'
 import CheckoutPage from './pages/customer/CheckoutPage'
 import ConfirmationPage from './pages/customer/ConfirmationPage'
 import RewardsPage from './pages/customer/RewardsPage'
 import AccountPage from './pages/customer/AccountPage'
+import SettingsPage from './pages/customer/SettingsPage'
 import TabletPage from './pages/tablet/TabletPage'
 import AdminPage from './pages/admin/AdminPage'
 import PrivacyPolicy from './pages/PrivacyPolicy'
@@ -20,6 +21,7 @@ import MenuStaticRoute from './pages/website/MenuStaticRoute'
 import PlaceStaticRoute from './pages/website/PlaceStaticRoute'
 import TagStaticRoute from './pages/website/TagStaticRoute'
 import CustomDomainShell from './CustomDomainShell'
+import NativeTabBar from './components/NativeTabBar'
 import { LinkBaseProvider } from './pages/website/LinkBaseContext'
 
 // Dev-only diagnostic route. Lazy-loaded so its `@stripe/stripe-js`
@@ -64,6 +66,7 @@ function MainRoutes() {
       <Route path="/:slug/confirmation" element={<ConfirmationPage />} />
       <Route path="/:slug/tablet" element={<TabletPage />} />
       <Route path="/:slug/tablet/login" element={<TabletPage />} />
+      {IS_NATIVE && <Route path="/:slug/settings" element={<SettingsPage />} />}
       <Route
         path="/:slug/:linkPath"
         element={
@@ -83,6 +86,7 @@ export default function App() {
       <CartProvider>
         <CustomerAuthProvider>
           {isMainDomain() ? <MainRoutes /> : <CustomDomainShell />}
+          <NativeTabBar />
         </CustomerAuthProvider>
       </CartProvider>
     </BrowserRouter>

@@ -110,12 +110,12 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white ordr-tab-page">
       {/* Floating back button in place of a sticky header bar — the bar's
           "Rewards" title only repeated the program name headline below it.
           It lives in the page gutter rather than the centred content column,
           so on a wide screen it lands at the far left where the bar had it. */}
-      <div className="px-5 pt-4">
+      <div className="px-5 pt-4 ordr-native-hide">
         <button
           onClick={() => navigate(`/${slug}`)}
           className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center"

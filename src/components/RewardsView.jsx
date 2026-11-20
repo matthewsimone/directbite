@@ -168,7 +168,7 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], onSi
       {/* ── 6. CTA — its one job is sign-in, and the wrapper's pb-28 reserves
              the space it occupies. Fixed to the viewport, matching CartButton
              in the ordering flow. ── */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-5 py-3 ordr-bar-bottom">
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-gray-200 px-5 py-3 ordr-bar-bottom ordr-above-tabbar">
         <div className="max-w-[720px] mx-auto">
           <button
             onClick={onSignIn}
