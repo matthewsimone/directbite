@@ -25,7 +25,8 @@ import TimePickerModal from '../../components/TimePickerModal'
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
 import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 import { calcRecoup } from '../../utils/recoup'
-import { getPublicOrigin } from '../../lib/native'
+import { getPublicOrigin, IS_NATIVE } from '../../lib/native'
+import { isNativeApplePayAvailable, payWithNativeApplePay } from '../../lib/nativeApplePay'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
@@ -190,7 +191,7 @@ function friendlyPaymentError(error) {
 }
 
 // ---------- Payment Form (inside Stripe Elements) ----------
-function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed, onVerifiedSwap, onPayingChange, onFlushOrderData }) {
+function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, stripeAccount, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed, onVerifiedSwap, onPayingChange, onFlushOrderData }) {
   const stripe = useStripe()
   const elements = useElements()
   const [loading, setLoading] = useState(false)
@@ -275,6 +276,9 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     if (cachedWallet.current?.applePay || cachedWallet.current?.googlePay) return 'wallet'
     return 'card'
   })
+  // Native shell only: set when the Stripe plugin reports Apple Pay usable.
+  // Always false on web, so every branch keyed on it is dead there.
+  const [nativeApplePay, setNativeApplePay] = useState(false)
 
   // Refs for values needed in paymentmethod event handler (avoids stale closures)
   const clientSecretRef = useRef(clientSecret)
@@ -290,8 +294,23 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   useEffect(() => { paymentIntentIdRef.current = paymentIntentId }, [paymentIntentId])
   useEffect(() => { onValidateDeliveryRef.current = onValidateDelivery }, [onValidateDelivery])
 
+  // Native shell: wallet availability comes from the Stripe plugin, not the
+  // PaymentRequest API, which the effect below skips there. Web: returns at once.
+  useEffect(() => {
+    if (!IS_NATIVE) return
+    isNativeApplePayAvailable().then((available) => {
+      if (available) {
+        setNativeApplePay(true)
+        setWalletType('applePay')
+        setPayMethod('wallet')
+      }
+      setWalletChecked(true)
+    })
+  }, [])
+
   // Create PaymentRequest ONCE when stripe is ready
   useEffect(() => {
+    if (IS_NATIVE) return
     if (!stripe || !total || total <= 0) return
 
     const pk = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
@@ -414,6 +433,73 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     }
   }, [paymentRequest, total, restaurant?.name])
 
+  // Native shell Apple Pay. Mirrors the web 'paymentmethod' handler above:
+  // validate delivery and save the wallet contact BEFORE Stripe confirms,
+  // aborting with no charge on failure (the plugin patch's waitForContinue).
+  async function handleNativeApplePay() {
+    if (submittedRef.current) return
+    const secret = clientSecretRef.current
+    if (!secret) {
+      toast.error('Payment not ready. Please try again.')
+      return
+    }
+    // Before the sheet opens: blocks an intent swap while it is up.
+    submittedRef.current = true
+    onPayingChange?.(true)
+
+    let abortedByUs = false
+    let result
+    try {
+      result = await payWithNativeApplePay({
+        publishableKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY,
+        stripeAccount,
+        clientSecret: secret,
+        amount: Number(total.toFixed(2)),
+        label: restaurant?.name || 'Ordr',
+        onPaymentMethod: async (contact) => {
+          if (clientSecretRef.current !== secret) {
+            abortedByUs = true
+            toast.error('Payment not ready. Please try again.')
+            return { ok: false, message: 'Payment not ready' }
+          }
+          const validateFn = onValidateDeliveryRef.current
+          if (validateFn && !(await validateFn())) {
+            // validateFn has already toasted the reason.
+            abortedByUs = true
+            return { ok: false, message: 'Delivery not available' }
+          }
+          const name = [contact.givenName, contact.familyName].filter(Boolean).join(' ').trim()
+          const email = contact.emailAddress || ''
+          const phone = (contact.phoneNumber || '').replace(/\D/g, '')
+          if (onWalletCustomerRef.current) {
+            try {
+              await onWalletCustomerRef.current(name, email, phone)
+            } catch (err) {
+              console.error('[Wallet] Failed to update customer data:', err)
+              abortedByUs = true
+              toast.error('Failed to save customer info. Please try again.')
+              return { ok: false, message: 'Could not save your info' }
+            }
+          }
+          return { ok: true }
+        },
+      })
+    } catch (err) {
+      console.error('[NativeApplePay] failed:', err)
+      result = 'failed'
+    }
+
+    if (result === 'completed') {
+      onSuccessRef.current(paymentIntentIdRef.current)
+    } else {
+      submittedRef.current = false
+      onPayingChange?.(false)
+      if (result === 'failed' && !abortedByUs) {
+        toast.error('Apple Pay didn\'t go through. Please try again or pay by card.')
+      }
+    }
+  }
+
   // Card payment submit
   async function handleSubmit(e) {
     e.preventDefault()
@@ -527,7 +613,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       {/* Payment method selection */}
       <div className="space-y-3 mb-5">
         {/* Wallet option — only if available */}
-        {paymentRequest && walletLabel && (
+        {(paymentRequest || nativeApplePay) && walletLabel && (
           <label
             className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-colors ${
               payMethod === 'wallet' ? 'border-[#16A34A] bg-green-50/50' : 'border-gray-200'
@@ -721,6 +807,14 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
                 }}
               />
             </div>
+          ) : payMethod === 'wallet' && nativeApplePay && !showPlaceholder && !externalDisabled ? (
+            <button
+              type="button"
+              className="ordr-apple-pay-btn"
+              aria-label="Pay with Apple Pay"
+              onClick={handleNativeApplePay}
+              disabled={externalDisabled || showPlaceholder}
+            />
           ) : (
             <button
               type="submit"
@@ -2641,6 +2735,7 @@ export default function CheckoutPage() {
                 onValidateDelivery={onValidateDelivery}
                 clientSecret={clientSecret}
                 paymentIntentId={paymentIntentId}
+                stripeAccount={stripeAccount}
                 feeCalculating={feeCalculating}
                 needsAddress={needsAddress}
                 showPlaceholder={showPlaceholder}

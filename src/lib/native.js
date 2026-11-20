@@ -14,3 +14,7 @@ export function getPublicOrigin() {
 // Per-restaurant app slug, baked at native build time (VITE_APP_SLUG=test).
 // Ignored on web even if set, so a stray env var can't hijack ordr.co/.
 export const APP_SLUG = IS_NATIVE ? (import.meta.env.VITE_APP_SLUG || null) : null
+
+// Apple Pay merchant ID for the native shell, baked at build time
+// (VITE_APPLE_MERCHANT_ID=merchant.co.ordr.testpizza). Null on web.
+export const APPLE_MERCHANT_ID = IS_NATIVE ? (import.meta.env.VITE_APPLE_MERCHANT_ID || null) : null
