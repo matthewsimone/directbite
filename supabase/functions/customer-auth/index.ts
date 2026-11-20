@@ -93,6 +93,14 @@ function normalizePhone(raw: unknown): string | null {
   return null;
 }
 
+// App Store / test reviewer login. On only when BOTH secrets are set and the
+// code is exactly 6 digits; otherwise every phone takes the normal Twilio path.
+// Exact match on the normalized phone. For this one number: no SMS, no consent
+// row, no rate limits, and verify compares the fixed code instead of Twilio.
+const reviewPhone = normalizePhone(Deno.env.get("REVIEW_PHONE") || "");
+const reviewCode = (Deno.env.get("REVIEW_OTP_CODE") || "").trim();
+const reviewEnabled = !!reviewPhone && /^\d{6}$/.test(reviewCode);
+
 async function hashToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
@@ -168,6 +176,11 @@ async function handleSend(req: Request, body: any): Promise<Response> {
   const phone = normalizePhone(body.phone);
   if (!phone) {
     return jsonResponse({ error: "invalid_phone" }, 400);
+  }
+
+  if (reviewEnabled && phone === reviewPhone) {
+    console.log("customer-auth send: review number, SMS skipped");
+    return jsonResponse({ ok: true }, 200);
   }
 
   const ip = getClientIp(req);
@@ -374,36 +387,48 @@ async function handleVerify(req: Request, body: any): Promise<Response> {
     return jsonResponse({ error: "invalid_code" }, 400);
   }
 
-  // --- Twilio VerificationCheck. A non-2xx here is the normal Twilio
-  // response for an expired or already-consumed verification, so it is
-  // logged and reported as invalid_code rather than a server error. ---
-  const form = new URLSearchParams();
-  form.set("To", phone);
-  form.set("Code", code);
-
-  const twilioRes = await fetch(
-    `https://verify.twilio.com/v2/Services/${twilioVerifySid}/VerificationCheck`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: twilioAuthHeader(),
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: form.toString(),
-    }
-  );
-
-  if (!twilioRes.ok) {
-    const twilioBody = await twilioRes.text();
-    console.error(
-      `customer-auth verify twilio failed: status=${twilioRes.status} body=${twilioBody}`
-    );
+  const isReview = reviewEnabled && phone === reviewPhone;
+  if (isReview && code !== reviewCode) {
+    // Slows guessing; Twilio's attempt cap doesn't apply to this number.
+    await new Promise((r) => setTimeout(r, 1000));
     return jsonResponse({ error: "invalid_code" }, 400);
   }
+  if (isReview) {
+    console.log("customer-auth verify: review number accepted");
+  }
 
-  const twilioJson = await twilioRes.json();
-  if (twilioJson.status !== "approved") {
-    return jsonResponse({ error: "invalid_code" }, 400);
+  if (!isReview) {
+    // --- Twilio VerificationCheck. A non-2xx here is the normal Twilio
+    // response for an expired or already-consumed verification, so it is
+    // logged and reported as invalid_code rather than a server error. ---
+    const form = new URLSearchParams();
+    form.set("To", phone);
+    form.set("Code", code);
+
+    const twilioRes = await fetch(
+      `https://verify.twilio.com/v2/Services/${twilioVerifySid}/VerificationCheck`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: twilioAuthHeader(),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
+      }
+    );
+
+    if (!twilioRes.ok) {
+      const twilioBody = await twilioRes.text();
+      console.error(
+        `customer-auth verify twilio failed: status=${twilioRes.status} body=${twilioBody}`
+      );
+      return jsonResponse({ error: "invalid_code" }, 400);
+    }
+
+    const twilioJson = await twilioRes.json();
+    if (twilioJson.status !== "approved") {
+      return jsonResponse({ error: "invalid_code" }, 400);
+    }
   }
 
   // --- Identity. Upsert on the unique phone_e164 so a returning customer
