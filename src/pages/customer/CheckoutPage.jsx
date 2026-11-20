@@ -24,9 +24,11 @@ import TimePickerModal from '../../components/TimePickerModal'
 // @googlemaps/js-api-loader is dynamically imported when needed
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
 import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
+import googlePayButton from '../../assets/payment-marks/google-pay-button-plain-dark.png'
 import { calcRecoup } from '../../utils/recoup'
 import { getPublicOrigin, IS_NATIVE } from '../../lib/native'
 import { isNativeApplePayAvailable, payWithNativeApplePay } from '../../lib/nativeApplePay'
+import { isNativeGooglePayAvailable, presentNativeGooglePay } from '../../lib/nativeGooglePay'
 
 const STRIPE_PK = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
 
@@ -279,6 +281,8 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   // Native shell only: set when the Stripe plugin reports Apple Pay usable.
   // Always false on web, so every branch keyed on it is dead there.
   const [nativeApplePay, setNativeApplePay] = useState(false)
+  // Android shell only: patched plugin reports Google Pay usable. False on web.
+  const [nativeGooglePay, setNativeGooglePay] = useState(false)
 
   // Refs for values needed in paymentmethod event handler (avoids stale closures)
   const clientSecretRef = useRef(clientSecret)
@@ -298,14 +302,21 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
   // PaymentRequest API, which the effect below skips there. Web: returns at once.
   useEffect(() => {
     if (!IS_NATIVE) return
-    isNativeApplePayAvailable().then((available) => {
-      if (available) {
-        setNativeApplePay(true)
-        setWalletType('applePay')
-        setPayMethod('wallet')
+    ;(async () => {
+      try {
+        if (await isNativeApplePayAvailable()) {
+          setNativeApplePay(true)
+          setWalletType('applePay')
+          setPayMethod('wallet')
+        } else if (await isNativeGooglePayAvailable()) {
+          setNativeGooglePay(true)
+          setWalletType('googlePay')
+          setPayMethod('wallet')
+        }
+      } finally {
+        setWalletChecked(true)
       }
-      setWalletChecked(true)
-    })
+    })()
   }, [])
 
   // Create PaymentRequest ONCE when stripe is ready
@@ -500,6 +511,83 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     }
   }
 
+  // Android shell Google Pay. Same order as the web 'paymentmethod' handler:
+  // the plugin only returns a PaymentMethod (no charge); we validate, save the
+  // wallet contact, then confirm here.
+  async function handleNativeGooglePay() {
+    if (submittedRef.current) return
+    submittedRef.current = true // blocks double tap while the sheet is up
+
+    const r = await presentNativeGooglePay({ amountCents: Math.round(total * 100) })
+    console.log('[NativeGooglePay] result', { status: r.status, hasName: !!r.name, hasEmail: !!r.email, hasPhone: !!r.phone })
+
+    if (r.status !== 'completed') {
+      submittedRef.current = false
+      if (r.status === 'failed') toast.error('Google Pay didn\'t go through. Please try again or pay by card.')
+      return
+    }
+
+    const validateFn = onValidateDeliveryRef.current
+    if (validateFn && !(await validateFn())) {
+      // validateFn has already toasted the reason.
+      submittedRef.current = false
+      return
+    }
+
+    onPayingChange?.(true)
+
+    const secret = clientSecretRef.current
+    if (!secret) {
+      submittedRef.current = false
+      onPayingChange?.(false)
+      toast.error('Payment not ready. Please try again.')
+      return
+    }
+
+    if (onWalletCustomerRef.current) {
+      try {
+        await onWalletCustomerRef.current(r.name || '', r.email || '', (r.phone || '').replace(/\D/g, ''))
+      } catch (err) {
+        console.error('[Wallet] Failed to update customer data:', err)
+        submittedRef.current = false
+        onPayingChange?.(false)
+        toast.error('Failed to save customer info. Please try again.')
+        return
+      }
+    }
+
+    if (!stripe) {
+      submittedRef.current = false
+      onPayingChange?.(false)
+      toast.error('Payment not ready. Please try again.')
+      return
+    }
+
+    const { error, paymentIntent } = await stripe.confirmCardPayment(
+      secret,
+      { payment_method: r.paymentMethodId },
+      { handleActions: false }
+    )
+    if (error) {
+      submittedRef.current = false
+      onPayingChange?.(false)
+      toast.error(friendlyPaymentError(error))
+      return
+    }
+    if (paymentIntent.status === 'requires_action') {
+      const { error: e2 } = await stripe.confirmCardPayment(secret)
+      if (e2) {
+        submittedRef.current = false
+        onPayingChange?.(false)
+        toast.error(friendlyPaymentError(e2))
+      } else {
+        onSuccessRef.current(paymentIntent.id)
+      }
+    } else {
+      onSuccessRef.current(paymentIntent.id)
+    }
+  }
+
   // Card payment submit
   async function handleSubmit(e) {
     e.preventDefault()
@@ -613,7 +701,7 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       {/* Payment method selection */}
       <div className="space-y-3 mb-5">
         {/* Wallet option — only if available */}
-        {(paymentRequest || nativeApplePay) && walletLabel && (
+        {(paymentRequest || nativeApplePay || nativeGooglePay) && walletLabel && (
           <label
             className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-colors ${
               payMethod === 'wallet' ? 'border-[#16A34A] bg-green-50/50' : 'border-gray-200'
@@ -815,6 +903,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
               onClick={handleNativeApplePay}
               disabled={externalDisabled || showPlaceholder}
             />
+          ) : payMethod === 'wallet' && nativeGooglePay && !showPlaceholder && !externalDisabled ? (
+            <button
+              type="button"
+              className="ordr-google-pay-btn"
+              aria-label="Pay with Google Pay"
+              onClick={handleNativeGooglePay}
+            >
+              <img src={googlePayButton} alt="Google Pay" style={{ height: 52, width: 'auto', display: 'block' }} />
+            </button>
           ) : (
             <button
               type="submit"

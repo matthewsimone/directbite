@@ -33,6 +33,19 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- CONFIG A (test). For production: pk_live, stripe_account=acct_1TPQ8wLUuImmvva6, google_pay_is_testing=false. Phase 4: move to manifestPlaceholders. -->
+        <meta-data android:name="com.google.android.gms.wallet.api.enabled" android:value="true" />
+        <meta-data android:name="com.getcapacitor.community.stripe.enable_google_pay" android:value="true" />
+        <meta-data android:name="com.getcapacitor.community.stripe.publishable_key" android:value="pk_test_51TJzAWLDgLXBOes55MhN1fBWhZzWSz480AyvzJaYb7nw1yJP1OBY1unmq3KbC6lKu8o8c1eOMWhIFBEKhDr1fr8u0000jwDkHe" />
+        <meta-data android:name="com.getcapacitor.community.stripe.country_code" android:value="US" />
+        <meta-data android:name="com.getcapacitor.community.stripe.merchant_display_name" android:value="Test Pizza" />
+        <meta-data android:name="com.getcapacitor.community.stripe.email_address_required" android:value="true" />
+        <meta-data android:name="com.getcapacitor.community.stripe.phone_number_required" android:value="true" />
+        <meta-data android:name="com.getcapacitor.community.stripe.billing_address_required" android:value="true" />
+        <meta-data android:name="com.getcapacitor.community.stripe.billing_address_format" android:value="Min" />
+        <meta-data android:name="com.getcapacitor.community.stripe.google_pay_is_testing" android:value="true" />
+        <meta-data android:name="com.getcapacitor.community.stripe.google_pay_existing_payment_method_required" android:value="false" />
     </application>
 
     <!-- Permissions -->

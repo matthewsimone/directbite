@@ -69,7 +69,7 @@ index 252e128..4f91824 100644
          private const val APP_INFO_NAME = "@capacitor-community/stripe"
      }
 diff --git a/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt b/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt
-index 14d7243..804cc2b 100644
+index 14d7243..fac3a86 100644
 --- a/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt
 +++ b/node_modules/@capacitor-community/stripe/android/src/main/java/com/getcapacitor/community/stripe/googlepay/GooglePayExecutor.kt
 @@ -2,6 +2,8 @@ package com.getcapacitor.community.stripe.googlepay
@@ -129,7 +129,7 @@ index 14d7243..804cc2b 100644
 +
 +    fun presentGooglePayPaymentMethod(call: PluginCall, bridge: Bridge) {
 +        val currency = call.getString("currency", "USD")!!
-+        val amount = call.getLong("amount")
++        val amount = (call.data.opt("amount") as? Number)?.toLong()
 +        mainHandler.post {
 +            val launcher = googlePayPmLauncher
 +            when {
