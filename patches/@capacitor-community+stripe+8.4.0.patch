@@ -1,0 +1,113 @@
+diff --git a/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/ApplePay/ApplePayExecutor.swift b/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/ApplePay/ApplePayExecutor.swift
+index 3f13388..aa5f5ac 100644
+--- a/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/ApplePay/ApplePayExecutor.swift
++++ b/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/ApplePay/ApplePayExecutor.swift
+@@ -14,6 +14,9 @@ class ApplePayExecutor: NSObject, ApplePayContextDelegate {
+     private var pendingShippingHandler: ((PKPaymentRequestShippingContactUpdate) -> Void)?
+     private var pendingShippingUpdateId: String?
+     private var shippingHandlerWorkItem: DispatchWorkItem?
++    private var waitForContinue: Bool = false
++    private var pendingPaymentContinuation: CheckedContinuation<String, Error>?
++    private var paymentContinueWorkItem: DispatchWorkItem?
+ 
+     func isApplePayAvailable(_ call: CAPPluginCall) {
+         if !StripeAPI.deviceSupportsApplePay() {
+@@ -55,6 +58,7 @@ class ApplePayExecutor: NSObject, ApplePayContextDelegate {
+         let requiredShippingContactFields = call.getArray("requiredShippingContactFields", String.self) ?? [""]
+         self.allowedCountries = call.getArray("allowedCountries", String.self) ?? []
+         self.allowedCountriesErrorDescription = call.getString("allowedCountriesErrorDescription") ?? "Country not allowed"
++        self.waitForContinue = call.getBool("waitForContinue") ?? false
+ 
+         let paymentRequest = StripeAPI.paymentRequest(withMerchantIdentifier: merchantIdentifier, country: call.getString("countryCode", "US"), currency: call.getString("currency", "USD"))
+         paymentRequest.paymentSummaryItems = paymentSummaryItems
+@@ -238,12 +242,62 @@ extension ApplePayExecutor {
+ 
+     func applePayContext(_ context: STPApplePayContext, didCreatePaymentMethod paymentMethod: StripeAPI.PaymentMethod, paymentInformation: PKPayment) async throws -> String {
+         return try await withCheckedThrowingContinuation { continuation in
+-            continuation.resume(with: .success(self.appleClientSecret))
+-            let jsonArray = self.transformPKContactToJSON(contact: paymentInformation.shippingContact)
+-            self.plugin?.notifyListeners(ApplePayEvents.DidCreatePaymentMethod.rawValue, data: ["contact": jsonArray])
++            if !self.waitForContinue {
++                continuation.resume(with: .success(self.appleClientSecret))
++                let jsonArray = self.transformPKContactToJSON(contact: paymentInformation.shippingContact)
++                self.plugin?.notifyListeners(ApplePayEvents.DidCreatePaymentMethod.rawValue, data: ["contact": jsonArray])
++                return
++            }
++            // waitForContinue: JS calls applePayContinue (ok or abort) before Stripe confirms.
++            // Notify and store in one main-queue block, so an applePayContinue call
++            // (also dispatched to main) always finds the stored continuation.
++            DispatchQueue.main.async {
++                // Never orphan an earlier pending payment; fail it before replacing.
++                self.resumePendingPayment(.failure(Self.continueError("superseded by a new Apple Pay payment")))
++                let jsonArray = self.transformPKContactToJSON(contact: paymentInformation.shippingContact)
++                self.plugin?.notifyListeners(ApplePayEvents.DidCreatePaymentMethod.rawValue, data: ["contact": jsonArray])
++                self.pendingPaymentContinuation = continuation
++                let workItem = DispatchWorkItem { [weak self] in
++                    self?.resumePendingPayment(.failure(Self.continueError("applePayContinue timeout")))
++                }
++                self.paymentContinueWorkItem = workItem
++                DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: workItem)
++            }
+         }
+     }
+ 
++    func applePayContinue(_ call: CAPPluginCall) {
++        guard let ok = call.getBool("ok") else {
++            call.reject("Invalid Params. this method requires ok")
++            return
++        }
++        guard self.pendingPaymentContinuation != nil else {
++            call.reject("no pending Apple Pay payment")
++            return
++        }
++        if ok {
++            resumePendingPayment(.success(self.appleClientSecret))
++        } else {
++            let message = call.getString("message") ?? "Payment was not completed"
++            resumePendingPayment(.failure(Self.continueError(message)))
++        }
++        call.resolve()
++    }
++
++    // Main queue only. Clears state before resuming so the timeout and
++    // applePayContinue can never resume the same continuation twice.
++    private func resumePendingPayment(_ result: Result<String, Error>) {
++        paymentContinueWorkItem?.cancel()
++        paymentContinueWorkItem = nil
++        let continuation = pendingPaymentContinuation
++        pendingPaymentContinuation = nil
++        continuation?.resume(with: result)
++    }
++
++    private static func continueError(_ message: String) -> NSError {
++        NSError(domain: "ApplePayExecutor", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
++    }
++
+     func applePayContext(_ context: STPApplePayContext, didCompleteWith status: STPApplePayContext.PaymentStatus, error: Error?) {
+         completeShippingUpdate()
+ 
+diff --git a/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/StripePlugin.swift b/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/StripePlugin.swift
+index 5ddc027..880cf65 100644
+--- a/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/StripePlugin.swift
++++ b/node_modules/@capacitor-community/stripe/ios/Sources/StripePlugin/StripePlugin.swift
+@@ -19,6 +19,7 @@ public class StripePlugin: CAPPlugin, CAPBridgedPlugin {
+         CAPPluginMethod(name: "createApplePay", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "presentApplePay", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "updateApplePaySheet", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "applePayContinue", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "isGooglePayAvailable", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "createGooglePay", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "presentGooglePay", returnType: CAPPluginReturnPromise)
+@@ -114,6 +115,12 @@ public class StripePlugin: CAPPlugin, CAPBridgedPlugin {
+         }
+     }
+ 
++    @objc func applePayContinue(_ call: CAPPluginCall) {
++        DispatchQueue.main.async {
++            self.applePayExecutor.applePayContinue(call)
++        }
++    }
++
+     @objc func isGooglePayAvailable(_ call: CAPPluginCall) {
+         call.unavailable("Not implemented on iOS.")
+     }
