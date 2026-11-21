@@ -168,7 +168,15 @@ html.native .ordr-tab-on {
 html.native .ordr-native-hide {
   display: none;
 }
+html.native {
+  /* Tab bar above its safe-area padding: border + pt-2 + h-14 (measured 64.75). */
+  --ordr-tabbar-h: 65px;
+}
 html.native .ordr-tab-page {
+  padding-bottom: calc(var(--ordr-tabbar-h) + 28px + max(0.5rem, env(safe-area-inset-bottom)));
+}
+/* Screens with a fixed element above the tab bar (cart button, CTA bar). */
+html.native .ordr-tab-page-cart {
   padding-bottom: calc(10rem + max(0.5rem, env(safe-area-inset-bottom)));
 }
 html.native .ordr-above-tabbar {
@@ -244,3 +252,26 @@ html.native .ordr-type-on.ordr-type-on { background-color: #fff; color: var(--br
 /* More glass on the tab bar */
 html.native .ordr-tabbar { background: rgba(255,255,255,0.55); -webkit-backdrop-filter: saturate(180%) blur(24px); backdrop-filter: saturate(180%) blur(24px); }
 html.native .ordr-wide { max-width: none; }
+
+/* min-h-screen starts below body's safe-area padding, so 100vh overshoots by
+   exactly the inset. Subtract it so short tab pages don't scroll. */
+html.native .ordr-tab-page,
+html.native .ordr-tab-page-cart {
+  min-height: calc(100vh - env(safe-area-inset-top));
+}
+
+/* Toasts (native). Container inset is inline (16px), hence !important.
+   Top: screens without the tab bar, 12px below the safe area.
+   Bottom: 12px above the tab bar, or above the cart button / Rewards CTA. */
+html.native .ordr-toaster-top {
+  top: calc(env(safe-area-inset-top) + 12px) !important;
+}
+html.native .ordr-toaster-bottom {
+  bottom: calc(var(--ordr-tabbar-h) + 12px + max(0.5rem, env(safe-area-inset-bottom))) !important;
+}
+html.native:not(.ordr-kb):has(.ordr-float-bottom) .ordr-toaster-bottom {
+  bottom: calc(4.75rem + 86px + max(0.5rem, env(safe-area-inset-bottom))) !important;
+}
+html.native:has(.ordr-above-tabbar) .ordr-toaster-bottom {
+  bottom: calc(4rem + 85px + max(0.5rem, env(safe-area-inset-bottom))) !important;
+}

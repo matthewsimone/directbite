@@ -84,8 +84,15 @@ function TabBarInner({ slug }) {
   const base = `/${slug}`
   const { pathname } = location
   const sub = pathname.startsWith(base) ? pathname.slice(base.length).replace(/\/$/, '') : null
-  if (sub === null || !TAB_ROUTES.includes(sub)) return null
-  if (keyboardOpen) return null
+  const barVisible = sub !== null && TAB_ROUTES.includes(sub) && !keyboardOpen
+
+  // Lets the native Toaster pick bottom (bar on screen) or top (no bar).
+  useEffect(() => {
+    document.documentElement.classList.toggle('ordr-has-tabbar', barVisible)
+    return () => document.documentElement.classList.remove('ordr-has-tabbar')
+  }, [barVisible])
+
+  if (!barVisible) return null
 
   const loyalty = rest?.loyalty_enabled === true
   const shownPoints = loyalty && isLoggedIn ? points : null

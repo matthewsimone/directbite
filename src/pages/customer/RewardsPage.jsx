@@ -110,7 +110,7 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white ordr-tab-page">
+    <div className="min-h-screen bg-white ordr-tab-page-cart">
       {/* Floating back button in place of a sticky header bar — the bar's
           "Rewards" title only repeated the program name headline below it.
           It lives in the page gutter rather than the centred content column,

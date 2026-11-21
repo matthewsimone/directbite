@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react'
+import { cartLineTotal } from '../utils/cartLineTotal'
 
 const generateId = () =>
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -101,10 +102,7 @@ export function CartProvider({ children }) {
 
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0)
 
-  const subtotal = items.reduce((sum, item) => {
-    const toppingsTotal = (item.toppings || []).reduce((ts, t) => ts + (parseFloat(t.price) || 0), 0)
-    return sum + ((parseFloat(item.basePrice) || 0) + toppingsTotal) * (item.quantity || 1)
-  }, 0)
+  const subtotal = items.reduce((sum, item) => sum + cartLineTotal(item), 0)
 
   return (
     <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, itemCount, subtotal }}>

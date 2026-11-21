@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useParams, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { CartProvider } from './hooks/useCart'
@@ -30,6 +30,45 @@ import { LinkBaseProvider } from './pages/website/LinkBaseContext'
 // routes.
 const ApplePayTest = lazy(() => import('./pages/ApplePayTest'))
 const LinkViewer = lazy(() => import('./pages/website/LinkViewer'))
+
+// Native toasts: neutral gray glass. Errors keep the library's red icon.
+const NATIVE_TOAST_OPTIONS = {
+  duration: 2000,
+  style: {
+    background: 'rgba(243,244,246,0.92)',
+    color: '#1F2937',
+    border: '1px solid rgba(0,0,0,0.06)',
+    borderRadius: '14px',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+    backdropFilter: 'saturate(180%) blur(16px)',
+    WebkitBackdropFilter: 'saturate(180%) blur(16px)',
+    fontWeight: 500,
+  },
+  success: { iconTheme: { primary: '#374151', secondary: '#F3F4F6' } },
+  loading: { iconTheme: { primary: '#374151', secondary: '#E5E7EB' } },
+}
+
+// react-hot-toast pins each toast with inline top:0 / bottom:0 and a
+// direction-signed translateY chosen from `position`, so CSS can't flip a
+// container between top and bottom. Switch the prop instead: bottom above the
+// tab bar while NativeTabBar marks html.ordr-has-tabbar, top otherwise
+// (Checkout's Pay bar, Confirmation, sign-in, keyboard open).
+function NativeToaster() {
+  const [hasBar, setHasBar] = useState(() => document.documentElement.classList.contains('ordr-has-tabbar'))
+  useEffect(() => {
+    const el = document.documentElement
+    const obs = new MutationObserver(() => setHasBar(el.classList.contains('ordr-has-tabbar')))
+    obs.observe(el, { attributes: true, attributeFilter: ['class'] })
+    return () => obs.disconnect()
+  }, [])
+  return (
+    <Toaster
+      position={hasBar ? 'bottom-center' : 'top-center'}
+      containerClassName={hasBar ? 'ordr-toaster-bottom' : 'ordr-toaster-top'}
+      toastOptions={NATIVE_TOAST_OPTIONS}
+    />
+  )
+}
 
 // Provides the slug-prefixed link base (`/${slug}`) to the SEO page components
 // on the main domain, read from the route params. Applied ONLY to the three
@@ -83,7 +122,9 @@ function MainRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Toaster position="top-center" toastOptions={{ duration: 2000, success: { iconTheme: { primary: 'var(--brand, #16A34A)', secondary: '#fff' } } }} />
+      {IS_NATIVE
+        ? <NativeToaster />
+        : <Toaster position="top-center" toastOptions={{ duration: 2000, success: { iconTheme: { primary: 'var(--brand, #16A34A)', secondary: '#fff' } } }} />}
       <CartProvider>
         <CustomerAuthProvider>
           <NativeAuthGate>

@@ -59,7 +59,7 @@ export default function NativeOrders({
       </div>
     )
   } else {
-    body = orders.map(order => {
+    body = orders.map((order, i) => {
       const earned = loyaltyEnabled
         ? transactions.find(t => t.order_id === order.id && Number(t.points_delta) > 0)
         : null
@@ -70,7 +70,7 @@ export default function NativeOrders({
       const reordering = reorderingId === order.id
 
       return (
-        <div key={order.id} className="bg-white rounded-2xl mx-5 mb-3 p-4">
+        <div key={order.id} className={`bg-white rounded-2xl mx-5 p-4 border border-gray-200 shadow-sm ${i < orders.length - 1 ? 'mb-3' : ''}`}>
           <div className="flex justify-between items-center gap-3">
             <p className="text-base font-semibold text-gray-900">{formatDay(order.created_at)}</p>
             <p className="text-sm text-gray-500 shrink-0">
@@ -134,7 +134,7 @@ export default function NativeOrders({
   }
 
   return (
-    <div className="-mx-6 -mt-2 -mb-8 bg-[#F4F4F6] min-h-[70vh] pt-6 pb-8">
+    <div className="-mx-6 -mt-2 -mb-8 bg-white min-h-[70vh] pt-6 pb-0">
       <h1 className="text-2xl font-bold text-gray-900 px-5 mb-4">Orders</h1>
       {body}
     </div>

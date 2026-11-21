@@ -1,15 +1,17 @@
 import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import toast from 'react-hot-toast'
+import toast, { CheckmarkIcon } from 'react-hot-toast'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { useMenu } from '../../hooks/useMenu'
 import { usePromotion } from '../../hooks/usePromotion'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
 import { isCategoryAvailableNow, formatAvailabilityLabel } from '../../utils/categoryAvailability'
 import { useCart } from '../../hooks/useCart'
+import { cartLineTotal } from '../../utils/cartLineTotal'
+import { IS_NATIVE } from '../../lib/native'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { useRewardLineReconcile } from '../../hooks/useRewardLineReconcile'
-import { calculateLoyaltyPoints } from '../../utils/loyaltyPoints'
+import { calculateLoyaltyPoints, formatPoints } from '../../utils/loyaltyPoints'
 import { useWalletDetection } from '../../hooks/useWalletDetection'
 import { useRestaurantBranding } from '../../hooks/useRestaurantBranding'
 import HeroSection from '../../components/HeroSection'
@@ -356,9 +358,31 @@ export default function MenuPage() {
   const handleAddToCart = useCallback(
     (cartItem) => {
       addItem(cartItem)
-      toast.success(`${cartItem.itemName} added to cart`)
+      // Native: fold the points gain into the toast. Same delta the web float
+      // shows (whole-cart points after minus before, floored once), and the
+      // same calculateLoyaltyPoints, so the two can't disagree.
+      const gained = IS_NATIVE && isLoggedIn
+        ? calculateLoyaltyPoints({ restaurant, subtotal: subtotal + cartLineTotal(cartItem) })
+          - calculateLoyaltyPoints({ restaurant, subtotal })
+        : 0
+      if (gained > 0) {
+        // Points on their own line; the check moves inline beside the item
+        // text, so the library's side icon is suppressed for this toast only.
+        toast.success(
+          <div className="flex flex-col items-center leading-tight">
+            <span className="font-semibold text-[15px]" style={{ color: 'var(--brand)' }}>+{formatPoints(gained)} pts</span>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="shrink-0"><CheckmarkIcon primary="#374151" secondary="#F3F4F6" /></span>
+              <span className="text-left">{cartItem.itemName} added to cart</span>
+            </div>
+          </div>,
+          { icon: null }
+        )
+      } else {
+        toast.success(`${cartItem.itemName} added to cart`)
+      }
     },
-    [addItem]
+    [addItem, isLoggedIn, restaurant, subtotal]
   )
 
   const handleCheckout = useCallback(() => {
@@ -458,7 +482,7 @@ export default function MenuPage() {
   const orderType = resolveOrderType(pickedType || readOrderTypePref(restaurant?.id), restaurant)
 
   return (
-    <div className="min-h-screen bg-white pb-24 ordr-tab-page">
+    <div className={`min-h-screen bg-white pb-24 ${restaurant && itemCount > 0 ? 'ordr-tab-page-cart' : 'ordr-tab-page'}`}>
       {restaurant && <PromotionBanner promotion={promotion} />}
       {restaurant ? (
         <HeroSection
@@ -616,7 +640,7 @@ export default function MenuPage() {
 
       {/* Cart button */}
       {restaurant && (
-        <CartButton itemCount={itemCount} total={subtotal} onClick={() => setShowCart(true)} pointsDelta={pointsDelta} />
+        <CartButton itemCount={itemCount} total={subtotal} onClick={() => setShowCart(true)} pointsDelta={IS_NATIVE ? null : pointsDelta} />
       )}
 
       {/* Item modal */}

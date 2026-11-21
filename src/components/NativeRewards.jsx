@@ -197,7 +197,7 @@ export default function NativeRewards({
 
   return (
     <div
-      className="-mx-6 -mt-2 -mb-8 bg-white min-h-[70vh] pt-6 pb-28"
+      className="-mx-6 -mt-2 -mb-8 bg-white min-h-[70vh] pt-6 pb-0"
       style={{ backgroundImage: `linear-gradient(180deg, ${tint} 0px, #FFFFFF 260px)` }}
     >
       {/* HEADER */}
