@@ -112,8 +112,11 @@ export function useOtpFlow({ restaurantId, onVerified }) {
     handleVerify(code)
   }, [step, code, handleVerify])
 
+  // On reaching the code step, close the keyboard instead of focusing the code
+  // field: iOS offers "From Messages" when the customer taps the field (a
+  // user-gesture focus). A failed verify still refocuses it (handleVerify).
   useEffect(() => {
-    if (step === 'code') codeInputRef.current?.focus()
+    if (step === 'code') document.activeElement?.blur?.()
   }, [step])
 
   function handlePhoneChange(e) {
