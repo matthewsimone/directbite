@@ -12,6 +12,9 @@
 import { useState, useEffect } from 'react'
 
 import LogoFrame from './LogoFrame'
+import NativeRewards from './NativeRewards'
+import NativeOrders from './NativeOrders'
+import { IS_NATIVE } from '../lib/native'
 import { getNativeBrand } from '../lib/nativeBrand'
 import {
   DEFAULT_BRAND_COLOR,
@@ -148,6 +151,69 @@ export default function AccountView({
   // rendered a leading "· 287 orders" with nothing in front of it.
   const firstName = (customer?.displayName || '').trim()
   const greeting = firstName ? `Hi ${firstName},` : 'Hi there,'
+
+  if (IS_NATIVE && loyaltyEnabled && section === 'rewards') {
+    return (
+      <NativeRewards
+        restaurant={restaurant}
+        customer={customer}
+        brandColor={brandColor}
+        tiers={tiers}
+        pointsPerDollar={pointsPerDollar}
+        currentTier={currentTier}
+        nextTier={nextTier}
+        atTopTier={atTopTier}
+        pointsToNext={pointsToNext}
+        progressPct={progressPct}
+        nextTierRate={nextTierRate}
+        lifetime={lifetime}
+        orderCount={orderCount}
+        firstName={firstName}
+        pointsBalance={pointsBalance}
+        animatedPoints={animatedPoints}
+        barReady={barReady}
+        rewardProgressPct={rewardProgressPct}
+        nextReward={nextReward}
+        rewardShortfall={rewardShortfall}
+        readyRewards={readyRewards}
+        keepGoingRewards={keepGoingRewards}
+        transactions={transactions}
+        redeeming={redeeming}
+        onRedeemClick={async (rw) => {
+          if (redeeming) return
+          setRedeeming(rw.id)
+          try { await onRedeem(rw) } finally { setRedeeming(null) }
+        }}
+      />
+    )
+  }
+
+  if (IS_NATIVE && section === 'orders') {
+    return (
+      <NativeOrders
+        orders={orders}
+        transactions={transactions}
+        loyaltyEnabled={loyaltyEnabled}
+        historyLoading={historyLoading}
+        historyFailed={historyFailed}
+        onRetryHistory={onRetryHistory}
+        onStartOrder={onStartOrder}
+        brandColor={brandColor}
+        expandedOrders={expandedOrders}
+        onToggleExpand={(id) => setExpandedOrders(prev => {
+          const n = new Set(prev)
+          if (n.has(id)) n.delete(id)
+          else n.add(id)
+          return n
+        })}
+        reorderingId={reorderingId}
+        onReorderClick={async (order) => {
+          setReorderingId(order.id)
+          try { await onReorder(order) } finally { setReorderingId(null) }
+        }}
+      />
+    )
+  }
 
   // The order list is the whole page when loyalty is off, so it renders under
   // its own heading rather than behind a tab.

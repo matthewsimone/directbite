@@ -410,7 +410,7 @@ export default function AccountPage() {
         </button>
       </div>
 
-      <div className="max-w-[720px] mx-auto px-6 pt-2 pb-8">
+      <div className="max-w-[720px] mx-auto px-6 pt-2 pb-8 ordr-wide">
         <AccountView
           restaurant={restaurant}
           loyaltyEnabled={loyaltyEnabled}
