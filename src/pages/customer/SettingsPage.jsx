@@ -302,7 +302,8 @@ export default function SettingsPage() {
 }
 
 function BackHandler({ onBack }) {
-  useNativeBack(true, onBack)
+  // In-page view navigation, not an overlay: no toast clearing, no top toasts.
+  useNativeBack(true, onBack, { overlay: false })
   return null
 }
 

@@ -52,19 +52,25 @@ const NATIVE_TOAST_OPTIONS = {
 // direction-signed translateY chosen from `position`, so CSS can't flip a
 // container between top and bottom. Switch the prop instead: bottom above the
 // tab bar while NativeTabBar marks html.ordr-has-tabbar, top otherwise
-// (Checkout's Pay bar, Confirmation, sign-in, keyboard open).
+// (Checkout's Pay bar, Confirmation, sign-in, keyboard open) and while an
+// overlay is open (html.ordr-sheet-open, kept in sync by lib/nativeBack).
+// This is only the default: a toast with its own `position` keeps it.
+function nativeToastAtBottom() {
+  const c = document.documentElement.classList
+  return c.contains('ordr-has-tabbar') && !c.contains('ordr-sheet-open')
+}
+
 function NativeToaster() {
-  const [hasBar, setHasBar] = useState(() => document.documentElement.classList.contains('ordr-has-tabbar'))
+  const [atBottom, setAtBottom] = useState(nativeToastAtBottom)
   useEffect(() => {
-    const el = document.documentElement
-    const obs = new MutationObserver(() => setHasBar(el.classList.contains('ordr-has-tabbar')))
-    obs.observe(el, { attributes: true, attributeFilter: ['class'] })
+    const obs = new MutationObserver(() => setAtBottom(nativeToastAtBottom()))
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
     return () => obs.disconnect()
   }, [])
   return (
     <Toaster
-      position={hasBar ? 'bottom-center' : 'top-center'}
-      containerClassName={hasBar ? 'ordr-toaster-bottom' : 'ordr-toaster-top'}
+      position={atBottom ? 'bottom-center' : 'top-center'}
+      containerClassName="ordr-toaster"
       toastOptions={NATIVE_TOAST_OPTIONS}
     />
   )

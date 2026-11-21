@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { loadStripe } from '@stripe/stripe-js/pure'
 import {
@@ -973,6 +973,11 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
 
 // ---------- Main Checkout Page ----------
 export default function CheckoutPage() {
+  // Native: a pushed route keeps the previous page's scrollY (MenuPage scrolled
+  // down → Checkout opens at its bottom). Reset before first paint. Web verified
+  // fine and left untouched.
+  useLayoutEffect(() => { if (IS_NATIVE) window.scrollTo(0, 0) }, [])
+
   const { slug } = useParams()
   const navigate = useNavigate()
   const { restaurant, isPickupOpen, isDeliveryOpen, pickupSchedule, deliverySchedule, loading: restLoading } = useRestaurant(slug)

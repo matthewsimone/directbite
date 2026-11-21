@@ -259,19 +259,28 @@ html.native .ordr-tab-page,
 html.native .ordr-tab-page-cart {
   min-height: calc(100vh - env(safe-area-inset-top));
 }
+/* #root's min-height: 100dvh has the same overshoot (it also starts below
+   body's safe-area padding). */
+html.native #root {
+  min-height: calc(100vh - env(safe-area-inset-top));
+}
 
 /* Toasts (native). Container inset is inline (16px), hence !important.
-   Top: screens without the tab bar, 12px below the safe area.
-   Bottom: 12px above the tab bar, or above the cart button / Rewards CTA. */
-html.native .ordr-toaster-top {
+   Both insets are always set so a toast with its own position (e.g. MenuPage's
+   add-to-cart, pinned bottom-center) lands right whatever the Toaster default is.
+   Top: 12px below the safe area.
+   Bottom: 12px above the tab bar, or above the cart button / Rewards CTA;
+   safe area + 16px when no tab bar is on screen. */
+html.native .ordr-toaster {
   top: calc(env(safe-area-inset-top) + 12px) !important;
-}
-html.native .ordr-toaster-bottom {
   bottom: calc(var(--ordr-tabbar-h) + 12px + max(0.5rem, env(safe-area-inset-bottom))) !important;
 }
-html.native:not(.ordr-kb):has(.ordr-float-bottom) .ordr-toaster-bottom {
+html.native:not(.ordr-has-tabbar) .ordr-toaster {
+  bottom: calc(16px + env(safe-area-inset-bottom)) !important;
+}
+html.native:not(.ordr-kb):has(.ordr-float-bottom) .ordr-toaster {
   bottom: calc(4.75rem + 86px + max(0.5rem, env(safe-area-inset-bottom))) !important;
 }
-html.native:has(.ordr-above-tabbar) .ordr-toaster-bottom {
+html.native:has(.ordr-above-tabbar) .ordr-toaster {
   bottom: calc(4rem + 85px + max(0.5rem, env(safe-area-inset-bottom))) !important;
 }

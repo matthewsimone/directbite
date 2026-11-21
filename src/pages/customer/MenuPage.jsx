@@ -365,6 +365,10 @@ export default function MenuPage() {
         ? calculateLoyaltyPoints({ restaurant, subtotal: subtotal + cartLineTotal(cartItem) })
           - calculateLoyaltyPoints({ restaurant, subtotal })
         : 0
+      // Native: pinned bottom-center. This fires while ItemModal is still open
+      // (Toaster default = top), and the modal closes ~350ms later; without its
+      // own position the toast would jump from top to bottom mid-display.
+      const pin = IS_NATIVE ? { position: 'bottom-center' } : undefined
       if (gained > 0) {
         // Points on their own line; the check moves inline beside the item
         // text, so the library's side icon is suppressed for this toast only.
@@ -376,10 +380,10 @@ export default function MenuPage() {
               <span className="text-left">{cartItem.itemName} added to cart</span>
             </div>
           </div>,
-          { icon: null }
+          { icon: null, ...pin }
         )
       } else {
-        toast.success(`${cartItem.itemName} added to cart`)
+        toast.success(`${cartItem.itemName} added to cart`, pin)
       }
     },
     [addItem, isLoggedIn, restaurant, subtotal]
