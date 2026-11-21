@@ -27,6 +27,8 @@ import googlePayLogo from '../../assets/payment-marks/google-pay.svg'
 import googlePayButton from '../../assets/payment-marks/google-pay-button-plain-dark.png'
 import { calcRecoup } from '../../utils/recoup'
 import { getPublicOrigin, IS_NATIVE } from '../../lib/native'
+import { getNativeBrand } from '../../lib/nativeBrand'
+import { readOrderTypePref, writeOrderTypePref } from '../../lib/orderTypePref'
 import { isNativeApplePayAvailable, payWithNativeApplePay } from '../../lib/nativeApplePay'
 import { isNativeGooglePayAvailable, presentNativeGooglePay, mountGooglePayButton } from '../../lib/nativeGooglePay'
 
@@ -133,7 +135,7 @@ function TipSelector({ subtotal, orderType, onTipChange }) {
             onClick={() => selectPreset(pct)}
             className={`flex-1 py-2 px-1 rounded-xl text-xs font-semibold transition-colors ${
               tipType === pct
-                ? 'bg-[#16A34A] text-white'
+                ? 'bg-[#16A34A] text-white ordr-pill-on'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
@@ -144,7 +146,7 @@ function TipSelector({ subtotal, orderType, onTipChange }) {
           onClick={selectCustom}
           className={`flex-1 py-2 px-1 rounded-xl text-xs font-semibold transition-colors ${
             tipType === 'custom'
-              ? 'bg-[#16A34A] text-white'
+              ? 'bg-[#16A34A] text-white ordr-pill-on'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -154,7 +156,7 @@ function TipSelector({ subtotal, orderType, onTipChange }) {
           onClick={selectNone}
           className={`flex-1 py-2 px-1 rounded-xl text-xs font-semibold transition-colors ${
             tipType === 'none'
-              ? 'bg-[#16A34A] text-white'
+              ? 'bg-[#16A34A] text-white ordr-pill-on'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
@@ -731,18 +733,18 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
         {(paymentRequest || nativeApplePay || nativeGooglePay) && walletLabel && (
           <label
             className={`flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer transition-colors ${
-              payMethod === 'wallet' ? 'border-[#16A34A] bg-green-50/50' : 'border-gray-200'
+              payMethod === 'wallet' ? 'border-[#16A34A] bg-green-50/50 ordr-neutral' : 'border-gray-200'
             }`}
           >
             <div className="flex items-center gap-3">
-              <input type="radio" name="payMethod" checked={payMethod === 'wallet'} onChange={() => setPayMethod('wallet')} className="accent-[#16A34A] w-4 h-4" />
+              <input type="radio" name="payMethod" checked={payMethod === 'wallet'} onChange={() => setPayMethod('wallet')} className="accent-[#16A34A] w-4 h-4 ordr-neutral" />
               <div className="flex items-center gap-2.5">
                 <img src={walletType === 'applePay' ? applePayLogo : googlePayLogo} alt={walletLabel} style={{ height: 20 }} />
                 <span className="font-medium text-gray-900">{walletLabel}</span>
               </div>
             </div>
             <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#16A34A] bg-green-50 px-2 py-0.5 rounded-full">
-              <svg viewBox="0 0 24 24" fill="#16a34a" width="12" height="12"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
               Express
             </span>
           </label>
@@ -751,10 +753,10 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
         {/* Credit Card option — always shown */}
         <label
           className={`flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${
-            payMethod === 'card' ? 'border-[#16A34A] bg-green-50/50' : 'border-gray-200'
+            payMethod === 'card' ? 'border-[#16A34A] bg-green-50/50 ordr-neutral' : 'border-gray-200'
           }`}
         >
-          <input type="radio" name="payMethod" checked={payMethod === 'card'} onChange={() => setPayMethod('card')} className="accent-[#16A34A] w-4 h-4" />
+          <input type="radio" name="payMethod" checked={payMethod === 'card'} onChange={() => setPayMethod('card')} className="accent-[#16A34A] w-4 h-4 ordr-neutral" />
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -1119,6 +1121,9 @@ export default function CheckoutPage() {
     if (defaultApplied.current) return         // already applied once
     if (restLoading || !restaurant) return      // wait for the async fetch
     defaultApplied.current = true               // mark applied regardless of outcome
+    const pref = readOrderTypePref(restaurant.id)
+    if (pref === 'delivery' && restaurant.delivery_available === true) { setOrderType('delivery'); return }
+    if (pref === 'pickup') return
     if (restaurant.default_order_type === 'delivery' && restaurant.delivery_available === true) {
       setOrderType('delivery')
     }
@@ -2429,7 +2434,7 @@ export default function CheckoutPage() {
         appearance: {
           theme: 'stripe',
           variables: {
-            colorPrimary: '#16A34A',
+            colorPrimary: getNativeBrand('#16A34A'),
             borderRadius: '12px',
             fontFamily: 'system-ui, -apple-system, sans-serif',
           },
@@ -2469,10 +2474,10 @@ export default function CheckoutPage() {
           </h3>
           <div className="flex gap-3">
             <button
-              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setAddressError(null) }}
+              onClick={() => { setOrderType('pickup'); setSpecialInstructions(''); setAddressError(null); writeOrderTypePref(restaurant.id, 'pickup') }}
               className={`flex-1 py-4 rounded-xl font-semibold text-base transition-colors ${
                 orderType === 'pickup'
-                  ? 'bg-[#16A34A] text-white'
+                  ? 'bg-[#16A34A] text-white ordr-type-on'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -2480,10 +2485,10 @@ export default function CheckoutPage() {
             </button>
             {restaurant.delivery_available && (
               <button
-                onClick={() => setOrderType('delivery')}
+                onClick={() => { setOrderType('delivery'); writeOrderTypePref(restaurant.id, 'delivery') }}
                 className={`flex-1 py-4 rounded-xl font-semibold text-base transition-colors ${
                   orderType === 'delivery'
-                    ? 'bg-[#16A34A] text-white'
+                    ? 'bg-[#16A34A] text-white ordr-type-on'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
@@ -2801,9 +2806,9 @@ export default function CheckoutPage() {
             {loyaltyPoints > 0 && (
               <div
                 className="rounded-xl px-4 py-2.5 mt-3 text-center"
-                style={{ backgroundColor: withAlpha('#16A34A', 0.08) }}
+                style={{ backgroundColor: withAlpha(getNativeBrand('#16A34A'), 0.08) }}
               >
-                <p className="text-sm" style={{ color: '#16A34A' }}>
+                <p className="text-sm" style={{ color: getNativeBrand('#16A34A') }}>
                   You'll earn <strong>{pointsLabel(loyaltyPoints)}</strong> with this order
                 </p>
               </div>

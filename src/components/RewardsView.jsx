@@ -8,6 +8,7 @@
 // signed-out visitor at a loyalty-enabled restaurant.
 
 import LogoFrame from './LogoFrame'
+import { getNativeBrand } from '../lib/nativeBrand'
 import {
   DEFAULT_BRAND_COLOR,
   CARD_SCRIM,
@@ -37,8 +38,9 @@ export default function RewardsView({ restaurant, tiers = [], rewards = [], onSi
   // ConfirmationPage all carry the same note — and a red accent on a green
   // page reads as inconsistent. This surface and AccountView were the last two
   // reading primary_color; both now match the flow they sit in. The name stays
-  // brandColor so the usages below are unchanged.
-  const brandColor = DEFAULT_BRAND_COLOR
+  // brandColor so the usages below are unchanged. In the native app the whole
+  // flow is themed to --brand (D7), so it follows the brand there.
+  const brandColor = getNativeBrand(DEFAULT_BRAND_COLOR)
   // The hero card reuses the website hero's photo and logo — useRestaurant
   // selects '*', so these arrive on the same restaurant row.
   const { hero_image_url, logo_url, logo_frame_shape, name } = restaurant

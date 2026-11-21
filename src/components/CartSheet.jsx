@@ -6,6 +6,7 @@ import { useCart } from '../hooks/useCart'
 // /:slug under CustomerAuthProvider. It never renders on a custom domain.
 import { useCustomerAuth } from '../hooks/useCustomerAuth'
 import { useNativeBack } from '../lib/nativeBack'
+import { getNativeBrand } from '../lib/nativeBrand'
 
 // Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
 function withAlpha(hex, alpha) {
@@ -214,8 +215,8 @@ export default function CartSheet({ onClose, onCheckout, promotion, restaurant }
             reads as inconsistent. If the flow is ever rebranded per
             restaurant, this becomes brandColor along with everything else. */}
         {loyaltyPoints > 0 && (
-          <div className="px-5 py-2.5 text-center" style={{ backgroundColor: withAlpha('#16A34A', 0.08) }}>
-            <p className="text-sm" style={{ color: '#16A34A' }}>
+          <div className="px-5 py-2.5 text-center" style={{ backgroundColor: withAlpha(getNativeBrand('#16A34A'), 0.08) }}>
+            <p className="text-sm" style={{ color: getNativeBrand('#16A34A') }}>
               You'll earn <strong>{pointsLabel(loyaltyPoints)}</strong> with this order
             </p>
           </div>

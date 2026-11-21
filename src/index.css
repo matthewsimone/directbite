@@ -193,3 +193,53 @@ html.native.ordr-lock body {
 html.native.ordr-kb .ordr-float-bottom {
   display: none;
 }
+
+/* D7 brand sweep — native only. Platform green → restaurant --brand.
+   Elements marked .ordr-keep-green (discounts, savings, Open Now, success) stay green.
+   Selectors match the compiled Tailwind classes; web never has html.native. */
+html.native .bg-\[\#16A34A\]:not(.ordr-keep-green) { background-color: var(--brand); }
+html.native .text-\[\#16A34A\]:not(.ordr-keep-green) { color: var(--brand); }
+html.native .border-\[\#16A34A\]:not(.ordr-keep-green) { border-color: var(--brand); }
+html.native .border-t-\[\#16A34A\] { border-top-color: var(--brand); }
+html.native .border-l-\[\#16A34A\] { border-left-color: var(--brand); }
+html.native .accent-\[\#16A34A\] { accent-color: var(--brand); }
+html.native .ring-\[\#16A34A\], html.native .focus\:ring-\[\#16A34A\]:focus { --tw-ring-color: var(--brand); }
+html.native .focus\:ring-\[\#16A34A\]\/40:focus { --tw-ring-color: color-mix(in srgb, var(--brand) 40%, transparent); }
+html.native .hover\:border-\[\#16A34A\]:hover { border-color: var(--brand); }
+html.native .hover\:text-\[\#16A34A\]:hover { color: var(--brand); }
+html.native .bg-green-50:not(.ordr-keep-green), html.native .hover\:bg-green-50:hover { background-color: color-mix(in srgb, var(--brand) 8%, white); }
+html.native .bg-green-50\/50:not(.ordr-keep-green) { background-color: color-mix(in srgb, var(--brand) 5%, white); }
+/* Spinners are border-[#16A34A] + border-t-transparent: keep the gap so they still spin. Must stay after the border rule. */
+html.native .border-\[\#16A34A\].border-t-transparent { border-top-color: transparent; }
+
+/* Owner-style neutrals (native only). Selection = neutral ink, actions = brand.
+   Must stay AFTER the D7 sweep block: same specificity, later wins. */
+html.native .bg-\[\#16A34A\].ordr-pill-on,
+html.native .ordr-pill-on.ordr-pill-on {
+  background-color: #fff; color: #111827;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.08);
+}
+html.native .text-\[\#16A34A\].ordr-neutral { color: #111827; }
+html.native .bg-\[\#16A34A\].ordr-neutral { background-color: #111827; }
+html.native .border-\[\#16A34A\].ordr-neutral { border-color: #111827; }
+html.native .bg-green-50\/50.ordr-neutral { background-color: #fff; }
+/* Liquid-glass cart button */
+html.native .ordr-cart-glass {
+  background-color: color-mix(in srgb, var(--brand) 78%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
+  border: 1px solid rgba(255,255,255,0.22);
+}
+html.native .ordr-cart-glass .text-gray-300 { color: rgba(255,255,255,0.85); }
+html.native .bg-\[\#16A34A\].ordr-cart-count { background-color: color-mix(in srgb, var(--brand) 65%, black); }
+/* Tab bar: light-gray glass, active tab = white pill */
+html.native .ordr-tabbar { background: rgba(246,246,248,0.88); }
+html.native .ordr-tab-on { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+/* Status badges (e.g. Delivered) */
+html.native .bg-green-100 { background-color: color-mix(in srgb, var(--brand) 12%, white); }
+html.native .text-green-800, html.native .text-green-700 { color: var(--brand); }
+html.native .accent-\[\#16A34A\].ordr-neutral { accent-color: #111827; }
+/* Order-type selected (Menu hero + Checkout): white, inset brand ring, brand label. Inset = no layout shift. */
+html.native .ordr-type-on.ordr-type-on { background-color: #fff; color: var(--brand); box-shadow: inset 0 0 0 2px var(--brand), 0 1px 3px rgba(0,0,0,0.08); }
+/* More glass on the tab bar */
+html.native .ordr-tabbar { background: rgba(255,255,255,0.55); -webkit-backdrop-filter: saturate(180%) blur(24px); backdrop-filter: saturate(180%) blur(24px); }

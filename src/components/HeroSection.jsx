@@ -1,4 +1,5 @@
 import { formatDisplayAddress } from '../pages/website/utils/address'
+import { IS_NATIVE } from '../lib/native'
 // Pure function, no hooks — importing it keeps this component prop-only.
 import { formatPoints } from './rewardsShared'
 
@@ -116,6 +117,72 @@ function HeroAuthButtons({ isLoggedIn, profile, loyaltyEnabled, onSignIn, onAcco
   )
 }
 
+// Native app hero: full-bleed photo fading to white, centred name/status, and
+// the Pickup/Delivery choice. No hooks — HeroSection returns this before its
+// own body runs, and the web layout below is untouched.
+function NativeHero({ restaurant, isOpen, hoursUnknown, orderType, onOrderTypeChange }) {
+  const canDeliver = restaurant.delivery_available === true
+  const option = (label, minutes) => (
+    <>
+      <span className="text-base font-semibold">{label}</span>
+      <span className="text-xs">~{minutes} min</span>
+    </>
+  )
+  const optionClass = (type) =>
+    `rounded-xl py-2.5 flex flex-col items-center ${orderType === type ? 'ordr-type-on bg-white' : 'text-gray-600'}`
+
+  return (
+    <div className="w-full bg-white">
+      <div className="relative w-full h-[300px]">
+        {restaurant.hero_image_url ? (
+          <img
+            src={restaurant.hero_image_url}
+            alt={restaurant.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-[#F7F7F7]" />
+        )}
+        <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-b from-white/0 via-white/80 to-white" />
+      </div>
+
+      <div className="relative z-10 -mt-28 px-6 text-center">
+        {!hoursUnknown && (
+          <div className="inline-flex items-center justify-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'ordr-keep-green bg-[#16A34A]' : 'bg-red-500'}`} />
+            <span className={`text-sm font-medium ${isOpen ? 'ordr-keep-green text-[#16A34A]' : 'text-red-500'}`}>
+              {isOpen ? 'Open Now' : 'Closed'}
+            </span>
+          </div>
+        )}
+        <h1 className="mt-1 text-3xl font-bold text-gray-900 leading-tight">{restaurant.name}</h1>
+        {restaurant.address && (
+          <p className="mt-1 text-sm text-gray-600">{formatDisplayAddress(restaurant.address)}</p>
+        )}
+      </div>
+
+      <div className="mt-5 mx-6 mb-2">
+        {canDeliver ? (
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-gray-100">
+            <button type="button" onClick={() => onOrderTypeChange('pickup')} className={optionClass('pickup')}>
+              {option('Pickup', restaurant.estimated_pickup_minutes)}
+            </button>
+            <button type="button" onClick={() => onOrderTypeChange('delivery')} className={optionClass('delivery')}>
+              {option('Delivery', restaurant.estimated_delivery_minutes)}
+            </button>
+          </div>
+        ) : (
+          <div className="p-1 rounded-2xl bg-gray-100">
+            <div className={optionClass('pickup')}>
+              {option('Pickup', restaurant.estimated_pickup_minutes)}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function HeroSection({
   restaurant,
   isOpen,
@@ -126,7 +193,11 @@ export default function HeroSection({
   onSignIn = () => {},
   onAccount = () => {},
   onRewards = () => {},
+  orderType = 'pickup',
+  onOrderTypeChange = () => {},
 }) {
+  if (IS_NATIVE) return <NativeHero restaurant={restaurant} isOpen={isOpen} hoursUnknown={hoursUnknown} orderType={orderType} onOrderTypeChange={onOrderTypeChange} />
+
   // Same source of truth as every other loyalty gate in the app.
   const loyaltyEnabled = restaurant.loyalty_enabled === true
 
@@ -151,8 +222,8 @@ export default function HeroSection({
               open restaurant as "Closed" is worse than showing no status. */}
           {!hoursUnknown && (
             <div className="flex items-center gap-2 mb-3">
-              <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'bg-[#16A34A]' : 'bg-red-500'}`} />
-              <span className={`text-sm font-medium ${isOpen ? 'text-[#16A34A]' : 'text-red-500'}`}>
+              <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'ordr-keep-green bg-[#16A34A]' : 'bg-red-500'}`} />
+              <span className={`text-sm font-medium ${isOpen ? 'ordr-keep-green text-[#16A34A]' : 'text-red-500'}`}>
                 {isOpen ? 'Open Now' : 'Closed'}
               </span>
             </div>
@@ -199,8 +270,8 @@ export default function HeroSection({
         <div className="px-6 py-5 bg-white">
           {!hoursUnknown && (
             <div className="flex items-center gap-2 mb-2">
-              <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'bg-[#16A34A]' : 'bg-red-500'}`} />
-              <span className={`text-sm font-medium ${isOpen ? 'text-[#16A34A]' : 'text-red-500'}`}>
+              <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'ordr-keep-green bg-[#16A34A]' : 'bg-red-500'}`} />
+              <span className={`text-sm font-medium ${isOpen ? 'ordr-keep-green text-[#16A34A]' : 'text-red-500'}`}>
                 {isOpen ? 'Open Now' : 'Closed'}
               </span>
             </div>

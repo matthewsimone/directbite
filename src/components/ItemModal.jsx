@@ -362,7 +362,7 @@ export default function ItemModal({
                     key={size.id}
                     className={`flex items-center justify-between p-3.5 rounded-xl border-2 cursor-pointer transition-colors ${
                       selectedSizeId === size.id
-                        ? 'border-[#16A34A] bg-green-50/50'
+                        ? 'border-[#16A34A] bg-green-50/50 ordr-neutral'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
@@ -370,11 +370,11 @@ export default function ItemModal({
                       {sizes.length > 1 && (
                         <div
                           className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                            selectedSizeId === size.id ? 'border-[#16A34A]' : 'border-gray-300'
+                            selectedSizeId === size.id ? 'border-[#16A34A] ordr-neutral' : 'border-gray-300'
                           }`}
                         >
                           {selectedSizeId === size.id && (
-                            <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A] ordr-neutral" />
                           )}
                         </div>
                       )}
@@ -501,7 +501,7 @@ function PizzaToppingGroup({ group, groupToppings, selectedToppings, sizeName, o
                 onClick={() => onToggle(topping)}
                 className={`w-full flex items-center justify-between p-3.5 rounded-xl border-2 transition-colors ${
                   selected
-                    ? 'border-[#16A34A] bg-green-50/50'
+                    ? 'border-[#16A34A] bg-green-50/50 ordr-neutral'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -526,7 +526,7 @@ function PizzaToppingGroup({ group, groupToppings, selectedToppings, sizeName, o
                       onClick={() => onPlacementChange(topping.id, p)}
                       className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium capitalize transition-colors ${
                         selected.placement === p
-                          ? 'bg-[#16A34A] text-white'
+                          ? 'bg-[#16A34A] text-white ordr-pill-on'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                     >
@@ -588,7 +588,7 @@ function AddonGroup({ group, groupToppings, selectedToppings, onToggle }) {
               onClick={() => !atMax && onToggle(topping)}
               className={`w-full flex items-center justify-between p-3.5 rounded-xl border-2 transition-colors ${
                 selected
-                  ? 'border-[#16A34A] bg-green-50/50'
+                  ? 'border-[#16A34A] bg-green-50/50 ordr-neutral'
                   : atMax
                     ? 'border-gray-100 opacity-40 cursor-not-allowed'
                     : 'border-gray-200 hover:border-gray-300'
@@ -598,13 +598,13 @@ function AddonGroup({ group, groupToppings, selectedToppings, onToggle }) {
                 {/* Radio for single, checkbox for multi */}
                 {isSingle ? (
                   <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                    selected ? 'border-[#16A34A]' : 'border-gray-300'
+                    selected ? 'border-[#16A34A] ordr-neutral' : 'border-gray-300'
                   }`}>
-                    {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A]" />}
+                    {selected && <div className="w-2.5 h-2.5 rounded-full bg-[#16A34A] ordr-neutral" />}
                   </div>
                 ) : (
                   <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
-                    selected ? 'bg-[#16A34A]' : 'border-2 border-gray-300'
+                    selected ? 'bg-[#16A34A] ordr-neutral' : 'border-2 border-gray-300'
                   }`}>
                     {selected && (
                       <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">

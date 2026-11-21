@@ -6,6 +6,15 @@ import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { formatCurrency, formatPhone } from '../../utils/format'
 import { calculateLoyaltyPoints, formatPoints } from '../../utils/loyaltyPoints'
 import { formatScheduledLabel } from '../../utils/scheduling'
+import { getNativeBrand } from '../../lib/nativeBrand'
+
+// Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
+function withAlpha(hex, alpha) {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex || '')
+  if (!m) return hex
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
 
 // Fetch a single order (scoped, non-PII) by Stripe payment intent via the
 // get-order-by-pi edge function. Replaces the former direct anon reads of
@@ -568,9 +577,9 @@ function ConfirmationLayout({
               {loyaltyPointsEarned > 0 && (
                 <div
                   className="rounded-xl px-4 py-2.5 mt-3 text-center"
-                  style={{ backgroundColor: 'rgba(22, 163, 74, 0.08)' }}
+                  style={{ backgroundColor: withAlpha(getNativeBrand('#16A34A'), 0.08) }}
                 >
-                  <p className="text-sm" style={{ color: '#16A34A' }}>
+                  <p className="text-sm" style={{ color: getNativeBrand('#16A34A') }}>
                     You earned <strong>{formatPoints(loyaltyPointsEarned)} points</strong> with this order
                   </p>
                 </div>

@@ -83,7 +83,7 @@ function MainRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Toaster position="top-center" toastOptions={{ duration: 2000 }} />
+      <Toaster position="top-center" toastOptions={{ duration: 2000, success: { iconTheme: { primary: 'var(--brand, #16A34A)', secondary: '#fff' } } }} />
       <CartProvider>
         <CustomerAuthProvider>
           <NativeAuthGate>

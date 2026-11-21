@@ -49,7 +49,7 @@ export default function MenuItemCard({ item, lowestPrice, promotion, onClick, un
                   <span className="text-[13px] text-gray-400 line-through">
                     {formatCurrency(lowestPrice)}
                   </span>
-                  <span className="text-[15px] font-bold text-[#16A34A]">
+                  <span className="text-[15px] font-bold text-[#16A34A] ordr-keep-green">
                     {formatCurrency(discountedPrice)}
                   </span>
                 </>

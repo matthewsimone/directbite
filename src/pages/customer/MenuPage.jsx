@@ -19,6 +19,7 @@ import MenuSearch from '../../components/MenuSearch'
 import MenuItemCard from '../../components/MenuItemCard'
 import CartButton from '../../components/CartButton'
 import SignInSheet from '../../components/SignInSheet'
+import { readOrderTypePref, writeOrderTypePref, resolveOrderType } from '../../lib/orderTypePref'
 
 // Interaction-gated — kept out of the initial bundle via React.lazy. ItemModal
 // mounts on item tap (or ?item= deep-link); CartSheet mounts when the cart
@@ -154,6 +155,7 @@ export default function MenuPage() {
   // gate below — the menu paints on its own schedule and the label fills in
   // when this lands, so a slow profile read can never delay the food.
   const [heroProfile, setHeroProfile] = useState(null)
+  const [pickedType, setPickedType] = useState(null)
 
   const prevPointsRef = useRef(0)
   const sectionRefs = useRef({})
@@ -453,6 +455,8 @@ export default function MenuPage() {
     )
   }
 
+  const orderType = resolveOrderType(pickedType || readOrderTypePref(restaurant?.id), restaurant)
+
   return (
     <div className="min-h-screen bg-white pb-24 ordr-tab-page">
       {restaurant && <PromotionBanner promotion={promotion} />}
@@ -467,6 +471,8 @@ export default function MenuPage() {
           onSignIn={() => setSignInOpen(true)}
           onAccount={() => navigate(`/${slug}/account`)}
           onRewards={() => navigate(`/${slug}/rewards`)}
+          orderType={orderType}
+          onOrderTypeChange={(t) => { setPickedType(t); writeOrderTypePref(restaurant.id, t) }}
         />
       ) : (
         <HeroSkeleton />
