@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useOtpFlow, formatPhone } from '../hooks/useOtpFlow'
 import { useNativeBack } from '../lib/nativeBack'
+import { useKeyboardInset } from '../hooks/useKeyboardInset'
 
 // Must match the consent copy the edge function records alongside the
 // verification — it is shown at the point the customer triggers the send.
@@ -50,6 +51,10 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
 
   useNativeBack(open, handleClose)
 
+  // iOS (Safari + app) keeps fixed elements behind the keyboard; lift the
+  // panel above it and keep it within the visible height.
+  const { inset, viewportHeight } = useKeyboardInset(open)
+
   if (!open) return null
 
   const phoneReady = phone.length === 10
@@ -68,6 +73,13 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
         className={`relative w-full max-w-lg bg-white rounded-t-2xl max-h-[85vh] flex flex-col transition-transform duration-300 ease-out ordr-pad-bottom ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
+        style={{
+          // relative + bottom lifts the panel without touching the slide transform.
+          bottom: inset,
+          paddingBottom: inset > 0 ? 0 : undefined,
+          maxHeight: `min(85vh, ${Math.max(0, Math.round(viewportHeight) - 16)}px)`,
+          transition: 'transform 300ms ease-out, bottom 150ms ease-out',
+        }}
       >
         <div className="flex justify-center pt-3 pb-1">
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
@@ -83,7 +95,7 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
           </svg>
         </button>
 
-        <div className="overflow-y-auto flex-1 px-5 pt-2 pb-6">
+        <div className="overflow-y-auto flex-1 min-h-0 px-5 pt-2 pb-6">
           {step === 'phone' ? (
             <>
               <h2 className="text-xl font-bold text-gray-900">Sign in</h2>
