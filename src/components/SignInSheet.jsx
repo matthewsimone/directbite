@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useOtpFlow, formatPhone } from '../hooks/useOtpFlow'
+import { useOtpFlow, formatPhone, isPlausibleUsNumber } from '../hooks/useOtpFlow'
 import { useNativeBack } from '../lib/nativeBack'
 import { useKeyboardInset } from '../hooks/useKeyboardInset'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -61,7 +61,7 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
 
   if (!open) return null
 
-  const phoneReady = phone.length === 10
+  const phoneReady = isPlausibleUsNumber(phone)
   const codeReady = code.length === 6
 
   return (

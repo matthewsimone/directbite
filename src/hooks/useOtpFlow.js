@@ -12,6 +12,15 @@ export function formatPhone(digits) {
   return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
 }
 
+// A shape a US number can actually have: area code and exchange start 2-9,
+// and the area code isn't an N11 service code (211…911). Twilio rejects the
+// rest with 60200, so they're stopped here with a clear message instead.
+export function isPlausibleUsNumber(d) {
+  return /^[2-9]\d{2}[2-9]\d{6}$/.test(d) && !/^[2-9]11/.test(d)
+}
+
+const CHECK_NUMBER_MESSAGE = 'Check your number — enter a 10-digit US mobile number.'
+
 function sendErrorMessage(error, retryAfter) {
   switch (error) {
     case 'invalid_phone':
@@ -59,6 +68,11 @@ export function useOtpFlow({ restaurantId, onVerified }) {
 
   const handleSend = useCallback(async (digits, { resend = false } = {}) => {
     if (digits.length !== 10 || sending) return
+    // Covers both the auto-send on the 10th digit and the Send/Resend buttons.
+    if (!isPlausibleUsNumber(digits)) {
+      setError(CHECK_NUMBER_MESSAGE)
+      return
+    }
     lastSentRef.current = digits
     setSending(true)
     setError(null)
@@ -120,7 +134,12 @@ export function useOtpFlow({ restaurantId, onVerified }) {
   }, [step])
 
   function handlePhoneChange(e) {
-    const digits = e.target.value.replace(/\D/g, '').slice(0, 10)
+    let digits = e.target.value.replace(/\D/g, '')
+    // No US area code starts with 1, so a leading 1 is always the country code
+    // (iOS autofill "+1 (917) 724-9890", paste, or typed). Without this the 1
+    // became part of the area code and the last real digit was cut off.
+    if (digits.startsWith('1')) digits = digits.slice(1)
+    digits = digits.slice(0, 10)
     // After cancelCode, the first edit releases the sent-number guard so the
     // corrected number (or the same one, retyped) can auto-send again.
     if (resendLockedRef.current && digits !== lastSentRef.current) {
