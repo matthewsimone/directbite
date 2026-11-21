@@ -47,6 +47,8 @@ export function useOtpFlow({ restaurantId, onVerified }) {
   // Set by cancelCode: keeps lastSentRef so the unchanged number isn't
   // re-sent the moment the phone step returns.
   const resendLockedRef = useRef(false)
+  // Mirrors `phone` so reset (stable, no deps) can see the digits in the field.
+  const phoneRef = useRef('')
   const codeInputRef = useRef(null)
 
   useEffect(() => {
@@ -122,6 +124,7 @@ export function useOtpFlow({ restaurantId, onVerified }) {
       resendLockedRef.current = false
       lastSentRef.current = null
     }
+    phoneRef.current = digits
     setPhone(digits)
     setError(null)
   }
@@ -131,15 +134,18 @@ export function useOtpFlow({ restaurantId, onVerified }) {
     setError(null)
   }
 
-  // Back to a clean first step. The phone digits deliberately survive: both
-  // callers — reopening the sheet and "Change" — want the number still there.
+  // Back to a clean first step (SignInSheet calls this on open). The phone
+  // digits deliberately survive so a reopened sheet still shows the number.
   const reset = useCallback(() => {
     setStep('phone')
     setCode('')
     setError(null)
     setSending(false)
     setVerifying(false)
-    lastSentRef.current = null
+    // A number already in the field (sheet reopened) waits for an edit or a tap
+    // on Send; only digits typed fresh auto-fire. Same lock cancelCode uses.
+    lastSentRef.current = phoneRef.current.length === 10 ? phoneRef.current : null
+    resendLockedRef.current = lastSentRef.current !== null
     lastVerifiedRef.current = null
   }, [])
 

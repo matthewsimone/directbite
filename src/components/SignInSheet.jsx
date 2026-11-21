@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useOtpFlow, formatPhone } from '../hooks/useOtpFlow'
 import { useNativeBack } from '../lib/nativeBack'
 import { useKeyboardInset } from '../hooks/useKeyboardInset'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 
 // Must match the consent copy the edge function records alongside the
 // verification — it is shown at the point the customer triggers the send.
@@ -24,6 +25,7 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
     handleSend,
     handleVerify,
     reset,
+    cancelCode,
   } = useOtpFlow({
     restaurantId,
     onVerified: () => {
@@ -51,9 +53,11 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
 
   useNativeBack(open, handleClose)
 
-  // iOS (Safari + app) keeps fixed elements behind the keyboard; lift the
-  // panel above it and keep it within the visible height.
-  const { inset, viewportHeight } = useKeyboardInset(open)
+  // Phones get a full-screen, top-anchored panel: the keyboard opens below the
+  // content, so nothing has to move. Wider screens keep the bottom sheet, which
+  // still lifts above the iOS keyboard (iPad Safari has the same behaviour).
+  const isSheet = useMediaQuery('(min-width: 640px)')
+  const { inset, viewportHeight } = useKeyboardInset(open && isSheet)
 
   if (!open) return null
 
@@ -70,25 +74,29 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
 
       <div
         onClick={e => e.stopPropagation()}
-        className={`relative w-full max-w-lg bg-white rounded-t-2xl max-h-[85vh] flex flex-col transition-transform duration-300 ease-out ordr-pad-bottom ${
+        className={`relative w-full bg-white flex flex-col transition-transform duration-300 ease-out ${
+          isSheet
+            ? 'max-w-lg rounded-t-2xl max-h-[85vh] ordr-pad-bottom'
+            : 'h-full pt-[env(safe-area-inset-top)]'
+        } ${
           visible ? 'translate-y-0' : 'translate-y-full'
         }`}
-        style={{
+        style={isSheet ? {
           // relative + bottom lifts the panel without touching the slide transform.
           bottom: inset,
           paddingBottom: inset > 0 ? 0 : undefined,
           maxHeight: `min(85vh, ${Math.max(0, Math.round(viewportHeight) - 16)}px)`,
           transition: 'transform 300ms ease-out, bottom 150ms ease-out',
-        }}
+        } : undefined}
       >
-        <div className="flex justify-center pt-3 pb-1">
+        <div className={`flex justify-center pt-3 pb-1 ${isSheet ? '' : 'hidden'}`}>
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </div>
 
         <button
           onClick={handleClose}
           aria-label="Close"
-          className="absolute top-3 right-4 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+          className={`${isSheet ? 'absolute top-3 right-4' : 'self-end mt-2 mr-3 shrink-0'} w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors`}
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -133,7 +141,7 @@ export default function SignInSheet({ open, onClose, onSuccess, restaurantId, br
               <p className="text-gray-500 text-sm mt-1">
                 We texted a 6-digit code to {formatPhone(phone)}.{' '}
                 <button
-                  onClick={reset}
+                  onClick={cancelCode}
                   className="font-semibold underline"
                   style={{ color: brandColor }}
                 >
