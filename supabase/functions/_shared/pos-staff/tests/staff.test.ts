@@ -15,6 +15,7 @@ import { assert, assertEquals, assertNotEquals } from 'jsr:@std/assert@1';
 import { contentHash, ORDER_HASH_EXCLUDES } from '../../pos-sync/canonicalJson.ts';
 import type { DeviceResult } from '../../pos-sync/http.ts';
 import { MemoryOrderStore, type SubmitOrderOk } from '../../pos-sync/orderStore.ts';
+import { MemoryEodStore } from '../../pos-eod/store.ts';
 import { handleSubmitOrder, type SubmitOrderDeps } from '../../pos-sync/submitOrder.ts';
 import { cash, IDS, line, next, payload, snapshot, uuid } from '../../pos-sync/tests/orderFixtures.ts';
 import type { OrderPayload } from '../../pos-sync/orderPayload.ts';
@@ -242,7 +243,7 @@ async function orderSetup() {
   const orders = new MemoryOrderStore();
   const menu = await snapshot();
   orders.putSnapshot(menu);
-  const deps: SubmitOrderDeps = { ...t.h.deps, orders, current: { get: () => Promise.resolve(menu) }, staff: t.staff };
+  const deps: SubmitOrderDeps = { ...t.h.deps, orders, current: { get: () => Promise.resolve(menu) }, staff: t.staff, eod: new MemoryEodStore(orders) };
   const submit = async (p: OrderPayload) =>
     body<SubmitOrderOk>(await handleSubmitOrder({ method: 'POST', headers: new Headers({ 'x-ordr-api-version': '1', ...t.h.asDevice(t.A) }), bodyText: JSON.stringify(p), ip: null }, deps));
   return { ...t, orders, menu, submit };
@@ -392,4 +393,25 @@ Deno.test('pos-staff settings: show; update bumps the version and publishes; a Z
   const ctx = await t.staff.context(R1);
   assertEquals(settingsAt(ctx, iso(T0 + 60_000))!.z_requires_manager, true);
   assertEquals(settingsAt(ctx, iso(T0 + 3_700_000))!.z_requires_manager, false);
+});
+
+Deno.test('pos-staff reactivate: bumps the version + publishes; already active → no-op (no bump); unknown → 1; the staff is back in the list as active', async () => {
+  const t = await setup();
+  const run = (argv: string[], x = io([])) => runPosStaff(argv, { store: t.staff, io: x.io, now: t.h.clock.now });
+  await addStaff(t.staff, 'Maria', 'manager');
+  const sam = await addStaff(t.staff, 'Sam', 'staff');
+  assertEquals(await run(['deactivate', sam]), 0);
+  const v = t.staff.settingsRows.get(R1)!.version;
+  const x = io([]);
+  assertEquals(await run(['reactivate', sam], x), 0);
+  assertEquals(x.out[0], 'Reactivated Sam (staff).');
+  assertEquals([t.staff.staff.get(sam)!.active, t.staff.settingsRows.get(R1)!.version], [true, v + 1]);
+  assertEquals(t.staff.published.get(R1)!.at(-1)!.version, v + 1);
+  assertEquals(t.staff.published.get(R1)!.at(-1)!.body.staff.find((s) => s.id === sam)!.active, true);
+  const again = io([]);
+  assertEquals(await run(['reactivate', sam], again), 0);
+  assertEquals([again.out[0], t.staff.settingsRows.get(R1)!.version], ['Sam is already active.', v + 1]);
+  assertEquals((await t.staff.reactivate(sam)).ok && (await t.staff.reactivate(sam) as { version: number }).version, v + 1, 'store: no bump when active');
+  assertEquals(await run(['reactivate', uuid()]), 1);
+  assertEquals(await run(['reactivate']), 2);
 });

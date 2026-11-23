@@ -43,6 +43,8 @@ export interface OrderHead {
   flags: Record<string, unknown>;
   /** Actor / approver values of the latest version by path (item 8: what is NEWLY 'register'). */
   actor_paths: Record<string, string | null>;
+  /** Item 7: business day of the version that first closed / voided the order (null while open). */
+  sales_day: string | null;
 }
 
 export interface StoredSubmission {
@@ -76,6 +78,8 @@ export interface ApplyInput {
   /** The applied response with order_number 0; the store fills in the number. */
   response: SubmitOrderOk;
   receivedAt: string;
+  /** Item 7: the sales day this version would set (the store keeps an existing one). */
+  salesDay: string | null;
 }
 
 export type ApplyOutcome =
@@ -197,6 +201,7 @@ export class MemoryOrderStore implements OrderStore {
       payload: structuredClone(p),
       flags: structuredClone(response.flags),
       actor_paths: orderActorPaths(p),
+      sales_day: cur?.sales_day ?? i.salesDay,
     });
     this.submissions.set(`${p.order_id}:${p.version}`, { content_hash: p.content_hash, response, device_id: i.writer, payload: structuredClone(p) });
     this.applied.push({ order_id: p.order_id, version: p.version });
@@ -215,7 +220,7 @@ export class PgOrderStore implements OrderStore {
   async getHead(orderId: string): Promise<OrderHead | null> {
     const { data, error } = await this.db
       .from('pos_orders')
-      .select('order_id, restaurant_id, ticket_prefix, version, writer_device_id, order_number, pricing, provisional_pricing, priced_against_hash, flags')
+      .select('order_id, restaurant_id, ticket_prefix, version, writer_device_id, order_number, pricing, provisional_pricing, priced_against_hash, flags, sales_day')
       .eq('order_id', orderId)
       .maybeSingle();
     if (error) throw new Error(`pos_orders read failed: ${error.message}`);
@@ -255,6 +260,7 @@ export class PgOrderStore implements OrderStore {
       p_restaurant_id: i.restaurantId,
       p_response: i.response,
       p_received_at: i.receivedAt,
+      p_sales_day: i.salesDay,
     });
     if (error) throw new Error(`pos_apply_order_submission failed: ${error.message}`);
     const r = data as Record<string, unknown>;

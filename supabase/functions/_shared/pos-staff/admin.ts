@@ -5,6 +5,7 @@
  *   add <restaurant-slug> <name> <role>      role: manager | staff (driver is reserved — refused)
  *   set-pin <staff-id>
  *   deactivate <staff-id>
+ *   reactivate <staff-id>                     (no-op when already active)
  *   list <restaurant-slug>                    names / roles / active only — never salts or hashes
  *   settings <restaurant-slug> [--auto-lock N] [--over-short-cents N] [--z-requires-manager true|false]
  *
@@ -35,6 +36,7 @@ export const USAGE = [
   '  pos-staff add <restaurant-slug> <name> <manager|staff>',
   '  pos-staff set-pin <staff-id>',
   '  pos-staff deactivate <staff-id>',
+  '  pos-staff reactivate <staff-id>',
   '  pos-staff list <restaurant-slug>',
   '  pos-staff settings <restaurant-slug> [--auto-lock N] [--over-short-cents N] [--z-requires-manager true|false]',
 ].join('\n');
@@ -138,6 +140,15 @@ export async function runPosStaff(argv: string[], deps: AdminDeps): Promise<numb
         if (!s) return (io.out('No staff with that id.'), 1);
         if (!result(io, await store.deactivate(s.id))) return 1;
         io.out(`Deactivated ${s.name}.`);
+        return await publish(deps, s.restaurant_id);
+      }
+      case 'reactivate': {
+        if (a.length !== 1) throw new UsageError('reactivate needs <staff-id>');
+        const s = await store.staffById(a[0]);
+        if (!s) return (io.out('No staff with that id.'), 1);
+        if (s.active) return (io.out(`${s.name} is already active.`), 0);
+        if (!result(io, await store.reactivate(s.id))) return 1;
+        io.out(`Reactivated ${s.name} (${s.role}).`);
         return await publish(deps, s.restaurant_id);
       }
       case 'list': {

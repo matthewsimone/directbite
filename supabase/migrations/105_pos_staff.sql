@@ -13,7 +13,7 @@
 --   pos_staff_events     append-only staff audit (pos-v1-submit-staff-events), idempotent by event_id.
 --
 -- Changes go through ONE plpgsql call each (per-restaurant advisory lock, version bump, refusals):
---   pos_staff_add, pos_staff_set_pin, pos_staff_deactivate, pos_staff_set_settings
+--   pos_staff_add, pos_staff_set_pin, pos_staff_deactivate, pos_staff_reactivate, pos_staff_set_settings
 -- (called by scripts/pos-staff.ts via _shared/pos-staff/store.ts PgStaffStore; MemoryStaffStore mirrors
 -- them for tests). pos_staff_snapshot_source reads one version's rows in one statement.
 --
@@ -200,6 +200,27 @@ begin
 end;
 $$;
 
+create or replace function public.pos_staff_reactivate(p_staff_id uuid)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_rid uuid;
+  v_st  public.pos_staff_settings%rowtype;
+begin
+  select restaurant_id into v_rid from public.pos_staff where id = p_staff_id;
+  if v_rid is null then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  v_st := public.pos_staff_lock(v_rid);
+  if (select active from public.pos_staff where id = p_staff_id) then
+    return jsonb_build_object('ok', true, 'staff_id', p_staff_id, 'version', v_st.version);   -- already active: no change, no bump
+  end if;
+  update public.pos_staff set active = true, updated_at = now() where id = p_staff_id;
+  return jsonb_build_object('ok', true, 'staff_id', p_staff_id, 'version', public.pos_staff_bump(v_rid));
+end;
+$$;
+
 create or replace function public.pos_staff_set_settings(
   p_restaurant_id uuid, p_auto_lock_minutes int, p_over_short_approval_cents int, p_z_requires_manager boolean)
 returns jsonb
@@ -268,7 +289,7 @@ begin
   foreach f in array array[
     'public.pos_staff_lock(uuid)', 'public.pos_staff_bump(uuid)',
     'public.pos_staff_add(uuid, text, text, text, text, jsonb)', 'public.pos_staff_set_pin(uuid, text, text, jsonb)',
-    'public.pos_staff_deactivate(uuid)', 'public.pos_staff_set_settings(uuid, int, int, boolean)',
+    'public.pos_staff_deactivate(uuid)', 'public.pos_staff_reactivate(uuid)', 'public.pos_staff_set_settings(uuid, int, int, boolean)',
     'public.pos_staff_snapshot_source(uuid)'] loop
     execute format('revoke all on function %s from public, anon, authenticated', f);
     execute format('grant execute on function %s to service_role', f);

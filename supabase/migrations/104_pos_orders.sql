@@ -62,6 +62,7 @@ create table public.pos_orders (
   provisional_pricing   jsonb not null,                                    -- the device's, for comparison
   pricing_config        jsonb not null,                                    -- the device's claim, reporting only
   flags                 jsonb not null,                                    -- mismatch / stale_price / unknown_snapshot / availability_flag / delivery
+  sales_day             date,                                              -- item 7: business day of the version that first closed / voided it (sticky)
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
@@ -186,7 +187,8 @@ create or replace function public.pos_apply_order_submission(
   p_writer        uuid,
   p_restaurant_id uuid,
   p_response      jsonb,
-  p_received_at   timestamptz
+  p_received_at   timestamptz,
+  p_sales_day     date default null          -- item 7: kept once set (the first closing / voiding version's day)
 )
 returns jsonb
 language plpgsql
@@ -237,7 +239,7 @@ begin
           'order_id', v_cur.order_id, 'restaurant_id', v_cur.restaurant_id, 'ticket_prefix', v_cur.ticket_prefix,
           'version', v_cur.version, 'writer_device_id', v_cur.writer_device_id, 'order_number', v_cur.order_number,
           'pricing', v_cur.pricing, 'provisional_pricing', v_cur.provisional_pricing,
-          'priced_against_hash', v_cur.priced_against_hash, 'flags', v_cur.flags));
+          'priced_against_hash', v_cur.priced_against_hash, 'flags', v_cur.flags, 'sales_day', v_cur.sales_day));
       end if;
       return jsonb_build_object('outcome', 'version_conflict', 'server_version', v_cur.version, 'server_writer_device_id', v_cur.writer_device_id);
     end if;
@@ -294,7 +296,7 @@ begin
     customer_name, customer_phone_e164, note, ready_at, void_reason,
     created_by, closed_by, voided_by, void_approved_by, table_label, table_guest_count,
     delivery, tip, menu_snapshot_hash, priced_against_hash, device_time,
-    pricing, total_cents, provisional_pricing, pricing_config, flags, created_at, updated_at
+    pricing, total_cents, provisional_pricing, pricing_config, flags, sales_day, created_at, updated_at
   ) values (
     v_order_id, p_restaurant_id, v_version, p_writer, v_number,
     p_payload #>> '{ticket,prefix}', (p_payload #>> '{ticket,business_date}')::date, (p_payload #>> '{ticket,counter}')::int,
@@ -306,7 +308,7 @@ begin
     nullif(p_payload->'delivery', 'null'::jsonb), p_payload->'tip', p_payload->>'menu_snapshot_hash',
     p_response->>'priced_against_hash', (p_payload->>'device_time')::timestamptz,
     p_response->'pricing', (p_response #>> '{pricing,total_cents}')::bigint, p_payload->'provisional_pricing',
-    p_payload->'pricing_config', p_response->'flags', p_received_at, p_received_at
+    p_payload->'pricing_config', p_response->'flags', p_sales_day, p_received_at, p_received_at
   )
   on conflict (order_id) do update set
     version = excluded.version, writer_device_id = excluded.writer_device_id,
@@ -319,7 +321,7 @@ begin
     menu_snapshot_hash = excluded.menu_snapshot_hash, priced_against_hash = excluded.priced_against_hash,
     device_time = excluded.device_time, pricing = excluded.pricing, total_cents = excluded.total_cents,
     provisional_pricing = excluded.provisional_pricing, pricing_config = excluded.pricing_config,
-    flags = excluded.flags, updated_at = excluded.updated_at;
+    flags = excluded.flags, sales_day = coalesce(o.sales_day, excluded.sales_day), updated_at = excluded.updated_at;
     -- never changed after creation: restaurant_id, order_number, ticket_*, created_at
 
   -- the aggregate's lines / modifiers = exactly this version's
@@ -405,14 +407,14 @@ grant select, insert, update         on table public.pos_payments             to
 grant select, insert                 on table public.pos_order_submissions    to service_role;  -- immutable
 grant usage, select                  on sequence public.pos_order_number_seq  to service_role;
 
-revoke all on function public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz) from public, anon, authenticated;
-grant execute on function public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz) to service_role;
+revoke all on function public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date) from public, anon, authenticated;
+grant execute on function public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date) to service_role;
 revoke all on function public.pos_payments_guard() from public, anon, authenticated;
 
 comment on table public.pos_orders is 'POS orders (SYNC-CONTRACT §3), latest applied version per order. Service role only. Never the web orders table.';
 comment on table public.pos_payments is 'POS payments: insert-only; captured → voided only (trg_pos_payments_guard). cash | external_card (last4 / external_ref, never card data).';
 comment on table public.pos_order_submissions is 'Idempotency (SYNC §3.1): (order_id, version) → content_hash + original response + request as received. Immutable.';
-comment on function public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz) is
+comment on function public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date) is
   'pos-v1-submit-order apply: lock, identity re-check, §3.1, payment rules, aggregate upsert, idempotency row — one transaction.';
 
 commit;

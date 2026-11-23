@@ -33,13 +33,13 @@ checks(check_name, pass) as (
                    and not has_sequence_privilege('anon', 'public.pos_order_number_seq', 'USAGE') end
   union all
   select 'function pos_apply_order_submission: service_role only',
-         case when to_regprocedure('public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz)') is null then false
-              else has_function_privilege('service_role', 'public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz)', 'EXECUTE')
-                   and not has_function_privilege('anon', 'public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz)', 'EXECUTE')
-                   and not has_function_privilege('authenticated', 'public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz)', 'EXECUTE') end
+         case when to_regprocedure('public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date)') is null then false
+              else has_function_privilege('service_role', 'public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date)', 'EXECUTE')
+                   and not has_function_privilege('anon', 'public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date)', 'EXECUTE')
+                   and not has_function_privilege('authenticated', 'public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date)', 'EXECUTE') end
   union all
   select 'function search_path pinned: pos_apply_order_submission',
-         exists (select 1 from pg_proc where oid = to_regprocedure('public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz)')
+         exists (select 1 from pg_proc where oid = to_regprocedure('public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date)')
                  and proconfig is not null and 'search_path=public' = any(proconfig))
   union all
   select 'trigger trg_pos_payments_guard enabled',

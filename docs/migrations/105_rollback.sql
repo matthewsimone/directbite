@@ -5,6 +5,7 @@
 begin;
 drop function if exists public.pos_staff_snapshot_source(uuid);
 drop function if exists public.pos_staff_set_settings(uuid, int, int, boolean);
+drop function if exists public.pos_staff_reactivate(uuid);
 drop function if exists public.pos_staff_deactivate(uuid);
 drop function if exists public.pos_staff_set_pin(uuid, text, text, jsonb);
 drop function if exists public.pos_staff_add(uuid, text, text, text, text, jsonb);

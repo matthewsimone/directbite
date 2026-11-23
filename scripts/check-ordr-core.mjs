@@ -17,7 +17,8 @@
 // (money.ts + order/*.ts, non-test) has files the manifest does not. Any diff
 // means re-vendor (scripts/vendor-ordr-core.mjs), never edit the copy.
 //
-// Also (item 4): _shared/ordr-core-ext/ — availability.ts + cardData.ts, with
+// Also (items 4, 7): _shared/ordr-core-ext/ — availability.ts + cardData.ts + drawer.ts (+ the pinned
+// money.ts re-export shim drawer.ts imports), with
 // their own VENDORED.json — gets the same checks (bytes = manifest, nothing
 // else in the directory, and with --source byte-equal to ordr-pos src/core).
 // They are NOT part of pricingModuleHash (only ordr-core/'s manifest is).
@@ -28,7 +29,7 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { EXT_FILES, EXT_MANIFEST_PATH, EXT_VENDOR_DIR, MANIFEST_PATH, MODULE_INFO_PATH, SOURCE_ROOT, VENDOR_DIR, isVendoredPath, renderModuleInfo, sha256 } from './lib/ordrCore.mjs';
+import { EXT_FILES, EXT_MANIFEST_PATH, EXT_SHIMS, EXT_VENDOR_DIR, MANIFEST_PATH, MODULE_INFO_PATH, SOURCE_ROOT, VENDOR_DIR, isVendoredPath, renderModuleInfo, sha256 } from './lib/ordrCore.mjs';
 
 const args = process.argv.slice(2);
 let sourcePath = null;
@@ -138,8 +139,14 @@ if (ext) {
       }
     }
   }
+  // local shims: exactly the pinned text, listed in the manifest's "shims"
+  for (const [rel, text] of Object.entries(EXT_SHIMS)) {
+    const file = path.join(EXT_VENDOR_DIR, rel);
+    if ((ext.shims ?? {})[rel] !== text) problems.push(`ordr-core-ext manifest shim ${rel} is not the pinned text`);
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== text) problems.push(`ordr-core-ext/${rel} is not exactly the pinned shim`);
+  }
   for (const rel of walk(EXT_VENDOR_DIR)) {
-    if (rel !== 'VENDORED.json' && !(rel in extFiles)) problems.push(`unexpected file in ordr-core-ext/ (not vendored): ${rel}`);
+    if (rel !== 'VENDORED.json' && !(rel in extFiles) && !(rel in EXT_SHIMS)) problems.push(`unexpected file in ordr-core-ext/ (not vendored): ${rel}`);
   }
 }
 

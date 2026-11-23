@@ -1,6 +1,6 @@
 -- 105_smoke.sql — one-time smoke test of migration 105, run by Matt in the SQL editor AFTER 101 and 105
 -- are applied, as postgres. NOTHING PERSISTS (BEGIN … ROLLBACK). Failure → 'SMOKE FAIL: <what>'.
--- Success → 'SMOKE OK (all 14 checks)'. Prints no row data. The salts / hashes below are placeholders
+-- Success → 'SMOKE OK (all 15 checks)'. Prints no row data. The salts / hashes below are placeholders
 -- (hex of the right length), not real PINs.
 
 begin;
@@ -52,21 +52,28 @@ begin
   r := public.pos_staff_deactivate(v_m1);
   if not (r->>'ok')::boolean or (r->>'version')::int <> 4 then raise exception 'SMOKE FAIL: deactivate with another manager'; end if;
   n := n + 1;
+  -- 6b. reactivate: bumps once; already active → no bump; unknown → not_found
+  r := public.pos_staff_reactivate(v_m1);
+  if not (r->>'ok')::boolean or (r->>'version')::int <> 5 or not (select active from public.pos_staff where id = v_m1) then raise exception 'SMOKE FAIL: reactivate'; end if;
+  if (public.pos_staff_reactivate(v_m1)->>'version')::int <> 5 then raise exception 'SMOKE FAIL: reactivate of an active staff bumped'; end if;
+  if public.pos_staff_reactivate(gen_random_uuid())->>'reason' <> 'not_found' then raise exception 'SMOKE FAIL: reactivate unknown'; end if;
+  r := public.pos_staff_deactivate(v_m1);   -- back to the state the next checks expect (version 6)
+  n := n + 1;
   -- 7. set-pin bumps; unknown staff → not_found
   r := public.pos_staff_set_pin(v_sam, repeat('0', 31) || '2', repeat('cd', 32), v_kdf);
-  if (r->>'version')::int <> 5 or (select pin_salt from public.pos_staff where id = v_sam) <> repeat('0', 31) || '2' then raise exception 'SMOKE FAIL: set-pin'; end if;
+  if (r->>'version')::int <> 7 or (select pin_salt from public.pos_staff where id = v_sam) <> repeat('0', 31) || '2' then raise exception 'SMOKE FAIL: set-pin'; end if;
   if public.pos_staff_set_pin(gen_random_uuid(), v_salt, v_hash, v_kdf)->>'reason' <> 'not_found' then raise exception 'SMOKE FAIL: set-pin unknown'; end if;
   n := n + 1;
   -- 8. settings: partial update + bump
   r := public.pos_staff_set_settings(v_r, null, 1000, false);
-  if (r->>'version')::int <> 6 or (select auto_lock_minutes from public.pos_staff_settings where restaurant_id = v_r) <> 5
+  if (r->>'version')::int <> 8 or (select auto_lock_minutes from public.pos_staff_settings where restaurant_id = v_r) <> 5
      or (select over_short_approval_cents from public.pos_staff_settings where restaurant_id = v_r) <> 1000 then
     raise exception 'SMOKE FAIL: settings';
   end if;
   n := n + 1;
   -- 9. source: version 6, 3 staff ordered by sort_order (inactive included), settings carried
   v_src := public.pos_staff_snapshot_source(v_r);
-  if (v_src->>'version')::int <> 6 or jsonb_array_length(v_src->'staff') <> 3 or v_src #>> '{staff,0,name}' <> 'Sam'
+  if (v_src->>'version')::int <> 8 or jsonb_array_length(v_src->'staff') <> 3 or v_src #>> '{staff,0,name}' <> 'Sam'
      or (v_src #>> '{staff,1,active}')::boolean or (v_src #>> '{settings,z_requires_manager}')::boolean
      or v_src #>> '{staff,0,pin,hash}' <> repeat('cd', 32) then
     raise exception 'SMOKE FAIL: snapshot source';
@@ -81,9 +88,9 @@ begin
   end;
   n := n + 1;
   -- 11. snapshots: (restaurant, version) unique
-  insert into public.pos_staff_snapshots (restaurant_id, version, hash, body) values (v_r, 6, repeat('e', 64), '{}');
+  insert into public.pos_staff_snapshots (restaurant_id, version, hash, body) values (v_r, 8, repeat('e', 64), '{}');
   begin
-    insert into public.pos_staff_snapshots (restaurant_id, version, hash, body) values (v_r, 6, repeat('f', 64), '{}');
+    insert into public.pos_staff_snapshots (restaurant_id, version, hash, body) values (v_r, 8, repeat('f', 64), '{}');
     raise exception 'SMOKE FAIL: duplicate snapshot version';
   exception when unique_violation then null;
   end;

@@ -266,6 +266,15 @@ verify_jwt = false
 [functions.pos-v1-submit-staff-events]
 verify_jwt = false
 
+[functions.pos-v1-submit-shift]
+verify_jwt = false
+
+[functions.pos-v1-submit-refund]
+verify_jwt = false
+
+[functions.pos-v1-submit-day-close]
+verify_jwt = false
+
 # pos-admin-devices — /admin register management (DEVICE-AUTH §6). Same
 # pattern as admin-refund / kh-admin: verify_jwt = false, handler checks the
 # Bearer JWT against admin_users.

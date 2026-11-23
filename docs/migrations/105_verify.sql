@@ -4,7 +4,7 @@
 with t(name) as (values ('pos_staff'), ('pos_staff_settings'), ('pos_staff_snapshots'), ('pos_staff_events')),
 f(sig) as (values ('public.pos_staff_lock(uuid)'), ('public.pos_staff_bump(uuid)'),
                   ('public.pos_staff_add(uuid, text, text, text, text, jsonb)'), ('public.pos_staff_set_pin(uuid, text, text, jsonb)'),
-                  ('public.pos_staff_deactivate(uuid)'), ('public.pos_staff_set_settings(uuid, integer, integer, boolean)'),
+                  ('public.pos_staff_deactivate(uuid)'), ('public.pos_staff_reactivate(uuid)'), ('public.pos_staff_set_settings(uuid, integer, integer, boolean)'),
                   ('public.pos_staff_snapshot_source(uuid)')),
 checks(check_name, pass) as (
   select 'table exists: ' || name, to_regclass('public.' || name) is not null from t

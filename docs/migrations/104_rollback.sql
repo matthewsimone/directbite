@@ -3,7 +3,7 @@
 -- resend their outbox; the server would then treat each order as new (new order numbers).
 
 begin;
-drop function if exists public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz);
+drop function if exists public.pos_apply_order_submission(jsonb, uuid, uuid, jsonb, timestamptz, date);
 drop table if exists public.pos_order_submissions;
 drop table if exists public.pos_payments;          -- drops trg_pos_payments_guard with it
 drop function if exists public.pos_payments_guard();

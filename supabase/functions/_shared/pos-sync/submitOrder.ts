@@ -26,7 +26,9 @@
  *
  * Staff flags (item 8, _shared/pos-staff/flags.ts): unknown_actor, approval_missing,
  * register_actor_after_staff — on applied responses + stored; stale_ignored echoes the stored ones.
- * Not here: module_drift (device-side in the reference — sync.ts:128-142) and post_z (item 7).
+ * post_z (item 7): from the order's sales day (sticky, pos_orders.sales_day) vs that register's Zs.
+ * After an applied order, closed shifts still drawer_unverified are re-verified (END-OF-DAY §7).
+ * Not here: module_drift (device-side in the reference — sync.ts:128-142).
  */
 import { authenticateDevice, type AuthDeps } from '../pos-device/auth.ts';
 import { orderIdentity } from '../pos-device/identity.ts';
@@ -39,6 +41,9 @@ import { cardDataPaths, findRedemptionKey, jsonDepth, MAX_DEPTH, paymentsShapePr
 import { availabilityViolation, diffBreakdowns, priceAgainstSnapshot, PricingError, ServerValidation } from './orderPricing.ts';
 import { decideVersion, type ApplyOutcome, type OrderHead, type OrderStore, type SubmitOrderOk } from './orderStore.ts';
 import { orderStaffFlags, type StaffContext } from '../pos-staff/flags.ts';
+import { orderPostZ, reverifyShifts } from '../pos-eod/handlers.ts';
+import { businessDate } from '../pos-eod/rules.ts';
+import type { EodStore } from '../pos-eod/store.ts';
 
 /**
  * The restaurant's CURRENT snapshot (for unknown_snapshot repricing and stale_price): built from the
@@ -67,6 +72,8 @@ export interface SubmitOrderDeps extends AuthDeps {
   current: { get(restaurantId: string, nowMs: number): Promise<MenuSnapshot> };
   /** Item 8: staff ids / roles / first publication / settings history of the restaurant. */
   staff: { context(restaurantId: string): Promise<StaffContext> };
+  /** Item 7: Zs for post_z; closed shifts to re-verify once payments arrive. */
+  eod: EodStore;
   moduleHash?: string;
 }
 
@@ -82,7 +89,7 @@ function conflictResult(server_version: number | null, server_writer_device_id: 
 const reuseResult = (p: OrderPayload) => errorResult(409, 'idempotency_key_reuse', `(${p.order_id}, ${p.version}) was already applied with different content`);
 
 /** stale_ignored: the newer stored version's pricing; flags as the reference's response() defaults. */
-function staleResponse(head: OrderHead, requestVersion: number, nowIso: string, moduleHash: string): SubmitOrderOk {
+function staleResponse(head: OrderHead, requestVersion: number, nowIso: string, moduleHash: string, postZ: boolean): SubmitOrderOk {
   const diff = diffBreakdowns(head.provisional_pricing, head.pricing);
   return {
     result: 'stale_ignored',
@@ -96,6 +103,7 @@ function staleResponse(head: OrderHead, requestVersion: number, nowIso: string, 
       mismatch: Object.keys(diff).length > 0, stale_price: false, unknown_snapshot: false, availability_flag: false,
       // item 8: the stored version's staff flags
       ...Object.fromEntries(STAFF_FLAG_KEYS.map((k) => [k, head.flags[k] === true])),
+      post_z: postZ,
     },
     diff,
     pricing_module_hash: moduleHash,
@@ -103,12 +111,12 @@ function staleResponse(head: OrderHead, requestVersion: number, nowIso: string, 
   };
 }
 
-function outcomeResult(o: ApplyOutcome, p: OrderPayload, nowIso: string, moduleHash: string): DeviceResult {
+function outcomeResult(o: ApplyOutcome, p: OrderPayload, nowIso: string, moduleHash: string, stalePostZ: boolean): DeviceResult {
   switch (o.outcome) {
     case 'applied': return okResult(o.response);
     case 'duplicate': return okResult({ ...o.response, result: 'duplicate' });
     case 'idempotency_key_reuse': return reuseResult(p);
-    case 'stale_ignored': return okResult(staleResponse(o.head, p.version, nowIso, moduleHash));
+    case 'stale_ignored': return okResult(staleResponse(o.head, p.version, nowIso, moduleHash, stalePostZ));
     case 'version_conflict': return conflictResult(o.server_version, o.server_writer_device_id);
     case 'restaurant_mismatch': return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant', { field: 'order_id' });
     case 'prefix_mismatch': return errorResult(400, 'prefix_mismatch', `the order's ticket prefix is ${o.expected}`, { field: 'ticket.prefix' });
@@ -169,7 +177,7 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   const d = decideVersion(p, pr.device_id, prior, head);
   if (d === 'duplicate') return okResult({ ...prior!.response, result: 'duplicate' });
   if (d === 'idempotency_key_reuse') return reuseResult(p);
-  if (d === 'stale_ignored') return okResult(staleResponse(head!, p.version, nowIso, moduleHash));
+  if (d === 'stale_ignored') return okResult(staleResponse(head!, p.version, nowIso, moduleHash, await orderPostZ(deps.eod, head!.writer_device_id, head!.sales_day, p.order_id)));
   if (d === 'version_conflict') return conflictResult(head?.version ?? null, head?.writer_device_id ?? null);
 
   // 8. price against the pinned snapshot
@@ -199,6 +207,10 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   const diff = diffBreakdowns(p.provisional_pricing, priced.pricing);
   // item 8: never a rejection
   const staffFlags = orderStaffFlags(await deps.staff.context(rid), p, head ? { actorPaths: head.actor_paths, registerAfterStaff: head.flags.register_actor_after_staff === true } : null);
+  // item 7: sales day = business day of the device_time of the version that first closed / voided it
+  const dayOf = (current ?? snap).restaurant;
+  const salesDay = head?.sales_day ?? (p.status === 'open' ? null : businessDate(Date.parse(p.device_time), dayOf.timezone, dayOf.business_day_cutoff));
+  const postZ = await orderPostZ(deps.eod, pr.device_id, salesDay, p.order_id);
   const response: SubmitOrderOk = {
     result: 'applied',
     order_id: p.order_id,
@@ -214,6 +226,7 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
       availability_flag: availability,
       ...(priced.delivery ? { delivery: priced.delivery } : {}),
       ...staffFlags,
+      post_z: postZ,
     },
     diff,
     pricing_module_hash: moduleHash,
@@ -221,11 +234,13 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   };
 
   // 9 + 10. payments insert-only + store, one transaction
-  const outcome = await deps.orders.apply({ payload: p, writer: pr.device_id, restaurantId: rid, response, receivedAt: nowIso });
+  const outcome = await deps.orders.apply({ payload: p, writer: pr.device_id, restaurantId: rid, response, receivedAt: nowIso, salesDay });
   if (outcome.outcome === 'applied') {
+    await reverifyShifts(deps.eod, rid, deps.log);
     deps.log('order_applied', { restaurant_id: rid, device_id: pr.device_id, order_id: p.order_id, version: p.version, mismatch: response.flags.mismatch, stale_price: stale, unknown_snapshot: unknown, availability_flag: availability });
   }
-  return outcomeResult(outcome, p, nowIso, moduleHash);
+  const stalePostZ = outcome.outcome === 'stale_ignored' ? await orderPostZ(deps.eod, outcome.head.writer_device_id, outcome.head.sales_day ?? null, p.order_id) : false;
+  return outcomeResult(outcome, p, nowIso, moduleHash, stalePostZ);
 }
 
 /** For the function's index.ts: the Supabase store. */

@@ -59,6 +59,8 @@ export interface StaffAdminStore {
   add(restaurantId: string, name: string, role: StaffRole, saltHex: string, hashHex: string, kdf: KdfParams): Promise<AdminResult>;
   setPin(staffId: string, saltHex: string, hashHex: string, kdf: KdfParams): Promise<AdminResult>;
   deactivate(staffId: string): Promise<AdminResult>;
+  /** Already active → ok at the current version (no bump). */
+  reactivate(staffId: string): Promise<AdminResult>;
   setSettings(restaurantId: string, patch: { auto_lock_minutes?: number; over_short_approval_cents?: number; z_requires_manager?: boolean }): Promise<AdminResult>;
   list(restaurantId: string): Promise<StaffListRow[]>;
 }
@@ -168,6 +170,14 @@ export class MemoryStaffStore implements StaffStore, StaffAdminStore {
     s.active = false;
     return Promise.resolve({ ok: true, staff_id: staffId, version: this.bump(s.restaurant_id) });
   }
+  reactivate(staffId: string): Promise<AdminResult> {
+    const s = this.staff.get(staffId);
+    if (!s) return Promise.resolve({ ok: false, reason: 'not_found' });
+    const st = this.ensureSettings(s.restaurant_id);
+    if (s.active) return Promise.resolve({ ok: true, staff_id: staffId, version: st.version });
+    s.active = true;
+    return Promise.resolve({ ok: true, staff_id: staffId, version: this.bump(s.restaurant_id) });
+  }
   setSettings(restaurantId: string, patch: { auto_lock_minutes?: number; over_short_approval_cents?: number; z_requires_manager?: boolean }): Promise<AdminResult> {
     Object.assign(this.ensureSettings(restaurantId), patch);
     return Promise.resolve({ ok: true, staff_id: '', version: this.bump(restaurantId) });
@@ -274,6 +284,9 @@ export class PgStaffStore implements StaffStore, StaffAdminStore {
   }
   deactivate(staffId: string) {
     return this.rpc<AdminResult>('pos_staff_deactivate', { p_staff_id: staffId });
+  }
+  reactivate(staffId: string) {
+    return this.rpc<AdminResult>('pos_staff_reactivate', { p_staff_id: staffId });
   }
   setSettings(restaurantId: string, patch: { auto_lock_minutes?: number; over_short_approval_cents?: number; z_requires_manager?: boolean }) {
     return this.rpc<AdminResult>('pos_staff_set_settings', {

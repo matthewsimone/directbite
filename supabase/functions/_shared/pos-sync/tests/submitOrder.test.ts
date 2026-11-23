@@ -26,6 +26,7 @@ import type { OrderPayload, WirePayment } from '../orderPayload.ts';
 import { priceAgainstSnapshot } from '../orderPricing.ts';
 import { MemoryOrderStore, type SubmitOrderOk } from '../orderStore.ts';
 import { NO_STAFF } from '../../pos-staff/flags.ts';
+import { MemoryEodStore } from '../../pos-eod/store.ts';
 import { handleSubmitOrder, type SubmitOrderDeps } from '../submitOrder.ts';
 import { sizePricesToMap } from '../sizePrices.ts';
 import { cents, parseRate, ZERO, ZERO_RATE } from '../../ordr-core/money.ts';
@@ -56,6 +57,7 @@ async function setup(o: { snap?: MenuSnapshot } = {}) {
       },
     },
     staff: { context: () => Promise.resolve(NO_STAFF) },
+    eod: new MemoryEodStore(orders),
   };
   /** Publish a new current menu (the server's snapshot moves on). */
   const publish = (s: MenuSnapshot) => { state.current = s; };
@@ -78,7 +80,7 @@ Deno.test('§3.1 row 1: unknown order, base 0 → 200 applied; order number; ser
   const r = okBody(await t.submit(p));
   assertEquals([r.result, r.version, r.server_version, r.order_number, r.priced_against_hash], ['applied', 1, 1, 5_000_001, t.snap.hash]);
   assertEquals(r.pricing.total_cents, 2068);
-  assertEquals(r.flags, { mismatch: false, stale_price: false, unknown_snapshot: false, availability_flag: false, unknown_actor: false, approval_missing: false, register_actor_after_staff: false });
+  assertEquals(r.flags, { mismatch: false, stale_price: false, unknown_snapshot: false, availability_flag: false, unknown_actor: false, approval_missing: false, register_actor_after_staff: false, post_z: false });
   assertEquals(r.diff, {});
   assertEquals(r.pricing_module_hash, PRICING_MODULE_HASH);
   assertEquals(r.server_time, '2026-11-19T17:00:00.000Z');
@@ -183,7 +185,7 @@ Deno.test('§3.1 row 8: same device, n < c, key never seen → 200 stale_ignored
   const r2 = okBody(await t.submit(p2)); // the late v2
   assertEquals([r2.result, r2.version, r2.server_version, r2.order_number], ['stale_ignored', 2, 3, r3.order_number]);
   assertEquals(r2.pricing, r3.pricing);
-  assertEquals(r2.flags, { mismatch: false, stale_price: false, unknown_snapshot: false, availability_flag: false, unknown_actor: false, approval_missing: false, register_actor_after_staff: false });
+  assertEquals(r2.flags, { mismatch: false, stale_price: false, unknown_snapshot: false, availability_flag: false, unknown_actor: false, approval_missing: false, register_actor_after_staff: false, post_z: false });
   assertEquals(t.orders.orders.get(p1.order_id)!.version, 3);
 });
 
