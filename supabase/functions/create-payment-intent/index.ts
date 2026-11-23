@@ -12,6 +12,9 @@ import {
   takeShadowSnapshot,
   withShadow,
 } from "../_shared/pos-v1/shadowGuard.ts";
+// CP8 enforce guard: zero-import, like shadowGuard. The enforcement code itself
+// is imported dynamically, only for restaurants on POS_V1_ENFORCE_RESTAURANTS.
+import { guardCheckout, parseEnforceList } from "../_shared/pos-v1/enforceGuard.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
@@ -24,6 +27,9 @@ const supabase = createClient(
 // compared with what the client charged. Comma-separated restaurant ids.
 // Empty / unset = shadow mode off (the default).
 const SHADOW_ALLOWLIST = parseShadowAllowlist(Deno.env.get("POS_V1_SHADOW_RESTAURANTS"));
+// Restaurants whose checkouts are ENFORCED (CP8). Comma-separated ids.
+// Empty / unset = enforcement off everywhere (the default).
+const ENFORCE_LIST = parseEnforceList(Deno.env.get("POS_V1_ENFORCE_RESTAURANTS"));
 const shadowOpts = {
   timeoutMs: SHADOW_TIMEOUT_MS,
   log: (event: string, data: Record<string, unknown>) =>
@@ -589,6 +595,38 @@ serve(async (req: Request) => {
           { restaurant_id }
         );
       }
+    }
+
+    // -------- CP8 enforce guard (POS_V1_ENFORCE_RESTAURANTS only) --------
+    // Not listed → returns null without touching the DB or loading any pricing
+    // code: byte-identical behavior. Listed → pause / delivery switch / hours /
+    // server price checks (_shared/pos-v1/enforce.ts); a pricer failure fails
+    // CLOSED (503 pricing_unavailable). Runs on create AND update, before any
+    // Stripe call or pending_orders write.
+    const enforceBlock = await guardCheckout(
+      ENFORCE_LIST,
+      restaurant_id,
+      async () => {
+        const { enforceCheckout, supabaseServiceInfo } = await import("../_shared/pos-v1/enforce.ts");
+        const { supabasePricingDb } = await import("../_shared/pos-v1/supabaseDb.ts");
+        return await enforceCheckout(
+          { restaurantId: restaurant_id, orderData: order_data, clientAmount: amount, sessionToken: session_token, now: new Date() },
+          { db: supabasePricingDb(supabase), loadServiceInfo: supabaseServiceInfo(supabase) },
+        );
+      },
+      shadowOpts.log,
+    );
+    if (enforceBlock) {
+      console.warn("[create-payment-intent] enforce guard refused", {
+        restaurant_id,
+        status: enforceBlock.status,
+        error: enforceBlock.body.error,
+        reason: enforceBlock.body.reason ?? null,
+      });
+      return new Response(
+        JSON.stringify(enforceBlock.body),
+        { status: enforceBlock.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Store order data in pending_orders table to avoid Stripe metadata size limits
