@@ -231,7 +231,7 @@ async function sendOne(
             token,
             notification: { title: payload.title, body: payload.body },
             data: { slug: payload.slug },
-            android: { priority: "high" },
+            android: { priority: "high", notification: { channel_id: "promos" } },
             apns: { payload: { aps: { sound: "default" } } },
           },
         }),

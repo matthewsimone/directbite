@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { IS_NATIVE, APP_SLUG, getPublicOrigin } from '../lib/native'
 import { applyNativeBrand } from '../lib/nativeBrand'
 import { useCustomerAuth } from '../hooks/useCustomerAuth'
 import { readToken } from '../lib/tokenStore'
+import { installPushListeners, syncPushToken } from '../lib/nativePush'
 import SignInSheet from './SignInSheet'
 import LogoFrame from './LogoFrame'
 
@@ -17,8 +19,19 @@ export default function NativeAuthGate({ children }) {
 
 function GateInner({ slug, children }) {
   const { loading, isLoggedIn, refresh } = useCustomerAuth()
+  const navigate = useNavigate()
   const [settled, setSettled] = useState(false)
   if (!loading && !settled) setSettled(true)
+
+  // Push: listeners once per app run; tapping a notification opens the menu.
+  useEffect(() => {
+    installPushListeners(() => navigate(`/${slug}`))
+  }, [navigate, slug])
+
+  // Register (or refresh) this device's push token whenever a session resolves.
+  useEffect(() => {
+    if (isLoggedIn) syncPushToken()
+  }, [isLoggedIn])
 
   // A stored token with no session usually means the launch-time check failed
   // offline. Re-check when the app returns to the foreground or the network

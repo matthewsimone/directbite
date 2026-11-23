@@ -1,31 +1,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { readToken, writeToken, clearToken } from '../lib/tokenStore'
+import { callCustomerAuth } from '../lib/customerAuthApi'
+import { IS_NATIVE } from '../lib/native'
+import { getStoredPushToken } from '../lib/nativePush'
 
 // Sent with every 'send' request as the consent proof the edge function
 // records alongside the verification. Must match the copy shown to the
 // customer at the point they tap send.
 const CONSENT_TEXT = 'By continuing you agree to receive a one-time verification code by SMS. Message and data rates may apply.'
-
-// Customers have no Supabase session, so every call authenticates with the
-// anon key alone — sent as both `apikey` and `Authorization`, matching
-// ConfirmationPage's get-order-by-pi call. Never throws on a non-2xx; the
-// caller branches on `ok` and reads the error out of `data`.
-async function callCustomerAuth(body, signal) {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
-  const res = await fetch(`${supabaseUrl}/functions/v1/customer-auth`, {
-    method: 'POST',
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    signal,
-  })
-  const data = await res.json().catch(() => ({}))
-  return { ok: res.ok, status: res.status, data }
-}
 
 const CustomerAuthContext = createContext(null)
 
@@ -165,7 +147,16 @@ export function CustomerAuthProvider({ children }) {
   const logout = useCallback(async () => {
     const token = readToken()
     try {
-      if (token) await callCustomerAuth({ action: 'logout', token })
+      if (token) {
+        // Web body is exactly { action, token }. Native adds the device's push
+        // token, when there is one, so the server stops sending to it.
+        const body = { action: 'logout', token }
+        if (IS_NATIVE) {
+          const pushToken = await getStoredPushToken()
+          if (pushToken) body.push_token = pushToken
+        }
+        await callCustomerAuth(body)
+      }
     } catch { /* a failed revoke must not strand the UI logged in */ }
     clearToken()
     if (mountedRef.current) {

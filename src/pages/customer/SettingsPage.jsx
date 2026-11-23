@@ -5,6 +5,7 @@ import { useCustomerAuth } from '../../hooks/useCustomerAuth'
 import { useRestaurant } from '../../hooks/useRestaurant'
 import { getPublicOrigin, IS_NATIVE } from '../../lib/native'
 import { useNativeBack } from '../../lib/nativeBack'
+import { getPushPermission, requestPushPermission } from '../../lib/nativePush'
 
 // Native shell Account tab — profile, saved address, legal links, sign out, delete account. Routed only when IS_NATIVE.
 // Internal view stack (main → info → name/email/delete, main → address/legal), Owner.com-style.
@@ -30,6 +31,8 @@ export default function SettingsPage() {
   const [deleting, setDeleting] = useState(false)
   const [view, setView] = useState('main')
   const [version, setVersion] = useState(null)
+  const [appName, setAppName] = useState(null)
+  const [pushPerm, setPushPerm] = useState(null)
 
   useEffect(() => {
     if (!isLoggedIn) return
@@ -62,12 +65,32 @@ export default function SettingsPage() {
       try {
         const { App } = await import('@capacitor/app')
         const i = await App.getInfo()
-        if (alive) setVersion(`v${i.version} (${i.build})`)
+        if (alive) {
+          setVersion(`v${i.version} (${i.build})`)
+          setAppName(i.name || null)
+        }
       } catch {
         // no version line
       }
     })()
     return () => { alive = false }
+  }, [])
+
+  // Notification permission, re-read whenever the app comes back to the
+  // foreground (the customer may have changed it in the phone's Settings).
+  useEffect(() => {
+    if (!IS_NATIVE) return
+    let alive = true
+    function refresh() {
+      if (document.visibilityState !== 'visible') return
+      getPushPermission().then((p) => { if (alive) setPushPerm(p) })
+    }
+    refresh()
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', refresh)
+    }
   }, [])
 
   useEffect(() => {
@@ -109,6 +132,26 @@ export default function SettingsPage() {
     setDeleting(false)
     toast.error("Couldn't delete your account. Try again.")
   }
+
+  async function handleNotifications() {
+    if (pushPerm === 'prompt') {
+      const next = await requestPushPermission()
+      setPushPerm(next)
+      return
+    }
+    if (pushPerm === 'denied') {
+      toast(`Turn on notifications in your phone's Settings → ${appName || restaurantName}`)
+      return
+    }
+    if (pushPerm === 'granted') {
+      toast("Notifications are on. Turn them off in your phone's Settings.")
+    }
+  }
+
+  const pushSubtitle =
+    pushPerm === 'granted' ? 'On'
+      : pushPerm === 'denied' ? 'Off — turn on in Settings'
+        : 'Off'
 
   const trimmedName = name.trim()
   const trimmedEmail = email.trim()
@@ -213,6 +256,9 @@ export default function SettingsPage() {
 
             <div className="mt-4 divide-y divide-dashed divide-gray-200">
               <NavRow title="Saved address" subtitle={addressLine || 'None saved'} onClick={() => setView('address')} />
+              {pushPerm && pushPerm !== 'unsupported' && (
+                <NavRow title="Notifications" subtitle={pushSubtitle} onClick={handleNotifications} />
+              )}
               <NavRow title="Legal" onClick={() => setView('legal')} />
             </div>
 

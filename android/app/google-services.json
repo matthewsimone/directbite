@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "934034725866",
+    "project_id": "ordr-fcd3f",
+    "storage_bucket": "ordr-fcd3f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:934034725866:android:9635d684c75719a2823093",
+        "android_client_info": {
+          "package_name": "co.ordr.testpizza"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDB4J5fJvhTi_OUIhMa6zIq4A8bbxrv1wo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

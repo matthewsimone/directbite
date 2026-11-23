@@ -1,5 +1,21 @@
 {
   "appId": "co.ordr.testpizza",
   "appName": "Test Pizza",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "FirebaseMessaging": {
+      "presentationOptions": ["alert", "badge", "sound"]
+    }
+  },
+  "experimental": {
+    "ios": {
+      "spm": {
+        "packageOptions": {
+          "@capacitor-firebase/messaging": {
+            "symlink": true
+          }
+        }
+      }
+    }
+  }
 }
