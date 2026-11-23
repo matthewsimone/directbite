@@ -15,6 +15,7 @@ import {
 // CP8 enforce guard: zero-import, like shadowGuard. The enforcement code itself
 // is imported dynamically, only for restaurants on POS_V1_ENFORCE_RESTAURANTS.
 import { guardCheckout, parseEnforceList } from "../_shared/pos-v1/enforceGuard.ts";
+import { classifyUpdateError, isUpdatableStatus } from "../_shared/stripeIntentUpdate.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!);
 
@@ -634,16 +635,27 @@ serve(async (req: Request) => {
 
     if (payment_intent_id) {
       // Update: look up existing pending order from the payment intent metadata
-      const existing = await stripe.paymentIntents.retrieve(
-        payment_intent_id,
-        { stripeAccount: restaurant.stripe_account_id }
-      );
+      const jsonFail = (f: { status: number; body: Record<string, unknown> }) =>
+        new Response(JSON.stringify(f.body), { status: f.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      let existing: Stripe.PaymentIntent;
+      try {
+        existing = await stripe.paymentIntents.retrieve(
+          payment_intent_id,
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+      } catch (retrieveErr) {
+        // W3: a stale / foreign PI id or a Stripe outage is not a 500.
+        const mapped = await classifyUpdateError(retrieveErr, null);
+        if (!mapped) throw retrieveErr;
+        console.warn("[create-payment-intent] update: retrieve failed", { pi: payment_intent_id, status: mapped.status, error: mapped.body.error });
+        return jsonFail(mapped);
+      }
       pending_order_id = existing.metadata?.pending_order_id || "";
 
       // A late update (e.g. a checkout remount that reset the tip) must not
       // rewrite the order once the customer has started paying: the webhook
       // builds the order from pending_orders, not from the charge.
-      if (existing.status !== "requires_payment_method" && existing.status !== "requires_confirmation") {
+      if (!isUpdatableStatus(existing.status)) {
         console.warn("[create-payment-intent] update refused, PI locked", {
           pi: existing.id,
           status: existing.status,
@@ -656,21 +668,42 @@ serve(async (req: Request) => {
       }
 
       // PI first: if Stripe refuses the update, pending_orders stays as it was.
-      const updated = await stripe.paymentIntents.update(
-        payment_intent_id,
-        {
-          amount,
-          // Only platform orders re-assert the application fee on update.
-          // Self/pickup/in-house update path stays byte-identical (no app-fee field).
-          ...(isPlatform ? { application_fee_amount: applicationFeeCents } : {}),
-          metadata: {
-            restaurant_id,
-            restaurant_name: restaurant.name,
-            pending_order_id,
+      let updated: Stripe.PaymentIntent;
+      try {
+        updated = await stripe.paymentIntents.update(
+          payment_intent_id,
+          {
+            amount,
+            // Only platform orders re-assert the application fee on update.
+            // Self/pickup/in-house update path stays byte-identical (no app-fee field).
+            ...(isPlatform ? { application_fee_amount: applicationFeeCents } : {}),
+            metadata: {
+              restaurant_id,
+              restaurant_name: restaurant.name,
+              pending_order_id,
+            },
           },
-        },
-        { stripeAccount: restaurant.stripe_account_id }
-      );
+          { stripeAccount: restaurant.stripe_account_id }
+        );
+      } catch (updateErr) {
+        // W3 (CP8c): the PI was confirmed / captured between our retrieve and
+        // this update (e.g. "application_fee_amount cannot be updated … after a
+        // capture"). Re-read it: no longer updatable → 409 payment_locked, the
+        // same answer as the gate above. Other Stripe errors → non-500 (W3 table).
+        const mapped = await classifyUpdateError(updateErr, async () => {
+          const again = await stripe.paymentIntents.retrieve(payment_intent_id, { stripeAccount: restaurant.stripe_account_id });
+          return again.status;
+        });
+        if (!mapped) throw updateErr;
+        console.warn("[create-payment-intent] update refused by Stripe", {
+          pi: payment_intent_id,
+          status: mapped.status,
+          error: mapped.body.error,
+          pi_status: mapped.body.status ?? null,
+          pending_order_id,
+        });
+        return jsonFail(mapped);
+      }
 
       if (pending_order_id && order_data) {
         const { error: poUpdateErr } = await supabase

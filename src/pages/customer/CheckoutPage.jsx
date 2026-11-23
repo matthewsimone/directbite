@@ -1329,6 +1329,10 @@ export default function CheckoutPage() {
   const [swapping, setSwapping] = useState(false)
   const payingRef = useRef(false)
   const handlePayingChange = useCallback(next => { payingRef.current = next }, [])
+  // W3 (CP8c): the intent the customer has PAID. No pending-order update is
+  // sent for it afterwards — Stripe refuses updates after capture, which used
+  // to surface as create-payment-intent 500s.
+  const paidIntentRef = useRef(null)
 
   // Compute full (undiscounted) subtotal from cart items' fullBasePrice/fullPrice
   const discountPercentage = promotion ? Number(promotion.discount_percentage) : 0
@@ -2162,6 +2166,10 @@ export default function CheckoutPage() {
   // pending_orders row. Never throws — resolves { ok } or { ok: false, reason,
   // errData? } so each caller decides what a failure means.
   const pushOrderData = useCallback(async () => {
+    // Paid already: never touch this intent again (W3).
+    if (paidIntentRef.current && paidIntentRef.current === paymentIntentId) {
+      return { ok: false, reason: 'skipped: intent already paid' }
+    }
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -2204,6 +2212,11 @@ export default function CheckoutPage() {
     // Debounce updates
     clearTimeout(updateTimer.current)
     updateTimer.current = setTimeout(async () => {
+      // W3: no debounced update while a confirm is in flight (the wallet
+      // handlers set the contact fields, which re-arm this timer mid-payment;
+      // the card path saves through flushOrderData, the wallets through
+      // onWalletCustomer) or once the intent is paid.
+      if (payingRef.current || paidIntentRef.current) return
       const result = await pushOrderData()
       if (result.ok) return
       // M6: server-side quote validation rejection — surface as a
@@ -2321,6 +2334,10 @@ export default function CheckoutPage() {
   }, [paymentIntentId, restaurant, total, buildOrderData, getSessionTokenForPayment])
 
   function handlePaymentSuccess(piId) {
+    // W3: the intent is paid — cancel any pending debounced update and send
+    // no further updates for it (Stripe refuses them after capture).
+    paidIntentRef.current = piId
+    clearTimeout(updateTimer.current)
     // The wallet's values when a wallet supplied them, the form's otherwise.
     // Resolved ONCE and used for both the profile write and the navigate state
     // below: the confirmation screen reads the same closure this does, so
