@@ -133,7 +133,7 @@ const EXPECTED: Omit<MenuSnapshot, 'hash'> = {
   toppings: [
     { id: ID.pepperoni, group_id: ID.gToppings, name: 'Pepperoni', price_cents: 250, price_half_cents: null, size_prices: null, is_available: true, is_default: false, sort_order: 1 },
     { id: ID.extraCheese, group_id: ID.gToppings, name: 'Extra cheese', price_cents: 115, price_half_cents: null, size_prices: null, is_available: true, is_default: true, sort_order: 2 },
-    { id: ID.mushrooms, group_id: ID.gToppings, name: 'Mushrooms', price_cents: 225, price_half_cents: 125, size_prices: { small: { price_cents: 175, half_cents: null }, large: { price_cents: 225, half_cents: null } }, is_available: true, is_default: false, sort_order: 3 },
+    { id: ID.mushrooms, group_id: ID.gToppings, name: 'Mushrooms', price_cents: 225, price_half_cents: 125, size_prices: [{ size_key: 'large', price_cents: 225, half_cents: null }, { size_key: 'small', price_cents: 175, half_cents: null }], is_available: true, is_default: false, sort_order: 3 },
   ],
   item_topping_groups: [
     { item_id: ID.pie, group_id: ID.gToppings, is_active: true, sort_order: 1 },
@@ -166,7 +166,7 @@ Deno.test('hash: stable across DB row order and server_time; changes with any pr
   assert((await build(moved)).hash !== a.hash);
 });
 
-Deno.test('money: > 2 decimals → SnapshotError naming the field; size_prices invalid entries dropped; bad size key fails closed', async () => {
+Deno.test('money: > 2 decimals → SnapshotError naming the field (incl. size_prices); size_prices invalid entries dropped', async () => {
   const t = rows();
   t.sizes[0].price = '18.999';
   const e = await assertRejects(() => build(t), SnapshotError);
@@ -174,9 +174,9 @@ Deno.test('money: > 2 decimals → SnapshotError naming the field; size_prices i
   const t2 = rows();
   t2.restaurant!.delivery_minimum_in_house = '15.005';
   assertEquals((await assertRejects(() => build(t2), SnapshotError)).field, 'restaurants.delivery_minimum_in_house');
-  assertEquals(wireSizePrices({ a: { price: '-1' }, b: { price: null, half: '' }, c: 'x', d: { price: '1.5', half: '0' } }, 't'), { d: { price_cents: 150, half_cents: 0 } });
+  assertEquals(wireSizePrices({ a: { price: '-1' }, b: { price: null, half: '' }, c: 'x', d: { price: '1.5', half: '0' } }, 't'), [{ size_key: 'd', price_cents: 150, half_cents: 0 }]);
   assertEquals(wireSizePrices({}, 't'), null);
-  assertEquals(assertThrows(() => wireSizePrices({ 'large 16"': { price: '2.00' } }, 'tx'), SnapshotError).field, 'toppings(tx).size_prices.large 16"');
+  assertEquals(assertThrows(() => wireSizePrices({ 'large 16"': { price: '2.005' } }, 'tx'), SnapshotError).field, 'toppings(tx).size_prices.large 16".price');
 });
 
 Deno.test('availability: malformed / disabled / overnight-shaped blobs normalize exactly like the device (fail open → null)', async () => {
@@ -275,4 +275,27 @@ Deno.test('handler: bad money → 500 snapshot_config_invalid with the field; pe
   db.t.toppings[1].price = '2.50';
   deps.persist = () => Promise.reject(new Error('db down'));
   await assertRejects(() => call({ restaurant_id: R1, if_none_match: null }), Error, 'db down'); // → handleDeviceHttp maps to 500 internal_error
+});
+
+Deno.test('size names with inch marks / hyphens / spaces (gabys / mamarosa-shaped rows) now build and hash; array sorted by size_key', async () => {
+  const t = rows();
+  t.toppings[0].size_prices = {
+    "x-large 18\"": { price: '3.50', half: '1.75' },
+    "large 16''": { price: 2.75 },
+    'extra large': { price: '3.25', half: null },
+    'personal 10"': { price: '', half: '0.75' },
+    'Medium 14"': { price: '2.25' }, // not normalized: the web can never match it → dropped
+  };
+  const s = await build(t);
+  assertEquals(s.toppings.find((x) => x.id === ID.mushrooms)!.size_prices, [
+    { size_key: 'extra large', price_cents: 325, half_cents: null },
+    { size_key: "large 16''", price_cents: 275, half_cents: null },
+    { size_key: 'personal 10"', price_cents: null, half_cents: 75 },
+    { size_key: 'x-large 18"', price_cents: 350, half_cents: 175 },
+  ]);
+  assertEquals(s.hash, await contentHash(s as unknown as Record<string, unknown>, SNAPSHOT_HASH_EXCLUDES));
+  // same hash whatever order the jsonb object comes back in
+  const t2 = rows();
+  t2.toppings[0].size_prices = Object.fromEntries(Object.entries(t.toppings[0].size_prices as Record<string, unknown>).reverse());
+  assertEquals((await build(t2)).hash, s.hash);
 });

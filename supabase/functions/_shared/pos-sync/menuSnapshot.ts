@@ -7,6 +7,9 @@
  * the category window is the vendored `normalizeAvailability` (fails open → null). The promotion is
  * the pos-v1 loader's rule on the restaurant-LOCAL date (highest % wins, ties → lowest id).
  *
+ * toppings[].size_prices is an ARRAY [{size_key, price_cents, half_cents}] sorted by size_key (CP9b,
+ * POS-confirmed contract change; ./sizePrices.ts).
+ *
  * Deterministic array order (the hash covers it): JS code-unit string compare, numbers ascending:
  *   categories          (sort_order, id)
  *   items               (category_id, sort_order, id)
@@ -28,10 +31,10 @@ import { normalizeAvailability, type Availability } from '../ordr-core-ext/avail
 import { isValidTimeZone, localDateIn, resolvePromotion } from '../pos-v1/loader.ts';
 import type { Numeric, PromotionRow } from '../pos-v1/db.ts';
 import { contentHash, SNAPSHOT_HASH_EXCLUDES } from './canonicalJson.ts';
+import { SizePriceError, sizePricesFromJsonb, type SizePriceEntry } from './sizePrices.ts';
 
 export const BUSINESS_DAY_CUTOFF = '04:00';
 export const SNAPSHOT_RECOUP_RATE = '0';
-const KEY = /^[a-z0-9_]+$/;
 
 export class SnapshotError extends Error {
   readonly code: 'restaurant_not_found' | 'snapshot_config_invalid';
@@ -88,7 +91,6 @@ export interface SnapshotDb {
 
 // ---- wire shape (= ordr-pos src/sync/contract.ts MenuSnapshot) -----------------------------------
 
-export interface WireSizePrice { price_cents: number | null; half_cents: number | null }
 export interface MenuSnapshot {
   hash: string;
   server_time: string;
@@ -118,7 +120,7 @@ export interface MenuSnapshot {
   items: { id: string; category_id: string; name: string; description: string | null; is_available: boolean; sort_order: number }[];
   item_sizes: { id: string; item_id: string; name: string; price_cents: number; sort_order: number }[];
   topping_groups: { id: string; name: string; placement_type: 'pizza' | 'addon'; selection_type: 'single' | 'limited' | 'unlimited'; required: boolean; max_selections: number | null; sort_order: number }[];
-  toppings: { id: string; group_id: string; name: string; price_cents: number; price_half_cents: number | null; size_prices: Record<string, WireSizePrice> | null; is_available: boolean; is_default: boolean; sort_order: number }[];
+  toppings: { id: string; group_id: string; name: string; price_cents: number; price_half_cents: number | null; size_prices: SizePriceEntry[] | null; is_available: boolean; is_default: boolean; sort_order: number }[];
   item_topping_groups: { item_id: string; group_id: string; is_active: boolean; sort_order: number }[];
 }
 
@@ -166,35 +168,16 @@ export function usPhoneE164(raw: string | null | undefined): string | null {
 const blankToNull = (s: string | null | undefined) => (typeof s === 'string' && s.trim() !== '' ? s.trim() : null);
 
 /**
- * toppings.size_prices (dollars) → { key: {price_cents, half_cents} }. Non-object / blank /
- * non-numeric / negative values are ignored like the web's isValidPrice; an entry left with neither
- * price is dropped; > 2 decimals is an error. Keys must be canonical-JSON keys (^[a-z0-9_]+$) — a
- * size name like `large 16"` can't be hashed by either side (open question), so it fails closed.
+ * toppings.size_prices → the wire array (CP9b; rules in ./sizePrices.ts). A > 2-decimal value is a
+ * snapshot_config_invalid error naming the field.
  */
-export function wireSizePrices(raw: unknown, toppingId: string): Record<string, WireSizePrice> | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const one = (v: unknown, field: string): number | null => {
-    if (typeof v === 'string') {
-      if (v.trim() === '') return null;
-    } else if (typeof v !== 'number') {
-      return null;
-    }
-    const n = Number(v);
-    if (!Number.isFinite(n) || n < 0) return null;
-    return cents(v as Numeric, field);
-  };
-  const out: Record<string, WireSizePrice> = {};
-  for (const [key, entry] of Object.entries(raw as Record<string, unknown>)) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-    const e = entry as Record<string, unknown>;
-    const field = `toppings(${toppingId}).size_prices.${key}`;
-    const price_cents = one(e.price, `${field}.price`);
-    const half_cents = one(e.half, `${field}.half`);
-    if (price_cents === null && half_cents === null) continue;
-    if (!KEY.test(key)) throw invalid(`${field}: size key ${JSON.stringify(key)} is not a canonical JSON key (^[a-z0-9_]+$)`, field);
-    out[key] = { price_cents, half_cents };
+export function wireSizePrices(raw: unknown, toppingId: string): SizePriceEntry[] | null {
+  try {
+    return sizePricesFromJsonb(raw, `toppings(${toppingId}).size_prices`);
+  } catch (err) {
+    if (err instanceof SizePriceError) throw invalid(err.message, err.field);
+    throw err;
   }
-  return Object.keys(out).length ? out : null;
 }
 
 type Key = (string | number)[];
