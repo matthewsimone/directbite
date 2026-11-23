@@ -194,6 +194,25 @@ function friendlyPaymentError(error) {
   return 'Something went wrong. Please try again.'
 }
 
+// create-payment-intent's enforce guard (CP8; restaurants on
+// POS_V1_ENFORCE_RESTAURANTS only). A readable message for exactly these codes;
+// null for every other response, whose handling is unchanged.
+const ENFORCE_MESSAGES = {
+  slot_unavailable: 'That time isn\'t available — pick another.',
+  delivery_unavailable: 'Delivery is off right now — switch to pickup.',
+  price_changed: 'Prices updated — please review your total.',
+  pricing_unavailable: 'Checkout is temporarily unavailable. Please try again shortly.',
+}
+function enforceMessage(errData) {
+  const code = errData?.error
+  if (code === 'restaurant_closed') {
+    return errData.reason === 'outside_hours'
+      ? 'Closed right now — choose a scheduled time.'
+      : 'This restaurant isn\'t taking orders right now.'
+  }
+  return Object.prototype.hasOwnProperty.call(ENFORCE_MESSAGES, code) ? ENFORCE_MESSAGES[code] : null
+}
+
 // ---------- Payment Form (inside Stripe Elements) ----------
 function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaurant, disabled: externalDisabled, clientSecret, paymentIntentId, stripeAccount, onWalletCustomer, onValidateDelivery, feeCalculating, needsAddress, showPlaceholder, onSavedProfile, contactCollapsed, onVerifiedSwap, onPayingChange, onFlushOrderData }) {
   const stripe = useStripe()
@@ -669,6 +688,16 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
     // or slow save is logged and the payment goes ahead regardless.
     try {
       const flush = await onFlushOrderDataRef.current?.()
+      // Enforce-guard refusals (closed, slot, delivery off, price, pricing
+      // unavailable) BLOCK the charge; every other failure continues as before.
+      const blockMsg = flush && !flush.ok ? enforceMessage(flush.errData) : null
+      if (blockMsg) {
+        toast.error(blockMsg)
+        setLoading(false)
+        submittedRef.current = false
+        onPayingChange?.(false)
+        return
+      }
       if (flush && !flush.ok) console.warn('[checkout] order data not saved before charge; continuing:', flush.reason)
     } catch (err) {
       console.warn('[checkout] order data save threw before charge; continuing:', err)
@@ -980,7 +1009,7 @@ export default function CheckoutPage() {
 
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { restaurant, isPickupOpen, isDeliveryOpen, pickupSchedule, deliverySchedule, loading: restLoading } = useRestaurant(slug)
+  const { restaurant, isPickupOpen, isDeliveryOpen, pickupSchedule, deliverySchedule, loading: restLoading, retry: reloadRestaurant } = useRestaurant(slug)
   // Sent with the CREATE call only, so a returning signed-in customer's
   // existing Stripe Customer is reused rather than duplicated.
   const { getSessionTokenForPayment, isLoggedIn, saveProfile } = useCustomerAuth()
@@ -2081,6 +2110,13 @@ export default function CheckoutPage() {
             setInitError(null)
             return
           }
+          // Enforce-guard refusal: readable message instead of the raw code.
+          const blockMsg = enforceMessage(errData)
+          if (blockMsg) {
+            if (errData.error === 'price_changed') reloadRestaurant?.()
+            setInitError(blockMsg)
+            return
+          }
           throw new Error(errData.error || 'Failed to create payment')
         }
 
@@ -2176,6 +2212,14 @@ export default function CheckoutPage() {
         handleQuoteValidationFailure(result.errData.reason)
         return
       }
+      // Enforce-guard refusal: tell the customer (Pay is blocked for these
+      // codes too). Every other failure stays silent, as before.
+      const blockMsg = enforceMessage(result.errData)
+      if (blockMsg) {
+        toast.error(blockMsg)
+        if (result.errData.error === 'price_changed') reloadRestaurant?.()
+        return
+      }
       // Silent fail on metadata update — the initial data is already stored
       console.warn('Failed to update payment intent metadata:', result.reason)
     }, 800)
@@ -2190,10 +2234,14 @@ export default function CheckoutPage() {
     clearTimeout(updateTimer.current)
     if (orderDataPushBlocked()) return { ok: false, reason: 'skipped: would reject on server' }
     if (!paymentIntentId || !restaurant) return { ok: false, reason: 'skipped: no payment intent yet' }
-    return Promise.race([
+    const result = await Promise.race([
       pushOrderData(),
       new Promise(resolve => setTimeout(() => resolve({ ok: false, reason: 'timeout' }), 5000)),
     ])
+    // Enforce guard said the price changed: refresh the restaurant data the
+    // totals are computed from (the Pay handler blocks this charge).
+    if (result?.errData?.error === 'price_changed') reloadRestaurant?.()
+    return result
   }
 
   // Replace the guest intent with one on the verified customer's Stripe
