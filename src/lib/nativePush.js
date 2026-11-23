@@ -11,8 +11,6 @@ import { callCustomerAuth } from './customerAuthApi'
 // The FCM token is never logged.
 
 const PUSH_TOKEN_KEY = 'ordr_push_token'
-const SOFTASK_KEY = 'ordr_push_softask'
-const MAX_SOFTASK_DECLINES = 3
 
 // Wrapped, never bare: resolving an async function with a Capacitor plugin proxy probes .then on it, which the proxy forwards to native ("not implemented").
 async function loadMessaging() {
@@ -152,35 +150,4 @@ export function installPushListeners(onOpen) {
       console.warn('[push] listener install failed')
     }
   })()
-}
-
-async function readSoftAsk() {
-  try {
-    const { Preferences } = await loadPreferences()
-    const { value } = await Preferences.get({ key: SOFTASK_KEY })
-    const parsed = value ? JSON.parse(value) : null
-    return { declines: Number(parsed?.declines) || 0 }
-  } catch {
-    return { declines: 0 }
-  }
-}
-
-// The in-app ask before the OS prompt: only while the OS prompt is still
-// available and the customer hasn't said "Not now" three times.
-export async function shouldShowSoftAsk() {
-  if (!IS_NATIVE) return false
-  if ((await getPushPermission()) !== 'prompt') return false
-  const { declines } = await readSoftAsk()
-  return declines < MAX_SOFTASK_DECLINES
-}
-
-export async function recordSoftAskDecline() {
-  if (!IS_NATIVE) return
-  try {
-    const { declines } = await readSoftAsk()
-    const { Preferences } = await loadPreferences()
-    await Preferences.set({ key: SOFTASK_KEY, value: JSON.stringify({ declines: declines + 1 }) })
-  } catch {
-    // a lost decline only means the card can show once more
-  }
 }

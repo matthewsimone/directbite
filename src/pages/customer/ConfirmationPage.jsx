@@ -8,7 +8,7 @@ import { calculateLoyaltyPoints, formatPoints } from '../../utils/loyaltyPoints'
 import { formatScheduledLabel } from '../../utils/scheduling'
 import { getNativeBrand } from '../../lib/nativeBrand'
 import { IS_NATIVE } from '../../lib/native'
-import { shouldShowSoftAsk, requestPushPermission, recordSoftAskDecline } from '../../lib/nativePush'
+import { getPushPermission, requestPushPermission } from '../../lib/nativePush'
 
 // Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
 function withAlpha(hex, alpha) {
@@ -322,66 +322,30 @@ function ConfirmationFromStripe({ paymentIntentId, slug, navigate }) {
   )
 }
 
-// ── Native push soft ask ──
-// Shown before the OS prompt, only while that prompt is still available and
-// the customer hasn't declined three times. On web the wrapper returns null
-// before any hook runs.
-function PushSoftAsk({ restaurantName }) {
+// ── Native push: automatic OS prompt after an order ──
+// Renders nothing. On mount, if the OS prompt is still available, waits 300ms
+// for the success screen to settle and then shows it. At most once per app
+// run (module flag), so re-renders and repeat orders don't re-prompt. On web
+// the wrapper returns null before any hook runs.
+let pushPromptFired = false
+
+function PushAutoPrompt() {
   if (!IS_NATIVE) return null
-  return <PushSoftAskInner restaurantName={restaurantName} />
+  return <PushAutoPromptInner />
 }
 
-function PushSoftAskInner({ restaurantName }) {
-  const [show, setShow] = useState(false)
-  const [busy, setBusy] = useState(false)
-
+function PushAutoPromptInner() {
+  // No cleanup on purpose: the OS prompt doesn't belong to this component, and
+  // cancelling on unmount would lose it for the rest of the run (flag is set).
   useEffect(() => {
-    let alive = true
-    shouldShowSoftAsk().then((v) => { if (alive) setShow(v) })
-    return () => { alive = false }
+    if (pushPromptFired) return
+    pushPromptFired = true
+    ;(async () => {
+      if ((await getPushPermission()) !== 'prompt') return
+      setTimeout(() => { requestPushPermission() }, 300)
+    })()
   }, [])
-
-  // The title needs the name; the Stripe-redirect path only has it once the
-  // order loads, so the card waits for it rather than showing a blank.
-  if (!show || !restaurantName) return null
-
-  async function handleTurnOn() {
-    if (busy) return
-    setBusy(true)
-    await requestPushPermission()
-    setShow(false)
-  }
-
-  function handleNotNow() {
-    setShow(false)
-    recordSoftAskDecline()
-  }
-
-  return (
-    <div className="mt-6 rounded-2xl border border-gray-200 p-5">
-      <p className="text-base font-bold text-gray-900">Get deals from {restaurantName}</p>
-      <p className="text-sm text-gray-600 mt-1">Be the first to hear about specials and promos.</p>
-      <div className="mt-4 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleTurnOn}
-          disabled={busy}
-          className="flex-1 h-11 rounded-xl font-semibold text-white disabled:opacity-60"
-          style={{ backgroundColor: 'var(--brand)' }}
-        >
-          Turn on
-        </button>
-        <button
-          type="button"
-          onClick={handleNotNow}
-          disabled={busy}
-          className="flex-1 h-11 rounded-xl font-semibold text-gray-500"
-        >
-          Not now
-        </button>
-      </div>
-    </div>
-  )
+  return null
 }
 
 // ── Shared confirmation layout ──
@@ -432,7 +396,7 @@ function ConfirmationLayout({
           Thank you, {customerName}!
         </p>
 
-        <PushSoftAsk restaurantName={restaurantName} />
+        <PushAutoPrompt />
 
         {/* Order meta */}
         <div className="mt-6 bg-gray-50 rounded-2xl p-5 space-y-2 text-center">
