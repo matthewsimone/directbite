@@ -17,13 +17,18 @@
 // (money.ts + order/*.ts, non-test) has files the manifest does not. Any diff
 // means re-vendor (scripts/vendor-ordr-core.mjs), never edit the copy.
 //
+// Also (item 4): _shared/ordr-core-ext/ — availability.ts + cardData.ts, with
+// their own VENDORED.json — gets the same checks (bytes = manifest, nothing
+// else in the directory, and with --source byte-equal to ordr-pos src/core).
+// They are NOT part of pricingModuleHash (only ordr-core/'s manifest is).
+//
 // Exit 0 = clean, 1 = drift (every problem listed), 2 = usage / bad manifest.
 // ============================================================================
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { MANIFEST_PATH, MODULE_INFO_PATH, SOURCE_ROOT, VENDOR_DIR, isVendoredPath, renderModuleInfo, sha256 } from './lib/ordrCore.mjs';
+import { EXT_FILES, EXT_MANIFEST_PATH, EXT_VENDOR_DIR, MANIFEST_PATH, MODULE_INFO_PATH, SOURCE_ROOT, VENDOR_DIR, isVendoredPath, renderModuleInfo, sha256 } from './lib/ordrCore.mjs';
 
 const args = process.argv.slice(2);
 let sourcePath = null;
@@ -110,10 +115,38 @@ if (sourcePath) {
   console.log(`source ${sourcePath} HEAD ${head}${head === sourceCommit ? '' : ` (manifest sourceCommit ${sourceCommit})`}`);
 }
 
+// 5. ordr-core-ext (item 4): non-pricing vendored files, own manifest.
+let ext = null;
+try {
+  ext = JSON.parse(fs.readFileSync(EXT_MANIFEST_PATH, 'utf8'));
+} catch (err) {
+  problems.push(`cannot read ${path.relative(process.cwd(), EXT_MANIFEST_PATH)}: ${err.message}`);
+}
+if (ext) {
+  const extFiles = ext.files ?? {};
+  for (const name of EXT_FILES) if (!(name in extFiles)) problems.push(`ordr-core-ext manifest lacks ${name}`);
+  for (const rel of Object.keys(extFiles).sort()) {
+    const file = path.join(EXT_VENDOR_DIR, rel);
+    if (!fs.existsSync(file)) { problems.push(`missing vendored file: ordr-core-ext/${rel}`); continue; }
+    const actual = sha256(fs.readFileSync(file));
+    if (actual !== extFiles[rel]) problems.push(`hash mismatch: ordr-core-ext/${rel}\n    manifest ${extFiles[rel]}\n    on disk  ${actual}`);
+    if (sourcePath) {
+      const src = path.join(sourcePath, SOURCE_ROOT, rel);
+      if (!fs.existsSync(src)) problems.push(`source no longer has: ${SOURCE_ROOT}/${rel}`);
+      else if (!fs.readFileSync(src).equals(fs.readFileSync(file))) {
+        problems.push(`differs from source: ordr-core-ext/${rel}\n    vendored ${actual}\n    source   ${sha256(fs.readFileSync(src))}`);
+      }
+    }
+  }
+  for (const rel of walk(EXT_VENDOR_DIR)) {
+    if (rel !== 'VENDORED.json' && !(rel in extFiles)) problems.push(`unexpected file in ordr-core-ext/ (not vendored): ${rel}`);
+  }
+}
+
 if (problems.length) {
   console.error(`check-ordr-core: FAIL (${problems.length} problem${problems.length === 1 ? '' : 's'})`);
   for (const p of problems) console.error(`  - ${p}`);
   console.error('Never edit vendored files. Fix ordr-pos, then: node scripts/vendor-ordr-core.mjs <ordr-pos path>');
   process.exit(1);
 }
-console.log(`check-ordr-core: OK — ${manifestPaths.length} files match ${sourceRepo} @ ${sourceCommit.slice(0, 7)}${sourcePath ? ' and the source checkout' : ''}`);
+console.log(`check-ordr-core: OK — ${manifestPaths.length} files match ${sourceRepo} @ ${sourceCommit.slice(0, 7)}${sourcePath ? ' and the source checkout' : ''}; ordr-core-ext ${Object.keys(ext?.files ?? {}).length} files @ ${String(ext?.sourceCommit ?? '').slice(0, 7)}`);

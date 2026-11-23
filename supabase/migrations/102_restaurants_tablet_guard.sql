@@ -13,7 +13,8 @@
 --
 -- PROTECTED (none of these is written by any tablet code path today — CP8 §B1):
 --   identity / routing : id, slug, name, phone, address, tablet_email, custom_domain,
---                        website_enabled, redirect_url, timezone, created_at
+--                        website_enabled, redirect_url, timezone, created_at,
+--                        address_street / _city / _state / _zip (103; harmless before 103 exists)
 --   location (fees)    : latitude, longitude
 --   ordering on/off    : is_open (admin Pause today; the POS pause goes through a server function)
 --   payments           : stripe_account_id, apple_pay_registered, recoup_enabled, recoup_rate,
@@ -39,6 +40,7 @@ declare
   v_protected constant text[] := array[
     'id', 'slug', 'name', 'phone', 'address', 'tablet_email', 'custom_domain', 'website_enabled',
     'redirect_url', 'timezone', 'created_at',
+    'address_street', 'address_city', 'address_state', 'address_zip',
     'latitude', 'longitude',
     'is_open',
     'stripe_account_id', 'apple_pay_registered', 'recoup_enabled', 'recoup_rate', 'delivery_fee',

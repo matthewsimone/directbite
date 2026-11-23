@@ -1,0 +1,8 @@
+{
+  "sourceRepo": "https://github.com/matthewsimone/ordr-pos.git",
+  "sourceCommit": "c75b02aea9fdfc3fedbb50b83c2491ce62401a0b",
+  "files": {
+    "availability.ts": "712510742cb45e694fc3bce8d3bd0219d741ec554704133438b5824a0b51e8c4",
+    "cardData.ts": "8419ea0a6bc9f21b907a86842fb39532f37e2dc3ae90b95c79cd7eaad0727cff"
+  }
+}
