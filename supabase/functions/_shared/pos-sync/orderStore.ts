@@ -10,6 +10,7 @@
  *    transaction (supabase-js has none).
  *  - `MemoryOrderStore`: the same rules in memory for tests (mirrors the plpgsql step by step).
  */
+import { orderActorPaths } from '../pos-staff/flags.ts';
 import type { MenuSnapshot } from './menuSnapshot.ts';
 import type { OrderPayload, WireBreakdown, WirePayment } from './orderPayload.ts';
 
@@ -38,6 +39,10 @@ export interface OrderHead {
   pricing: WireBreakdown;
   provisional_pricing: WireBreakdown;
   priced_against_hash: string;
+  /** Stored flags of the latest version (staff flags are sticky / echoed on stale_ignored). */
+  flags: Record<string, unknown>;
+  /** Actor / approver values of the latest version by path (item 8: what is NEWLY 'register'). */
+  actor_paths: Record<string, string | null>;
 }
 
 export interface StoredSubmission {
@@ -96,7 +101,7 @@ export interface OrderStore {
 interface MemPayment extends WirePayment { order_id: string; inserted_at: string; voided_at: string | null }
 
 export class MemoryOrderStore implements OrderStore {
-  readonly orders = new Map<string, OrderHead & { payload: OrderPayload; flags: Record<string, unknown> }>();
+  readonly orders = new Map<string, OrderHead & { payload: OrderPayload }>();
   readonly submissions = new Map<string, StoredSubmission & { device_id: string; payload: OrderPayload }>();
   readonly payments = new Map<string, MemPayment>();
   readonly paymentInserts = new Map<string, number>();
@@ -191,6 +196,7 @@ export class MemoryOrderStore implements OrderStore {
       priced_against_hash: response.priced_against_hash,
       payload: structuredClone(p),
       flags: structuredClone(response.flags),
+      actor_paths: orderActorPaths(p),
     });
     this.submissions.set(`${p.order_id}:${p.version}`, { content_hash: p.content_hash, response, device_id: i.writer, payload: structuredClone(p) });
     this.applied.push({ order_id: p.order_id, version: p.version });
@@ -209,11 +215,14 @@ export class PgOrderStore implements OrderStore {
   async getHead(orderId: string): Promise<OrderHead | null> {
     const { data, error } = await this.db
       .from('pos_orders')
-      .select('order_id, restaurant_id, ticket_prefix, version, writer_device_id, order_number, pricing, provisional_pricing, priced_against_hash')
+      .select('order_id, restaurant_id, ticket_prefix, version, writer_device_id, order_number, pricing, provisional_pricing, priced_against_hash, flags')
       .eq('order_id', orderId)
       .maybeSingle();
     if (error) throw new Error(`pos_orders read failed: ${error.message}`);
-    return data ? { ...data, order_number: Number(data.order_number) } : null;
+    if (!data) return null;
+    const sub = await this.db.from('pos_order_submissions').select('payload').eq('order_id', orderId).eq('version', data.version).maybeSingle();
+    if (sub.error) throw new Error(`pos_order_submissions read failed: ${sub.error.message}`);
+    return { ...data, order_number: Number(data.order_number), actor_paths: orderActorPaths(sub.data?.payload ?? null) };
   }
 
   async getSubmission(orderId: string, version: number): Promise<StoredSubmission | null> {
@@ -251,7 +260,7 @@ export class PgOrderStore implements OrderStore {
     const r = data as Record<string, unknown>;
     if (r.outcome === 'stale_ignored') {
       const h = r.head as OrderHead;
-      return { outcome: 'stale_ignored', head: { ...h, order_number: Number(h.order_number) } };
+      return { outcome: 'stale_ignored', head: { ...h, order_number: Number(h.order_number), actor_paths: {} } };
     }
     return r as unknown as ApplyOutcome;
   }

@@ -24,10 +24,9 @@
  * Steps 7, 9, 10 run again atomically inside the store's apply (pos_apply_order_submission), so a
  * concurrent writer between the pre-check and the apply gets the same §3.1 answer.
  *
- * Not here yet: module_drift (device-side in the reference: the device compares the response's
- * pricing_module_hash with its own build and then ignores money differences — worker / sync.ts:128-142);
- * staff flags (unknown_actor, approval_missing, register_actor_after_staff — item 8) and post_z (item 7).
- * Actor / approver fields are validated + stored.
+ * Staff flags (item 8, _shared/pos-staff/flags.ts): unknown_actor, approval_missing,
+ * register_actor_after_staff — on applied responses + stored; stale_ignored echoes the stored ones.
+ * Not here: module_drift (device-side in the reference — sync.ts:128-142) and post_z (item 7).
  */
 import { authenticateDevice, type AuthDeps } from '../pos-device/auth.ts';
 import { orderIdentity } from '../pos-device/identity.ts';
@@ -39,6 +38,7 @@ import { CACHE_TTL_MS } from './menuSnapshotHandler.ts';
 import { cardDataPaths, findRedemptionKey, jsonDepth, MAX_DEPTH, paymentsShapeProblem, scannedPart, UUID_RE, validateOrderPayload, type OrderPayload } from './orderPayload.ts';
 import { availabilityViolation, diffBreakdowns, priceAgainstSnapshot, PricingError, ServerValidation } from './orderPricing.ts';
 import { decideVersion, type ApplyOutcome, type OrderHead, type OrderStore, type SubmitOrderOk } from './orderStore.ts';
+import { orderStaffFlags, type StaffContext } from '../pos-staff/flags.ts';
 
 /**
  * The restaurant's CURRENT snapshot (for unknown_snapshot repricing and stale_price): built from the
@@ -65,8 +65,12 @@ export class CurrentSnapshots {
 export interface SubmitOrderDeps extends AuthDeps {
   orders: OrderStore;
   current: { get(restaurantId: string, nowMs: number): Promise<MenuSnapshot> };
+  /** Item 8: staff ids / roles / first publication / settings history of the restaurant. */
+  staff: { context(restaurantId: string): Promise<StaffContext> };
   moduleHash?: string;
 }
+
+const STAFF_FLAG_KEYS = ['unknown_actor', 'approval_missing', 'register_actor_after_staff'] as const;
 
 const invalid = (message: string, field?: string) => errorResult(400, 'invalid_payload', message, field ? { field } : {});
 
@@ -88,7 +92,11 @@ function staleResponse(head: OrderHead, requestVersion: number, nowIso: string, 
     order_number: head.order_number,
     pricing: head.pricing,
     priced_against_hash: head.priced_against_hash,
-    flags: { mismatch: Object.keys(diff).length > 0, stale_price: false, unknown_snapshot: false, availability_flag: false },
+    flags: {
+      mismatch: Object.keys(diff).length > 0, stale_price: false, unknown_snapshot: false, availability_flag: false,
+      // item 8: the stored version's staff flags
+      ...Object.fromEntries(STAFF_FLAG_KEYS.map((k) => [k, head.flags[k] === true])),
+    },
     diff,
     pricing_module_hash: moduleHash,
     server_time: nowIso,
@@ -189,6 +197,8 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   const stale = !unknown && current !== null && current.hash !== p.menu_snapshot_hash;
   const availability = availabilityViolation(p, snap);
   const diff = diffBreakdowns(p.provisional_pricing, priced.pricing);
+  // item 8: never a rejection
+  const staffFlags = orderStaffFlags(await deps.staff.context(rid), p, head ? { actorPaths: head.actor_paths, registerAfterStaff: head.flags.register_actor_after_staff === true } : null);
   const response: SubmitOrderOk = {
     result: 'applied',
     order_id: p.order_id,
@@ -203,6 +213,7 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
       unknown_snapshot: unknown,
       availability_flag: availability,
       ...(priced.delivery ? { delivery: priced.delivery } : {}),
+      ...staffFlags,
     },
     diff,
     pricing_module_hash: moduleHash,

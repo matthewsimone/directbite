@@ -237,7 +237,7 @@ begin
           'order_id', v_cur.order_id, 'restaurant_id', v_cur.restaurant_id, 'ticket_prefix', v_cur.ticket_prefix,
           'version', v_cur.version, 'writer_device_id', v_cur.writer_device_id, 'order_number', v_cur.order_number,
           'pricing', v_cur.pricing, 'provisional_pricing', v_cur.provisional_pricing,
-          'priced_against_hash', v_cur.priced_against_hash));
+          'priced_against_hash', v_cur.priced_against_hash, 'flags', v_cur.flags));
       end if;
       return jsonb_build_object('outcome', 'version_conflict', 'server_version', v_cur.version, 'server_writer_device_id', v_cur.writer_device_id);
     end if;
