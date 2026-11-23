@@ -238,3 +238,12 @@ verify_jwt = false
 # ---------------------------------------------------------------------------
 [functions.pos-v1-price-order]
 verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# send-push — admin-only test sender for native app push (FCM HTTP v1).
+# No JWT: authenticated handler-side by the x-admin-key header against the
+# PUSH_ADMIN_KEY secret (constant-time compare). Service-role used internally
+# to read push_tokens and disable dead ones.
+# ---------------------------------------------------------------------------
+[functions.send-push]
+verify_jwt = false

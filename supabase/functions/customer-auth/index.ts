@@ -717,6 +717,19 @@ async function handleLogout(body: any): Promise<Response> {
     }
   }
 
+  // A signed-out device must stop receiving this customer's pushes. The push
+  // token itself is never logged.
+  if (typeof body.push_token === "string" && body.push_token) {
+    const { error: pushErr } = await supabase
+      .from("push_tokens")
+      .delete()
+      .eq("token", body.push_token);
+
+    if (pushErr) {
+      console.error("customer-auth logout push token delete failed:", pushErr.message);
+    }
+  }
+
   // Always ok, matched or not — never leak whether a token was valid.
   return jsonResponse({ ok: true }, 200);
 }
@@ -1647,6 +1660,18 @@ async function handleDeleteAccount(body: any): Promise<Response> {
       return fail("delete_failed");
     }
 
+    // Push tokens for this customer at this restaurant: a deleted account gets no pushes.
+    const { error: pushErr } = await supabase
+      .from("push_tokens")
+      .delete()
+      .eq("restaurant_id", restaurant_id)
+      .eq("customer_id", customer_id);
+
+    if (pushErr) {
+      console.error("customer-auth delete push tokens failed:", pushErr.message);
+      return fail("delete_failed");
+    }
+
     // --- e. The per-restaurant profile. ---
     const { error: rcErr } = await supabase
       .from("restaurant_customers")
@@ -1709,6 +1734,136 @@ async function handleDeleteAccount(body: any): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Action: register_push
+// ---------------------------------------------------------------------------
+
+// Records this device's FCM token against the signed-in identity at the
+// restaurant whose app it is. Upsert on the token: a device that changes hands
+// (sign-out, sign-in as someone else) moves to the new identity, and a token
+// previously disabled by send-push is re-enabled. The push token is never logged.
+const PUSH_APP_ID_RE = /^[a-z0-9._-]{3,100}$/i;
+
+async function handleRegisterPush(body: any): Promise<Response> {
+  const fail = (error: string) => jsonResponse({ ok: false, error }, 200);
+
+  try {
+    // --- Session -> identity; slug -> restaurant. Same sequence as
+    // handleDeleteAccount section (a). ---
+    const token = typeof body.token === "string" ? body.token : "";
+    const slug = typeof body.slug === "string" ? body.slug : "";
+    if (!token || !slug) return fail("unauthorized");
+
+    const tokenHash = await hashToken(token);
+
+    const { data: session, error: sessionErr } = await supabase
+      .from("customer_sessions")
+      .select("id, customer_id, revoked_at, expires_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (sessionErr) {
+      console.error("customer-auth register_push session lookup failed:", sessionErr.message);
+      return fail("unauthorized");
+    }
+    if (
+      !session ||
+      session.revoked_at !== null ||
+      new Date(session.expires_at).getTime() < Date.now()
+    ) {
+      return fail("unauthorized");
+    }
+
+    const { data: identity, error: identityErr } = await supabase
+      .from("customer_identities")
+      .select("id, phone_e164")
+      .eq("id", session.customer_id)
+      .maybeSingle();
+
+    if (identityErr || !identity) {
+      console.error("customer-auth register_push identity read failed:", identityErr?.message);
+      return fail("unauthorized");
+    }
+
+    const { data: restaurant, error: restErr } = await supabase
+      .from("restaurants")
+      .select("id, stripe_account_id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (restErr) {
+      console.error("customer-auth register_push restaurant read failed:", restErr.message);
+      return fail("not_found");
+    }
+    if (!restaurant?.id) return fail("not_found");
+
+    // --- Validate. Mirrors the CHECK constraints in migration 102. ---
+    const pushToken = typeof body.push_token === "string" ? body.push_token : "";
+    const platform = typeof body.platform === "string" ? body.platform : "";
+    const appId = typeof body.app_id === "string" ? body.app_id : "";
+    if (
+      pushToken.length < 20 ||
+      pushToken.length > 4096 ||
+      (platform !== "ios" && platform !== "android") ||
+      !PUSH_APP_ID_RE.test(appId)
+    ) {
+      return fail("invalid_request");
+    }
+
+    const nowIso = new Date().toISOString();
+    const { error: upsertErr } = await supabase
+      .from("push_tokens")
+      .upsert(
+        {
+          token: pushToken,
+          customer_id: identity.id,
+          restaurant_id: restaurant.id,
+          platform,
+          app_id: appId,
+          updated_at: nowIso,
+          disabled_at: null,
+          last_error: null,
+        },
+        { onConflict: "token" }
+      );
+
+    if (upsertErr) {
+      console.error("customer-auth register_push upsert failed:", upsertErr.message);
+      return fail("server_error");
+    }
+
+    return jsonResponse({ ok: true }, 200);
+  } catch (err: any) {
+    console.error("customer-auth register_push failed:", err?.message);
+    return jsonResponse({ ok: false, error: "server_error" }, 200);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Action: unregister_push
+// ---------------------------------------------------------------------------
+
+// Drops a device token. Always ok, matched or not — same discipline as logout,
+// so a caller cannot probe which tokens are registered.
+async function handleUnregisterPush(body: any): Promise<Response> {
+  try {
+    const pushToken = typeof body.push_token === "string" ? body.push_token : "";
+    if (pushToken) {
+      const { error: delErr } = await supabase
+        .from("push_tokens")
+        .delete()
+        .eq("token", pushToken);
+
+      if (delErr) {
+        console.error("customer-auth unregister_push delete failed:", delErr.message);
+      }
+    }
+  } catch (err: any) {
+    console.error("customer-auth unregister_push failed:", err?.message);
+  }
+  return jsonResponse({ ok: true }, 200);
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -1752,6 +1907,10 @@ serve(async (req: Request) => {
         return await handleCancelRedemption(body);
       case "delete_account":
         return await handleDeleteAccount(body);
+      case "register_push":
+        return await handleRegisterPush(body);
+      case "unregister_push":
+        return await handleUnregisterPush(body);
       case "logout":
         return await handleLogout(body);
       default:
