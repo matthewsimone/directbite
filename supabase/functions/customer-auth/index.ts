@@ -1467,6 +1467,248 @@ async function handleCancelRedemption(body: any): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// Action: delete_account
+// ---------------------------------------------------------------------------
+
+// In-app account deletion (App Store 5.1.1(v)). Scoped to the restaurant whose
+// app this is; the platform identity goes too only when no other restaurant
+// profile references it.
+//
+// There is no transaction from here, so every step is idempotent and ordered
+// so a failure part-way can be finished by the same request: the session stays
+// valid until the final step, and each step is a no-op on a second run.
+//
+// Ledger rows are DELETED and orders UNLINKED rather than zeroed with an
+// adjustment row: claim_guest_loyalty (088:54-67) re-attaches ledger rows and
+// orders by phone_e164 on every verification and rebuilds the profile from
+// them, so anything left matchable by phone resurrects the account — balance
+// zeroed, but lifetime points, tier and order count restored.
+async function handleDeleteAccount(body: any): Promise<Response> {
+  const fail = (error: string) => jsonResponse({ ok: false, error }, 200);
+
+  try {
+    // --- a. Session -> identity; slug -> restaurant. Same sequence as
+    // handleRedeemReward. ---
+    const token = typeof body.token === "string" ? body.token : "";
+    const slug = typeof body.slug === "string" ? body.slug : "";
+    if (!token || !slug) return fail("unauthorized");
+
+    const tokenHash = await hashToken(token);
+
+    const { data: session, error: sessionErr } = await supabase
+      .from("customer_sessions")
+      .select("id, customer_id, revoked_at, expires_at")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+
+    if (sessionErr) {
+      console.error("customer-auth delete session lookup failed:", sessionErr.message);
+      return fail("unauthorized");
+    }
+    if (
+      !session ||
+      session.revoked_at !== null ||
+      new Date(session.expires_at).getTime() < Date.now()
+    ) {
+      return fail("unauthorized");
+    }
+
+    const { data: identity, error: identityErr } = await supabase
+      .from("customer_identities")
+      .select("id, phone_e164")
+      .eq("id", session.customer_id)
+      .maybeSingle();
+
+    if (identityErr || !identity) {
+      console.error("customer-auth delete identity read failed:", identityErr?.message);
+      return fail("unauthorized");
+    }
+
+    const { data: restaurant, error: restErr } = await supabase
+      .from("restaurants")
+      .select("id, stripe_account_id")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    if (restErr) {
+      console.error("customer-auth delete restaurant read failed:", restErr.message);
+      return fail("not_found");
+    }
+    if (!restaurant?.id) return fail("not_found");
+
+    const restaurant_id = restaurant.id;
+    const customer_id = identity.id;
+    const phone = identity.phone_e164;
+
+    // --- b. Release any pending hold through the same RPC the cart uses.
+    // cancel_redemption takes one id; 080 allows at most one pending, but
+    // looping costs nothing if that ever changes. ---
+    const { data: pending, error: pendErr } = await supabase
+      .from("loyalty_redemptions")
+      .select("id")
+      .eq("restaurant_id", restaurant_id)
+      .eq("customer_id", customer_id)
+      .eq("status", "pending");
+
+    if (pendErr) {
+      console.error("customer-auth delete pending read failed:", pendErr.message);
+      return fail("delete_failed");
+    }
+    for (const r of pending ?? []) {
+      const { error: cancelErr } = await supabase.rpc("cancel_redemption", {
+        p_restaurant_id: restaurant_id,
+        p_customer_id: customer_id,
+        p_redemption_id: r.id,
+      });
+      if (cancelErr) {
+        console.error("customer-auth delete cancel_redemption failed:", cancelErr.message);
+        return fail("delete_failed");
+      }
+    }
+
+    // --- c. The saved card. Stripe Customer lives on the connected account
+    // (create-payment-intent:761-768). Never blocks: on a retry after a later
+    // step failed, resource_missing here is the expected outcome. ---
+    const { data: profile, error: profileErr } = await supabase
+      .from("restaurant_customers")
+      .select("stripe_customer_id")
+      .eq("restaurant_id", restaurant_id)
+      .eq("customer_id", customer_id)
+      .maybeSingle();
+
+    if (profileErr) {
+      console.error("customer-auth delete profile read failed:", profileErr.message);
+      return fail("delete_failed");
+    }
+
+    const stripeCustomerId = profile?.stripe_customer_id || null;
+    if (stripeCustomerId && restaurant.stripe_account_id) {
+      try {
+        await stripe.customers.del(stripeCustomerId, {
+          stripeAccount: restaurant.stripe_account_id,
+        });
+      } catch (stripeErr: any) {
+        console.error(
+          "customer-auth delete stripe customer failed (non-fatal):",
+          stripeErr?.code || stripeErr?.type || "unknown"
+        );
+      }
+    }
+
+    // --- d. Ledger: delete, don't zero (see header). Two passes: rows
+    // attached to the identity, and guest rows for the same phone that
+    // claim_guest_loyalty would attach on the next sign-in. ---
+    const { error: ledgerErr } = await supabase
+      .from("loyalty_transactions")
+      .delete()
+      .eq("restaurant_id", restaurant_id)
+      .eq("customer_id", customer_id);
+
+    const { error: guestLedgerErr } = ledgerErr
+      ? { error: null }
+      : await supabase
+          .from("loyalty_transactions")
+          .delete()
+          .eq("restaurant_id", restaurant_id)
+          .eq("phone_e164", phone);
+
+    if (ledgerErr || guestLedgerErr) {
+      console.error(
+        "customer-auth delete ledger failed:",
+        (ledgerErr || guestLedgerErr)?.message
+      );
+      return fail("delete_failed");
+    }
+
+    // Orders stay — they are the restaurant's transaction record — but lose
+    // every link back to the person. No trigger fires: orders' UPDATE
+    // triggers are OF customer_phone / items_written_at / refund_status only.
+    // An order still mid-flight accrues nothing (accrual returns on a null
+    // phone_e164), and a later refund reverses nothing (081:38).
+    const { error: ordersErr } = await supabase
+      .from("orders")
+      .update({ customer_id: null, phone_e164: null })
+      .eq("restaurant_id", restaurant_id)
+      .eq("customer_id", customer_id);
+
+    const { error: guestOrdersErr } = ordersErr
+      ? { error: null }
+      : await supabase
+          .from("orders")
+          .update({ customer_id: null, phone_e164: null })
+          .eq("restaurant_id", restaurant_id)
+          .eq("phone_e164", phone);
+
+    if (ordersErr || guestOrdersErr) {
+      console.error(
+        "customer-auth delete orders unlink failed:",
+        (ordersErr || guestOrdersErr)?.message
+      );
+      return fail("delete_failed");
+    }
+
+    // --- e. The per-restaurant profile. ---
+    const { error: rcErr } = await supabase
+      .from("restaurant_customers")
+      .delete()
+      .eq("restaurant_id", restaurant_id)
+      .eq("customer_id", customer_id);
+
+    if (rcErr) {
+      console.error("customer-auth delete profile failed:", rcErr.message);
+      return fail("delete_failed");
+    }
+
+    // --- f. Identity only when nothing else references it. claim_guest_loyalty
+    // creates a profile at every restaurant with ledger rows or orders, so
+    // zero remaining profiles means no other history. ---
+    const { count, error: countErr } = await supabase
+      .from("restaurant_customers")
+      .select("id", { count: "exact", head: true })
+      .eq("customer_id", customer_id);
+
+    if (countErr) {
+      console.error("customer-auth delete profile count failed:", countErr.message);
+      return fail("delete_failed");
+    }
+
+    if ((count ?? 0) === 0) {
+      // Cascades: customer_sessions (this one included), loyalty_redemptions.
+      // Set null: customer_consents, loyalty_transactions, orders.customer_id.
+      // No trigger fires on any of them.
+      const { error: idErr } = await supabase
+        .from("customer_identities")
+        .delete()
+        .eq("id", customer_id);
+
+      if (idErr) {
+        console.error("customer-auth delete identity failed:", idErr.message);
+        return fail("delete_failed");
+      }
+      return jsonResponse({ ok: true, scope: "all" }, 200);
+    }
+
+    // Other restaurants still hold a profile: keep the identity, end only
+    // this session. Non-fatal — the data is already gone and the client
+    // drops the token regardless.
+    const { error: revokeErr } = await supabase
+      .from("customer_sessions")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("id", session.id)
+      .is("revoked_at", null);
+
+    if (revokeErr) {
+      console.error("customer-auth delete session revoke failed:", revokeErr.message);
+    }
+
+    return jsonResponse({ ok: true, scope: "restaurant" }, 200);
+  } catch (err: any) {
+    console.error("customer-auth delete_account failed:", err?.message);
+    return jsonResponse({ ok: false, error: "server_error" }, 200);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -1508,6 +1750,8 @@ serve(async (req: Request) => {
         return await handleRedeemReward(body);
       case "cancel_redemption":
         return await handleCancelRedemption(body);
+      case "delete_account":
+        return await handleDeleteAccount(body);
       case "logout":
         return await handleLogout(body);
       default:

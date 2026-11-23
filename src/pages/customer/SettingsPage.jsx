@@ -2,15 +2,18 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useCustomerAuth } from '../../hooks/useCustomerAuth'
+import { useRestaurant } from '../../hooks/useRestaurant'
 import { getPublicOrigin, IS_NATIVE } from '../../lib/native'
 import { useNativeBack } from '../../lib/nativeBack'
 
-// Native shell Account tab — profile, saved address, legal links, sign out. Delete account lands in step 7. Routed only when IS_NATIVE.
-// Internal view stack (main → info → name/email, main → address/legal), Owner.com-style.
+// Native shell Account tab — profile, saved address, legal links, sign out, delete account. Routed only when IS_NATIVE.
+// Internal view stack (main → info → name/email/delete, main → address/legal), Owner.com-style.
 export default function SettingsPage() {
   const { slug } = useParams()
   const navigate = useNavigate()
-  const { isLoggedIn, phone, logout, loadSavedProfile, saveProfile } = useCustomerAuth()
+  const { isLoggedIn, phone, logout, loadSavedProfile, saveProfile, deleteAccount } = useCustomerAuth()
+  const { restaurant } = useRestaurant(slug)
+  const restaurantName = restaurant?.name || 'this restaurant'
 
   const [loaded, setLoaded] = useState(false)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -24,6 +27,7 @@ export default function SettingsPage() {
   const [apt, setApt] = useState('')
   const [saving, setSaving] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [view, setView] = useState('main')
   const [version, setVersion] = useState(null)
 
@@ -76,7 +80,7 @@ export default function SettingsPage() {
   }
 
   function goBack() {
-    setView((v) => (v === 'name' || v === 'email' ? 'info' : 'main'))
+    setView((v) => (v === 'name' || v === 'email' || v === 'delete' ? 'info' : 'main'))
   }
 
   // Opening an editor starts from the saved value, not a stale draft.
@@ -89,6 +93,21 @@ export default function SettingsPage() {
   async function handleSignOut() {
     await logout()
     navigate(`/${slug}`, { replace: true })
+  }
+
+  // Same exit as Sign out. 'unauthorized' exits too — the hook has already
+  // dropped the token, so staying here would show a signed-out page.
+  async function handleDeleteAccount() {
+    if (deleting) return
+    setDeleting(true)
+    const res = await deleteAccount(slug)
+    if (res.ok || res.error === 'unauthorized') {
+      if (res.ok) toast.success('Account deleted')
+      navigate(`/${slug}`, { replace: true })
+      return
+    }
+    setDeleting(false)
+    toast.error("Couldn't delete your account. Try again.")
   }
 
   const trimmedName = name.trim()
@@ -225,7 +244,13 @@ export default function SettingsPage() {
                 </div>
                 <p className="text-xs text-gray-400 mt-1">Verified — used to sign in. Can&apos;t be changed.</p>
               </div>
-              {/* Delete account row lands in step 7 */}
+              <button
+                type="button"
+                onClick={() => setView('delete')}
+                className="w-full py-3 min-h-[2rem] text-left text-base font-semibold text-red-600"
+              >
+                Delete account
+              </button>
             </div>
           </>
         )}
@@ -294,6 +319,34 @@ export default function SettingsPage() {
               <LegalRow href={`${origin}/privacy`}>Privacy Policy</LegalRow>
               <LegalRow href={`${origin}/terms`}>Terms of Service</LegalRow>
             </div>
+          </>
+        )}
+
+        {view === 'delete' && (
+          <>
+            <SubHeader title="Delete account" onBack={goBack} />
+            <h2 className="mt-6 text-lg font-bold text-gray-900">
+              Delete your {restaurantName} account?
+            </h2>
+            <p className="mt-2 text-gray-600">
+              This removes your points, rewards and saved card at {restaurantName}. This can&apos;t be undone.
+            </p>
+            <button
+              type="button"
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+              className="w-full h-12 rounded-xl bg-red-600 font-semibold text-white mt-8 disabled:opacity-60"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              type="button"
+              onClick={goBack}
+              disabled={deleting}
+              className="w-full h-12 rounded-xl border border-gray-300 bg-white font-semibold text-gray-900 mt-3"
+            >
+              Cancel
+            </button>
           </>
         )}
       </div>

@@ -364,6 +364,36 @@ export function CustomerAuthProvider({ children }) {
     }
   }, [])
 
+  // Deletes the account at this restaurant (and the identity when nothing else
+  // references it). Unlike logout, failure IS surfaced — the customer asked for
+  // deletion and must know if it didn't happen. On success the token is dropped
+  // exactly as logout drops it; the server already revoked or deleted the
+  // session. 'unauthorized' drops it too: a dead token is dead either way, and
+  // it is also what a retry returns when the first attempt succeeded but its
+  // response was lost.
+  const deleteAccount = useCallback(async (slug) => {
+    const token = readToken()
+    if (!token) return { ok: false, error: 'unauthorized' }
+    let result
+    try {
+      const { ok, data } = await callCustomerAuth({ action: 'delete_account', token, slug })
+      result = ok && data.ok
+        ? { ok: true, scope: data.scope ?? null }
+        : { ok: false, error: data.error || 'delete_failed' }
+    } catch {
+      return { ok: false, error: 'network' }
+    }
+    if (result.ok || result.error === 'unauthorized') {
+      clearToken()
+      if (mountedRef.current) {
+        setCustomerId(null)
+        setPhone(null)
+        setLoading(false)
+      }
+    }
+    return result
+  }, [])
+
   return (
     <CustomerAuthContext.Provider
       value={{
@@ -384,6 +414,7 @@ export function CustomerAuthProvider({ children }) {
         getSessionTokenForPayment,
         redeemReward,
         cancelRedemption,
+        deleteAccount,
       }}
     >
       {children}
