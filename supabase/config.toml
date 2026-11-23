@@ -238,3 +238,24 @@ verify_jwt = false
 # ---------------------------------------------------------------------------
 [functions.pos-v1-price-order]
 verify_jwt = false
+
+# ---------------------------------------------------------------------------
+# pos-v1 DEVICE functions (ordr-pos DEVICE-AUTH §4). Registers have no
+# Supabase session: they send the publishable key as `apikey` plus
+# x-ordr-device-token / x-ordr-device-id, and each function authenticates the
+# device itself (_shared/pos-device/auth.ts). Every new pos-v1-* device
+# function MUST be listed here with verify_jwt = false.
+# pos-v1-register-device is the only unauthenticated one (rate-limited).
+# pos-v1-device-check is DIAGNOSTIC (proves header passthrough on deploy).
+# ---------------------------------------------------------------------------
+[functions.pos-v1-register-device]
+verify_jwt = false
+
+[functions.pos-v1-device-check]
+verify_jwt = false
+
+# pos-admin-devices — /admin register management (DEVICE-AUTH §6). Same
+# pattern as admin-refund / kh-admin: verify_jwt = false, handler checks the
+# Bearer JWT against admin_users.
+[functions.pos-admin-devices]
+verify_jwt = false
