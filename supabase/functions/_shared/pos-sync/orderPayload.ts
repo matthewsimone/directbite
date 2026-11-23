@@ -81,8 +81,8 @@ export interface WirePayment {
   taken_by?: string | null;
   voided_by?: string | null;
   void_approved_by?: string | null;
-  /** §3.2 prose ("arrives voided with a void_reason") — not in the device's WirePayment type today. Stored if sent. */
-  void_reason?: string | null;
+  /** CONTRACT ADD 2026-11-23 (ordr-pos a685442): always present; 1–500 chars (not blank) when voided, null while captured. */
+  void_reason: string | null;
 }
 
 export type DeliveryFeeSource = 'pending' | 'quoted' | 'offline' | 'override';
@@ -196,7 +196,10 @@ export function paymentsShapeProblem(body: Record<string, unknown>): Problem | n
   return null;
 }
 
-// ---- structural validation (server-side addition; 400 invalid_payload) ---------------------------
+// ---- structural validation (= ordr-pos a685442 test/support/orderPayloadCheck.ts; 400 invalid_payload) ---
+
+/** payments[].void_reason when voided (CONTRACT ADD 2026-11-23). */
+export const VOID_REASON_MAX = 500;
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/;
@@ -288,13 +291,16 @@ function validateDelivery(v: unknown): void {
 }
 
 /**
- * Everything after the reference's own checks: types / enums / ids the store and the pricing builder
- * rely on. Semantic money rules stay with the pricing module so its codes match the reference
+ * The structural check — runs right after identity and BEFORE the content hash, as the reference's
+ * handle() does (ordr-pos a685442 fakeServer.ts:917-920). Types / enums / ids the store and the pricing
+ * builder rely on. Semantic money rules stay with the pricing module so its codes match the reference
  * (quantity 0 → pricing_error:invalid_quantity, tip 150 % → pricing_error:invalid_tip).
  */
 export function validateOrderPayload(body: Record<string, unknown>): Problem | null {
   try {
     const p = body;
+    // ordr-pos a685442 orderPayloadCheck.ts:46
+    need(typeof p.order_id === 'string' && UUID_RE.test(p.order_id), 'order_id', 'must be a UUID');
     need(isInt(p.version) && (p.version as number) >= 1, 'version', 'must be an integer ≥ 1');
     need(isInt(p.base_server_version) && (p.base_server_version as number) >= 0, 'base_server_version', 'must be an integer ≥ 0');
     need(isObj(p.ticket), 'ticket', 'must be an object');
@@ -380,13 +386,20 @@ export function validateOrderPayload(body: Record<string, unknown>): Problem | n
     if (tip.mode === 'amount') need(isInt(tip.amount_cents), 'tip.amount_cents', 'must be integer cents');
     else intOrNull(tip.amount_cents, 'tip.amount_cents');
 
+    need(Array.isArray(p.payments), 'payments', 'must be an array');
     (p.payments as unknown[]).forEach((x, i) => {
       const f = `payments[${i}]`;
+      need(isObj(x), f, 'must be an object');
       const y = x as Record<string, unknown>;
       uniqueId(y.id, `${f}.id`);
       for (const k of ['amount_cents', 'tendered_cents', 'change_cents']) need(isInt(y[k]) && (y[k] as number) >= 0, `${f}.${k}`, 'must be integer cents ≥ 0');
       need(y.status === 'captured' || y.status === 'voided', `${f}.status`, 'must be captured | voided');
-      for (const k of ['taken_by', 'voided_by', 'void_approved_by', 'void_reason']) optStr(y, k, f);
+      // ordr-pos a685442 orderPayloadCheck.ts:107-109
+      need('void_reason' in y, `${f}.void_reason`, 'must be present');
+      if (y.status === 'voided') {
+        need(typeof y.void_reason === 'string' && y.void_reason.trim() !== '' && y.void_reason.length <= VOID_REASON_MAX, `${f}.void_reason`, `must be 1–${VOID_REASON_MAX} characters when voided`);
+      } else need(y.void_reason === null, `${f}.void_reason`, 'must be null while captured');
+      for (const k of ['taken_by', 'voided_by', 'void_approved_by']) optStr(y, k, f);
       optInt(y, 'check_no', f);
     });
 

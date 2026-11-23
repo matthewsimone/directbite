@@ -302,9 +302,9 @@ Deno.test('payments insert-only: refund = captured → voided (inserted once); u
   assertEquals([s.status, s.void_reason, t.orders.paymentInserts.get(pay.id)], ['voided', 'refunded on the terminal', 1]);
   for (const [name, change] of [
     ['un-void', { status: 'captured' }],
-    ['amount', { amount_cents: 2000, tendered_cents: 2000, status: 'voided' }],
-    ['last4', { last4: '9999', status: 'voided' }],
-    ['method', { method: 'cash', last4: null, external_ref: null, status: 'voided' }],
+    ['amount', { amount_cents: 2000, tendered_cents: 2000, status: 'voided', void_reason: 'refunded on the terminal' }],
+    ['last4', { last4: '9999', status: 'voided', void_reason: 'refunded on the terminal' }],
+    ['method', { method: 'cash', last4: null, external_ref: null, status: 'voided', void_reason: 'refunded on the terminal' }],
   ] as [string, Partial<WirePayment>][]) {
     const r = await t.submit(await next(p2, { payments: [{ ...pay, ...change }] }));
     assertEquals([r.status, errBody(r)?.code], [400, 'invalid_payload'], name);
@@ -593,4 +593,69 @@ Deno.test('structural guards: order_id must be a UUID; duplicate child ids; absu
   for (let i = 0; i < 40; i++) deep = [deep];
   assertEquals(errBody(await t.submit({ ...p, pricing_config: { deep } })).code, 'invalid_payload');
   assertEquals(t.orders.applied.length, 0);
+});
+
+// ---- CP13: payments[].void_reason + order_id UUID (ordr-pos a685442 orderPayloadCheck.ts / submitTightening.test.ts) ----
+
+Deno.test('payments[].void_reason (a685442 orderPayloadCheck.ts:107-109): always present; 1–500 chars (not blank) when voided; null while captured → else 400 invalid_payload with the field', async () => {
+  const t = await setup();
+  const bad = async (pay: Record<string, unknown>, why: string) => {
+    const p = structuredClone(await payload(t.A, t.snap, { status: 'open' }));
+    (p as unknown as { payments: unknown[] }).payments = [pay];
+    const r = await t.submit(await rehash(p));
+    assertEquals([r.status, errBody(r)?.code, errBody(r)?.field], [400, 'invalid_payload', 'payments[0].void_reason'], why);
+  };
+  const { void_reason: _vr, ...missing } = cash(2068);
+  await bad(missing, 'key missing (captured)');
+  await bad({ ...cash(2068), void_reason: 'early' }, 'captured with a reason');
+  await bad({ ...cash(2068), status: 'voided', void_reason: null }, 'voided without a reason');
+  await bad({ ...cash(2068), status: 'voided', void_reason: '   ' }, 'voided with a blank reason');
+  await bad({ ...cash(2068), status: 'voided', void_reason: 'x'.repeat(501) }, 'voided with 501 chars');
+  await bad({ ...cash(2068), status: 'voided', void_reason: 7 }, 'voided with a number');
+  assertEquals(t.orders.applied.length, 0);
+  // the edges that pass; the reason is stored with the payment
+  for (const reason of ['x', 'y'.repeat(500)]) {
+    const pay = cash(2068, { status: 'voided', voided_by: 'register', void_reason: reason });
+    const p = await payload(t.A, t.snap, { status: 'open', payments: [pay] });
+    assertEquals(okBody(await t.submit(p)).result, 'applied');
+    assertEquals(t.orders.payments.get(pay.id)!.void_reason, reason);
+  }
+});
+
+Deno.test('order_id must be a UUID (a685442 orderPayloadCheck.ts:46) — after identity, like the reference: identity errors answer first', async () => {
+  const t = await setup();
+  const p = await payload(t.A, t.snap);
+  const r = await t.submit(await rehash({ ...structuredClone(p), order_id: 'ord-1' }));
+  assertEquals([r.status, errBody(r).code, errBody(r).field], [400, 'invalid_payload', 'order_id']);
+  assertEquals(errBody(await t.submit({ ...structuredClone(p), order_id: 42 })).field, 'order_id');
+  // a non-UUID order_id from the wrong restaurant: identity (§1a) answers first, as in the reference
+  assertEquals(errBody(await t.submit({ ...structuredClone(p), order_id: 'ord-1', restaurant_id: R2 })).code, 'restaurant_mismatch');
+  assertEquals(t.orders.applied.length, 0);
+});
+
+Deno.test('the structural check runs BEFORE the content hash (a685442 fakeServer.ts:918-923): a broken payment shape with a stale hash reports the shape', async () => {
+  const t = await setup();
+  const p = structuredClone(await payload(t.A, t.snap, { payments: [cash(2068)] }));
+  (p.payments[0] as unknown as Record<string, unknown>).void_reason = 'not while captured'; // hash NOT recomputed
+  assertEquals(errBody(await t.submit(p)).field, 'payments[0].void_reason');
+  // structure fine + stale hash → the hash error
+  const q = structuredClone(await payload(t.A, t.snap));
+  q.note = 'changed after hashing';
+  assertEquals(errBody(await t.submit(q)).field, 'content_hash');
+});
+
+Deno.test('payment changes are all-or-nothing (a685442 fakeServer.ts:965-985): a new payment next to an illegal change of a known one is NOT stored', async () => {
+  const t = await setup();
+  const a = cash(1000);
+  const p1 = await payload(t.A, t.snap, { status: 'open', payments: [a] });
+  okBody(await t.submit(p1));
+  const b = cash(1068);
+  const r = await t.submit(await next(p1, { payments: [b, { ...a, amount_cents: 999, tendered_cents: 999 }] }));
+  assertEquals([r.status, errBody(r).code], [400, 'invalid_payload']);
+  assertEquals([t.orders.payments.has(b.id), t.orders.paymentInserts.get(b.id), t.orders.orders.get(p1.order_id)!.version], [false, undefined, 1]);
+  // un-voiding the first while adding a second: same
+  const p2 = await next(p1, { payments: [{ ...a, status: 'voided', voided_by: 'register', void_reason: 'Wrong amount entered' }] });
+  okBody(await t.submit(p2));
+  const r2 = await t.submit(await next(p2, { payments: [{ ...a, status: 'captured', void_reason: null }, b] }));
+  assertEquals([errBody(r2).code, t.orders.payments.has(b.id), t.orders.payments.get(a.id)!.void_reason], ['invalid_payload', false, 'Wrong amount entered']);
 });

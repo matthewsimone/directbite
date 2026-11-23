@@ -191,7 +191,7 @@ Deno.test('drawer: a listed cash VOID whose payment is still captured on the ser
   const s = shiftOf(t.A, { starting_cash_cents: 0 });
   const r = body(await t.shiftCall(await hashed(closed(s, attr({ cash_payments: [{ payment_id: pay.id, order_id: p1.order_id, amount_cents: 2068 }], cash_payment_voids: [{ payment_id: pay.id, order_id: p1.order_id, amount_cents: 2068 }] }), 0))));
   assertEquals([r.flags.drawer_unverified, r.flags.drawer_mismatch], [true, false]);
-  await t.order(await next(p1, { payments: [{ ...pay, status: 'voided', voided_by: 'register' }] }));
+  await t.order(await next(p1, { payments: [{ ...pay, status: 'voided', voided_by: 'register', void_reason: 'Wrong amount entered' }] }));
   assertEquals(t.eod.shifts.get(s.shift_id)!.flags.drawer_unverified, false);
   // a refund listed before it synced
   const a = await t.paidOrder('cash');

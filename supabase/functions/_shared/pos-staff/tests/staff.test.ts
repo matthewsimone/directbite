@@ -266,7 +266,7 @@ Deno.test('submit-order (staff.test :528): staff actors + a manager-approved voi
   assertEquals(t.orders.orders.get(p.order_id)!.flags.approval_missing, true, 'stored');
   // a payment void by staff without a manager; a delivery-less order voided by a manager alone
   const pay = cash(380, { taken_by: sam });
-  const pv = await payload(t.A, t.menu, { status: 'open', payments: [{ ...pay, status: 'voided', voided_by: sam }] });
+  const pv = await payload(t.A, t.menu, { status: 'open', payments: [{ ...pay, status: 'voided', voided_by: sam, void_reason: 'Wrong amount entered' }] });
   assertEquals((await t.submit(pv)).flags.approval_missing, true);
   const ov = await payload(t.A, t.menu, { status: 'voided', void_reason: 'mistake', voided_by: maria, void_approved_by: null });
   assertEquals((await t.submit(ov)).flags.approval_missing, false);

@@ -97,7 +97,7 @@ export const mod = (topping: string, placement: 'whole' | 'left' | 'right' | nul
   id: uuid(), position: 0, kind: 'pizza' as const, topping_id: topping, name: topping, placement, price_cents: 0, price_half_cents: null, size_prices: null, charge_cents: 0, ...o,
 });
 export function cash(amount: number, o: Partial<WirePayment> = {}): WirePayment {
-  return { id: uuid(), method: 'cash', amount_cents: amount, tendered_cents: amount, change_cents: 0, status: 'captured', check_no: null, last4: null, external_ref: null, taken_by: 'register', voided_by: null, void_approved_by: null, ...o };
+  return { id: uuid(), method: 'cash', amount_cents: amount, tendered_cents: amount, change_cents: 0, status: 'captured', check_no: null, last4: null, external_ref: null, taken_by: 'register', voided_by: null, void_approved_by: null, void_reason: null, ...o };
 }
 export function card(amount: number, o: Partial<WirePayment> = {}): WirePayment {
   return cash(amount, { method: 'external_card', last4: '1234', external_ref: 'AUTH 004211', ...o });

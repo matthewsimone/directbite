@@ -1,27 +1,30 @@
 /**
  * pos-v1-submit-order (SYNC-CONTRACT §1a, §3; DIRECTBITE-HANDOFF items 2, 3, 6).
  *
- * Check order = the reference (ordr-pos test/support/fakeServer.ts), with the server-only steps marked +:
- *   1. device middleware (401 device_unregistered / device_revoked, 403 device_mismatch)  invoke :193-195
- *   +  JSON object, nesting ≤ 32, order_id a UUID (needed to look the order up)           → 400 invalid_payload
+ * Check order = the reference (ordr-pos a685442 test/support/fakeServer.ts; line numbers below), with the
+ * server-only steps marked +:
+ *   1. device middleware (401 device_unregistered / device_revoked, 403 device_mismatch)
+ *   +  JSON object, nesting ≤ 32                                                           → 400 invalid_payload
  *   2. identity §1a: restaurant_mismatch, device_mismatch, existing order of another restaurant,
- *      ticket prefix (new = principal's; existing = stored), channel in person          orderIdentity :257-270
- *   3. content_hash recompute (canonical JSON minus content_hash / device_time)            handle :900-902
- *   4. redemption / reward keys anywhere except provisional_pricing → 400 redemption_not_allowed  :904-905
- *   5. card-number-like free text (vendored cardData.ts) → 400 card_data_rejected           :908-909
- *   6. payment shape (cash / external_card) → 400 invalid_payload                           :910-913
- *   +  structural validation (types, enums, ids, size_prices array) → 400 invalid_payload
- *   7. §3.1 idempotency + versions: duplicate (ORIGINAL response) / 409 idempotency_key_reuse /
- *      stale_ignored / 409 version_conflict (+ server_version, server_writer_device_id)    :915-930
- *   8. price against the PINNED snapshot (unknown → current + unknown_snapshot; none → 400) with the
+ *      ticket prefix (new = principal's; existing = stored), channel in person, modifier size_prices
+ *      (the size_prices rule is also in step 3)                         invoke :204, orderIdentity :261-280
+ *   3. structure = orderPayloadCheck.ts (UUID ids incl. order_id :46, no duplicate ids, integers, ISO
+ *      times, tip shape, size_prices array, payments[].void_reason :107-109) → 400 invalid_payload  handle :918-920
+ *   4. content_hash recompute (canonical JSON minus content_hash / device_time)                 :921-923
+ *   5. redemption / reward keys anywhere except provisional_pricing → 400 redemption_not_allowed  :924-926
+ *   6. card-number-like free text (vendored cardData.ts) → 400 card_data_rejected               :929-930
+ *   7. payment shape (cash / external_card) → 400 invalid_payload                               :931-934
+ *   8. §3.1 idempotency + versions: duplicate (ORIGINAL response) / 409 idempotency_key_reuse /
+ *      stale_ignored / 409 version_conflict (+ server_version, server_writer_device_id)    :936-953
+ *   9. price against the PINNED snapshot (unknown → current + unknown_snapshot; none → 400) with the
  *      vendored priceOrder, in-person config; PricingError → 400 pricing_error:<code>;
- *      unknown_menu_item / unknown_topping / invalid_payload from the builder              :932-939, :1044-1073
- *   9. payments insert-only (amount / order / method / card fields immutable; captured → voided only)
- *      → 400 invalid_payload                                                               :941-956
- *  10. store (one transaction) → 200 applied: flags mismatch / stale_price / unknown_snapshot /
- *      availability_flag (+ delivery), diff, pricing_module_hash, order_number, server_time  :958-1022
+ *      unknown_menu_item / unknown_topping / invalid_payload from the builder              :955-963, price()
+ *  10. payments insert-only, ALL-OR-NOTHING: every payment checked before any is written (amount / order /
+ *      method / card fields immutable; captured → voided only) → 400 invalid_payload       :965-985
+ *  11. store (one transaction) → 200 applied: flags mismatch / stale_price / unknown_snapshot /
+ *      availability_flag (+ delivery), diff, pricing_module_hash, order_number, server_time  :987-1011
  *
- * Steps 7, 9, 10 run again atomically inside the store's apply (pos_apply_order_submission), so a
+ * Steps 8, 10, 11 run again atomically inside the store's apply (pos_apply_order_submission), so a
  * concurrent writer between the pre-check and the apply gets the same §3.1 answer.
  *
  * Staff flags (item 8, _shared/pos-staff/flags.ts): unknown_actor, approval_missing,
@@ -133,16 +136,21 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   const parsed = parseJsonObject(req.bodyText);
   if (!parsed.ok) return parsed.result;
   const body = parsed.value;
-  // + structural minimum to look the order up safely
+  // + nesting cap before any recursive walk
   if (jsonDepth(body) > MAX_DEPTH) return invalid(`nesting deeper than ${MAX_DEPTH}`);
-  if (typeof body.order_id !== 'string' || !UUID_RE.test(body.order_id)) return invalid('order_id must be a UUID', 'order_id');
 
-  // 2. identity (§1a) — needs the stored order (restaurant + ticket prefix)
-  const head = await deps.orders.getHead(body.order_id);
+  // 2. identity (§1a) — needs the stored order (restaurant + ticket prefix). A non-UUID order_id can't be
+  //    stored, so it is a new order here; the structural check below then refuses it (reference order).
+  const head = typeof body.order_id === 'string' && UUID_RE.test(body.order_id) ? await deps.orders.getHead(body.order_id) : null;
   const idBad = orderIdentity(body as Parameters<typeof orderIdentity>[0], pr, head ? { restaurant_id: head.restaurant_id, ticket_prefix: head.ticket_prefix } : null);
   if (idBad) return idBad;
 
-  // 3. content hash
+  // 3. structure (a685442 handle :918-920, before the hash): UUID ids incl. order_id, types, void_reason …
+  //    payments must be objects for this; their cash / card shape rules stay at step 7 (reference order)
+  const shape = validateOrderPayload(body);
+  if (shape) return invalid(shape.message, shape.field);
+
+  // 4. content hash
   let recomputed: string;
   try {
     recomputed = await contentHash(body, ORDER_HASH_EXCLUDES);
@@ -152,27 +160,24 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   }
   if (recomputed !== body.content_hash) return invalid('content_hash does not match the canonical payload', 'content_hash');
 
-  // 4. redemption keys (provisional_pricing's loyalty_* fields are pricing output, not a redemption)
+  // 5. redemption keys (provisional_pricing's loyalty_* fields are pricing output, not a redemption)
   const red = findRedemptionKey(scannedPart(body));
   if (red) return errorResult(400, 'redemption_not_allowed', 'offline orders cannot carry a redemption', { field: red });
 
-  // 5. card data — nothing is stored
+  // 6. card data — nothing is stored
   const card = cardDataPaths(body);
   if (card.length) return errorResult(400, 'card_data_rejected', `card-number-like text at ${card.join(', ')}`, { field: card[0] });
 
-  // 6. payment shape
+  // 7. payment shape
   const pay = paymentsShapeProblem(body);
   if (pay) return invalid(pay.message, pay.field);
 
-  // + structure
-  const shape = validateOrderPayload(body);
-  if (shape) return invalid(shape.message, shape.field);
   const p = body as unknown as OrderPayload;
 
   const nowMs = deps.now();
   const nowIso = new Date(nowMs).toISOString();
 
-  // 7. §3.1 pre-check (re-decided atomically in apply)
+  // 8. §3.1 pre-check (re-decided atomically in apply)
   const prior = await deps.orders.getSubmission(p.order_id, p.version);
   const d = decideVersion(p, pr.device_id, prior, head);
   if (d === 'duplicate') return okResult({ ...prior!.response, result: 'duplicate' });
@@ -180,7 +185,7 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   if (d === 'stale_ignored') return okResult(staleResponse(head!, p.version, nowIso, moduleHash, await orderPostZ(deps.eod, head!.writer_device_id, head!.sales_day, p.order_id)));
   if (d === 'version_conflict') return conflictResult(head?.version ?? null, head?.writer_device_id ?? null);
 
-  // 8. price against the pinned snapshot
+  // 9. price against the pinned snapshot
   const rid = pr.restaurant_id;
   const pinned = await deps.orders.getSnapshot(p.menu_snapshot_hash, rid);
   let current: MenuSnapshot | null = null;
@@ -233,7 +238,7 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
     server_time: nowIso,
   };
 
-  // 9 + 10. payments insert-only + store, one transaction
+  // 10 + 11. payments insert-only + store, one transaction (pos_apply_order_submission)
   const outcome = await deps.orders.apply({ payload: p, writer: pr.device_id, restaurantId: rid, response, receivedAt: nowIso, salesDay });
   if (outcome.outcome === 'applied') {
     await reverifyShifts(deps.eod, rid, deps.log);
