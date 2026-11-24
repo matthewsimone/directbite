@@ -8,7 +8,7 @@ export default function PrivacyPolicy() {
       </header>
       <div className="max-w-[720px] mx-auto px-6 py-12">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Privacy Policy</h1>
-        <p className="text-sm text-gray-500 mb-8">Last updated: August 5, 2026</p>
+        <p className="text-sm text-gray-500 mb-8">Last updated: November 24, 2026</p>
 
         <div className="prose prose-sm max-w-none text-gray-700 space-y-6">
           <section>
@@ -23,6 +23,8 @@ export default function PrivacyPolicy() {
               <li>Verification records, including the date and time a code was requested and the consent language shown to you</li>
               <li>Loyalty point balances and transaction history, held separately for each restaurant</li>
               <li>Account session identifiers stored on your device</li>
+              <li>Push notification tokens (a device identifier issued by Apple or Google), if you allow notifications in a restaurant's app</li>
+              <li>Camera access in our mobile apps, used only on your device to scan a payment card — we do not receive or store camera images</li>
             </ul>
           </section>
 
@@ -36,6 +38,7 @@ export default function PrivacyPolicy() {
               <li>Improve our platform and services</li>
               <li>Verify your identity when you create or sign in to an account</li>
               <li>Calculate and track loyalty points where a restaurant offers a program</li>
+              <li>Send promotional notifications from restaurants you have ordered from, if you allow notifications. You can turn them off at any time in your device settings</li>
             </ul>
           </section>
 
@@ -48,6 +51,8 @@ export default function PrivacyPolicy() {
               <li><strong>Resend</strong> — email delivery</li>
               <li><strong>Supabase</strong> — data storage and authentication</li>
               <li><strong>Vercel</strong> — hosting and content delivery</li>
+              <li><strong>Google Firebase Cloud Messaging</strong> — push notification delivery</li>
+              <li><strong>Apple Push Notification service</strong> — push notification delivery on iPhone</li>
             </ul>
             <p>Each service has its own privacy policy governing how they handle your data.</p>
             <p>Mobile information and SMS consent will not be shared with third parties or affiliates for marketing or promotional purposes. No mobile information is sold or shared with third parties for their own marketing. All other categories of data described in this section exclude text messaging opt-in data and consent; this information will not be shared with any third parties.</p>
@@ -56,11 +61,12 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">4. Data Retention</h2>
             <p>Order history and associated data are retained for 7 years for tax and legal compliance purposes. You may request deletion of your personal data at any time by contacting us.</p>
+            <p>Push notification tokens are kept until you turn off notifications, sign out, or uninstall the app. Records of verification requests and the consent language shown to you are kept as proof of consent.</p>
           </section>
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">5. Cookies and Local Storage</h2>
-            <p>Ordr uses your browser's local storage to keep your cart contents and, if you have an account, to keep you signed in. We do not use third-party marketing or tracking cookies.</p>
+            <p>Ordr uses your browser's local storage to keep your cart contents and, if you have an account, to keep you signed in. We do not use third-party marketing or tracking cookies. In our mobile apps, the same information is kept in the app's private storage on your device.</p>
           </section>
 
           <section>
@@ -75,6 +81,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">7. Your Rights</h2>
             <p>You have the right to access, modify, or delete your personal data. To exercise these rights, contact us at <a href="mailto:matt@ordr.co" className="text-[#16A34A] underline">matt@ordr.co</a>.</p>
             <p>If you have an Ordr account, you may request deletion of your account at any time. Deleting your account removes your profile, saved payment methods, and loyalty balances across all restaurants on the platform. Order records are retained as described in Section 4 for tax and legal compliance.</p>
+            <p>In our mobile apps, you can delete your account at any time under Account → Delete account.</p>
           </section>
 
           <section>
