@@ -2,10 +2,11 @@
  * Feed query: business-day window (04:00 cutoff, DST), the PostgREST membership filter (evaluated by a small
  * logic-tree evaluator against Test Pizza fixtures), count=exact → feed_too_large, deterministic hash.
  */
-import { assert, assertEquals, assertNotEquals, assertRejects } from 'jsr:@std/assert@1';
+import { assert, assertEquals, assertNotEquals, assertRejects, assertThrows } from 'jsr:@std/assert@1';
 import { businessDate } from '../../pos-eod/rules.ts';
 import {
-  addDays, FEED_SELECT, FeedError, feedHash, feedOrFilter, feedWindow, type FeedWindow, loadFeed, localTimeToEpochMs,
+  addDays, FEED_SELECT, FeedError, feedHash, feedOrFilter, feedWindow, type FeedWindow, historyOrFilter, historyRange, KH_FEED_SELECT,
+  khFeedOrFilter, loadFeed, localTimeToEpochMs, ONLINE_FEED_ROW_CAP,
   normalizeFeedRows, OPEN_LOOKBACK_DAYS, stableJson,
 } from '../feedQuery.ts';
 import { fakeId, order, R1, TZ } from './fixtures.ts';
@@ -64,8 +65,13 @@ Deno.test('filter: exact PostgREST logic tree', () => {
   const w = feedWindow(NOW, TZ);
   assertEquals(
     feedOrFilter(w),
-    `and(status.in.(new,in_progress,scheduled,self_delivering),or(created_at.gte."${w.open_since}",scheduled_for.gte."2026-11-23T09:00:00.000Z")),` +
-      'created_at.gte."2026-11-23T09:00:00.000Z",refunded_at.gte."2026-11-23T09:00:00.000Z"',
+    `and(status.in.(new,in_progress,scheduled,self_delivering),created_at.gte."${w.open_since}"),` +
+      'created_at.gte."2026-11-23T09:00:00.000Z",scheduled_for.gte."2026-11-23T09:00:00.000Z",refunded_at.gte."2026-11-23T09:00:00.000Z"',
+  );
+  assertEquals(
+    khFeedOrFilter(w),
+    `and(status.in.(new,accepted),created_at.gte."${w.open_since}"),` +
+      'created_at.gte."2026-11-23T09:00:00.000Z",scheduled_for.gte."2026-11-23T09:00:00.000Z"',
   );
 });
 
@@ -95,11 +101,14 @@ function parseNode(s: string): Pred {
     const set = inM[2].split(',');
     return (r) => set.includes(String(r[inM[1]]));
   }
-  const gte = /^([a-z_]+)\.gte\."(.*)"$/.exec(s);
-  if (gte) {
-    const t = Date.parse(gte[2]);
-    return (r) => r[gte[1]] != null && Date.parse(String(r[gte[1]])) >= t; // NULL ≥ x is not true in SQL
+  const cmp = /^([a-z_]+)\.(gte|lt)\."(.*)"$/.exec(s);
+  if (cmp) {
+    const t = Date.parse(cmp[3]);
+    // NULL ≥ x / NULL < x are not true in SQL
+    return (r) => r[cmp[1]] != null && (cmp[2] === 'gte' ? Date.parse(String(r[cmp[1]])) >= t : Date.parse(String(r[cmp[1]])) < t);
   }
+  const isNull = /^([a-z_]+)\.is\.null$/.exec(s);
+  if (isNull) return (r) => r[isNull[1]] == null;
   throw new Error(`unparsed node ${s}`);
 }
 const member = (w: FeedWindow): Pred => parseNode(`or(${feedOrFilter(w)})`);
@@ -121,7 +130,10 @@ Deno.test('filter membership: open orders, the two business days, refunds, sched
     ['complete, 2 days old', order({ status: 'complete', created_at: days(2) }), false],
     ['cancelled 10 days old, refunded today', order({ status: 'cancelled', created_at: days(10), refunded_at: days(0) }), true],
     ['complete 10 days old, refunded 3 days ago', order({ status: 'complete', created_at: days(10), refunded_at: days(3) }), false],
-    ['complete, scheduled_for tomorrow but terminal and old', order({ status: 'complete', created_at: days(9), scheduled_for: '2026-11-25T17:00:00Z' }), false],
+    // §3c:499-500 (b): scheduled_for in the window counts for ANY status (part 1 had this case false)
+    ['complete, created 9 days ago, scheduled_for tomorrow', order({ status: 'complete', created_at: days(9), scheduled_for: '2026-11-25T17:00:00Z' }), true],
+    ['cancelled, created 9 days ago, scheduled_for yesterday 05:00 local', order({ status: 'cancelled', created_at: days(9), scheduled_for: '2026-11-23T10:00:00Z' }), true],
+    ['complete, created 9 days ago, scheduled_for 3 days ago', order({ status: 'complete', created_at: days(9), scheduled_for: days(3) }), false],
   ];
   for (const [name, row, want] of cases) assertEquals(inFeed(row), want, name);
 });
@@ -157,7 +169,7 @@ Deno.test('loadFeed: one request, count=exact, scoped by restaurant, filter + or
   const a = order({ created_at: '2026-11-24T14:00:00Z' });
   const { db, calls } = fakeDb({ rows: [a] });
   const snap = await loadFeed(db, R1, NOW);
-  assertEquals(calls.map((c) => c.table), ['restaurants', 'orders']);
+  assertEquals(calls.map((c) => c.table), ['restaurants', 'orders']); // KitchenHub off → external_orders not read
   assertEquals(calls[1].ops, [
     ['select', FEED_SELECT, { count: 'exact' }],
     ['eq', 'restaurant_id', R1],
@@ -167,8 +179,46 @@ Deno.test('loadFeed: one request, count=exact, scoped by restaurant, filter + or
   ]);
   assertEquals(snap.count, 1);
   assertEquals(snap.window.business_date, '2026-11-24');
-  assertEquals(snap.hash, await feedHash(snap.orders));
-  assertEquals(snap.hash.length, 64);
+  assertEquals(snap.kitchenhub, []);
+  assertEquals(snap.orders.map((o) => o.id), [a.id]);
+});
+
+Deno.test('loadFeed: KitchenHub on → external_orders read the same way (its filter, no raw column)', async () => {
+  const { db, calls } = fakeDb({ rows: [] });
+  await loadFeed(db, R1, NOW, { kitchenHub: true });
+  assertEquals(calls.map((c) => c.table), ['restaurants', 'orders', 'external_orders']);
+  assertEquals(calls[2].ops, [
+    ['select', KH_FEED_SELECT, { count: 'exact' }],
+    ['eq', 'restaurant_id', R1],
+    ['or', khFeedOrFilter(feedWindow(NOW, TZ))],
+    ['order', 'created_at', { ascending: false }],
+    ['order', 'id', { ascending: true }],
+  ]);
+  assertEquals(KH_FEED_SELECT.split(',').includes('raw'), false);
+});
+
+Deno.test('loadFeed: over the 500-row cap → feed_too_large (both channels counted)', async () => {
+  const rows = Array.from({ length: 251 }, () => order());
+  const e = await assertRejects(() => loadFeed(fakeDb({ rows }).db, R1, NOW, { kitchenHub: true }), FeedError);
+  assertEquals(e.code, 'feed_too_large'); // 251 + 251 > ONLINE_FEED_ROW_CAP
+  assertEquals(ONLINE_FEED_ROW_CAP, 500);
+  const ok = await loadFeed(fakeDb({ rows }).db, R1, NOW); // 251 alone is fine
+  assertEquals(ok.count, 251);
+});
+
+Deno.test('history: one business day [D 04:00, D+1 04:00) local; scheduled_for ?? created_at; bad dates refused', () => {
+  const h = historyRange('2026-11-20', TZ);
+  assertEquals(h, { business_date: '2026-11-20', start: '2026-11-20T09:00:00.000Z', end: '2026-11-21T09:00:00.000Z' });
+  const inDay = parseNode(`or(${historyOrFilter(h)})`);
+  const cases: [string, Record<string, unknown>, boolean][] = [
+    ['created that day, ASAP', order({ created_at: '2026-11-20T18:00:00Z', scheduled_for: null }), true],
+    ['created that day 03:59 local → the day before', order({ created_at: '2026-11-20T08:59:00Z' }), false],
+    ['created next day 03:59 local → still that day', order({ created_at: '2026-11-21T08:59:00Z' }), true],
+    ['created that day, scheduled for the next day → not that day', order({ created_at: '2026-11-20T18:00:00Z', scheduled_for: '2026-11-21T17:00:00Z' }), false],
+    ['created earlier, scheduled into that day', order({ created_at: '2026-11-10T18:00:00Z', scheduled_for: '2026-11-20T17:00:00Z' }), true],
+  ];
+  for (const [name, row, want] of cases) assertEquals(inDay(row), want, name);
+  for (const bad of ['2026-02-30', '2026-13-01', '20261120', '']) assertThrows(() => historyRange(bad, TZ), RangeError);
 });
 
 Deno.test('loadFeed: more rows than returned → feed_too_large (never truncated)', async () => {

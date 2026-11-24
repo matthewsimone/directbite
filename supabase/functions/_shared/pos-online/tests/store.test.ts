@@ -1,33 +1,49 @@
 /**
- * Migration 109 semantics via MemoryOnlineStore (mirrors the plpgsql; 109_smoke.sql runs the same scenarios
- * against Postgres) + PgOnlineStore's RPC names / argument names.
+ * Migrations 109 + 110 semantics via MemoryOnlineStore (mirrors the plpgsql; 110_smoke.sql runs the same
+ * scenarios against Postgres), checked against the PORTED reference rules (printRules.ts = ordr-pos @ 7798d52
+ * src/dev/onlinePrintRules.ts) by a randomized differential test, + PgOnlineStore's RPC / argument names.
  */
-import { assertEquals, assertRejects } from 'jsr:@std/assert@1';
+import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@1';
 import { TestClock } from '../../pos-device/tests/harness.ts';
-import {
-  MAX_AUTO_PRINT_ATTEMPTS, MemoryOnlineStore, OnlineStoreError, PgOnlineStore, PRINT_LEASE_MS,
-} from '../store.ts';
+import { applyClaim, applyPrintResult, orderPrintResult, type OnlinePrintWire, type OnlineStationRef, type PrintResult, type PrintVariant } from '../printRules.ts';
+import { MemoryOnlineStore, OnlineStoreError, PgOnlineStore, type RecordInput } from '../store.ts';
 import { DEV_A, DEV_B, DEV_R2, fakeId, R1, R2 } from './fixtures.ts';
 
-function setup() {
+const COUNTER: OnlineStationRef = { station: 'p-counter', name: 'Counter', lines: [0, 1] };
+const OVEN: OnlineStationRef = { station: 'p-oven', name: 'Pizza oven', lines: [0] };
+const BAR: OnlineStationRef = { station: 'p-bar', name: 'Bar', lines: [1] };
+
+function setup(o: { flags?: boolean } = {}) {
   const clock = new TestClock();
   const s = new MemoryOnlineStore(clock.now);
   s.devices.set(DEV_A, { id: DEV_A, restaurant_id: R1, status: 'active' });
   s.devices.set(DEV_B, { id: DEV_B, restaurant_id: R1, status: 'active' });
   s.devices.set(DEV_R2, { id: DEV_R2, restaurant_id: R2, status: 'active' });
+  if (o.flags !== false) {
+    s.setFlags(R1, { online_auto_print_enabled: true, kitchenhub_auto_print_enabled: true });
+  }
   return { clock, s };
 }
+const claim = (s: MemoryOnlineStore, orderId: string, deviceId = DEV_A, o: { stations?: OnlineStationRef[]; printed?: boolean; channel?: 'ordr' | 'kitchenhub'; restaurantId?: string } = {}) =>
+  s.claimPrint({ restaurantId: o.restaurantId ?? R1, channel: o.channel ?? 'ordr', orderId, deviceId, stations: o.stations ?? [COUNTER, OVEN], printStatusPrinted: o.printed ?? false });
+const rec = (s: MemoryOnlineStore, orderId: string, deviceId: string, variant: PrintVariant, result: PrintResult, station: OnlineStationRef, o: Partial<RecordInput> = {}) =>
+  s.recordPrint({ restaurantId: R1, channel: 'ordr', orderId, deviceId, actionId: fakeId('a'), variant, result, station, error: null, deviceTime: null, ...o });
 
-// ---- print register --------------------------------------------------------------------------------
+// ---- print register + flags ------------------------------------------------------------------------
 
-Deno.test('register: auto-print is off until a register is set, and off again when cleared', async () => {
-  const { s } = setup();
+Deno.test('claim: not_designated until a register is set (and again when cleared); auto_print_off per channel', async () => {
+  const { s } = setup({ flags: false });
   const o = fakeId();
-  assertEquals(await s.claimPrint(R1, o, DEV_A), { outcome: 'not_print_register', print_register_device_id: null });
+  assertEquals(await claim(s, o), { outcome: 'not_designated' });
   await s.setPrintRegister(R1, DEV_A, 'admin@example.test');
-  assertEquals((await s.claimPrint(R1, o, DEV_A)).outcome, 'claimed');
+  assertEquals(await claim(s, o), { outcome: 'auto_print_off' }); // both flags default false (handoff DDL)
+  s.setFlags(R1, { online_auto_print_enabled: true });
+  assertEquals(await claim(s, fakeId(), DEV_A, { channel: 'kitchenhub' }), { outcome: 'auto_print_off' });
+  assertEquals(await claim(s, o), { outcome: 'ok', applied: true, claimed: true });
+  s.setFlags(R1, { kitchenhub_auto_print_enabled: true });
+  assertEquals((await claim(s, fakeId(), DEV_A, { channel: 'kitchenhub' })).outcome, 'ok');
   await s.setPrintRegister(R1, null, 'admin@example.test');
-  assertEquals(await s.claimPrint(R1, fakeId(), DEV_A), { outcome: 'not_print_register', print_register_device_id: null });
+  assertEquals(await claim(s, fakeId()), { outcome: 'not_designated' });
 });
 
 Deno.test('register: must be an ACTIVE register of the SAME restaurant', async () => {
@@ -40,147 +56,249 @@ Deno.test('register: must be an ACTIVE register of the SAME restaurant', async (
   await assertRejects(() => s.setPrintRegister(R1, DEV_A, ''), OnlineStoreError);
 });
 
-Deno.test('claim: only the print register; a revoked or foreign device is not allowed', async () => {
+Deno.test('claim: only the print register; a revoked / foreign device is not allowed', async () => {
   const { s } = setup();
   await s.setPrintRegister(R1, DEV_A, 'admin');
-  const o = fakeId();
-  assertEquals(await s.claimPrint(R1, o, DEV_B), { outcome: 'not_print_register', print_register_device_id: DEV_A });
-  assertEquals(await s.claimPrint(R1, o, DEV_R2), { outcome: 'device_not_allowed' });
+  assertEquals(await claim(s, fakeId(), DEV_B), { outcome: 'not_designated' });
+  assertEquals(await claim(s, fakeId(), DEV_R2), { outcome: 'device_not_allowed' });
   s.devices.get(DEV_A)!.status = 'revoked';
-  assertEquals(await s.claimPrint(R1, o, DEV_A), { outcome: 'device_not_allowed' });
+  assertEquals(await claim(s, fakeId(), DEV_A), { outcome: 'device_not_allowed' });
 });
 
-// ---- claim / lease ---------------------------------------------------------------------------------
+// ---- claim -----------------------------------------------------------------------------------------
 
-Deno.test('claim: first → attempt 1; the same register again within the lease → same attempt, no new log row', async () => {
-  const { clock, s } = setup();
-  await s.setPrintRegister(R1, DEV_A, 'admin');
-  const o = fakeId();
-  const first = await s.claimPrint(R1, o, DEV_A);
-  assertEquals(first, { outcome: 'claimed', attempt: 1, lease_expires_at: new Date(clock.t + PRINT_LEASE_MS).toISOString(), takeover: false });
-  clock.advance(10_000);
-  assertEquals(await s.claimPrint(R1, o, DEV_A), first);
-  assertEquals(s.log.length, 1);
-});
-
-Deno.test('claim: held while the lease runs; at exactly 60 s the next register takes over (attempt 2)', async () => {
-  const { clock, s } = setup();
-  await s.setPrintRegister(R1, DEV_A, 'admin');
-  const o = fakeId();
-  const t0 = clock.t;
-  await s.claimPrint(R1, o, DEV_A);
-  await s.setPrintRegister(R1, DEV_B, 'admin');
-  clock.advance(PRINT_LEASE_MS - 1);
-  assertEquals(await s.claimPrint(R1, o, DEV_B), { outcome: 'held', device_id: DEV_A, lease_expires_at: new Date(t0 + PRINT_LEASE_MS).toISOString() });
-  clock.advance(1);
-  const r = await s.claimPrint(R1, o, DEV_B);
-  assertEquals([r.outcome, (r as { attempt: number }).attempt, (r as { takeover: boolean }).takeover], ['claimed', 2, true]);
-  assertEquals(s.log.at(-1)!.detail, { takeover: true, previous_device_id: DEV_A, previous_result: 'claimed' });
-});
-
-Deno.test('finish: late finish after a takeover → lease_lost (logged, claim unchanged); recorded; duplicate; already_printed', async () => {
-  const { clock, s } = setup();
-  await s.setPrintRegister(R1, DEV_A, 'admin');
-  const o = fakeId();
-  await s.claimPrint(R1, o, DEV_A);
-  await s.setPrintRegister(R1, DEV_B, 'admin');
-  clock.advance(PRINT_LEASE_MS);
-  await s.claimPrint(R1, o, DEV_B);
-
-  assertEquals(await s.finishPrint(R1, o, DEV_A, 1, 'printed', { source: 'test' }), { outcome: 'lease_lost', device_id: DEV_B, attempt: 2, result: 'claimed' });
-  assertEquals(s.claims.get(o)!.result, 'claimed');
-  assertEquals(await s.finishPrint(R1, o, DEV_B, 2, 'printed'), { outcome: 'recorded', result: 'printed', attempt: 2 });
-  assertEquals(await s.finishPrint(R1, o, DEV_B, 2, 'printed'), { outcome: 'duplicate', result: 'printed', attempt: 2 });
-  assertEquals(await s.claimPrint(R1, o, DEV_B), { outcome: 'already_printed', device_id: DEV_B, attempt: 2 });
-  assertEquals(s.log.map((l) => [l.result, l.attempt, l.detail.lease_lost ?? false, l.detail.takeover ?? false]), [
-    ['claimed', 1, false, false],
-    ['claimed', 2, false, true],
-    ['printed', 1, true, false],
-    ['printed', 2, false, false],
-  ]);
-});
-
-Deno.test('finish: the current attempt finishing after its lease ran out (nobody took over) is recorded', async () => {
-  const { clock, s } = setup();
-  await s.setPrintRegister(R1, DEV_A, 'admin');
-  const o = fakeId();
-  await s.claimPrint(R1, o, DEV_A);
-  clock.advance(5 * PRINT_LEASE_MS);
-  assertEquals((await s.finishPrint(R1, o, DEV_A, 1, 'printed')).outcome, 'recorded');
-});
-
-Deno.test(`failed ${MAX_AUTO_PRINT_ATTEMPTS} times → attempts_exhausted; a printed result never re-prints`, async () => {
+Deno.test('claim: first records one station row each (counter first, result null); again → noop, still claimed', async () => {
   const { s } = setup();
   await s.setPrintRegister(R1, DEV_A, 'admin');
   const o = fakeId();
-  for (let a = 1; a <= MAX_AUTO_PRINT_ATTEMPTS; a++) {
-    const c = await s.claimPrint(R1, o, DEV_A);
-    assertEquals([c.outcome, (c as { attempt: number }).attempt, (c as { takeover: boolean }).takeover], ['claimed', a, false]);
-    assertEquals((await s.finishPrint(R1, o, DEV_A, a, 'failed', { error: 'Cover open' })).outcome, 'recorded');
+  assertEquals(await claim(s, o), { outcome: 'ok', applied: true, claimed: true });
+  assertEquals(await claim(s, o), { outcome: 'ok', applied: false, claimed: true });
+  const st = await s.printState(R1, [o]);
+  assertEquals(st.stations.map((x) => [x.station, x.position, x.result, x.lines]), [['p-counter', 0, null, [0, 1]], ['p-oven', 1, null, [0]]]);
+  assertEquals(st.claims.map((c) => [c.device_id, c.result]), [[DEV_A, null]]);
+});
+
+Deno.test('claim: NO takeover — the register moves to B, B\'s claim of A\'s order is a noop (claimed false)', async () => {
+  const { s } = setup();
+  await s.setPrintRegister(R1, DEV_A, 'admin');
+  const o = fakeId();
+  await claim(s, o);
+  await s.setPrintRegister(R1, DEV_B, 'admin');
+  assertEquals(await claim(s, o, DEV_B), { outcome: 'ok', applied: false, claimed: false });
+});
+
+Deno.test('claim: the tablet printed it (print_status printed) → never claimed', async () => {
+  const { s } = setup();
+  await s.setPrintRegister(R1, DEV_A, 'admin');
+  assertEquals(await claim(s, fakeId(), DEV_A, { printed: true }), { outcome: 'ok', applied: false, claimed: false });
+});
+
+Deno.test('claim: an unclaimed order with a result over stations is not claimed; null stations are REPLACED (applyClaim)', async () => {
+  const { s } = setup();
+  await s.setPrintRegister(R1, DEV_A, 'admin');
+  const o1 = fakeId();
+  await rec(s, o1, DEV_B, 'reprint', 'printed', COUNTER); // a reprint never claims
+  assertEquals(await claim(s, o1), { outcome: 'ok', applied: false, claimed: false });
+  const o2 = fakeId();
+  await rec(s, o2, DEV_B, 'reprint', 'failed', BAR); // a failed reprint leaves the station null
+  assertEquals(await claim(s, o2), { outcome: 'ok', applied: true, claimed: true });
+  assertEquals((await s.printState(R1, [o2])).stations.map((x) => x.station), ['p-counter', 'p-oven']);
+});
+
+Deno.test('claim: bad stations refused (invalid_input = 22023 / 23505)', async () => {
+  const { s } = setup();
+  await s.setPrintRegister(R1, DEV_A, 'admin');
+  for (const stations of [[{ station: '', name: 'x', lines: [] }], [{ station: 'a', name: 'x', lines: [-1] }], [COUNTER, COUNTER]]) {
+    await assertRejects(() => claim(s, fakeId(), DEV_A, { stations: stations as OnlineStationRef[] }), OnlineStoreError);
   }
-  assertEquals(await s.claimPrint(R1, o, DEV_A), { outcome: 'attempts_exhausted', attempt: MAX_AUTO_PRINT_ATTEMPTS });
 });
 
-Deno.test('finish: unclaimed order; another restaurant\'s claim; bad result refused', async () => {
+// ---- record ----------------------------------------------------------------------------------------
+
+Deno.test('record: the order is printed only once EVERY station printed (counter, then oven)', async () => {
   const { s } = setup();
   await s.setPrintRegister(R1, DEV_A, 'admin');
-  await s.setPrintRegister(R2, DEV_R2, 'admin');
   const o = fakeId();
-  assertEquals(await s.finishPrint(R1, o, DEV_A, 1, 'printed'), { outcome: 'not_claimed' });
-  await s.claimPrint(R1, o, DEV_A);
-  assertEquals(await s.finishPrint(R2, o, DEV_R2, 1, 'printed'), { outcome: 'restaurant_mismatch' });
-  assertEquals(await s.claimPrint(R2, o, DEV_R2), { outcome: 'restaurant_mismatch' });
-  // deno-lint-ignore no-explicit-any
-  await assertRejects(() => s.finishPrint(R1, o, DEV_A, 1, 'claimed' as any), OnlineStoreError);
+  await claim(s, o);
+  assertEquals(await rec(s, o, DEV_A, 'auto', 'printed', COUNTER), { outcome: 'recorded', order_result: null, claimed_by: DEV_A });
+  assertEquals(await rec(s, o, DEV_A, 'auto', 'printed', OVEN), { outcome: 'recorded', order_result: 'printed', claimed_by: DEV_A });
+  const st = await s.printState(R1, [o]);
+  assertEquals(st.claims[0].result, 'printed');
+  assert(st.claims[0].printed_at !== null);
+  assertEquals(st.log.map((l) => [l.station, l.variant, l.result]), [['p-counter', 'auto', 'printed'], ['p-oven', 'auto', 'printed']]);
 });
 
-// ---- actions -------------------------------------------------------------------------------------------
+Deno.test('record: one station failed → the order failed; a printed station stays printed; an unknown station is added last', async () => {
+  const { s } = setup();
+  await s.setPrintRegister(R1, DEV_A, 'admin');
+  const o = fakeId();
+  await claim(s, o);
+  await rec(s, o, DEV_A, 'auto', 'printed', COUNTER);
+  await rec(s, o, DEV_A, 'auto', 'printed', OVEN);
+  assertEquals((await rec(s, o, DEV_A, 'auto', 'failed', OVEN, { error: 'Cover open' })).outcome, 'recorded');
+  assertEquals((await s.printState(R1, [o])).stations.find((x) => x.station === 'p-oven')!.result, 'printed');
+  assertEquals(await rec(s, o, DEV_B, 'manual', 'failed', BAR), { outcome: 'recorded', order_result: 'failed', claimed_by: DEV_A });
+  assertEquals((await s.printState(R1, [o])).stations.map((x) => [x.station, x.position]), [['p-counter', 0], ['p-oven', 1], ['p-bar', 2]]);
+});
+
+Deno.test('record: NOT CONFIRMED on one station; a Print / Reprint that prints settles it', async () => {
+  const { s } = setup();
+  await s.setPrintRegister(R1, DEV_A, 'admin');
+  const o = fakeId();
+  await claim(s, o);
+  await rec(s, o, DEV_A, 'auto', 'printed', COUNTER);
+  assertEquals((await rec(s, o, DEV_A, 'auto', 'printed_unconfirmed', OVEN)).outcome, 'recorded');
+  assertEquals((await s.printState(R1, [o])).claims[0].result, 'printed_unconfirmed');
+  assertEquals(await rec(s, o, DEV_B, 'manual', 'printed', OVEN), { outcome: 'recorded', order_result: 'printed', claimed_by: DEV_A });
+});
+
+Deno.test('record: manual on an UNCLAIMED order claims it for that device (no auto ticket follows anywhere)', async () => {
+  const { s } = setup();
+  await s.setPrintRegister(R1, DEV_A, 'admin');
+  const o = fakeId();
+  assertEquals(await rec(s, o, DEV_B, 'manual', 'printed', COUNTER), { outcome: 'recorded', order_result: 'printed', claimed_by: DEV_B });
+  assertEquals(await claim(s, o), { outcome: 'ok', applied: false, claimed: false });
+});
+
+Deno.test('record: the same action_id twice → duplicate (logged once); bad input refused; another restaurant refused', async () => {
+  const { s } = setup();
+  const o = fakeId();
+  const actionId = fakeId('a');
+  assertEquals((await rec(s, o, DEV_B, 'manual', 'printed', COUNTER, { actionId })).outcome, 'recorded');
+  assertEquals(await rec(s, o, DEV_B, 'manual', 'printed', COUNTER, { actionId }), { outcome: 'duplicate' });
+  assertEquals((await s.printState(R1, [o])).log.length, 1);
+  await assertRejects(() => rec(s, o, DEV_B, 'bogus' as PrintVariant, 'printed', COUNTER), OnlineStoreError);
+  await assertRejects(() => rec(s, o, DEV_B, 'auto', 'claimed' as PrintResult, COUNTER), OnlineStoreError);
+  assertEquals(
+    await s.recordPrint({ restaurantId: R2, channel: 'ordr', orderId: o, deviceId: DEV_R2, actionId: fakeId('a'), variant: 'manual', result: 'printed', station: COUNTER, error: null, deviceTime: null }),
+    { outcome: 'restaurant_mismatch' },
+  );
+});
+
+Deno.test('printState: restaurant-scoped, stations by position, log oldest first', async () => {
+  const { s, clock } = setup();
+  const o = fakeId();
+  await rec(s, o, DEV_B, 'manual', 'failed', BAR);
+  clock.advance(1000);
+  await rec(s, o, DEV_B, 'manual', 'printed', COUNTER);
+  const st = await s.printState(R1, [o]);
+  assertEquals(st.stations.map((x) => x.station), ['p-bar', 'p-counter']);
+  assertEquals(st.log.map((l) => l.result), ['failed', 'printed']);
+  assertEquals(await s.printState(R2, [o]), { claims: [], stations: [], log: [] });
+});
+
+// ---- the mirror == the reference rules (randomized) ---------------------------------------------------
+
+function rng(seed: number) {
+  let x = seed >>> 0 || 1;
+  return () => ((x = (x * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+}
+
+Deno.test('MemoryOnlineStore (= 110 SQL) matches printRules.ts (= reference onlinePrintRules.ts) — 400 random histories', async () => {
+  const STATIONS = [COUNTER, OVEN, BAR];
+  const DEVS = [DEV_A, DEV_B];
+  for (let seed = 1; seed <= 400; seed++) {
+    const r = rng(seed);
+    const pick = <T>(xs: readonly T[]) => xs[Math.floor(r() * xs.length)];
+    const { s } = setup();
+    await s.setPrintRegister(R1, DEV_A, 'admin');
+    const o = fakeId();
+    const ref: { print: OnlinePrintWire; status: string } = {
+      status: 'new',
+      print: { stations: [], claimed_by_device_id: null, claimed_at: null, result: null, printed_at: null, attempts: [], print_status: 'pending', print_attempts: 0 },
+    };
+    const steps: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      if (r() < 0.25) {
+        const stations = STATIONS.slice(0, 1 + Math.floor(r() * 3));
+        steps.push(`claim ${stations.map((x) => x.station)}`);
+        const want = applyClaim(ref, DEV_A, { stations }, 't');
+        const got = await claim(s, o, DEV_A, { stations, printed: ref.print.print_status === 'printed' });
+        assertEquals(got.outcome === 'ok' && got.applied, want, `seed ${seed}: ${steps.join(' | ')}`);
+      } else {
+        const dev = pick(DEVS);
+        const variant = pick(['auto', 'manual', 'reprint'] as const);
+        const result = pick(['printed', 'printed_unconfirmed', 'failed'] as const);
+        const station = pick(STATIONS);
+        steps.push(`${dev === DEV_A ? 'A' : 'B'} ${variant} ${result} ${station.station}`);
+        const tw = applyPrintResult(ref, dev, { variant, result, error: null, station }, 't', 'received');
+        if (tw.printStatus) ref.print.print_status = tw.printStatus;
+        const got = await rec(s, o, dev, variant, result, station);
+        assertEquals(got.outcome, 'recorded');
+        if (got.outcome === 'recorded') assertEquals(got.order_result, ref.print.result, `seed ${seed}: ${steps.join(' | ')}`);
+      }
+      const st = await s.printState(R1, [o]);
+      const ctx = `seed ${seed}: ${steps.join(' | ')}`;
+      assertEquals(st.claims[0]?.device_id ?? null, ref.print.claimed_by_device_id, ctx);
+      assertEquals(st.stations.map((x) => [x.station, x.result, x.lines]), ref.print.stations.map((x) => [x.station, x.result, x.lines]), ctx);
+      const memResult = st.claims[0] ? st.claims[0].result : orderPrintResult(st.stations);
+      assertEquals(memResult, ref.print.result, ctx);
+      assertEquals(st.log.map((l) => [l.device_id, l.variant, l.result, l.station]), ref.print.attempts.map((a) => [a.device_id, a.variant, a.result, a.station]), ctx);
+    }
+  }
+});
+
+// ---- actions (109, unchanged) -------------------------------------------------------------------------
 
 Deno.test('actions: started → pending → completed → duplicate (stored result); any difference → action_id_reused', async () => {
   const { s } = setup();
-  const a = { actionId: fakeId('a'), restaurantId: R1, deviceId: DEV_A, staffId: null, orderId: fakeId(), action: 'ack', request: { order_id: 'x', at: 1 } };
+  const a = { actionId: fakeId('a'), restaurantId: R1, deviceId: DEV_A, staffId: null, orderId: fakeId(), action: 'print_claim', request: { order_id: 'x', at: 1 } };
   assertEquals(await s.beginAction(a), { outcome: 'started' });
   assertEquals(await s.beginAction({ ...a, request: { at: 1, order_id: 'x' } }), { outcome: 'pending' }); // key order irrelevant (jsonb =)
   assertEquals(await s.completeAction(a.actionId, DEV_B, { ok: true }, 200), { outcome: 'device_mismatch' });
   assertEquals(await s.completeAction(a.actionId, DEV_A, { ok: true }, 200), { outcome: 'completed' });
   assertEquals(await s.beginAction(a), { outcome: 'duplicate', result: { ok: true }, http_status: 200 });
-  for (const diff of [{ request: { order_id: 'x', at: 2 } }, { action: 'accept' }, { staffId: fakeId('5') }, { deviceId: DEV_B }, { orderId: fakeId() }, { restaurantId: R2 }]) {
+  for (const diff of [{ request: { order_id: 'x', at: 2 } }, { action: 'print_result' }, { staffId: fakeId('5') }, { deviceId: DEV_B }, { orderId: fakeId() }, { restaurantId: R2 }]) {
     assertEquals(await s.beginAction({ ...a, ...diff }), { outcome: 'action_id_reused' }, JSON.stringify(diff));
   }
   assertEquals(await s.completeAction(a.actionId, DEV_A, { ok: false }, 500), { outcome: 'already_completed', result: { ok: true }, http_status: 200 });
   assertEquals(await s.completeAction(fakeId('a'), DEV_A, {}, 200), { outcome: 'not_found' });
 });
 
-Deno.test('actions: the action name is checked (109 CHECK ^[a-z][a-z0-9_]{0,39}$)', async () => {
-  const { s } = setup();
-  const base = { actionId: fakeId('a'), restaurantId: R1, deviceId: DEV_A, staffId: null, orderId: fakeId(), request: {} };
-  await assertRejects(() => s.beginAction({ ...base, action: 'Accept' }), OnlineStoreError);
-  await assertRejects(() => s.beginAction({ ...base, action: 'a'.repeat(41) }), OnlineStoreError);
-  assertEquals(await s.beginAction({ ...base, action: 'cancel_refund' }), { outcome: 'started' });
-});
+// ---- Pg wrapper: names must match 109 / 110 -------------------------------------------------------------
 
-// ---- Pg wrapper: names must match 109 --------------------------------------------------------------
-
-Deno.test('PgOnlineStore: RPC names + argument names match the 109 functions; 23514 → invalid_print_register', async () => {
+Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 functions; error codes mapped', async () => {
   const calls: [string, Record<string, unknown>][] = [];
-  let next: { data: unknown; error: { code?: string; message: string } | null } = { data: { outcome: 'claimed' }, error: null };
-  const pg = new PgOnlineStore({ rpc: (fn: string, args: Record<string, unknown>) => { calls.push([fn, args]); return Promise.resolve(next); } });
+  const reads: string[] = [];
+  let next: { data: unknown; error: { code?: string; message: string } | null } = { data: { outcome: 'ok' }, error: null };
+  const pg = new PgOnlineStore({
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      calls.push([fn, args]);
+      return Promise.resolve(next);
+    },
+    from: (t: string) => {
+      reads.push(t);
+      // deno-lint-ignore no-explicit-any
+      const q: any = { select: () => q, eq: () => q, maybeSingle: () => Promise.resolve({ data: null, error: null }) };
+      return q;
+    },
+  });
   const o = fakeId();
-  await pg.claimPrint(R1, o, DEV_A);
-  await pg.finishPrint(R1, o, DEV_A, 1, 'printed', { ms: 120 });
-  await pg.beginAction({ actionId: 'act', restaurantId: R1, deviceId: DEV_A, staffId: null, orderId: o, action: 'ack', request: {} });
+  const recIn: RecordInput = { restaurantId: R1, channel: 'ordr', orderId: o, deviceId: DEV_A, actionId: 'act', variant: 'auto', result: 'printed', station: COUNTER, error: null, deviceTime: null };
+  await pg.claimPrint({ restaurantId: R1, channel: 'ordr', orderId: o, deviceId: DEV_A, stations: [COUNTER], printStatusPrinted: false });
+  await pg.recordPrint(recIn);
+  next = { data: { claims: [{ order_channel: 'ordr', order_id: o, device_id: DEV_A, claimed_at: '2026-11-24T14:00:00.123456+00:00', result: null, printed_at: null }], stations: [], log: [] }, error: null };
+  const st = await pg.printState(R1, [o]);
+  assertEquals(st.claims[0].claimed_at, '2026-11-24T14:00:00.123Z');
+  assertEquals(await pg.printState(R1, []), { claims: [], stations: [], log: [] }); // no RPC for nothing
+  next = { data: { outcome: 'started' }, error: null };
+  await pg.beginAction({ actionId: 'act', restaurantId: R1, deviceId: DEV_A, staffId: null, orderId: o, action: 'print_claim', request: {} });
   await pg.completeAction('act', DEV_A, { ok: true }, 200);
   await pg.setPrintRegister(R1, DEV_A, 'admin');
+  assertEquals(await pg.getSettings(R1), null);
+  assertEquals(reads, ['pos_restaurant_settings']);
   assertEquals(calls.map(([fn, args]) => [fn, Object.keys(args)]), [
-    ['pos_claim_online_print', ['p_restaurant_id', 'p_order_id', 'p_device_id']],
-    ['pos_finish_online_print', ['p_restaurant_id', 'p_order_id', 'p_device_id', 'p_attempt', 'p_result', 'p_detail']],
+    ['pos_claim_online_print', ['p_restaurant_id', 'p_order_channel', 'p_order_id', 'p_device_id', 'p_stations', 'p_print_status_printed']],
+    ['pos_record_online_print', ['p_restaurant_id', 'p_order_channel', 'p_order_id', 'p_device_id', 'p_action_id', 'p_variant', 'p_result', 'p_station', 'p_error', 'p_device_time']],
+    ['pos_online_print_state', ['p_restaurant_id', 'p_order_ids']],
     ['pos_online_action_begin', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_staff_id', 'p_order_id', 'p_action', 'p_request']],
     ['pos_online_action_complete', ['p_action_id', 'p_device_id', 'p_result', 'p_http_status']],
     ['pos_set_print_register', ['p_restaurant_id', 'p_device_id', 'p_updated_by']],
   ]);
   next = { data: null, error: { code: '23514', message: 'print register must be an active register of this restaurant' } };
-  const e = await assertRejects(() => pg.setPrintRegister(R1, DEV_R2, 'admin'), OnlineStoreError);
-  assertEquals(e.code, 'invalid_print_register');
+  assertEquals((await assertRejects(() => pg.setPrintRegister(R1, DEV_R2, 'admin'), OnlineStoreError)).code, 'invalid_print_register');
+  next = { data: null, error: { code: '22023', message: 'bad input' } };
+  assertEquals((await assertRejects(() => pg.recordPrint(recIn), OnlineStoreError)).code, 'invalid_input');
   next = { data: null, error: { message: 'boom' } };
-  await assertRejects(() => pg.claimPrint(R1, o, DEV_A), Error, 'pos_claim_online_print failed');
+  await assertRejects(() => pg.claimPrint({ restaurantId: R1, channel: 'ordr', orderId: o, deviceId: DEV_A, stations: [COUNTER], printStatusPrinted: false }), Error, 'pos_claim_online_print failed');
 });

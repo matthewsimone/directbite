@@ -275,6 +275,13 @@ verify_jwt = false
 [functions.pos-v1-submit-day-close]
 verify_jwt = false
 
+# CP17b part 2 (SYNC-CONTRACT §3c): online orders feed + per-station print. NOT DEPLOYED; need 109 + 110.
+[functions.pos-v1-online-orders]
+verify_jwt = false
+
+[functions.pos-v1-online-print]
+verify_jwt = false
+
 # pos-admin-devices — /admin register management (DEVICE-AUTH §6). Same
 # pattern as admin-refund / kh-admin: verify_jwt = false, handler checks the
 # Bearer JWT against admin_users.
