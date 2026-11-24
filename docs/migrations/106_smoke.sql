@@ -59,7 +59,9 @@ begin
   -- 4. v2 with a paid-out → movement inserted once
   v_shift := jsonb_set(jsonb_set(jsonb_set(v_shift, '{version}', '2'), '{content_hash}', '"s2"'), '{movements}',
     jsonb_build_array(jsonb_build_object('id', v_mov, 'kind', 'paid_out', 'amount_cents', 2000, 'reason', 'Driver gas', 'actor', 'register', 'approved_by', null, 'created_at', '2026-11-19T16:00:00Z')));
-  if public.pos_apply_shift(v_shift, v_dev, v_r, v_resp, now())->>'outcome' <> 'applied' or (select count(*) from public.pos_cash_movements where shift_id = v_sid) <> 1 then raise exception 'SMOKE FAIL: movement'; end if;
+  -- (apply in its own statement: a read in the same statement uses the pre-call snapshot and can't see its rows)
+  r := public.pos_apply_shift(v_shift, v_dev, v_r, v_resp, now());
+  if r->>'outcome' <> 'applied' or (select count(*) from public.pos_cash_movements where shift_id = v_sid) <> 1 then raise exception 'SMOKE FAIL: movement'; end if;
   n := n + 1;
   -- 5. the movement's amount changed → invalid_payload
   if public.pos_apply_shift(jsonb_set(jsonb_set(jsonb_set(v_shift, '{version}', '3'), '{content_hash}', '"s3x"'), '{movements,0,amount_cents}', '1'), v_dev, v_r, v_resp, now())->>'outcome' <> 'invalid_payload' then
@@ -121,7 +123,8 @@ begin
   end if;
   v_z := jsonb_set(jsonb_set(jsonb_set(jsonb_set(jsonb_set(v_z, '{day_close_id}', to_jsonb(v_z2)), '{content_hash}', '"z2"'), '{sequence}', '2'), '{supplemental}', 'true'),
     '{covered}', (v_z->'covered') || jsonb_build_object('order_ids', jsonb_build_array(v_oid), 'refund_ids', jsonb_build_array(v_ref)));
-  if public.pos_apply_day_close(v_z, v_dev, v_r, v_resp, now())->>'outcome' <> 'applied'
+  r := public.pos_apply_day_close(v_z, v_dev, v_r, v_resp, now());   -- own statement (see check 4)
+  if r->>'outcome' <> 'applied'
      or exists (select 1 from public.pos_post_z where device_id = v_dev) then
     raise exception 'SMOKE FAIL: a covering supplemental Z does not clear post_z';
   end if;
