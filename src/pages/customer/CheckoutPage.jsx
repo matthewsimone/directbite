@@ -20,6 +20,7 @@ import { formatCurrency } from '../../utils/format'
 import { calculateLoyaltyPoints, pointsLabel } from '../../utils/loyaltyPoints'
 import { haversineDistanceMiles, calculateDeliveryFeeCents } from '../../utils/haversine'
 import { getAvailableDates, getAvailableTimeSlots, formatScheduledLabel } from '../../utils/scheduling'
+import { firstPrefillSlot, intentCreateWait } from '../../utils/checkoutIntentGate'
 import TimePickerModal from '../../components/TimePickerModal'
 // @googlemaps/js-api-loader is dynamically imported when needed
 import applePayLogo from '../../assets/payment-marks/apple-pay.svg'
@@ -1475,12 +1476,11 @@ export default function CheckoutPage() {
     if (!restaurant) return
     if (isTypeOpen) return
     if (scheduledFor) return
-    const dates = getAvailableDates(typeSchedule, { leadTimeMinutes })
-    if (dates.length === 0) return
-    const slots = getAvailableTimeSlots(dates[0].date, typeSchedule, { leadTimeMinutes })
-    if (slots.length === 0) return
+    // Same rule as the first-create gate (checkoutIntentGate.js).
+    const first = firstPrefillSlot(typeSchedule, leadTimeMinutes)
+    if (!first) return
     autoPrefilledRef.current = true
-    setScheduledFor(slots[0].value)
+    setScheduledFor(first)
   }, [restaurant, isTypeOpen, typeSchedule, leadTimeMinutes, scheduledFor])
 
   // On an order-type switch, a scheduled time chosen for the other type may
@@ -2063,6 +2063,10 @@ export default function CheckoutPage() {
         (resolvedMode === 'uber_direct' || extendedZoneRef.current === true)))
     if (wouldRejectOnServer) return
     if (!restaurant || items.length === 0 || intentCreated.current) return
+    // CP16: wait for the hours (useRestaurant sets restaurant before fetching
+    // them) and, for a closed order type, the prefilled time — else the create
+    // carries scheduled_for: null and the enforce guard reads it as ASAP.
+    if (intentCreateWait({ restLoading, isTypeOpen, scheduledFor, prefillSlot: firstPrefillSlot(typeSchedule, leadTimeMinutes) })) return
     intentCreated.current = true
 
     async function createIntent() {
@@ -2136,7 +2140,7 @@ export default function CheckoutPage() {
     }
 
     createIntent()
-  }, [restaurant, items.length, total, buildOrderData])
+  }, [restaurant, items.length, total, buildOrderData, restLoading, isTypeOpen, scheduledFor, typeSchedule, leadTimeMinutes])
 
   // Update payment intent metadata when order details change
   const updateTimer = useRef(null)

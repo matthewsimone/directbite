@@ -178,3 +178,41 @@ Deno.test('scheduled (P6): inside a future window → ok even when closed now; o
   assertEquals((await run(t, rk, at('tomorrow at six'), 1, info(), night))?.body, { error: 'slot_unavailable', reason: 'invalid' });
   assertEquals((await run(t, rk, at('2026-11-20T23:00:00.000Z'), 1, info({ hours: [] }), night))?.body, { error: 'slot_unavailable', reason: 'no_schedule' });
 });
+
+// ---- CP16: the reported case — 21:10 ET, closed, scheduled tomorrow 08:30 inside hours ----------------
+// Hours 08:00–21:00 every day. 2026-11-20T02:10Z = Thu 21:10 New York; 2026-11-20T13:30Z = Fri 08:30 New York.
+// The server side was already right; the 409 came from checkout sending scheduled_for: null on the
+// first create (CheckoutPage intent gate, src/pages/customer/checkoutIntentGate.js).
+
+const EVENING = new Date('2026-11-20T02:10:00Z');
+const HOURS_8_21 = [0, 1, 2, 3, 4, 5, 6].map((dow) => ({ day_of_week: dow, is_open: true, open_time: '08:00:00', close_time: '21:00:00' }));
+const info821 = (over: Partial<ServiceInfo> = {}) => info({ hours: HOURS_8_21, ...over });
+
+Deno.test('CP16: closed now (21:10) + scheduled tomorrow 08:30 inside hours → allowed, pickup AND delivery', async () => {
+  const rk = 'cp16-ok';
+  const { t, q, od } = await pickupCase(rk);
+  assertEquals(await run(t, rk, { ...od, scheduled_for: '2026-11-20T13:30:00.000Z' }, q.breakdown.total, info821(), EVENING), null, 'pickup');
+
+  const rd = 'cp16-deliv';
+  const td = setup(rd, { delivery_max_radius_miles: '5', delivery_tier1_fee_cents: 299 });
+  const p = pointAtMiles(1);
+  const qd = await quote(td, { restaurantId: id(rd), orderType: 'delivery', lines: [line(rd, 'pie', 'Large')], delivery: { lat: p.lat, lng: p.lng } });
+  const odd = webOrderData(qd.breakdown, qd.resolved, { dropoff_lat: p.lat, dropoff_lng: p.lng, scheduled_for: '2026-11-20T13:30:00.000Z' });
+  assertEquals(await run(td, rd, odd, qd.breakdown.total, info821(), EVENING), null, 'delivery');
+});
+
+Deno.test('CP16: the same order WITHOUT scheduled_for (what checkout sent on create) → 409 restaurant_closed outside_hours', async () => {
+  const rk = 'cp16-null';
+  const { t, q, od } = await pickupCase(rk);
+  for (const s of [null, undefined, '']) {
+    assertEquals(await run(t, rk, { ...od, scheduled_for: s }, q.breakdown.total, info821(), EVENING), { status: 409, body: { error: 'restaurant_closed', reason: 'outside_hours' } }, String(s));
+  }
+});
+
+Deno.test('CP16: scheduled tomorrow outside hours → slot_unavailable; paused + scheduled inside hours → restaurant_closed paused (decision A)', async () => {
+  const rk = 'cp16-edges';
+  const { t, q, od } = await pickupCase(rk);
+  assertEquals(await run(t, rk, { ...od, scheduled_for: '2026-11-20T12:15:00.000Z' }, q.breakdown.total, info821(), EVENING), { status: 409, body: { error: 'slot_unavailable', reason: 'outside_hours' } }, 'Fri 07:15');
+  assertEquals(await run(t, rk, { ...od, scheduled_for: '2026-11-21T02:30:00.000Z' }, q.breakdown.total, info821(), EVENING), { status: 409, body: { error: 'slot_unavailable', reason: 'outside_hours' } }, 'Fri 21:30');
+  assertEquals(await run(t, rk, { ...od, scheduled_for: '2026-11-20T13:30:00.000Z' }, q.breakdown.total, info821({ is_open: false }), EVENING), { status: 409, body: { error: 'restaurant_closed', reason: 'paused' } });
+});
