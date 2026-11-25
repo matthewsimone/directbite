@@ -1,3 +1,4 @@
+set lock_timeout = '3s';
 -- 113_pos_online_money.sql — pos-v1-online-order-action MONEY actions (CP19; ordr-pos @ 4f729e4 SYNC-CONTRACT §3c
 -- :608-610, :627-628, DIRECTBITE-HANDOFF item 11, src/dev/onlineActionRules.ts :159-170, :243-258) — Matt's final
 -- decisions: extra charge / refund after Complete = the web's EXISTING adjustment request (an admin approves in
