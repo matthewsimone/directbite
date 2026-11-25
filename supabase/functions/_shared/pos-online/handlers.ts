@@ -36,7 +36,9 @@ import { buildMenuSnapshot, type SnapshotDb } from '../pos-sync/menuSnapshot.ts'
 import { writeTabletPrintColumns, type PrintClient } from './printColumns.ts';
 import { tabletWrite, type OnlineStationRef, type PrintResult, type PrintVariant } from './printRules.ts';
 import { DEFAULT_POS_SETTINGS, OnlineStoreError, stationRefProblem, type OnlinePosSettings, type OnlineStore, type OrderChannel } from './store.ts';
-import { intIn, MARKETPLACE_LABELS, servedOrders, type OnlineOrderWire, type OnlineSettingsWire } from './wire.ts';
+import { intIn, khWireStatus, MARKETPLACE_LABELS, servedOrders, type OnlineOrderWire, type OnlineSettingsWire } from './wire.ts';
+import { khStatusChange, REQUIRED_STATUS, storeEnabled, TARGET, type Action as KhAct, type KhGlueDeps } from './khGlue.ts';
+import { EMPTY_KH_CONTEXT, khMapContext, type ItemMapRow, type KhMapContext } from './khItems.ts';
 
 export interface OnlineDeps extends AuthDeps {
   /** Service-role supabase-js client (reads orders / external_orders / restaurants; the tablet's print write). */
@@ -67,13 +69,18 @@ export interface OnlineDeps extends AuthDeps {
    * cache; one per function instance). Absent → menu_snapshot_hash null.
    */
   menuHash?: FeedMenuHash;
+  /**
+   * ext_accept / ext_ready / ext_cancel (CP21): _shared/khToken.ts khFetch, imported unchanged by the entry point.
+   * Absent → those three answer 501 (ext_ack needs no KitchenHub call).
+   */
+  khFetch?: KhGlueDeps['khFetch'];
 }
 
 const nullableString = (v: unknown) => v === null || v === undefined || typeof v === 'string';
 /** device_time → ISO (null when absent / unparseable: an audit value, never trusted for logic). */
-const isoOrNullTime = (v: unknown): string | null =>
+export const isoOrNullTime = (v: unknown): string | null =>
   typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(Date.parse(v)).toISOString() : null;
-const bad = (field: string, message: string) => errorResult(400, 'invalid_payload', message, { field });
+export const bad = (field: string, message: string) => errorResult(400, 'invalid_payload', message, { field });
 
 // ---- restaurant + settings ---------------------------------------------------------------------------
 
@@ -92,10 +99,31 @@ async function readRestaurant(db: FeedClient, restaurantId: string): Promise<Row
   return data;
 }
 
-async function readRows<T>(what: string, q: PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
+export async function readRows<T>(what: string, q: PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
   const { data, error } = await q;
   if (error) throw new FeedError('feed_query_failed', `${what} read failed: ${error.message}`);
   return (Array.isArray(data) ? data : []) as T[];
+}
+
+/**
+ * The CP21 mapping context for KitchenHub lines (khItems.ts): pos_kitchenhub_item_maps (117) + the restaurant's
+ * current menu_items (id → category) + menu_categories ids + the fallback category. 3 reads in parallel, made only
+ * when there are KitchenHub rows to serve. NEVER fails the caller: any read error (e.g. 117 not applied yet) → logged,
+ * lines served unmapped (the counter ticket) — exactly today's behaviour.
+ */
+export async function khContextFor(deps: OnlineDeps, rid: string, pos?: OnlinePosSettings | null): Promise<KhMapContext> {
+  try {
+    const [maps, items, cats, settings] = await Promise.all([
+      readRows<ItemMapRow>('pos_kitchenhub_item_maps', deps.db.from('pos_kitchenhub_item_maps').select('provider,match_kind,match_key,menu_item_id,category_id,label').eq('restaurant_id', rid)),
+      readRows<{ id: string; category_id: string | null }>('menu_items', deps.db.from('menu_items').select('id,category_id').eq('restaurant_id', rid)),
+      readRows<{ id: string }>('menu_categories', deps.db.from('menu_categories').select('id').eq('restaurant_id', rid)),
+      pos !== undefined ? Promise.resolve(pos) : deps.online.getSettings(rid),
+    ]);
+    return khMapContext(maps, items, cats, settings?.kitchenhub_fallback_category_id ?? null);
+  } catch (err) {
+    deps.log('online_kh_mapping_unavailable', { restaurant_id: rid, error: err instanceof Error ? err.message : String(err) });
+    return EMPTY_KH_CONTEXT;
+  }
 }
 
 /**
@@ -125,12 +153,14 @@ export async function buildSettings(
     pos_online_orders_enabled: pos.pos_online_orders_enabled,
     // CP23 (additive): the POS hides Dispatch when off; pos-v1-delivery-dispatch still answers 403 delivery_not_enabled
     pos_delivery_dispatch_enabled: pos.pos_delivery_dispatch_enabled === true,
+    // CP21 (additive)
+    kitchenhub_fallback_category_id: pos.kitchenhub_fallback_category_id ?? null,
     dsp_orders_enabled: dsp,
     delivery_providers: [
       { id: 'in_house', label: 'In-house', active: fulfillment === 'in_house' || fulfillment === 'both' },
       { id: 'uber_direct', label: 'Uber Direct', active: fulfillment === 'uber_direct' || (fulfillment === 'both' && r.uber_direct_active === true) },
     ],
-    capabilities: { kitchenhub_menu_sync: false },
+    capabilities: { kitchenhub_menu_sync: false, kitchenhub_item_mapping: true },
     kitchenhub_providers: dsp
       ? [...providers]
         .sort((a, b) => (a.provider_id < b.provider_id ? -1 : 1))
@@ -206,7 +236,8 @@ export async function handleOnlineOrders(req: DeviceRequest, deps: OnlineDeps): 
     // never throws, never fails the poll; cache hit = 0 queries, miss = one menu build (menuHash.ts)
     deps.menuHash ? deps.menuHash.get(rid, nowMs, deps.log) : Promise.resolve(null),
   ]);
-  const orders = servedOrders(rows, state);
+  const kh = rows.kitchenhub.length ? await khContextFor(deps, rid, pos) : EMPTY_KH_CONTEXT;
+  const orders = servedOrders(rows, state, kh);
   const settings = await buildSettings(restaurant, hours, pos ?? DEFAULT_POS_SETTINGS, providers);
   const token = scope.kind === 'history' ? `history:${scope.range.business_date}` : `v1.${await feedHash(orders)}`;
   const notModified = scope.kind === 'live' && body.if_none_match === token;
@@ -238,11 +269,18 @@ export async function readOneOrder(db: FeedClient, orderId: string): Promise<One
 export async function orderWire(deps: OnlineDeps, restaurantId: string, one: OneOrder): Promise<OnlineOrderWire> {
   const state = await deps.online.printState(restaurantId, [one.row.id]);
   const rows = one.channel === 'ordr' ? { orders: [one.row], kitchenhub: [] } : { orders: [], kitchenhub: [one.row] };
-  return servedOrders(rows, state)[0];
+  // the same mapping as the feed, so an action / print answer never re-routes a line the poll routed
+  const kh = one.channel === 'kitchenhub' ? await khContextFor(deps, restaurantId) : EMPTY_KH_CONTEXT;
+  return servedOrders(rows, state, kh)[0];
 }
 
 function itemCount(one: OneOrder): number {
-  const items = one.channel === 'ordr' ? one.row.order_items : one.row.items;
+  if (one.channel === 'kitchenhub') {
+    // = the served lines (wire.ts khOrderWire serves EVERY entry, CP21)
+    const items = one.row.items;
+    return Array.isArray(items) ? items.length : items == null ? 0 : 1;
+  }
+  const items = one.row.order_items;
   return Array.isArray(items) ? items.filter((x: unknown) => x && typeof x === 'object').length : 0;
 }
 
@@ -412,7 +450,7 @@ export async function loadSettingsWire(deps: OnlineDeps, rid: string): Promise<O
  * approver_staff_id: uuid | null. Recorded in pos_online_actions as sent — the manager approval is the DEVICE's
  * (§3c:669-670 "Manager-approved on the device … actor + approver go in pos_online_actions").
  */
-function whoOf(body: Row): { actor: string | null; approver: string | null } | DeviceResult {
+export function whoOf(body: Row): { actor: string | null; approver: string | null } | DeviceResult {
   const a = body.actor_staff_id;
   if (!(a === null || a === undefined || a === 'register' || (typeof a === 'string' && UUID_RE.test(a)))) {
     return bad('actor_staff_id', "actor_staff_id must be a staff id or 'register'");
@@ -422,14 +460,10 @@ function whoOf(body: Row): { actor: string | null; approver: string | null } | D
   if (!nullableString(body.device_time)) return bad('device_time', 'device_time must be a string');
   return { actor: typeof a === 'string' ? a.toLowerCase() : null, approver: typeof p === 'string' ? p.toLowerCase() : null };
 }
-const isResult = (v: unknown): v is DeviceResult => !!v && typeof v === 'object' && 'status' in v && 'body' in v;
+export const isResult = (v: unknown): v is DeviceResult => !!v && typeof v === 'object' && 'status' in v && 'body' in v;
 
 // ---- pos-v1-online-order-action --------------------------------------------------------------------------
 
-/** Not built yet → 501 (the POS reads 501 as "Ordr can't do this yet", onlineActions.ts :66, :224). */
-const LATER: Record<string, string> = {
-  ext_ack: 'CP21', ext_accept: 'CP21', ext_ready: 'CP21', ext_cancel: 'CP21',
-};
 
 /** Served orders by id (Ordr; FEED_SELECT, chunks of 100 ids). Unwritten rows are never served. */
 async function ordrWires(deps: OnlineDeps, rid: string, ids: string[]): Promise<OnlineOrderWire[]> {
@@ -463,7 +497,6 @@ export async function handleOnlineOrderAction(req: DeviceRequest, deps: OnlineDe
   // fakeOnline.ts :361-367: action_id / action, order_id ⇔ not bulk, unknown_order, restaurant_mismatch
   if (typeof body.action_id !== 'string' || !UUID_RE.test(body.action_id)) return bad('action_id', 'action_id must be a UUID');
   if (typeof body.action !== 'string' || !(ONLINE_ACTIONS as readonly string[]).includes(body.action)) return bad('action', 'unknown action');
-  if (LATER[body.action]) return errorResult(501, 'not_implemented', `${body.action} is not available on Ordr yet (${LATER[body.action]})`);
   const action = body.action as Cp18Action;
   const bulk = action === 'complete_all_in_progress';
   if (bulk ? body.order_id !== null && body.order_id !== undefined : typeof body.order_id !== 'string' || !UUID_RE.test(body.order_id)) {
@@ -483,8 +516,16 @@ export async function handleOnlineOrderAction(req: DeviceRequest, deps: OnlineDe
     one = await readOneOrder(deps.db, orderId);
     if (!one || (one.channel === 'ordr' && !one.row.items_written_at)) return errorResult(400, 'unknown_order', 'no such order');
     if (one.row.restaurant_id !== rid) return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant', { field: 'order_id' });
-    // onlineActionRules.ts :120 — an Ordr action on a KitchenHub order
-    if (one.channel === 'kitchenhub') return errorResult(400, 'action_not_allowed', `${action} on a kitchenhub order`);
+    // onlineActionRules.ts :120 — an Ordr action on a KitchenHub order, or an ext_ action on an Ordr order
+    if ((one.channel === 'kitchenhub') !== body.action.startsWith('ext_')) return errorResult(400, 'action_not_allowed', `${action} on a ${one.channel} order`);
+  }
+  // CP21 KitchenHub (orderId is set — ext_ actions are never bulk)
+  if (body.action.startsWith('ext_') && orderId !== null && one) {
+    const { device_time: _d, ...req } = body;
+    void _d;
+    const m: MoneyCall = { deps, rid, deviceId: pr.device_id, actionId, orderId, expected: String(body.expected_status), request: req, who, deviceTime: isoOrNullTime(body.device_time) };
+    if (body.action === 'ext_ack') return extAck(m);
+    return extStatusChange(m, body.action, body);
   }
   // CP19 money + CP20 Uber (orderId is set — not bulk)
   if (['cancel_refund', 'adjustment_request', 'dispatch_delivery', 'self_deliver'].includes(body.action) && orderId !== null && one) {
@@ -711,9 +752,9 @@ const REASON_PREFIX = /^\[([a-z_]+)\] /;
 async function moneyError(m: MoneyCall, status: number, code: string, message: string): Promise<DeviceResult> {
   const extra: Record<string, unknown> = {};
   let msg = message;
-  if (code === 'delivery_failed') {
+  if (code === 'delivery_failed' || code === 'kitchenhub_failed') {
     const r = REASON_PREFIX.exec(message);
-    extra.reason = r ? r[1] : 'provider_error';
+    extra.reason = r ? r[1] : code === 'kitchenhub_failed' ? 'kitchenhub_error' : 'provider_error';
     if (r) msg = message.slice(r[0].length);
   }
   if (code === 'quote_price_changed') {
@@ -1003,4 +1044,115 @@ async function selfDeliver(m: MoneyCall, one: OneOrder): Promise<DeviceResult> {
   if (r.kind === 'db_error') throw new Error(`orders update failed: ${r.message}`); // pending stays: the re-run is safe
   await deps.online.finishAction(m.actionId, m.deviceId, 'applied');
   return moneyOk(m, 'applied');
+}
+
+// ---- KitchenHub (CP21): ext_ack = the tablet's tap; ext_accept / ext_ready / ext_cancel = kh-order-action ----------
+
+/** kh-order-action's prep_time (ExternalOrderDetail / onlineActionRules.ts EXT_PREP_MINUTES): whole minutes 1–240. */
+const EXT_PREP = { min: 1, max: 240 } as const;
+const EXT_ACT: Record<string, KhAct> = { ext_accept: 'accept', ext_ready: 'complete', ext_cancel: 'cancel' };
+
+/** begin (pending row, channel kitchenhub) → reused 409 | duplicate replay | in flight 503 | stale (re-run: safe) | started. */
+async function beginKh(m: MoneyCall, action: string): Promise<Begun> {
+  const { deps } = m;
+  const begin = await deps.online.beginAction({
+    actionId: m.actionId, fn: 'order_action', restaurantId: m.rid, deviceId: m.deviceId, channel: 'kitchenhub', orderId: m.orderId,
+    action, request: m.request, actor: m.who.actor, approver: m.who.approver, deviceTime: m.deviceTime,
+  });
+  if (begin.outcome === 'action_id_reused') return { go: false, result: errorResult(409, 'action_id_reused', 'this action_id was used for another request') };
+  if (begin.outcome === 'duplicate') {
+    if (begin.stored === 'error') return { go: false, result: await moneyError(m, begin.error_status ?? 500, begin.error_code ?? 'internal_error', begin.error_message ?? '') };
+    return { go: false, result: await moneyOk(m, 'duplicate') };
+  }
+  if (begin.outcome === 'pending') {
+    const since = Date.parse(begin.since ?? '');
+    if (!Number.isFinite(since) || deps.now() - since < PENDING_STALE_MS) {
+      return { go: false, result: errorResult(503, 'action_pending', 'this request is still being processed — try again in a moment', { retryAfterMs: 5_000 }) };
+    }
+    // a re-run is safe: KitchenHub answers a repeated status change with 409 → the copied GET + sync
+    deps.log('online_kh_action_rerun', { action_id: m.actionId, order_id: m.orderId, action });
+    return { go: true, stale: true };
+  }
+  return { go: true, stale: false };
+}
+
+/**
+ * ext_ack — the tablet's tile tap (OrdersTab.jsx :1752-1766): external_orders.acknowledged_at = now while it is null
+ * (else noop; any status, as CP18 `ack` and onlineActionRules.ts :122-126). No KitchenHub call. A failed write
+ * releases the pending row (the ack is idempotent) and answers 500 — the register's queue resends it.
+ */
+async function extAck(m: MoneyCall): Promise<DeviceResult> {
+  const b = await beginKh(m, 'ext_ack');
+  if (!b.go) return b.result;
+  const { deps } = m;
+  const { data, error } = await deps.db.from('external_orders').update({ acknowledged_at: new Date(deps.now()).toISOString() })
+    .eq('id', m.orderId).eq('restaurant_id', m.rid).is('acknowledged_at', null).select('id');
+  if (error) {
+    await deps.online.releaseAction(m.actionId, m.deviceId);
+    throw new Error(`external_orders ack failed: ${error.message}`);
+  }
+  const out = Array.isArray(data) && data.length > 0 ? 'applied' : 'noop';
+  await deps.online.finishAction(m.actionId, m.deviceId, out);
+  return moneyOk(m, out);
+}
+
+/**
+ * ext_accept / ext_ready / ext_cancel — §3c:633-636 + onlineActionRules.ts :171-194, run as kh-order-action
+ * (khGlue.ts, hash-pinned): compare-and-set on expected_status (409 status_conflict + the order) → the status the
+ * action needs (REQUIRED_STATUS; else 400 action_not_allowed) → the store gate (400 action_not_allowed) → PUT the
+ * status to KitchenHub → the mirror write. KitchenHub 409 → the copied GET + sync: synced to the target → applied,
+ * else 409 status_conflict. 403 → 502 kitchenhub_failed reason not_main_account; any other refusal / failure →
+ * 502 kitchenhub_failed reason kitchenhub_error. Errors are STORED (a resend replays them, never a second call).
+ */
+async function extStatusChange(m: MoneyCall, action: string, body: Row): Promise<DeviceResult> {
+  const { deps } = m;
+  const act = EXT_ACT[action];
+  if (!deps.khFetch) return errorResult(501, 'not_implemented', `${action} is not configured on this server`);
+  const prep = body.prep_minutes;
+  if (act === 'accept' && !(typeof prep === 'number' && Number.isInteger(prep) && prep >= EXT_PREP.min && prep <= EXT_PREP.max)) {
+    return bad('prep_minutes', `prep_minutes must be ${EXT_PREP.min}–${EXT_PREP.max}`);
+  }
+  const b = await beginKh(m, action);
+  if (!b.go) return b.result;
+  const g: KhGlueDeps = { supabase: deps.db, khFetch: deps.khFetch, log: deps.log, now: deps.now };
+  const fail = async (status: number, code: string, message: string) => {
+    await deps.online.finishAction(m.actionId, m.deviceId, 'error', { status, code, message });
+    return moneyError(m, status, code, message);
+  };
+  const { data: row, error } = await deps.db.from('external_orders').select('id, restaurant_id, kh_order_id, status, provider_id, provider_name').eq('id', m.orderId).maybeSingle();
+  if (error) {
+    await deps.online.releaseAction(m.actionId, m.deviceId); // nothing sent to KitchenHub yet
+    throw new Error(`external_orders read failed: ${error.message}`);
+  }
+  if (!row || row.restaurant_id !== m.rid) return fail(400, 'unknown_order', 'no such order');
+  const now = khWireStatus(row.status);
+  if (now !== m.expected) return fail(409, 'status_conflict', `the order is ${now}`);
+  if (row.status !== REQUIRED_STATUS[act]) {
+    return fail(400, 'action_not_allowed', act === 'cancel' ? 'a marketplace order can only be cancelled while it is new' : `${action} from ${now}`);
+  }
+  const gate = await storeEnabled(g, m.rid);
+  if (gate.kind === 'db_error') {
+    await deps.online.releaseAction(m.actionId, m.deviceId);
+    throw new Error(`kitchenhub_stores read failed: ${gate.detail}`);
+  }
+  if (gate.kind === 'store_not_enabled') return fail(400, 'action_not_allowed', 'DSP order actions are not enabled for this store');
+
+  const provider = typeof row.provider_name === 'string' && row.provider_name ? row.provider_name : 'The marketplace';
+  const r = await khStatusChange(g, row, act, act === 'accept' ? prep as number : null);
+  switch (r.kind) {
+    case 'applied':
+      await deps.online.finishAction(m.actionId, m.deviceId, 'applied');
+      return moneyOk(m, 'applied');
+    case 'conflict':
+      // KitchenHub already had it (a re-run, or the marketplace tablet did it): synced to where we were sending it → done
+      if (r.status === TARGET[act]) {
+        await deps.online.finishAction(m.actionId, m.deviceId, 'applied');
+        return moneyOk(m, 'applied');
+      }
+      return fail(409, 'status_conflict', `${provider} already has this order as ${r.status}`);
+    case 'not_main_account':
+      return fail(502, 'kitchenhub_failed', `[not_main_account] ${r.message}`);
+    case 'kitchenhub_error':
+      return fail(502, 'kitchenhub_failed', `[kitchenhub_error] ${provider} did not accept the update${r.http ? ` (HTTP ${r.http})` : ''}`);
+  }
 }

@@ -1,5 +1,5 @@
 {
-  "comment": "Web source ranges copied into _shared/pos-online (handler glue only; the shared modules are imported unchanged). scripts/check-ordr-core.mjs fails if a pinned range changes, or if its copy stops citing the pinned hash — then re-copy, re-review, re-pin. Lines are 1-based inclusive; sha256 over the lines joined with \\n plus a final \\n.",
+  "comment": "Web source ranges copied into _shared/pos-online (handler glue only; the shared modules are imported unchanged). scripts/check-ordr-core.mjs fails if a pinned range changes, or if its copy stops citing the pinned hash \u2014 then re-copy, re-review, re-pin. Lines are 1-based inclusive; sha256 over the lines joined with \\n plus a final \\n.",
   "pins": [
     {
       "source": "supabase/functions/admin-refund/index.ts",
@@ -58,7 +58,7 @@
         187
       ],
       "copy": "supabase/functions/_shared/pos-online/uberGlue.ts",
-      "what": "cancel Uber → self_delivering → app-fee walk-back (CP20)",
+      "what": "cancel Uber \u2192 self_delivering \u2192 app-fee walk-back (CP20)",
       "sha256": "f269551317e4bd50b4c5ebc48d2ba72d30605958c12604d0496ecc71dc3d0a3e"
     },
     {
@@ -120,6 +120,46 @@
       "copy": "supabase/functions/_shared/pos-delivery/geocode.ts",
       "what": "the server geocode (GOOGLE_MAPS_API_KEY) (CP23)",
       "sha256": "7471a7b6bfa37c4308927106072e607db454299a7c5d15252b3a237d76c7bba9"
+    },
+    {
+      "source": "supabase/functions/kh-order-action/index.ts",
+      "lines": [
+        59,
+        72
+      ],
+      "copy": "supabase/functions/_shared/pos-online/khGlue.ts",
+      "what": "action \u2192 target status, required status, not-main-account message (CP21)",
+      "sha256": "1d5a262f05bf280ee3aab342efd27fb73fa0b31fe3046fab19aa0e6d4be80f54"
+    },
+    {
+      "source": "supabase/functions/kh-order-action/index.ts",
+      "lines": [
+        81,
+        126
+      ],
+      "copy": "supabase/functions/_shared/pos-online/khGlue.ts",
+      "what": "writeStatus compare-and-set + readKhError (CP21)",
+      "sha256": "ea2d2bd718a991151a3c69ef8ec4d861940e19d0e7acefbd4ba2edfc125004ac"
+    },
+    {
+      "source": "supabase/functions/kh-order-action/index.ts",
+      "lines": [
+        207,
+        219
+      ],
+      "copy": "supabase/functions/_shared/pos-online/khGlue.ts",
+      "what": "store gate kitchenhub_stores.enabled (CP21)",
+      "sha256": "76599213e7cc732d6caf5a575df1bf3d82f831cae9e9a1d969f9cbc3dac4c52f"
+    },
+    {
+      "source": "supabase/functions/kh-order-action/index.ts",
+      "lines": [
+        228,
+        304
+      ],
+      "copy": "supabase/functions/_shared/pos-online/khGlue.ts",
+      "what": "KitchenHub PUT status + 409 GET sync / 403 / error mapping (CP21)",
+      "sha256": "2707efa1f8c22798baee79102e763f897b4e63762eb0f8a879530a62413f2274"
     }
   ]
 }

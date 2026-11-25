@@ -10,6 +10,8 @@ export class FakeSupabase {
   readonly calls: [string, string, ...unknown[]][] = [];
   /** Fail the next N update calls on a table. */
   failUpdates = new Map<string, number>();
+  /** Every read of these tables fails (e.g. a table a migration has not created yet). */
+  failReads = new Set<string>();
 
   rows(table: string): Record<string, any>[] {
     if (!this.tables.has(table)) this.tables.set(table, []);
@@ -24,10 +26,26 @@ export class FakeSupabase {
     const self = this;
     const filters: [string, (v: unknown) => boolean][] = [];
     let mode: 'select' | 'update' | 'insert' = 'select';
+    let returning = false;
     let vals: Record<string, unknown> = {};
     const q: any = {
       select(cols: string, opts?: unknown) {
         self.calls.push([table, 'select', cols, opts]);
+        if (mode === 'update') returning = true;
+        return q;
+      },
+      is(c: string, v: unknown) {
+        filters.push([c, (x) => (x ?? null) === v]);
+        self.calls.push([table, 'is', c, v]);
+        return q;
+      },
+      gte(c: string, v: unknown) {
+        filters.push([c, (x) => typeof x === 'string' && typeof v === 'string' ? x >= v : (x as number) >= (v as number)]);
+        self.calls.push([table, 'gte', c, v]);
+        return q;
+      },
+      limit(n: number) {
+        self.calls.push([table, 'limit', n]);
         return q;
       },
       eq(c: string, v: unknown) {
@@ -77,8 +95,9 @@ export class FakeSupabase {
             return Promise.resolve({ error: { message: 'transient' } }).then(res, rej);
           }
           for (const r of m) Object.assign(r, structuredClone(vals));
-          return Promise.resolve({ error: null }).then(res, rej);
+          return Promise.resolve(returning ? { data: structuredClone(m), error: null } : { error: null }).then(res, rej);
         }
+        if (self.failReads.has(table)) return Promise.resolve({ data: null, error: { message: `relation "public.${table}" does not exist` } }).then(res, rej);
         return Promise.resolve({ data: structuredClone(m), error: null, count: m.length }).then(res, rej);
       },
     };

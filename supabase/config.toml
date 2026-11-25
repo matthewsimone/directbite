@@ -286,6 +286,9 @@ verify_jwt = false
 [functions.pos-v1-online-order-action]
 verify_jwt = false
 
+[functions.pos-v1-kitchenhub-items]
+verify_jwt = false
+
 [functions.pos-v1-online-settings]
 verify_jwt = false
 

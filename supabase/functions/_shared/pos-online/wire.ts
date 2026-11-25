@@ -11,13 +11,17 @@
  * KitchenHub rows (external_orders, 090 + 092): §3c:569-577 — status new → new, accepted → in_progress, completed →
  *   complete, cancelled → cancelled; items from the marketplace JSON (name, quantity, options[{name, quantity,
  *   modifier_name, options}], instructions — the tablet's reader, epsonPrint.js addExternalTicket / addOptionLines);
- *   menu_item_id / category_id null, mapped false (§3c:573-574), prices null; charges → cents or null (+ problems).
+ *   menu_item_id / category_id from the CP21 mapping (khItems.ts resolveLine: partner_id → item_id map → name map →
+ *   size-stem name map → fallback category → null; mapped true only for a menu item / map hit), prices null; EVERY
+ *   entry is served (a non-object → "UNREADABLE ITEM", no name → "UNKNOWN ITEM"; never dropped); + external_item
+ *   {provider, item_id, partner_id}; charges → cents or null (+ problems).
  * Print block (both): pos_online_print_* rows (store.ts printState) + the row's own print_status / print_attempts;
  *   a legacy print_status 'printed' with no POS claim → result 'printed' (§3c:567-568, fakeOnline.ts:543).
  */
 import { orderPrintResult, type OnlinePrintWire, type PrintResult } from './printRules.ts';
 import type { FeedRow } from './feedQuery.ts';
 import type { ClaimRow, LogRow, OrderChannel, PrintState, StationRow } from './store.ts';
+import { EMPTY_KH_CONTEXT, lineKeys, resolveLine, type KhMapContext } from './khItems.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -32,6 +36,8 @@ export interface OnlineItemWire {
   menu_item_id: string | null; category_id: string | null; quantity: number; item_name: string; size_name: string | null;
   line_total_cents: number | null; special_instructions: string | null; discount_exempt: boolean; loyalty_reward: boolean; mapped: boolean;
   toppings: OnlineToppingWire[];
+  /** CP21 (additive): a KitchenHub line's own keys (null on Ordr lines and on an unreadable entry). */
+  external_item: { provider: string; item_id: string | null; partner_id: string | null } | null;
 }
 export interface OnlineMoneyWire {
   subtotal_cents: number | null; discount_cents: number | null; discount_percentage: string | null; loyalty_discount_cents: number | null;
@@ -233,6 +239,7 @@ export function ordrOrderWire(row: FeedRow, idx: PrintIndex): OnlineOrderWire {
       discount_exempt: it.discount_exempt === true,
       loyalty_reward: it.loyalty_redemption_id != null,
       mapped: true,
+      external_item: null,
       toppings: tops.map((t) => ({
         name: typeof t.topping_name === 'string' ? t.topping_name : '',
         placement: str(t.placement),
@@ -305,6 +312,8 @@ export function ordrOrderWire(row: FeedRow, idx: PrintIndex): OnlineOrderWire {
 // ---- KitchenHub rows ---------------------------------------------------------------------------------
 
 const KH_STATUS: Record<string, OnlineStatus> = { new: 'new', accepted: 'in_progress', completed: 'complete', cancelled: 'cancelled' };
+/** external_orders.status → the wire status (§3c:569-570); unknown → new. */
+export const khWireStatus = (raw: unknown): OnlineStatus => KH_STATUS[String(raw)] ?? 'new';
 
 /** Marketplace id from provider_id / provider_name (dspProvider.js providerKey, loosely). */
 export function marketplaceId(row: Row): string {
@@ -354,22 +363,33 @@ function khMoney(row: Row): OnlineMoneyWire {
   return m;
 }
 
-export function khOrderWire(row: FeedRow, idx: PrintIndex): OnlineOrderWire {
-  const items: OnlineItemWire[] = (Array.isArray(row.items) ? row.items : []).filter((it: unknown) => it && typeof it === 'object').map((it: Row) => {
+/** A served KitchenHub entry: a non-object → UNREADABLE ITEM; an object without a name → UNKNOWN ITEM. Never dropped. */
+export const UNREADABLE_ITEM = 'UNREADABLE ITEM';
+export const UNKNOWN_ITEM = 'UNKNOWN ITEM';
+
+export function khOrderWire(row: FeedRow, idx: PrintIndex, ctx: KhMapContext = EMPTY_KH_CONTEXT): OnlineOrderWire {
+  // every entry (CP21, Matt: never drop a line); a non-array `items` that is present → one unreadable line
+  const raw: unknown[] = Array.isArray(row.items) ? row.items : row.items == null ? [] : [undefined];
+  const items: OnlineItemWire[] = raw.map((entry: unknown) => {
+    const isObj = !!entry && typeof entry === 'object' && !Array.isArray(entry);
+    const it: Row = isObj ? entry as Row : {};
     const toppings: OnlineToppingWire[] = [];
-    khOptions(it.options, 0, toppings);
+    if (isObj) khOptions(it.options, 0, toppings);
+    const keys = lineKeys(row.provider_id, it);
+    const r = resolveLine(ctx, keys);
     return {
-      menu_item_id: null,
-      category_id: null,
-      quantity: posInt(it.quantity, 1),
-      item_name: strAny(it.name) ?? '',
+      menu_item_id: r.menu_item_id,
+      category_id: r.category_id,
+      quantity: isObj ? posInt(it.quantity, 1) : 1,
+      item_name: !isObj ? UNREADABLE_ITEM : (strAny(it.name) ?? '').trim() ? strAny(it.name)! : UNKNOWN_ITEM,
       size_name: null,
       line_total_cents: null,
-      special_instructions: str(it.instructions),
+      special_instructions: isObj ? str(it.instructions) : null,
       discount_exempt: false,
       loyalty_reward: false,
-      mapped: false,
+      mapped: r.mapped,
       toppings,
+      external_item: isObj ? { provider: keys.provider, item_id: keys.item_id, partner_id: keys.partner_id } : null,
     };
   });
   const asap = row.asap === false ? false : true;
@@ -436,11 +456,11 @@ export function khOrderWire(row: FeedRow, idx: PrintIndex): OnlineOrderWire {
 }
 
 /** Both channels → the served list: written Ordr rows only (D6), newest first, ties by id. */
-export function servedOrders(rows: { orders: FeedRow[]; kitchenhub: FeedRow[] }, state: PrintState): OnlineOrderWire[] {
+export function servedOrders(rows: { orders: FeedRow[]; kitchenhub: FeedRow[] }, state: PrintState, ctx: KhMapContext = EMPTY_KH_CONTEXT): OnlineOrderWire[] {
   const idx = indexPrintState(state);
   const out = [
     ...rows.orders.filter((r) => isoOrNull(r.items_written_at) !== null && isoOrNull(r.created_at) !== null).map((r) => ordrOrderWire(r, idx)),
-    ...rows.kitchenhub.filter((r) => isoOrNull(r.created_at) !== null && Number.isSafeInteger(Number(r.kh_order_id))).map((r) => khOrderWire(r, idx)),
+    ...rows.kitchenhub.filter((r) => isoOrNull(r.created_at) !== null && Number.isSafeInteger(Number(r.kh_order_id))).map((r) => khOrderWire(r, idx, ctx)),
   ];
   return out.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
@@ -456,8 +476,11 @@ export interface OnlineSettingsWire {
   pos_online_orders_enabled: boolean; dsp_orders_enabled: boolean;
   /** CP23 (additive): provider delivery dispatch for POS orders is on for this restaurant. */
   pos_delivery_dispatch_enabled: boolean;
+  /** CP21 (additive): the category an unmapped KitchenHub line routes as; null = counter ticket only. */
+  kitchenhub_fallback_category_id: string | null;
   delivery_providers: { id: string; label: string; active: boolean }[];
-  capabilities: { kitchenhub_menu_sync: boolean };
+  /** kitchenhub_item_mapping (CP21, additive): KitchenHub lines carry the staff-confirmed mapping (mapped / category). */
+  capabilities: { kitchenhub_menu_sync: boolean; kitchenhub_item_mapping: boolean };
   kitchenhub_providers: { id: string; label: string; paused_until: string | null }[];
 }
 

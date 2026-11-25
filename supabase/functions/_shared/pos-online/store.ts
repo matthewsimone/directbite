@@ -22,6 +22,8 @@ export interface OnlinePosSettings {
   kitchenhub_auto_print_enabled: boolean;
   /** CP23 (115): provider delivery dispatch for POS orders (default false; false before 115 is applied). */
   pos_delivery_dispatch_enabled: boolean;
+  /** CP21 (117): the category an UNMAPPED KitchenHub line routes as (null = the counter ticket only). */
+  kitchenhub_fallback_category_id: string | null;
 }
 /** No pos_restaurant_settings row = every default (handoff DDL). */
 export const DEFAULT_POS_SETTINGS: OnlinePosSettings = {
@@ -30,6 +32,7 @@ export const DEFAULT_POS_SETTINGS: OnlinePosSettings = {
   online_auto_print_enabled: false,
   kitchenhub_auto_print_enabled: false,
   pos_delivery_dispatch_enabled: false,
+  kitchenhub_fallback_category_id: null,
 };
 
 export type ClaimOutcome =
@@ -218,7 +221,46 @@ export interface OnlineStore {
   orderAction(a: OrderActionInput): Promise<OrderActionOutcome>;
   settingsChange(c: SettingsChangeInput): Promise<SettingsChangeOutcome>;
   tabletSettingChange(c: TabletSettingInput): Promise<TabletSettingOutcome>;
+  /** 117 pos_kitchenhub_item_map_change: a map set / clear, or the fallback category (one transaction + the action row). */
+  kitchenhubMapChange(c: KhMapChangeInput): Promise<KhMapChangeOutcome>;
+  /** 117 pos_kitchenhub_menu_pulls: the cached marketplace menu pull (null = none). */
+  getMenuPull(restaurantId: string): Promise<MenuPullRow | null>;
+  putMenuPull(row: MenuPullRow): Promise<void>;
 }
+
+/** pos_kitchenhub_item_map_change (117). kind fallback: provider / key null, category_id (set) or null (clear). */
+export interface KhMapChangeInput {
+  actionId: string;
+  restaurantId: string;
+  deviceId: string;
+  op: 'set' | 'clear';
+  kind: 'item_id' | 'name' | 'fallback';
+  provider: string | null;
+  key: string | null;
+  menuItemId: string | null;
+  categoryId: string | null;
+  label: string | null;
+  request: Record<string, unknown>;
+  actor: string | null;
+  approver: string | null;
+  deviceTime: string | null;
+}
+export type KhMapChangeOutcome =
+  | { outcome: 'applied' | 'noop' | 'device_not_allowed' | 'action_id_reused' | 'item_not_found' | 'category_not_found' }
+  | { outcome: 'duplicate'; stored: StoredOutcome };
+
+/** One cached pull (all marketplaces of the restaurant). */
+export interface MenuPullRow {
+  restaurant_id: string;
+  pulled_at: string;
+  ok: boolean;
+  providers: { provider: string; ok: boolean; items: { item_id: string | null; name: string }[] }[];
+}
+
+/** Order actions that may be PENDING (113 cancel_refund, 114 dispatch_delivery / self_deliver, 117 ext_*). */
+export const PENDING_ORDER_ACTIONS: readonly string[] = ['cancel_refund', 'dispatch_delivery', 'self_deliver', 'ext_ack', 'ext_accept', 'ext_ready', 'ext_cancel'];
+/** Pending order actions that may be released (114 dispatch_delivery / self_deliver, 117 ext_*). */
+export const RELEASABLE_ACTIONS: readonly string[] = ['dispatch_delivery', 'self_deliver', 'ext_ack', 'ext_accept', 'ext_ready', 'ext_cancel'];
 
 export class OnlineStoreError extends Error {
   readonly code: 'invalid_print_register' | 'invalid_input';
@@ -261,6 +303,9 @@ export interface MemLiveTables {
   restaurants: () => LiveRow[];
   menu_items?: () => LiveRow[];
   adjustment_requests?: () => LiveRow[];
+  /** CP21: menu_categories + pos_kitchenhub_item_maps (the feed reads the maps through the db, so the mirror writes there). */
+  menu_categories?: () => LiveRow[];
+  kitchenhub_item_maps?: () => LiveRow[];
 }
 
 /** Deep-equal for JSON values (jsonb `=` compares semantically, key order irrelevant). */
@@ -312,7 +357,10 @@ export class MemoryOnlineStore implements OnlineStore {
     const s = this.settings.get(restaurantId);
     if (!s) return Promise.resolve(null);
     const { print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled, pos_delivery_dispatch_enabled } = s;
-    return Promise.resolve({ print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled, pos_delivery_dispatch_enabled: pos_delivery_dispatch_enabled === true });
+    return Promise.resolve({
+      print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled,
+      pos_delivery_dispatch_enabled: pos_delivery_dispatch_enabled === true, kitchenhub_fallback_category_id: s.kitchenhub_fallback_category_id ?? null,
+    });
   }
 
   private activeDevice(deviceId: string, restaurantId: string): boolean {
@@ -431,6 +479,8 @@ export class MemoryOnlineStore implements OnlineStore {
   beginAction(a: ActionBegin): Promise<ActionBeginOutcome> {
     if (!ACTION_NAME.test(a.action)) return Promise.reject(new OnlineStoreError('invalid_input', 'action name'));
     const cur = this.actions.get(a.actionId);
+    // 113 / 114 / 117 pos_online_actions_outcome_check, mirrored: only these order actions may be PENDING
+    if (!cur && a.fn === 'order_action' && !PENDING_ORDER_ACTIONS.includes(a.action)) return Promise.reject(new OnlineStoreError('invalid_input', `${a.action} cannot be pending`));
     if (!cur) {
       this.newAction({
         action_id: a.actionId, fn: a.fn, restaurant_id: a.restaurantId, device_id: a.deviceId, channel: a.channel, order_id: a.orderId, action: a.action,
@@ -451,7 +501,7 @@ export class MemoryOnlineStore implements OnlineStore {
     const cur = this.actions.get(actionId);
     if (!cur) return Promise.resolve({ outcome: 'not_found' });
     if (cur.device_id !== deviceId) return Promise.resolve({ outcome: 'device_mismatch' });
-    if (cur.outcome !== null || cur.fn !== 'order_action' || !['dispatch_delivery', 'self_deliver'].includes(cur.action)) return Promise.resolve({ outcome: 'not_pending' });
+    if (cur.outcome !== null || cur.fn !== 'order_action' || !RELEASABLE_ACTIONS.includes(cur.action)) return Promise.resolve({ outcome: 'not_pending' });
     this.actions.delete(actionId);
     return Promise.resolve({ outcome: 'released' });
   }
@@ -605,6 +655,69 @@ export class MemoryOnlineStore implements OnlineStore {
   }
 
   /** 112 pos_online_tablet_setting_change, mirrored: the web tablet's exact write on the live tables. */
+  /** 117 pos_kitchenhub_item_map_change, mirrored. */
+  kitchenhubMapChange(c: KhMapChangeInput): Promise<KhMapChangeOutcome> {
+    const live = this.live;
+    if (!live?.kitchenhub_item_maps) return Promise.reject(new Error('MemoryOnlineStore: no kitchenhub_item_maps bound'));
+    const fallback = c.kind === 'fallback';
+    if (!['set', 'clear'].includes(c.op) || !['item_id', 'name', 'fallback'].includes(c.kind)) return Promise.reject(new OnlineStoreError('invalid_input', 'op / kind'));
+    if (!fallback && (!c.provider || !c.key)) return Promise.reject(new OnlineStoreError('invalid_input', 'provider / key'));
+    if (c.op === 'set' && (fallback ? !c.categoryId || c.menuItemId : (c.menuItemId === null) === (c.categoryId === null))) return Promise.reject(new OnlineStoreError('invalid_input', 'target'));
+    if (!this.activeDevice(c.deviceId, c.restaurantId)) return Promise.resolve({ outcome: 'device_not_allowed' });
+    const action = fallback ? KH_MAP_ACTIONS.fallback : KH_MAP_ACTIONS.map;
+    const cur = this.actions.get(c.actionId);
+    if (cur) {
+      if (cur.fn !== 'settings' || cur.restaurant_id !== c.restaurantId || cur.device_id !== c.deviceId || cur.action !== action || !jsonEq(cur.request, c.request)) {
+        return Promise.resolve({ outcome: 'action_id_reused' });
+      }
+      return Promise.resolve({ outcome: 'duplicate', stored: cur.outcome! });
+    }
+    if (c.op === 'set' && c.menuItemId && !(live.menu_items?.() ?? []).some((m) => m.id === c.menuItemId && m.restaurant_id === c.restaurantId)) return Promise.resolve({ outcome: 'item_not_found' });
+    if (c.op === 'set' && c.categoryId && !(live.menu_categories?.() ?? []).some((m) => m.id === c.categoryId && m.restaurant_id === c.restaurantId)) return Promise.resolve({ outcome: 'category_not_found' });
+    let changed = false;
+    if (fallback) {
+      const s = this.settings.get(c.restaurantId) ?? { ...DEFAULT_POS_SETTINGS, updated_at: this.now(), updated_by: 'device' };
+      const next = c.op === 'set' ? c.categoryId : null;
+      if ((s.kitchenhub_fallback_category_id ?? null) !== next) {
+        this.settings.set(c.restaurantId, { ...s, kitchenhub_fallback_category_id: next, updated_at: this.now() });
+        changed = true;
+      }
+    } else {
+      const rows = live.kitchenhub_item_maps();
+      const i = rows.findIndex((r) => r.restaurant_id === c.restaurantId && r.provider === c.provider && r.match_kind === c.kind && r.match_key === c.key);
+      if (c.op === 'clear') {
+        if (i >= 0) {
+          rows.splice(i, 1);
+          changed = true;
+        }
+      } else {
+        const row = { restaurant_id: c.restaurantId, provider: c.provider, match_kind: c.kind, match_key: c.key, menu_item_id: c.menuItemId, category_id: c.categoryId, label: c.label, updated_by_device_id: c.deviceId };
+        if (i < 0) {
+          rows.push(row);
+          changed = true;
+        } else if (rows[i].menu_item_id !== c.menuItemId || rows[i].category_id !== c.categoryId || rows[i].label !== c.label) {
+          rows[i] = { ...rows[i], ...row };
+          changed = true;
+        }
+      }
+    }
+    const out = changed ? 'applied' : 'noop';
+    this.newAction({
+      action_id: c.actionId, fn: 'settings', restaurant_id: c.restaurantId, device_id: c.deviceId, channel: null, order_id: null, action,
+      request: c.request, outcome: out, order_ids: [], ready_email_sent: false, actor: c.actor, approver: c.approver, device_time: c.deviceTime,
+    });
+    return Promise.resolve({ outcome: out });
+}
+  private readonly pulls = new Map<string, MenuPullRow>();
+  getMenuPull(rid: string): Promise<MenuPullRow | null> {
+    const r = this.pulls.get(rid);
+    return Promise.resolve(r ? structuredClone(r) : null);
+  }
+  putMenuPull(row: MenuPullRow): Promise<void> {
+    this.pulls.set(row.restaurant_id, structuredClone(row));
+    return Promise.resolve();
+  }
+
   tabletSettingChange(c: TabletSettingInput): Promise<TabletSettingOutcome> {
     if (!this.live) return Promise.reject(new Error('MemoryOnlineStore: no live tables bound (restaurants / menu_items)'));
     const mins = (n: number | null) => n !== null && Number.isInteger(n) && n >= 1 && n <= 240;
@@ -661,6 +774,10 @@ function isoOf(v: unknown): string | null {
   return Number.isFinite(t) ? new Date(t).toISOString() : null;
 }
 
+// ---- CP21 (memory mirror of 117) -------------------------------------------------------------------------------
+
+export const KH_MAP_ACTIONS = { map: 'kitchenhub_item_map', fallback: 'kitchenhub_fallback_category' } as const;
+
 export class PgOnlineStore implements OnlineStore {
   constructor(private readonly db: Client) {}
 
@@ -693,6 +810,8 @@ export class PgOnlineStore implements OnlineStore {
       online_auto_print_enabled: data.online_auto_print_enabled === true,
       kitchenhub_auto_print_enabled: data.kitchenhub_auto_print_enabled === true,
       pos_delivery_dispatch_enabled: data.pos_delivery_dispatch_enabled === true,
+      // 117 (absent before it is applied → null)
+      kitchenhub_fallback_category_id: typeof data.kitchenhub_fallback_category_id === 'string' ? data.kitchenhub_fallback_category_id : null,
     };
   }
   claimPrint(c: ClaimInput) {
@@ -759,6 +878,22 @@ export class PgOnlineStore implements OnlineStore {
       p_action_id: c.actionId, p_restaurant_id: c.restaurantId, p_device_id: c.deviceId, p_kind: c.kind, p_print_device_id: c.printDeviceId,
       p_on: c.on, p_request: c.request, p_actor: c.actor, p_approver: c.approver, p_device_time: c.deviceTime,
     });
+  }
+  kitchenhubMapChange(c: KhMapChangeInput) {
+    return this.call<KhMapChangeOutcome>('pos_kitchenhub_item_map_change', {
+      p_action_id: c.actionId, p_restaurant_id: c.restaurantId, p_device_id: c.deviceId, p_op: c.op, p_kind: c.kind, p_provider: c.provider,
+      p_key: c.key, p_menu_item_id: c.menuItemId, p_category_id: c.categoryId, p_label: c.label, p_request: c.request, p_actor: c.actor,
+      p_approver: c.approver, p_device_time: c.deviceTime,
+    });
+  }
+  async getMenuPull(restaurantId: string): Promise<MenuPullRow | null> {
+    const { data, error } = await this.db.from('pos_kitchenhub_menu_pulls').select('restaurant_id, pulled_at, ok, providers').eq('restaurant_id', restaurantId).maybeSingle();
+    if (error) throw new Error(`pos_kitchenhub_menu_pulls read failed: ${error.message}`);
+    return data ?? null;
+  }
+  async putMenuPull(row: MenuPullRow): Promise<void> {
+    const { error } = await this.db.from('pos_kitchenhub_menu_pulls').upsert(row, { onConflict: 'restaurant_id' });
+    if (error) throw new Error(`pos_kitchenhub_menu_pulls write failed: ${error.message}`);
   }
   tabletSettingChange(c: TabletSettingInput) {
     return this.call<TabletSettingOutcome>('pos_online_tablet_setting_change', {

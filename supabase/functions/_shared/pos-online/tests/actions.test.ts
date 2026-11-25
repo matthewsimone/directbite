@@ -222,15 +222,15 @@ Deno.test('a scheduled order: accept → action_not_allowed; schedule → schedu
   assertEquals(okBody(await w.action({ order_id: uberSch.id, action: 'schedule', expected_status: 'new' })).result, 'applied');
 });
 
-Deno.test('wrong channel / later checkpoints: an Ordr action on a KitchenHub order → action_not_allowed; ext_* → 501', async () => {
+Deno.test('wrong channel: an Ordr action on a KitchenHub order / an ext_ action on an Ordr order → action_not_allowed (KitchenHub actions: kitchenhub.test.ts)', async () => {
   const w = await world({ restaurant: { dsp_orders_enabled: true } });
   const kh = khRow(w.nowIso());
   const row = ordrRow(w.nowIso());
   w.db.insertRow('external_orders', kh);
   w.db.insertRow('orders', row);
   assertEquals(err(await w.action({ order_id: kh.id, action: 'accept', expected_status: 'new' })), { status: 400, code: 'action_not_allowed', message: 'accept on a kitchenhub order' });
-  for (const action of ['ext_ack', 'ext_accept', 'ext_ready', 'ext_cancel']) { // money: CP19 (money.test.ts); Uber: CP20 (uber.test.ts)
-    assertEquals(err(await w.action({ order_id: row.id, action, expected_status: 'new' })).status, 501, action);
+  for (const action of ['ext_ack', 'ext_accept', 'ext_ready', 'ext_cancel']) {
+    assertEquals(err(await w.action({ order_id: row.id, action, expected_status: 'new', prep_minutes: 20 })), { status: 400, code: 'action_not_allowed', message: `${action} on a ordr order` }, action);
   }
   assertEquals(w.order(row.id).status, 'new');
   assertEquals(w.online.actions.size, 0, 'nothing recorded');

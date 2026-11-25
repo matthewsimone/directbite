@@ -343,7 +343,7 @@ Deno.test('PgOnlineStore.getSettings: select * — before 115 (no pos_delivery_d
       return q;
     },
   });
-  assertEquals(await pg.getSettings(R1), { print_register_device_id: DEV_A, pos_online_orders_enabled: true, online_auto_print_enabled: true, kitchenhub_auto_print_enabled: false, pos_delivery_dispatch_enabled: false });
+  assertEquals(await pg.getSettings(R1), { print_register_device_id: DEV_A, pos_online_orders_enabled: true, online_auto_print_enabled: true, kitchenhub_auto_print_enabled: false, pos_delivery_dispatch_enabled: false, kitchenhub_fallback_category_id: null });
   row = { ...row, pos_delivery_dispatch_enabled: true };
   assertEquals((await pg.getSettings(R1))!.pos_delivery_dispatch_enabled, true);
   row = null;

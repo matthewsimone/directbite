@@ -6,6 +6,7 @@
 import { assertEquals } from 'jsr:@std/assert@1';
 import { FAKE_IP, harness, ok, R1, R2, type Registered } from '../../pos-device/tests/harness.ts';
 import { handleOnlineOrderAction, handleOnlineOrders, handleOnlinePrint, handleOnlineSettings, type OnlineDeps } from '../handlers.ts';
+import { handleKitchenhubItems } from '../khItemsHandler.ts';
 import type { OnlineStationRef } from '../printRules.ts';
 import { MemoryOnlineStore } from '../store.ts';
 import type { OnlineOrderWire } from '../wire.ts';
@@ -91,7 +92,10 @@ export async function world(o: { restaurant?: Record<string, unknown> } = {}) {
   const B = ok<Registered>(await h.register(h.req((await h.enroll()).code)));
   const X = ok<Registered>(await h.register(h.req((await h.enroll({ restaurantId: R2 })).code)));
   const db = new FakeSupabase();
-  const online = new MemoryOnlineStore(h.clock.now, { orders: () => db.rows('orders'), restaurants: () => db.rows('restaurants'), menu_items: () => db.rows('menu_items'), adjustment_requests: () => db.rows('adjustment_requests') });
+  const online = new MemoryOnlineStore(h.clock.now, {
+    orders: () => db.rows('orders'), restaurants: () => db.rows('restaurants'), menu_items: () => db.rows('menu_items'), adjustment_requests: () => db.rows('adjustment_requests'),
+    menu_categories: () => db.rows('menu_categories'), kitchenhub_item_maps: () => db.rows('pos_kitchenhub_item_maps'),
+  });
   for (const d of [A, B, X]) online.devices.set(d.device_id, { id: d.device_id, restaurant_id: d.restaurant_id, status: 'active' });
   db.insertRow('restaurants', restaurantRow(o.restaurant));
   db.insertRow('restaurants', restaurantRow({ id: R2 }));
@@ -121,9 +125,12 @@ export async function world(o: { restaurant?: Record<string, unknown> } = {}) {
     await online.setPrintRegister(R1, A.device_id, 'admin@example.test');
     online.setFlags(R1, { online_auto_print_enabled: true, kitchenhub_auto_print_enabled: true, pos_online_orders_enabled: true });
   };
+  /** pos-v1-kitchenhub-items (CP21). */
+  const items = (body: Record<string, unknown>, dev: Registered = A) =>
+    call(handleKitchenhubItems, { restaurant_id: R1, actor_staff_id: 'register', approver_staff_id: null, device_time: nowIso(), ...body }, dev);
   const order = (id: string) => db.rows('orders').find((r) => r.id === id)!;
   const logs = (id: string) => db.rows('print_logs').filter((r) => r.order_id === id);
-  return { h, A, B, X, online, db, deps, poll, print, action, settings, autoOn, order, logs, nowIso, readyEmails, money };
+  return { h, A, B, X, online, db, deps, poll, print, action, settings, items, autoOn, order, logs, nowIso, readyEmails, money };
 }
 
 export function served(body: unknown): OnlineOrderWire[] {
