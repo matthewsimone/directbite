@@ -11,6 +11,13 @@
 -- Pizza order inside the transaction — rolled back with the rest. Two throwaway registers are created for Test Pizza
 -- with prefixes nobody uses there yet; Test Pizza's pos_restaurant_settings row is changed inside the transaction
 -- only. Each function call is its own statement, checked in the next one (106 lesson).
+--
+-- Values that must be UNIQUE on orders (repo migrations: order_number 001:110; uber_delivery_id partial unique,
+-- 046:39-41, non-null values only): every test order has its own order_number (-111001 … -111010) and its own
+-- uber_delivery_id ('smoke-111-uber-<n>') where the scenario needs a booked delivery (-111007 / -111008: the
+-- wake-up), else NULL (stripe_payment_intent_id / stripe_charge_id / every other id column stays NULL). A
+-- pre-check stops with a clear SMOKE FAIL if any of these values already exists; a unique index the repo doesn't
+-- know about (live-only) is reported as 'SMOKE FAIL: setup …' with the index name instead of a bare 23505.
 -- Mirrors _shared/pos-online/tests/actions.test.ts (MemoryOnlineStore = these functions).
 
 begin;
@@ -59,6 +66,13 @@ begin
     from (select chr(81 + i) || chr(65 + j) as p from generate_series(0, 8) i, generate_series(0, 25) j) c   -- QA..YZ
    where p not in (select prefix from public.pos_devices where restaurant_id = v_r);
   if coalesce(array_length(v_pfx, 1), 0) < 2 then raise exception 'SMOKE FAIL: no free test prefixes'; end if;
+  -- the unique values the test orders use must be free (order_number 001:110; uber_delivery_id 046:39-41)
+  if exists (select 1 from public.orders where order_number between -111010 and -111001) then
+    raise exception 'SMOKE FAIL: an orders row already has an order_number in -111010 … -111001';
+  end if;
+  if exists (select 1 from public.orders where uber_delivery_id in ('smoke-111-uber-111007', 'smoke-111-uber-111008')) then
+    raise exception 'SMOKE FAIL: an orders row already has a smoke-111-uber-… uber_delivery_id';
+  end if;
 
   set local role service_role;
   if current_user <> 'service_role' then raise exception 'SMOKE FAIL: not running as service_role'; end if;
@@ -68,7 +82,8 @@ begin
   insert into public.pos_devices (restaurant_id, prefix, label, token_hash, status)
   values (v_r, v_pfx[2], 'smoke-111-b', encode(sha256(convert_to(gen_random_uuid()::text, 'UTF8')), 'hex'), 'active') returning id into v_dev_b;
 
-  -- throwaway orders (negative order_number: the sequence is untouched)
+  -- throwaway orders (negative order_number: the sequence is untouched; distinct uber_delivery_id or NULL)
+  begin
   for t in select * from (values
       (-111001, 'new',         'pickup',   'in_house',    null::text, null::timestamptz,          true),
       (-111002, 'new',         'pickup',   'in_house',    null,       null,                       true),
@@ -76,8 +91,8 @@ begin
       (-111004, 'new',         'delivery', 'uber_direct', null,       null,                       true),
       (-111005, 'in_progress', 'pickup',   'in_house',    null,       null,                       true),
       (-111006, 'in_progress', 'delivery', 'in_house',    null,       null,                       true),
-      (-111007, 'scheduled',   'delivery', 'uber_direct', 'smoke-111-uber', v_now + interval '10 minutes', true),
-      (-111008, 'scheduled',   'delivery', 'uber_direct', 'smoke-111-uber', v_now + interval '5 hours',   true),
+      (-111007, 'scheduled',   'delivery', 'uber_direct', 'smoke-111-uber-111007', v_now + interval '10 minutes', true),
+      (-111008, 'scheduled',   'delivery', 'uber_direct', 'smoke-111-uber-111008', v_now + interval '5 hours',   true),
       (-111009, 'new',         'pickup',   'in_house',    null,       null,                       false)) x(num, st, typ, meth, uber, sched, written) loop
     insert into public.orders (order_number, restaurant_id, status, order_type, customer_name, customer_phone, customer_email,
                                subtotal, tax_amount, total_amount, delivery_fulfillment_method, uber_delivery_id,
@@ -85,6 +100,13 @@ begin
     values (t.num, v_r, t.st, t.typ, 'Smoke 111', '0000000000', 'smoke-111@example.invalid', 10, 0, 10, t.meth, t.uber,
             t.sched, case when t.written then v_now end);
   end loop;
+  insert into public.orders (order_number, restaurant_id, status, order_type, customer_name, customer_phone, customer_email,
+                             subtotal, tax_amount, total_amount, items_written_at)
+  values (-111010, v_other, 'new', 'pickup', 'Smoke 111', '0000000000', 'smoke-111@example.invalid', 10, 0, 10, v_now)
+  returning id into o_foreign;
+  exception when unique_violation then
+    raise exception 'SMOKE FAIL: setup — a test order hit a unique index on orders: %', sqlerrm;
+  end;
   select id into o_new from public.orders where order_number = -111001;
   select id into o_quote from public.orders where order_number = -111002;
   select id into o_sched from public.orders where order_number = -111003;
@@ -94,10 +116,6 @@ begin
   select id into o_wake from public.orders where order_number = -111007;
   select id into o_late from public.orders where order_number = -111008;
   select id into o_unwritten from public.orders where order_number = -111009;
-  insert into public.orders (order_number, restaurant_id, status, order_type, customer_name, customer_phone, customer_email,
-                             subtotal, tax_amount, total_amount, items_written_at)
-  values (-111010, v_other, 'new', 'pickup', 'Smoke 111', '0000000000', 'smoke-111@example.invalid', 10, 0, 10, v_now)
-  returning id into o_foreign;
 
   -- 1. ack: applied (acknowledged_at = now), again (another id) → noop; same id + same request → duplicate;
   --    same id + another request → action_id_reused
