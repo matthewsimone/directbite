@@ -275,11 +275,18 @@ verify_jwt = false
 [functions.pos-v1-submit-day-close]
 verify_jwt = false
 
-# CP17b part 2 (SYNC-CONTRACT §3c): online orders feed + per-station print. NOT DEPLOYED; need 109 + 110.
+# CP17b part 2 + CP18 (SYNC-CONTRACT §3c): online orders feed, per-station print, order actions, POS settings.
+# NOT DEPLOYED; need 109 + 110 + 111.
 [functions.pos-v1-online-orders]
 verify_jwt = false
 
 [functions.pos-v1-online-print]
+verify_jwt = false
+
+[functions.pos-v1-online-order-action]
+verify_jwt = false
+
+[functions.pos-v1-online-settings]
 verify_jwt = false
 
 # pos-admin-devices — /admin register management (DEVICE-AUTH §6). Same

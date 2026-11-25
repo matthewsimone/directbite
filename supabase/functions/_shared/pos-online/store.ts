@@ -1,12 +1,16 @@
 /**
- * POS online persistence — migrations 109 + 110: print register + flags, per-station print claims / results,
- * the print state read, device actions (idempotency). Every write is ONE plpgsql function (one transaction).
- * MemoryOnlineStore mirrors the SQL for tests — keep the two in step (110_smoke.sql runs the same scenarios
- * against Postgres; tests/store.test.ts checks the mirror against the ported reference rules, printRules.ts).
+ * POS online persistence — migrations 109 + 110 + 111: print register + flags, per-station print claims / results,
+ * the print state read, device actions (idempotency, pos_online_actions in the handoff shape), the Ordr order
+ * actions and the POS settings changes. Every write is ONE plpgsql function (one transaction).
+ * MemoryOnlineStore mirrors the SQL for tests — keep the two in step (110_smoke.sql / 111_smoke.sql run the same
+ * scenarios against Postgres; tests/store.test.ts and tests/actions.test.ts check the mirror against the ported
+ * reference rules, printRules.ts / actionRules.ts).
  *
- * The order is NOT checked here (110 never touches orders / external_orders): the caller first confirms the order
- * belongs to the principal's restaurant, is written (items_written_at), and passes its print_status.
+ * Print: the order is NOT checked here (110 never touches orders / external_orders): the caller first confirms the
+ * order belongs to the principal's restaurant, is written (items_written_at), and passes its print_status.
+ * Order actions (111): the function locks + re-checks the order itself and makes the web tablet's write.
  */
+import { ordrActionRule, type Cp18Action } from './actionRules.ts';
 import { orderPrintResult, type OnlineStationRef, type PrintResult, type PrintVariant } from './printRules.ts';
 
 export type OrderChannel = 'ordr' | 'kitchenhub';
@@ -61,23 +65,85 @@ export interface StationRow { order_channel: OrderChannel; order_id: string; sta
 export interface LogRow { order_channel: OrderChannel; order_id: string; at: string; device_id: string; variant: PrintVariant; result: PrintResult; error: string | null; station: string | null }
 export interface PrintState { claims: ClaimRow[]; stations: StationRow[]; log: LogRow[] }
 
+export type ActionFunction = 'order_action' | 'print' | 'settings';
+export type StoredOutcome = 'applied' | 'noop' | 'error';
+
+/** A stored action replayed: its outcome (+ the error it answered, + complete_all_in_progress's orders). */
+export interface StoredAction {
+  stored: StoredOutcome;
+  error_status: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  order_ids: string[];
+}
+
 export type ActionBeginOutcome =
   | { outcome: 'started' | 'pending' | 'action_id_reused' }
-  | { outcome: 'duplicate'; result: Record<string, unknown>; http_status: number };
+  | ({ outcome: 'duplicate' } & StoredAction);
 
 export type ActionCompleteOutcome =
   | { outcome: 'completed' | 'not_found' | 'device_mismatch' }
-  | { outcome: 'already_completed'; result: Record<string, unknown>; http_status: number };
+  | { outcome: 'already_completed'; stored: StoredOutcome };
 
+/** pos_online_action_begin (the print function's idempotency: a pending row, completed after the work). */
 export interface ActionBegin {
+  actionId: string;
+  fn: ActionFunction;
+  restaurantId: string;
+  deviceId: string;
+  channel: OrderChannel | null;
+  orderId: string | null;
+  action: string;
+  /** The request minus device_time (same id + another request → action_id_reused). */
+  request: Record<string, unknown>;
+  actor: string | null;
+  approver: string | null;
+  deviceTime: string | null;
+}
+
+/** pos_online_order_action (111). orderId null ⇔ complete_all_in_progress. */
+export interface OrderActionInput {
   actionId: string;
   restaurantId: string;
   deviceId: string;
-  staffId: string | null;
-  orderId: string;
-  action: string;
+  orderId: string | null;
+  action: Cp18Action;
+  expectedStatus: string | null;
+  quotedReadyMinutes: number | null;
   request: Record<string, unknown>;
+  actor: string | null;
+  approver: string | null;
+  deviceTime: string | null;
 }
+
+export type OrderActionOutcome =
+  | { outcome: 'applied' | 'noop'; ready_email: boolean; order_ids: string[] }
+  | ({ outcome: 'duplicate' } & StoredAction)
+  | { outcome: 'status_conflict'; status: string }
+  | { outcome: 'not_allowed' | 'invalid'; message: string }
+  | { outcome: 'device_not_allowed' | 'action_id_reused' | 'unknown_order' | 'restaurant_mismatch' };
+
+export type SettingsKind = 'online_print_device' | 'online_auto_print' | 'kitchenhub_auto_print';
+
+/** pos_online_settings_change (111). */
+export interface SettingsChangeInput {
+  actionId: string;
+  restaurantId: string;
+  deviceId: string;
+  kind: SettingsKind;
+  /** online_print_device: the register (null = none). */
+  printDeviceId: string | null;
+  /** online_auto_print / kitchenhub_auto_print. */
+  on: boolean | null;
+  request: Record<string, unknown>;
+  actor: string | null;
+  approver: string | null;
+  deviceTime: string | null;
+}
+
+export type SettingsChangeOutcome =
+  | { outcome: 'applied' | 'noop' | 'device_not_allowed' | 'action_id_reused' | 'invalid_print_register' }
+  | { outcome: 'duplicate'; stored: StoredOutcome };
 
 export interface OnlineStore {
   setPrintRegister(restaurantId: string, deviceId: string | null, updatedBy: string): Promise<void>;
@@ -87,7 +153,9 @@ export interface OnlineStore {
   recordPrint(r: RecordInput): Promise<RecordOutcome>;
   printState(restaurantId: string, orderIds: string[]): Promise<PrintState>;
   beginAction(a: ActionBegin): Promise<ActionBeginOutcome>;
-  completeAction(actionId: string, deviceId: string, result: Record<string, unknown>, httpStatus: number): Promise<ActionCompleteOutcome>;
+  completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop'): Promise<ActionCompleteOutcome>;
+  orderAction(a: OrderActionInput): Promise<OrderActionOutcome>;
+  settingsChange(c: SettingsChangeInput): Promise<SettingsChangeOutcome>;
 }
 
 export class OnlineStoreError extends Error {
@@ -117,7 +185,15 @@ export interface MemDevice { id: string; restaurant_id: string; status: 'active'
 interface MemClaim { order_channel: OrderChannel; order_id: string; restaurant_id: string; device_id: string; claimed_at: number; result: PrintResult | null; printed_at: number | null }
 interface MemStation { order_channel: OrderChannel; order_id: string; station: string; restaurant_id: string; name: string; lines: number[]; position: number; result: PrintResult | null; printed_at: number | null }
 interface MemLog { order_channel: OrderChannel; order_id: string; restaurant_id: string; device_id: string; action_id: string; variant: PrintVariant; result: PrintResult; station: string | null; error: string | null; device_time: string | null; at: number; seq: number }
-export interface MemAction extends Omit<ActionBegin, 'actionId'> { action_id: string; result: Record<string, unknown> | null; http_status: number | null; created_at: number; completed_at: number | null }
+export interface MemAction {
+  action_id: string; fn: ActionFunction; restaurant_id: string; device_id: string; channel: OrderChannel | null; order_id: string | null;
+  action: string; request: Record<string, unknown>; outcome: StoredOutcome | null; error_status: number | null; error_code: string | null;
+  error_message: string | null; order_ids: string[]; ready_email_sent: boolean; actor: string | null; approver: string | null;
+  device_time: string | null; created_at: number; completed_at: number | null;
+}
+/** The live tables the order actions read / write (tests: FakeSupabase rows). */
+// deno-lint-ignore no-explicit-any
+export interface MemLiveTables { orders: () => Record<string, any>[]; restaurants: () => Record<string, any>[] }
 
 /** Deep-equal for JSON values (jsonb `=` compares semantically, key order irrelevant). */
 function jsonEq(a: unknown, b: unknown): boolean {
@@ -143,7 +219,7 @@ export class MemoryOnlineStore implements OnlineStore {
   readonly actions = new Map<string, MemAction>();
   private seq = 0;
 
-  constructor(private readonly now: () => number = Date.now) {}
+  constructor(private readonly now: () => number = Date.now, private readonly live: MemLiveTables | null = null) {}
 
   setPrintRegister(restaurantId: string, deviceId: string | null, updatedBy: string): Promise<void> {
     if (updatedBy.length < 1 || updatedBy.length > 200) return Promise.reject(new OnlineStoreError('invalid_input', 'updated_by length 1–200'));
@@ -158,7 +234,7 @@ export class MemoryOnlineStore implements OnlineStore {
     return Promise.resolve();
   }
 
-  /** Test control: the flags (set by SQL at cut-over; pos-v1-online-settings is not built yet). */
+  /** Test control: the flags directly (pos-v1-online-settings → settingsChange is the real path). */
   setFlags(restaurantId: string, flags: Partial<Omit<OnlinePosSettings, 'print_register_device_id'>>): void {
     const cur = this.settings.get(restaurantId) ?? { ...DEFAULT_POS_SETTINGS, updated_at: this.now(), updated_by: 'test' };
     this.settings.set(restaurantId, { ...cur, ...flags });
@@ -273,33 +349,119 @@ export class MemoryOnlineStore implements OnlineStore {
     return Promise.resolve(structuredClone({ claims, stations, log }));
   }
 
+  private stored(cur: MemAction): StoredAction {
+    return { stored: cur.outcome!, error_status: cur.error_status, error_code: cur.error_code, error_message: cur.error_message, order_ids: [...cur.order_ids] };
+  }
+
+  private newAction(a: Omit<MemAction, 'created_at' | 'completed_at' | 'error_status' | 'error_code' | 'error_message'>): MemAction {
+    const now = this.now();
+    const row: MemAction = { ...a, request: structuredClone(a.request), error_status: null, error_code: null, error_message: null, created_at: now, completed_at: a.outcome === null ? null : now };
+    this.actions.set(a.action_id, row);
+    return row;
+  }
+
   beginAction(a: ActionBegin): Promise<ActionBeginOutcome> {
     if (!ACTION_NAME.test(a.action)) return Promise.reject(new OnlineStoreError('invalid_input', 'action name'));
     const cur = this.actions.get(a.actionId);
     if (!cur) {
-      this.actions.set(a.actionId, {
-        action_id: a.actionId, restaurantId: a.restaurantId, deviceId: a.deviceId, staffId: a.staffId, orderId: a.orderId, action: a.action,
-        request: structuredClone(a.request), result: null, http_status: null, created_at: this.now(), completed_at: null,
+      this.newAction({
+        action_id: a.actionId, fn: a.fn, restaurant_id: a.restaurantId, device_id: a.deviceId, channel: a.channel, order_id: a.orderId, action: a.action,
+        request: a.request, outcome: null, order_ids: [], ready_email_sent: false, actor: a.actor, approver: a.approver, device_time: a.deviceTime,
       });
       return Promise.resolve({ outcome: 'started' });
     }
-    if (cur.restaurantId !== a.restaurantId || cur.deviceId !== a.deviceId || cur.staffId !== a.staffId || cur.orderId !== a.orderId ||
+    if (cur.fn !== a.fn || cur.restaurant_id !== a.restaurantId || cur.device_id !== a.deviceId || cur.channel !== a.channel || cur.order_id !== a.orderId ||
         cur.action !== a.action || !jsonEq(cur.request, a.request)) {
       return Promise.resolve({ outcome: 'action_id_reused' });
     }
-    if (cur.result === null) return Promise.resolve({ outcome: 'pending' });
-    return Promise.resolve({ outcome: 'duplicate', result: structuredClone(cur.result), http_status: cur.http_status! });
+    if (cur.outcome === null) return Promise.resolve({ outcome: 'pending' });
+    return Promise.resolve({ outcome: 'duplicate', ...this.stored(cur) });
   }
 
-  completeAction(actionId: string, deviceId: string, result: Record<string, unknown>, httpStatus: number): Promise<ActionCompleteOutcome> {
+  completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop'): Promise<ActionCompleteOutcome> {
     const cur = this.actions.get(actionId);
     if (!cur) return Promise.resolve({ outcome: 'not_found' });
-    if (cur.deviceId !== deviceId) return Promise.resolve({ outcome: 'device_mismatch' });
-    if (cur.result !== null) return Promise.resolve({ outcome: 'already_completed', result: structuredClone(cur.result), http_status: cur.http_status! });
-    cur.result = structuredClone(result);
-    cur.http_status = httpStatus;
+    if (cur.device_id !== deviceId) return Promise.resolve({ outcome: 'device_mismatch' });
+    if (cur.outcome !== null) return Promise.resolve({ outcome: 'already_completed', stored: cur.outcome });
+    cur.outcome = outcome;
     cur.completed_at = this.now();
     return Promise.resolve({ outcome: 'completed' });
+  }
+
+  /** 111 pos_online_order_action, mirrored (actionRules.ts = its rule). */
+  orderAction(a: OrderActionInput): Promise<OrderActionOutcome> {
+    if (!this.live) return Promise.reject(new Error('MemoryOnlineStore: no live tables bound (orders)'));
+    if ((a.orderId === null) !== (a.action === 'complete_all_in_progress')) return Promise.reject(new OnlineStoreError('invalid_input', 'order_id'));
+    if (a.action !== 'ack' && a.action !== 'stuck_ack' && a.action !== 'complete_all_in_progress' && a.expectedStatus === null) return Promise.reject(new OnlineStoreError('invalid_input', 'expected_status'));
+    if (!this.activeDevice(a.deviceId, a.restaurantId)) return Promise.resolve({ outcome: 'device_not_allowed' });
+    const cur = this.actions.get(a.actionId);
+    if (cur) {
+      if (cur.fn !== 'order_action' || cur.restaurant_id !== a.restaurantId || cur.device_id !== a.deviceId || cur.order_id !== a.orderId ||
+          cur.action !== a.action || !jsonEq(cur.request, a.request)) {
+        return Promise.resolve({ outcome: 'action_id_reused' });
+      }
+      return Promise.resolve({ outcome: 'duplicate', ...this.stored(cur) });
+    }
+    const nowMs = this.now();
+    let out: 'applied' | 'noop';
+    let ids: string[] = [];
+    let email = false;
+    if (a.action === 'complete_all_in_progress') {
+      const rows = this.live.orders().filter((o) => o.restaurant_id === a.restaurantId && o.status === 'in_progress');
+      for (const o of rows) o.status = 'complete';
+      ids = rows.map((o) => String(o.id)).sort();
+      out = ids.length ? 'applied' : 'noop';
+    } else {
+      const o = this.live.orders().find((x) => x.id === a.orderId);
+      if (!o || o.items_written_at == null) return Promise.resolve({ outcome: 'unknown_order' });
+      if (o.restaurant_id !== a.restaurantId) return Promise.resolve({ outcome: 'restaurant_mismatch' });
+      const est = this.live.restaurants().find((x) => x.id === a.restaurantId)?.estimated_pickup_minutes ?? null;
+      const r = ordrActionRule(o, { action: a.action, expected_status: a.expectedStatus, quoted_ready_minutes: a.quotedReadyMinutes }, nowMs, est);
+      if (r.kind === 'status_conflict') return Promise.resolve({ outcome: 'status_conflict', status: r.status });
+      if (r.kind === 'not_allowed' || r.kind === 'invalid') return Promise.resolve({ outcome: r.kind, message: r.message });
+      if (r.kind === 'applied') {
+        Object.assign(o, structuredClone(r.set));
+        out = 'applied';
+        email = r.readyEmail && ![...this.actions.values()].some((x) => x.order_id === a.orderId && x.ready_email_sent);
+      } else out = 'noop';
+    }
+    this.newAction({
+      action_id: a.actionId, fn: 'order_action', restaurant_id: a.restaurantId, device_id: a.deviceId, channel: a.orderId === null ? null : 'ordr',
+      order_id: a.orderId, action: a.action, request: a.request, outcome: out, order_ids: ids, ready_email_sent: email, actor: a.actor,
+      approver: a.approver, device_time: a.deviceTime,
+    });
+    return Promise.resolve({ outcome: out, ready_email: email, order_ids: ids });
+  }
+
+  /** 111 pos_online_settings_change, mirrored. */
+  settingsChange(c: SettingsChangeInput): Promise<SettingsChangeOutcome> {
+    if (!['online_print_device', 'online_auto_print', 'kitchenhub_auto_print'].includes(c.kind)) return Promise.reject(new OnlineStoreError('invalid_input', 'kind'));
+    if (c.kind !== 'online_print_device' && typeof c.on !== 'boolean') return Promise.reject(new OnlineStoreError('invalid_input', 'on'));
+    if (!this.activeDevice(c.deviceId, c.restaurantId)) return Promise.resolve({ outcome: 'device_not_allowed' });
+    const cur = this.actions.get(c.actionId);
+    if (cur) {
+      if (cur.fn !== 'settings' || cur.restaurant_id !== c.restaurantId || cur.device_id !== c.deviceId || cur.action !== c.kind || !jsonEq(cur.request, c.request)) {
+        return Promise.resolve({ outcome: 'action_id_reused' });
+      }
+      return Promise.resolve({ outcome: 'duplicate', stored: cur.outcome! });
+    }
+    const s = this.settings.get(c.restaurantId) ?? null;
+    const by = c.actor ?? 'register';
+    let out: 'applied' | 'noop';
+    if (c.kind === 'online_print_device') {
+      if (c.printDeviceId !== null && !this.activeDevice(c.printDeviceId, c.restaurantId)) return Promise.resolve({ outcome: 'invalid_print_register' });
+      out = (s ? s.print_register_device_id === c.printDeviceId : c.printDeviceId === null) ? 'noop' : 'applied';
+      if (out === 'applied') this.settings.set(c.restaurantId, { ...(s ?? DEFAULT_POS_SETTINGS), print_register_device_id: c.printDeviceId, updated_at: this.now(), updated_by: by });
+    } else {
+      const col = c.kind === 'online_auto_print' ? 'online_auto_print_enabled' : 'kitchenhub_auto_print_enabled';
+      out = (s?.[col] ?? false) === c.on ? 'noop' : 'applied';
+      if (out === 'applied') this.settings.set(c.restaurantId, { ...(s ?? DEFAULT_POS_SETTINGS), [col]: c.on, updated_at: this.now(), updated_by: by });
+    }
+    this.newAction({
+      action_id: c.actionId, fn: 'settings', restaurant_id: c.restaurantId, device_id: c.deviceId, channel: null, order_id: null, action: c.kind,
+      request: c.request, outcome: out, order_ids: [], ready_email_sent: false, actor: c.actor, approver: c.approver, device_time: c.deviceTime,
+    });
+    return Promise.resolve({ outcome: out });
   }
 }
 
@@ -362,13 +524,41 @@ export class PgOnlineStore implements OnlineStore {
       log: (raw?.log ?? []).map((l) => ({ ...l, at: isoOf(l.at)! })),
     };
   }
-  beginAction(a: ActionBegin) {
-    return this.call<ActionBeginOutcome>('pos_online_action_begin', {
-      p_action_id: a.actionId, p_restaurant_id: a.restaurantId, p_device_id: a.deviceId, p_staff_id: a.staffId, p_order_id: a.orderId,
-      p_action: a.action, p_request: a.request,
+  async beginAction(a: ActionBegin): Promise<ActionBeginOutcome> {
+    const r = await this.call<Record<string, unknown>>('pos_online_action_begin', {
+      p_action_id: a.actionId, p_function: a.fn, p_restaurant_id: a.restaurantId, p_device_id: a.deviceId, p_order_channel: a.channel,
+      p_order_id: a.orderId, p_action: a.action, p_request: a.request, p_actor: a.actor, p_approver: a.approver, p_device_time: a.deviceTime,
+    });
+    return r.outcome === 'duplicate' ? { outcome: 'duplicate', ...storedOf(r) } : (r as ActionBeginOutcome);
+  }
+  completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop') {
+    return this.call<ActionCompleteOutcome>('pos_online_action_complete', { p_action_id: actionId, p_device_id: deviceId, p_outcome: outcome });
+  }
+  async orderAction(a: OrderActionInput): Promise<OrderActionOutcome> {
+    const r = await this.call<Record<string, unknown>>('pos_online_order_action', {
+      p_action_id: a.actionId, p_restaurant_id: a.restaurantId, p_device_id: a.deviceId, p_order_id: a.orderId, p_action: a.action,
+      p_expected_status: a.expectedStatus, p_quoted_ready_minutes: a.quotedReadyMinutes, p_request: a.request, p_actor: a.actor,
+      p_approver: a.approver, p_device_time: a.deviceTime,
+    });
+    if (r.outcome === 'duplicate') return { outcome: 'duplicate', ...storedOf(r) };
+    if (r.outcome === 'applied' || r.outcome === 'noop') return { outcome: r.outcome, ready_email: r.ready_email === true, order_ids: idsOf(r.order_ids) };
+    return r as OrderActionOutcome;
+  }
+  settingsChange(c: SettingsChangeInput) {
+    return this.call<SettingsChangeOutcome>('pos_online_settings_change', {
+      p_action_id: c.actionId, p_restaurant_id: c.restaurantId, p_device_id: c.deviceId, p_kind: c.kind, p_print_device_id: c.printDeviceId,
+      p_on: c.on, p_request: c.request, p_actor: c.actor, p_approver: c.approver, p_device_time: c.deviceTime,
     });
   }
-  completeAction(actionId: string, deviceId: string, result: Record<string, unknown>, httpStatus: number) {
-    return this.call<ActionCompleteOutcome>('pos_online_action_complete', { p_action_id: actionId, p_device_id: deviceId, p_result: result, p_http_status: httpStatus });
-  }
+}
+
+const idsOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+function storedOf(r: Record<string, unknown>): StoredAction {
+  return {
+    stored: r.stored as StoredOutcome,
+    error_status: typeof r.error_status === 'number' ? r.error_status : null,
+    error_code: typeof r.error_code === 'string' ? r.error_code : null,
+    error_message: typeof r.error_message === 'string' ? r.error_message : null,
+    order_ids: idsOf(r.order_ids),
+  };
 }

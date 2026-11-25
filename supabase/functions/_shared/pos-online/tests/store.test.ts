@@ -6,7 +6,7 @@
 import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@1';
 import { TestClock } from '../../pos-device/tests/harness.ts';
 import { applyClaim, applyPrintResult, orderPrintResult, type OnlinePrintWire, type OnlineStationRef, type PrintResult, type PrintVariant } from '../printRules.ts';
-import { MemoryOnlineStore, OnlineStoreError, PgOnlineStore, type RecordInput } from '../store.ts';
+import { MemoryOnlineStore, OnlineStoreError, PgOnlineStore, type ActionBegin, type RecordInput } from '../store.ts';
 import { DEV_A, DEV_B, DEV_R2, fakeId, R1, R2 } from './fixtures.ts';
 
 const COUNTER: OnlineStationRef = { station: 'p-counter', name: 'Counter', lines: [0, 1] };
@@ -238,26 +238,31 @@ Deno.test('MemoryOnlineStore (= 110 SQL) matches printRules.ts (= reference onli
   }
 });
 
-// ---- actions (109, unchanged) -------------------------------------------------------------------------
+// ---- print action idempotency (111 begin / complete) ----------------------------------------------------
 
-Deno.test('actions: started → pending → completed → duplicate (stored result); any difference → action_id_reused', async () => {
+Deno.test('actions: started → pending → completed → duplicate (stored outcome); any difference → action_id_reused', async () => {
   const { s } = setup();
-  const a = { actionId: fakeId('a'), restaurantId: R1, deviceId: DEV_A, staffId: null, orderId: fakeId(), action: 'print_claim', request: { order_id: 'x', at: 1 } };
+  const a: ActionBegin = {
+    actionId: fakeId('a'), fn: 'print', restaurantId: R1, deviceId: DEV_A, channel: 'ordr', orderId: fakeId(), action: 'print_claim',
+    request: { order_id: 'x', at: 1 }, actor: null, approver: null, deviceTime: null,
+  };
   assertEquals(await s.beginAction(a), { outcome: 'started' });
-  assertEquals(await s.beginAction({ ...a, request: { at: 1, order_id: 'x' } }), { outcome: 'pending' }); // key order irrelevant (jsonb =)
-  assertEquals(await s.completeAction(a.actionId, DEV_B, { ok: true }, 200), { outcome: 'device_mismatch' });
-  assertEquals(await s.completeAction(a.actionId, DEV_A, { ok: true }, 200), { outcome: 'completed' });
-  assertEquals(await s.beginAction(a), { outcome: 'duplicate', result: { ok: true }, http_status: 200 });
-  for (const diff of [{ request: { order_id: 'x', at: 2 } }, { action: 'print_result' }, { staffId: fakeId('5') }, { deviceId: DEV_B }, { orderId: fakeId() }, { restaurantId: R2 }]) {
-    assertEquals(await s.beginAction({ ...a, ...diff }), { outcome: 'action_id_reused' }, JSON.stringify(diff));
-  }
-  assertEquals(await s.completeAction(a.actionId, DEV_A, { ok: false }, 500), { outcome: 'already_completed', result: { ok: true }, http_status: 200 });
-  assertEquals(await s.completeAction(fakeId('a'), DEV_A, {}, 200), { outcome: 'not_found' });
+  assertEquals(await s.beginAction({ ...a, request: { at: 1, order_id: 'x' }, deviceTime: '2026-11-24T15:00:00.000Z' }), { outcome: 'pending' }); // key order irrelevant (jsonb); device_time is not the request
+  assertEquals(await s.completeAction(a.actionId, DEV_B, 'applied'), { outcome: 'device_mismatch' });
+  assertEquals(await s.completeAction(a.actionId, DEV_A, 'applied'), { outcome: 'completed' });
+  assertEquals(await s.beginAction(a), { outcome: 'duplicate', stored: 'applied', error_status: null, error_code: null, error_message: null, order_ids: [] });
+  const diffs: Partial<ActionBegin>[] = [
+    { request: { order_id: 'x', at: 2 } }, { action: 'print_result' }, { fn: 'settings' }, { channel: 'kitchenhub' }, { deviceId: DEV_B },
+    { orderId: fakeId() }, { restaurantId: R2 },
+  ];
+  for (const diff of diffs) assertEquals(await s.beginAction({ ...a, ...diff }), { outcome: 'action_id_reused' }, JSON.stringify(diff));
+  assertEquals(await s.completeAction(a.actionId, DEV_A, 'noop'), { outcome: 'already_completed', stored: 'applied' });
+  assertEquals(await s.completeAction(fakeId('a'), DEV_A, 'applied'), { outcome: 'not_found' });
 });
 
-// ---- Pg wrapper: names must match 109 / 110 -------------------------------------------------------------
+// ---- Pg wrapper: names must match 109 / 110 / 111 -------------------------------------------------------
 
-Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 functions; error codes mapped', async () => {
+Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 functions; error codes mapped', async () => {
   const calls: [string, Record<string, unknown>][] = [];
   const reads: string[] = [];
   let next: { data: unknown; error: { code?: string; message: string } | null } = { data: { outcome: 'ok' }, error: null };
@@ -282,8 +287,16 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 functions; er
   assertEquals(st.claims[0].claimed_at, '2026-11-24T14:00:00.123Z');
   assertEquals(await pg.printState(R1, []), { claims: [], stations: [], log: [] }); // no RPC for nothing
   next = { data: { outcome: 'started' }, error: null };
-  await pg.beginAction({ actionId: 'act', restaurantId: R1, deviceId: DEV_A, staffId: null, orderId: o, action: 'print_claim', request: {} });
-  await pg.completeAction('act', DEV_A, { ok: true }, 200);
+  await pg.beginAction({ actionId: 'act', fn: 'print', restaurantId: R1, deviceId: DEV_A, channel: 'ordr', orderId: o, action: 'print_claim', request: {}, actor: null, approver: null, deviceTime: null });
+  await pg.completeAction('act', DEV_A, 'applied');
+  next = { data: { outcome: 'applied', ready_email: true, order_ids: [] }, error: null };
+  assertEquals(await pg.orderAction({ actionId: 'act2', restaurantId: R1, deviceId: DEV_A, orderId: o, action: 'accept', expectedStatus: 'new', quotedReadyMinutes: 20, request: {}, actor: 'register', approver: null, deviceTime: null }),
+    { outcome: 'applied', ready_email: true, order_ids: [] });
+  next = { data: { outcome: 'duplicate', stored: 'applied', error_status: null, error_code: null, error_message: null, order_ids: [o] }, error: null };
+  assertEquals(await pg.orderAction({ actionId: 'act3', restaurantId: R1, deviceId: DEV_A, orderId: null, action: 'complete_all_in_progress', expectedStatus: null, quotedReadyMinutes: null, request: {}, actor: null, approver: null, deviceTime: null }),
+    { outcome: 'duplicate', stored: 'applied', error_status: null, error_code: null, error_message: null, order_ids: [o] });
+  next = { data: { outcome: 'noop' }, error: null };
+  await pg.settingsChange({ actionId: 'act4', restaurantId: R1, deviceId: DEV_A, kind: 'online_auto_print', printDeviceId: null, on: true, request: {}, actor: 'register', approver: null, deviceTime: null });
   await pg.setPrintRegister(R1, DEV_A, 'admin');
   assertEquals(await pg.getSettings(R1), null);
   assertEquals(reads, ['pos_restaurant_settings']);
@@ -291,8 +304,11 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 functions; er
     ['pos_claim_online_print', ['p_restaurant_id', 'p_order_channel', 'p_order_id', 'p_device_id', 'p_stations', 'p_print_status_printed']],
     ['pos_record_online_print', ['p_restaurant_id', 'p_order_channel', 'p_order_id', 'p_device_id', 'p_action_id', 'p_variant', 'p_result', 'p_station', 'p_error', 'p_device_time']],
     ['pos_online_print_state', ['p_restaurant_id', 'p_order_ids']],
-    ['pos_online_action_begin', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_staff_id', 'p_order_id', 'p_action', 'p_request']],
-    ['pos_online_action_complete', ['p_action_id', 'p_device_id', 'p_result', 'p_http_status']],
+    ['pos_online_action_begin', ['p_action_id', 'p_function', 'p_restaurant_id', 'p_device_id', 'p_order_channel', 'p_order_id', 'p_action', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
+    ['pos_online_action_complete', ['p_action_id', 'p_device_id', 'p_outcome']],
+    ['pos_online_order_action', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_action', 'p_expected_status', 'p_quoted_ready_minutes', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
+    ['pos_online_order_action', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_action', 'p_expected_status', 'p_quoted_ready_minutes', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
+    ['pos_online_settings_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_kind', 'p_print_device_id', 'p_on', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_set_print_register', ['p_restaurant_id', 'p_device_id', 'p_updated_by']],
   ]);
   next = { data: null, error: { code: '23514', message: 'print register must be an active register of this restaurant' } };

@@ -1,7 +1,7 @@
 /**
- * Minimal in-memory supabase-js for the pos-online handler tests: from(table).select / eq / or / order /
+ * Minimal in-memory supabase-js for the pos-online handler tests: from(table).select / eq / in / or / order /
  * maybeSingle / insert / update, awaited like PostgREST ({ data, error, count }). `or(...)` is RECORDED, not
- * evaluated (feedQuery.test.ts evaluates the filter strings); eq filters are applied. Rows are deep-copied in and out.
+ * evaluated (feedQuery.test.ts evaluates the filter strings); eq / in filters are applied. Rows are deep-copied in and out.
  */
 // deno-lint-ignore-file no-explicit-any no-this-alias
 export class FakeSupabase {
@@ -22,7 +22,7 @@ export class FakeSupabase {
 
   from(table: string) {
     const self = this;
-    const filters: [string, unknown][] = [];
+    const filters: [string, (v: unknown) => boolean][] = [];
     let mode: 'select' | 'update' | 'insert' = 'select';
     let vals: Record<string, unknown> = {};
     const q: any = {
@@ -31,8 +31,13 @@ export class FakeSupabase {
         return q;
       },
       eq(c: string, v: unknown) {
-        filters.push([c, v]);
+        filters.push([c, (x) => x === v]);
         self.calls.push([table, 'eq', c, v]);
+        return q;
+      },
+      in(c: string, vs: unknown[]) {
+        filters.push([c, (x) => vs.includes(x)]);
+        self.calls.push([table, 'in', c, vs]);
         return q;
       },
       or(f: string) {
@@ -56,11 +61,11 @@ export class FakeSupabase {
         return q;
       },
       maybeSingle() {
-        const m = self.rows(table).filter((r) => filters.every(([c, v]) => r[c] === v));
+        const m = self.rows(table).filter((r) => filters.every(([c, f]) => f(r[c])));
         return Promise.resolve({ data: m.length ? structuredClone(m[0]) : null, error: null });
       },
       then(res: (v: unknown) => unknown, rej: (e: unknown) => unknown) {
-        const m = self.rows(table).filter((r) => filters.every(([c, v]) => r[c] === v));
+        const m = self.rows(table).filter((r) => filters.every(([c, f]) => f(r[c])));
         if (mode === 'update') {
           const left = self.failUpdates.get(table) ?? 0;
           if (left > 0) {

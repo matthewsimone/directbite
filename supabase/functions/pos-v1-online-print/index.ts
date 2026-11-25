@@ -3,7 +3,7 @@
 // ============================================================================
 // Device-authed (DEVICE-AUTH §4.2). Logic: _shared/pos-online/handlers.ts (handleOnlinePrint).
 // verify_jwt = false (supabase/config.toml). Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
-// Needs migrations 101 (pos_devices), 109 + 110 (pos_* online tables). NOT DEPLOYED.
+// Needs migrations 101 (pos_devices), 109 + 110 + 111 (pos_* online tables; 111 = pos_online_actions). NOT DEPLOYED.
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";

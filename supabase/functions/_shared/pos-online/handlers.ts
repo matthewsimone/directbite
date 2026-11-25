@@ -1,6 +1,8 @@
 /**
  * pos-v1-online-orders + pos-v1-online-print (ordr-pos @ 7798d52 docs/SYNC-CONTRACT.md §3c :481-591, :673-732;
- * reference test/support/fakeOnline.ts poll :501-537, print :273-316, served :540-545).
+ * reference test/support/fakeOnline.ts poll :501-537, print :273-316, served :540-545)
+ * + pos-v1-online-order-action + pos-v1-online-settings (CP18; ordr-pos @ 86c558d §3c :593-671; reference
+ * fakeOnline.ts settingsChange :331-350, action :354-433; src/dev/onlineActionRules.ts, onlineSettingsRules.ts).
  *
  * Both run the device middleware (§1a) and the body restaurant rule (400 restaurant_mismatch). Handlers are pure
  * over their deps (DeviceRequest → DeviceResult) so tests run without a server.
@@ -8,7 +10,7 @@
  * Feed: the FULL current state every poll (feedQuery.ts + wire.ts), opaque token = SHA-256 of the served orders
  * (same token back → not_modified, orders []), 503 feed_too_large (never truncated), settings unless
  * if_none_match_settings equals their hash, history { business_date } (read-only).
- * Print: claim / result per STATION (110 SQL via store.ts), idempotent by action_id (pos_online_actions, 109),
+ * Print: claim / result per STATION (110 SQL via store.ts), idempotent by action_id (pos_online_actions, 111 shape),
  * every recorded result also writes the tablet's columns (printColumns.ts), the response carries the order.
  */
 import { authenticateDevice, type AuthDeps } from '../pos-device/auth.ts';
@@ -23,6 +25,7 @@ import {
   FEED_SELECT, FeedError, feedHash, feedWindow, historyRange, KH_FEED_SELECT, loadOnlineRows, normalizeFeedRows,
   type FeedClient, type FeedRow, type FeedScope,
 } from './feedQuery.ts';
+import { ACK_ACTIONS, ONLINE_ACTIONS, type Cp18Action } from './actionRules.ts';
 import { writeTabletPrintColumns, type PrintClient } from './printColumns.ts';
 import { tabletWrite, type OnlineStationRef, type PrintResult, type PrintVariant } from './printRules.ts';
 import { DEFAULT_POS_SETTINGS, OnlineStoreError, stationRefProblem, type OnlinePosSettings, type OnlineStore, type OrderChannel } from './store.ts';
@@ -33,9 +36,18 @@ export interface OnlineDeps extends AuthDeps {
   db: FeedClient & PrintClient;
   online: OnlineStore;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * The ready email after an applied accept with a quoted time, once per order: call the EXISTING send-ready-email
+   * function exactly as the tablet does (OrdersTab.jsx :711-718 — POST {order_id}, anon bearer, not awaited).
+   * Fire-and-forget: never throws, never delays the answer (the entry point hands it to EdgeRuntime.waitUntil).
+   */
+  readyEmail?: (orderId: string) => void;
 }
 
 const nullableString = (v: unknown) => v === null || v === undefined || typeof v === 'string';
+/** device_time → ISO (null when absent / unparseable: an audit value, never trusted for logic). */
+const isoOrNullTime = (v: unknown): string | null =>
+  typeof v === 'string' && Number.isFinite(Date.parse(v)) ? new Date(Date.parse(v)).toISOString() : null;
 const bad = (field: string, message: string) => errorResult(400, 'invalid_payload', message, { field });
 
 // ---- restaurant + settings ---------------------------------------------------------------------------
@@ -264,12 +276,13 @@ export async function handleOnlinePrint(req: DeviceRequest, deps: OnlineDeps): P
   const { device_time: _dt, ...request } = body;
   void _dt;
   const begin = await deps.online.beginAction({
-    actionId, restaurantId: pr.restaurant_id, deviceId: pr.device_id, staffId: null, orderId,
-    action: body.op === 'claim' ? 'print_claim' : 'print_result', request,
+    actionId, fn: 'print', restaurantId: pr.restaurant_id, deviceId: pr.device_id, channel: one.channel, orderId,
+    action: body.op === 'claim' ? 'print_claim' : 'print_result', request, actor: null, approver: null,
+    deviceTime: isoOrNullTime(body.device_time),
   });
   if (begin.outcome === 'action_id_reused') return errorResult(409, 'action_id_reused', 'this action_id was used for another request');
   if (begin.outcome === 'duplicate') {
-    if (begin.http_status !== 200) return { status: begin.http_status, body: begin.result };
+    if (begin.stored === 'error') return errorResult(begin.error_status ?? 500, begin.error_code ?? 'error', begin.error_message ?? '');
     const order = await orderWire(deps, pr.restaurant_id, (await readOneOrder(deps.db, orderId))!);
     return okResult({ result: 'duplicate', claimed: order.print.claimed_by_device_id === pr.device_id, order, server_time: new Date(deps.now()).toISOString() });
   }
@@ -294,7 +307,7 @@ export async function handleOnlinePrint(req: DeviceRequest, deps: OnlineDeps): P
         restaurantId: pr.restaurant_id, channel: one.channel, orderId, deviceId: pr.device_id, actionId,
         variant: body.variant as PrintVariant, result: body.result as PrintResult, station: station!,
         error: typeof body.error === 'string' ? body.error.slice(0, PRINT_ERROR_MAX) : null,
-        deviceTime: typeof body.device_time === 'string' && Number.isFinite(Date.parse(body.device_time)) ? new Date(Date.parse(body.device_time)).toISOString() : null,
+        deviceTime: isoOrNullTime(body.device_time),
       });
       if (rec.outcome === 'restaurant_mismatch') return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant');
       if (rec.outcome === 'device_not_allowed') return errorResult(403, 'device_not_allowed', 'this register is not active');
@@ -316,7 +329,216 @@ export async function handleOnlinePrint(req: DeviceRequest, deps: OnlineDeps): P
     if (err instanceof OnlineStoreError) return bad(body.op === 'claim' ? 'stations' : 'station', err.message);
     throw err;
   }
-  await deps.online.completeAction(actionId, pr.device_id, { result }, 200);
+  await deps.online.completeAction(actionId, pr.device_id, result);
   const order = await orderWire(deps, pr.restaurant_id, (await readOneOrder(deps.db, orderId))!);
   return okResult({ result, claimed: order.print.claimed_by_device_id === pr.device_id, order, server_time: new Date(deps.now()).toISOString() });
+}
+
+// ---- shared: the settings wire, actor / approver ------------------------------------------------------------
+
+/** OnlineSettingsWire as the feed serves it (buildSettings over the restaurant + pos_restaurant_settings). */
+export async function loadSettingsWire(deps: OnlineDeps, rid: string): Promise<OnlineSettingsWire> {
+  const restaurant = await readRestaurant(deps.db, rid);
+  const dsp = restaurant.dsp_orders_enabled === true;
+  const [pos, hours, providers] = await Promise.all([
+    deps.online.getSettings(rid),
+    readRows<HoursRow>('hours', deps.db.from('hours').select('day_of_week, is_open, open_time, close_time').eq('restaurant_id', rid).order('day_of_week')),
+    dsp
+      ? readRows<{ provider_id: string; pause_until: string | null }>('dsp_provider_status', deps.db.from('dsp_provider_status').select('provider_id, pause_until').eq('restaurant_id', rid))
+      : Promise.resolve([]),
+  ]);
+  return buildSettings(restaurant, hours, pos ?? DEFAULT_POS_SETTINGS, providers);
+}
+
+/**
+ * actor_staff_id: a staff uuid or 'register' (onlineContract.ts :568-569; null tolerated = not sent);
+ * approver_staff_id: uuid | null. Recorded in pos_online_actions as sent — the manager approval is the DEVICE's
+ * (§3c:669-670 "Manager-approved on the device … actor + approver go in pos_online_actions").
+ */
+function whoOf(body: Row): { actor: string | null; approver: string | null } | DeviceResult {
+  const a = body.actor_staff_id;
+  if (!(a === null || a === undefined || a === 'register' || (typeof a === 'string' && UUID_RE.test(a)))) {
+    return bad('actor_staff_id', "actor_staff_id must be a staff id or 'register'");
+  }
+  const p = body.approver_staff_id;
+  if (!(p === null || p === undefined || (typeof p === 'string' && UUID_RE.test(p)))) return bad('approver_staff_id', 'approver_staff_id must be a staff id or null');
+  if (!nullableString(body.device_time)) return bad('device_time', 'device_time must be a string');
+  return { actor: typeof a === 'string' ? a.toLowerCase() : null, approver: typeof p === 'string' ? p.toLowerCase() : null };
+}
+const isResult = (v: unknown): v is DeviceResult => !!v && typeof v === 'object' && 'status' in v && 'body' in v;
+
+// ---- pos-v1-online-order-action --------------------------------------------------------------------------
+
+/** Not built in CP18 → 501 (the POS reads 501 as "Ordr can't do this yet", onlineActions.ts :66, :224). */
+const LATER: Record<string, string> = {
+  cancel_refund: 'CP19', adjustment_request: 'CP19', dispatch_delivery: 'CP20', self_deliver: 'CP20',
+  ext_ack: 'CP21', ext_accept: 'CP21', ext_ready: 'CP21', ext_cancel: 'CP21',
+};
+
+/** Served orders by id (Ordr; FEED_SELECT, chunks of 100 ids). Unwritten rows are never served. */
+async function ordrWires(deps: OnlineDeps, rid: string, ids: string[]): Promise<OnlineOrderWire[]> {
+  if (!ids.length) return [];
+  const rows: FeedRow[] = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100);
+    const { data, error } = await deps.db.from('orders').select(FEED_SELECT).eq('restaurant_id', rid).in('id', chunk);
+    if (error) throw new Error(`orders read failed: ${error.message}`);
+    rows.push(...normalizeFeedRows(Array.isArray(data) ? data : []));
+  }
+  return servedOrders({ orders: rows, kitchenhub: [] }, await deps.online.printState(rid, ids));
+}
+
+async function currentWire(deps: OnlineDeps, rid: string, orderId: string): Promise<OnlineOrderWire | null> {
+  const one = await readOneOrder(deps.db, orderId);
+  return one ? (await orderWire(deps, rid, one)) ?? null : null;
+}
+
+export async function handleOnlineOrderAction(req: DeviceRequest, deps: OnlineDeps): Promise<DeviceResult> {
+  const a = await authenticateDevice(req.headers, deps);
+  if (!a.ok) return a.result;
+  const parsed = parseJsonObject(req.bodyText);
+  if (!parsed.ok) return parsed.result;
+  const body = parsed.value;
+  const mismatch = restaurantIdentity(body, a.principal);
+  if (mismatch) return mismatch;
+  const pr = a.principal;
+  const rid = pr.restaurant_id;
+
+  // fakeOnline.ts :361-367: action_id / action, order_id ⇔ not bulk, unknown_order, restaurant_mismatch
+  if (typeof body.action_id !== 'string' || !UUID_RE.test(body.action_id)) return bad('action_id', 'action_id must be a UUID');
+  if (typeof body.action !== 'string' || !(ONLINE_ACTIONS as readonly string[]).includes(body.action)) return bad('action', 'unknown action');
+  if (LATER[body.action]) return errorResult(501, 'not_implemented', `${body.action} is not available on Ordr yet (${LATER[body.action]})`);
+  const action = body.action as Cp18Action;
+  const bulk = action === 'complete_all_in_progress';
+  if (bulk ? body.order_id !== null && body.order_id !== undefined : typeof body.order_id !== 'string' || !UUID_RE.test(body.order_id)) {
+    return bad('order_id', bulk ? 'complete_all_in_progress takes order_id null' : 'order_id is required');
+  }
+  if (!nullableString(body.expected_status)) return bad('expected_status', 'expected_status must be a string or null');
+  if (!bulk && !ACK_ACTIONS.includes(action) && typeof body.expected_status !== 'string') return bad('expected_status', 'expected_status is required');
+  const q = body.quoted_ready_minutes;
+  if (!(q === null || q === undefined || typeof q === 'number')) return bad('quoted_ready_minutes', 'quoted_ready_minutes must be a number or null');
+  const who = whoOf(body);
+  if (isResult(who)) return who;
+  const actionId = body.action_id.toLowerCase();
+  const orderId = bulk ? null : String(body.order_id).toLowerCase();
+
+  if (orderId !== null) {
+    const one = await readOneOrder(deps.db, orderId);
+    if (!one || (one.channel === 'ordr' && !one.row.items_written_at)) return errorResult(400, 'unknown_order', 'no such order');
+    if (one.row.restaurant_id !== rid) return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant', { field: 'order_id' });
+    // onlineActionRules.ts :120 — an Ordr action on a KitchenHub order
+    if (one.channel === 'kitchenhub') return errorResult(400, 'action_not_allowed', `${action} on a kitchenhub order`);
+  }
+
+  // the quoted time only matters to accept; a non-integer reaches the rule as 0 → invalid_payload at its point
+  const quoted = action !== 'accept' || q === null || q === undefined ? null : Number.isSafeInteger(q) && Math.abs(q as number) < 2 ** 31 ? (q as number) : 0;
+  const { device_time: _dt, ...request } = body;
+  void _dt;
+  let out;
+  try {
+    out = await deps.online.orderAction({
+      actionId, restaurantId: rid, deviceId: pr.device_id, orderId, action, expectedStatus: bulk || ACK_ACTIONS.includes(action) ? null : body.expected_status as string,
+      quotedReadyMinutes: quoted, request, actor: who.actor, approver: who.approver, deviceTime: isoOrNullTime(body.device_time),
+    });
+  } catch (err) {
+    if (err instanceof OnlineStoreError) return bad('action', err.message);
+    throw err;
+  }
+  const serverTime = () => new Date(deps.now()).toISOString();
+  const withOrder = async () => (orderId ? { order: await currentWire(deps, rid, orderId) } : {});
+  switch (out.outcome) {
+    case 'device_not_allowed':
+      return errorResult(403, 'device_not_allowed', 'this register is not active');
+    case 'action_id_reused':
+      return errorResult(409, 'action_id_reused', 'this action_id was used for another request');
+    case 'unknown_order':
+      return errorResult(400, 'unknown_order', 'no such order');
+    case 'restaurant_mismatch':
+      return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant', { field: 'order_id' });
+    case 'status_conflict':
+      return errorResult(409, 'status_conflict', `the order is ${out.status}`, await withOrder());
+    case 'not_allowed':
+      return errorResult(400, 'action_not_allowed', out.message);
+    case 'invalid':
+      return bad('quoted_ready_minutes', out.message);
+    case 'duplicate': {
+      if (out.stored === 'error') return errorResult(out.error_status ?? 500, out.error_code ?? 'error', out.error_message ?? '', await withOrder());
+      return okResult({
+        result: 'duplicate', order: orderId ? await currentWire(deps, rid, orderId) : null,
+        orders: bulk ? await ordrWires(deps, rid, out.order_ids) : [], server_time: serverTime(),
+      });
+    }
+  }
+  if (out.ready_email && orderId) {
+    if (deps.readyEmail) deps.readyEmail(orderId);
+    else deps.log('online_ready_email_not_configured', { order_id: orderId });
+  }
+  return okResult({
+    result: out.outcome, order: orderId ? await currentWire(deps, rid, orderId) : null,
+    orders: bulk ? await ordrWires(deps, rid, out.order_ids) : [], server_time: serverTime(),
+  });
+}
+
+// ---- pos-v1-online-settings --------------------------------------------------------------------------------
+
+/** The tablet-column changes (restaurants / menu_items) are not built in CP18 → 501. */
+const SETTINGS_LATER = ['estimates', 'delivery_available', 'item_availability'];
+
+export async function handleOnlineSettings(req: DeviceRequest, deps: OnlineDeps): Promise<DeviceResult> {
+  const a = await authenticateDevice(req.headers, deps);
+  if (!a.ok) return a.result;
+  const parsed = parseJsonObject(req.bodyText);
+  if (!parsed.ok) return parsed.result;
+  const body = parsed.value;
+  const mismatch = restaurantIdentity(body, a.principal);
+  if (mismatch) return mismatch;
+  const pr = a.principal;
+  const rid = pr.restaurant_id;
+
+  if (typeof body.action_id !== 'string' || !UUID_RE.test(body.action_id)) return bad('action_id', 'action_id must be a UUID');
+  const change = body.change;
+  // onlineSettingsRules.ts :51-85
+  if (!change || typeof change !== 'object' || Array.isArray(change)) return bad('change', 'change is required');
+  const kind = (change as Row).kind;
+  if (SETTINGS_LATER.includes(kind)) return errorResult(501, 'not_implemented', `${kind} is not available on Ordr yet`);
+  if (kind !== 'online_print_device' && kind !== 'online_auto_print' && kind !== 'kitchenhub_auto_print') return bad('change.kind', `unknown change ${String(kind)}`);
+  let printDeviceId: string | null = null;
+  let on: boolean | null = null;
+  if (kind === 'online_print_device') {
+    const d = (change as Row).device_id;
+    if (!(d === null || (typeof d === 'string' && UUID_RE.test(d)))) return bad('change.device_id', 'device_id must be a device id or null');
+    printDeviceId = d === null ? null : d.toLowerCase();
+  } else {
+    if (typeof (change as Row).on !== 'boolean') return bad('change.on', 'on must be true or false');
+    on = (change as Row).on;
+  }
+  const who = whoOf(body);
+  if (isResult(who)) return who;
+  const { device_time: _dt, ...request } = body;
+  void _dt;
+
+  let out;
+  try {
+    out = await deps.online.settingsChange({
+      actionId: body.action_id.toLowerCase(), restaurantId: rid, deviceId: pr.device_id, kind, printDeviceId, on, request,
+      actor: who.actor, approver: who.approver, deviceTime: isoOrNullTime(body.device_time),
+    });
+  } catch (err) {
+    if (err instanceof OnlineStoreError) return bad('change', err.message);
+    throw err;
+  }
+  if (out.outcome === 'device_not_allowed') return errorResult(403, 'device_not_allowed', 'this register is not active');
+  if (out.outcome === 'action_id_reused') return errorResult(409, 'action_id_reused', 'this action_id was used for another request');
+  if (out.outcome === 'invalid_print_register') return bad('change.device_id', 'the print register must be an active register of this restaurant');
+  let settings: OnlineSettingsWire;
+  try {
+    settings = await loadSettingsWire(deps, rid);
+  } catch (err) {
+    if (err instanceof FeedError && err.code !== 'feed_query_failed') {
+      deps.log('online_settings_failed', { restaurant_id: rid, code: err.code });
+      return errorResult(500, 'feed_config_invalid', 'the restaurant is not configured for online orders');
+    }
+    throw err;
+  }
+  return okResult({ result: out.outcome, settings, menu_snapshot_hash: null, server_time: new Date(deps.now()).toISOString() });
 }
