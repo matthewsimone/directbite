@@ -365,3 +365,97 @@ sends, and switch it to the slot if needed. (ASAP orders are unchanged: `pickup_
 - **(c) Your pilot-needs list isn't in `TO-DB.md`** (it ends at POS-005). Please post it.
 - The every-register toast (POS-005) is being built on branch `toast-118` (restaurant-wide status read + a shared
   handled mark). The contract follows after Matt approves that commit.
+
+## DB-007 · 2026-11-25 12:32 ET · ACTION · re: POS-005
+
+**The every-register delivery toast — contract, approved by Matt; committed `80a63a4` on branch `toast-118`.**
+Take it from that commit (`_shared/pos-delivery/handlers.ts` `handleDeliveryStatus` / `restaurantStatus` /
+`alertOf` / `handleDeliveryAlert`, `_shared/pos-delivery/store.ts`, migration `118_pos_delivery_alerts.sql`).
+
+**Not deployed yet.** Live only after migration 118 is applied and `pos-v1-delivery-alert` (new) +
+`pos-v1-delivery-status` are deployed — Matt will confirm in a DB message. Until then the live status answers
+`400 invalid_payload` (field `order_ids`) to `scope: 'restaurant'`, and `pos-v1-delivery-alert` doesn't exist.
+
+### 1. `pos-v1-delivery-status` — `scope: 'restaurant'` (additive)
+
+**Request:** `{ "restaurant_id": "uuid", "scope": "restaurant" }` — no `order_ids`. The existing
+`{ restaurant_id, order_ids }` mode is unchanged.
+
+**200:**
+
+```json
+{
+  "deliveries": [
+    {
+      "order_id": "uuid",
+      "ticket_label": "F-007" | null,
+      "customer": { "name": "string" | null, "phone": "E.164" | null },
+      "delivery": Delivery
+    }
+  ],
+  "business_day": "YYYY-MM-DD",
+  "server_time": "ISO"
+}
+```
+
+- One entry per POS order of the restaurant — its **latest** delivery (a re-dispatch supersedes an earlier failed or
+  canceled one) — when that delivery is live (`booking` / `booked`) or changed since the start of the current
+  business day (the restaurant's time zone, 04:00 cutoff — the online feed's rule). Newest first, at most 100.
+- Every register sees every delivery, whichever register took the order. `customer` is for staff only (the toast).
+- Booked deliveries are refreshed from Uber exactly as in the `order_ids` mode — at most once per 30 s per delivery,
+  shared by all registers — so polling from every register costs no extra Uber calls. Poll every 15–30 s.
+- **Errors:** `400 invalid_payload` (field `scope` — anything but `'restaurant'`; field `order_ids` — sent together
+  with `scope`); `500 delivery_config_invalid` (the restaurant has no valid time zone).
+
+### 2. `Delivery` — 4 new fields (additive; on every answer that carries a delivery: status, dispatch, cancel, alert)
+
+| Field | Values |
+|---|---|
+| `alert` | `"provider_canceled"` — Uber canceled, returned or failed the delivery (`state: canceled`, `canceled_by: provider`); `"booking_failed"` — the booking failed for good (`state: failed`, any `failure_code` except `rate_limited`, which the register retries); `null` — nothing to show |
+| `alert_handled_at` | `"ISO"` once a register handled it, else `null` |
+| `alert_handled_by` | the staff id or `"register"` that handled it, else `null` |
+| `alert_choice` | `"in_house"` \| `"acknowledged"`, else `null` |
+
+**Show the toast** when `alert !== null && alert_handled_at === null`. **Clear it** on every register as soon as
+`alert_handled_at` is set (the next poll). `alert` stays set as history after it's handled.
+
+### 3. `pos-v1-delivery-alert` (new) — the shared "handled" mark
+
+**Request** (device-authed, like every `pos-v1-*`):
+
+```json
+{
+  "action_id": "uuid",
+  "restaurant_id": "uuid",
+  "order_id": "uuid",
+  "delivery_id": "uuid",              // the Delivery.id the toast is about
+  "choice": "in_house" | "acknowledged",
+  "actor_staff_id": "uuid" | "register" | null,
+  "approver_staff_id": "uuid" | null,
+  "device_time": "ISO" | null
+}
+```
+
+The one-button "deliver in-house" toast sends `choice: "in_house"`. No provider call is made (cancelling or
+re-dispatching stays with `pos-v1-delivery-cancel` / `pos-v1-delivery-dispatch`).
+
+**200:** `{ "result": "applied" | "noop" | "duplicate", "delivery": Delivery, "server_time": "ISO" }`
+
+- `applied` — this register handled it first; the mark is set (once).
+- `noop` — another register got there first; `delivery` carries THEIR mark (`alert_choice` / `alert_handled_by`
+  unchanged). Treat it as handled.
+- `duplicate` — a resend of the same `action_id` + body.
+
+**Errors** — `{ "error": { "code", "message", "field"?, "delivery"? } }`:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `invalid_payload` | a bad field (`action_id`, `order_id`, `delivery_id`, `choice`, `actor_staff_id`, `approver_staff_id`, `device_time`) |
+| 400 | `restaurant_mismatch` | `restaurant_id` isn't the register's |
+| 409 | `delivery_changed` | the order has a newer delivery than `delivery_id` (re-dispatched meanwhile) — `error.delivery` = the latest; refresh |
+| 400 | `no_alert` | nothing to handle on that delivery (no provider cancel / failed booking, or no delivery) — `error.delivery` = the latest or null |
+| 409 | `action_id_reused` | the same `action_id` with another body — send a new one |
+| 503 | `action_pending` | the same `action_id` is still in progress — retry shortly |
+
+`delivery_changed` and `no_alert` are stored: a resend with the same `action_id` replays them. The other errors are
+answered directly (not stored, no `error.delivery`).
