@@ -26,6 +26,7 @@ import {
   type FeedClient, type FeedRow, type FeedScope,
 } from './feedQuery.ts';
 import { ACK_ACTIONS, ONLINE_ACTIONS, type Cp18Action } from './actionRules.ts';
+import { buildMenuSnapshot, type SnapshotDb } from '../pos-sync/menuSnapshot.ts';
 import { writeTabletPrintColumns, type PrintClient } from './printColumns.ts';
 import { tabletWrite, type OnlineStationRef, type PrintResult, type PrintVariant } from './printRules.ts';
 import { DEFAULT_POS_SETTINGS, OnlineStoreError, stationRefProblem, type OnlinePosSettings, type OnlineStore, type OrderChannel } from './store.ts';
@@ -42,6 +43,12 @@ export interface OnlineDeps extends AuthDeps {
    * Fire-and-forget: never throws, never delays the answer (the entry point hands it to EdgeRuntime.waitUntil).
    */
   readyEmail?: (orderId: string) => void;
+  /**
+   * The menu-snapshot reads (pos-v1-menu-snapshot's own builder, _shared/pos-sync/menuSnapshot.ts): after an
+   * item_availability change the answer carries the current snapshot hash so the register pulls it (§3c:666-667).
+   * Absent → menu_snapshot_hash null (the register picks the change up on its next menu pull).
+   */
+  snapshotDb?: SnapshotDb;
 }
 
 const nullableString = (v: unknown) => v === null || v === undefined || typeof v === 'string';
@@ -481,8 +488,21 @@ export async function handleOnlineOrderAction(req: DeviceRequest, deps: OnlineDe
 
 // ---- pos-v1-online-settings --------------------------------------------------------------------------------
 
-/** The tablet-column changes (restaurants / menu_items) are not built in CP18 → 501. */
-const SETTINGS_LATER = ['estimates', 'delivery_available', 'item_availability'];
+const ESTIMATE_MIN = 1;
+const ESTIMATE_MAX = 240;
+/** onlineSettingsRules.ts :41 — whole minutes 1–240 (an input check; onlineContract.ts ESTIMATE_MIN/MAX_MINUTES). */
+const isMinutes = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n) && n >= ESTIMATE_MIN && n <= ESTIMATE_MAX;
+
+/** The current menu snapshot hash (null when no snapshotDb / the menu doesn't build — logged). */
+async function currentMenuHash(deps: OnlineDeps, rid: string): Promise<string | null> {
+  if (!deps.snapshotDb) return null;
+  try {
+    return (await buildMenuSnapshot(deps.snapshotDb, rid, new Date(deps.now()))).hash;
+  } catch (err) {
+    deps.log('online_settings_menu_hash_failed', { restaurant_id: rid, error: err instanceof Error ? err.message : String(err) });
+    return null;
+  }
+}
 
 export async function handleOnlineSettings(req: DeviceRequest, deps: OnlineDeps): Promise<DeviceResult> {
   const a = await authenticateDevice(req.headers, deps);
@@ -500,7 +520,7 @@ export async function handleOnlineSettings(req: DeviceRequest, deps: OnlineDeps)
   // onlineSettingsRules.ts :51-85
   if (!change || typeof change !== 'object' || Array.isArray(change)) return bad('change', 'change is required');
   const kind = (change as Row).kind;
-  if (SETTINGS_LATER.includes(kind)) return errorResult(501, 'not_implemented', `${kind} is not available on Ordr yet`);
+  if (kind === 'estimates' || kind === 'delivery_available' || kind === 'item_availability') return tabletSetting(deps, pr, body, change as Row, kind);
   if (kind !== 'online_print_device' && kind !== 'online_auto_print' && kind !== 'kitchenhub_auto_print') return bad('change.kind', `unknown change ${String(kind)}`);
   let printDeviceId: string | null = null;
   let on: boolean | null = null;
@@ -541,4 +561,67 @@ export async function handleOnlineSettings(req: DeviceRequest, deps: OnlineDeps)
     throw err;
   }
   return okResult({ result: out.outcome, settings, menu_snapshot_hash: null, server_time: new Date(deps.now()).toISOString() });
+}
+
+/**
+ * estimates / delivery_available / item_availability — the web tablet's own settings (112): validation =
+ * onlineSettingsRules.ts :55-70 (400 invalid_payload; item not on the current menu → 404 item_not_found), the write =
+ * the tablet's exact columns (SettingsTab.jsx :414-421, OrdersTab.jsx :1873-1878, MenuTab.jsx :81-84).
+ */
+async function tabletSetting(
+  deps: OnlineDeps, pr: { restaurant_id: string; device_id: string }, body: Row, change: Row,
+  kind: 'estimates' | 'delivery_available' | 'item_availability',
+): Promise<DeviceResult> {
+  const rid = pr.restaurant_id;
+  let pickup: number | null = null;
+  let delivery: number | null = null;
+  let on: boolean | null = null;
+  let itemId: string | null = null;
+  if (kind === 'estimates') {
+    if (!isMinutes(change.estimated_pickup_minutes) || !isMinutes(change.estimated_delivery_minutes)) {
+      return bad('change', `estimates are whole minutes ${ESTIMATE_MIN}–${ESTIMATE_MAX}`);
+    }
+    pickup = change.estimated_pickup_minutes;
+    delivery = change.estimated_delivery_minutes;
+  } else if (kind === 'delivery_available') {
+    if (typeof change.on !== 'boolean') return bad('change.on', 'on must be true or false');
+    on = change.on;
+  } else {
+    if (typeof change.item_id !== 'string' || typeof change.available !== 'boolean') return bad('change', 'item_id and available are required');
+    // not an id → not on the menu (the reference looks it up and answers 404, onlineSettingsRules.ts :66-67)
+    if (!UUID_RE.test(change.item_id)) return errorResult(404, 'item_not_found', 'no such item on the current menu');
+    itemId = change.item_id.toLowerCase();
+    on = change.available;
+  }
+  const who = whoOf(body);
+  if (isResult(who)) return who;
+  const { device_time: _dt, ...request } = body;
+  void _dt;
+  let out;
+  try {
+    out = await deps.online.tabletSettingChange({
+      actionId: String(body.action_id).toLowerCase(), restaurantId: rid, deviceId: pr.device_id, kind, pickupMinutes: pickup,
+      deliveryMinutes: delivery, on, itemId, request, actor: who.actor, approver: who.approver, deviceTime: isoOrNullTime(body.device_time),
+    });
+  } catch (err) {
+    if (err instanceof OnlineStoreError) return bad('change', err.message);
+    throw err;
+  }
+  if (out.outcome === 'device_not_allowed') return errorResult(403, 'device_not_allowed', 'this register is not active');
+  if (out.outcome === 'action_id_reused') return errorResult(409, 'action_id_reused', 'this action_id was used for another request');
+  if (out.outcome === 'item_not_found') return errorResult(404, 'item_not_found', 'no such item on the current menu');
+  let settings: OnlineSettingsWire;
+  try {
+    settings = await loadSettingsWire(deps, rid);
+  } catch (err) {
+    if (err instanceof FeedError && err.code !== 'feed_query_failed') {
+      deps.log('online_settings_failed', { restaurant_id: rid, code: err.code });
+      return errorResult(500, 'feed_config_invalid', 'the restaurant is not configured for online orders');
+    }
+    throw err;
+  }
+  return okResult({
+    result: out.outcome, settings, menu_snapshot_hash: kind === 'item_availability' ? await currentMenuHash(deps, rid) : null,
+    server_time: new Date(deps.now()).toISOString(),
+  });
 }

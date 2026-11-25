@@ -1,5 +1,5 @@
 /**
- * POS online persistence — migrations 109 + 110 + 111: print register + flags, per-station print claims / results,
+ * POS online persistence — migrations 109 + 110 + 111 + 112: print register + flags, per-station print claims / results,
  * the print state read, device actions (idempotency, pos_online_actions in the handoff shape), the Ordr order
  * actions and the POS settings changes. Every write is ONE plpgsql function (one transaction).
  * MemoryOnlineStore mirrors the SQL for tests — keep the two in step (110_smoke.sql / 111_smoke.sql run the same
@@ -145,6 +145,32 @@ export type SettingsChangeOutcome =
   | { outcome: 'applied' | 'noop' | 'device_not_allowed' | 'action_id_reused' | 'invalid_print_register' }
   | { outcome: 'duplicate'; stored: StoredOutcome };
 
+/** The web tablet's own settings (112): restaurants estimates / delivery_available, menu_items.is_available. */
+export type TabletSettingKind = 'estimates' | 'delivery_available' | 'item_availability';
+
+/** pos_online_tablet_setting_change (112). */
+export interface TabletSettingInput {
+  actionId: string;
+  restaurantId: string;
+  deviceId: string;
+  kind: TabletSettingKind;
+  /** estimates: whole minutes 1–240. */
+  pickupMinutes: number | null;
+  deliveryMinutes: number | null;
+  /** delivery_available: on; item_availability: available. */
+  on: boolean | null;
+  /** item_availability: the menu item. */
+  itemId: string | null;
+  request: Record<string, unknown>;
+  actor: string | null;
+  approver: string | null;
+  deviceTime: string | null;
+}
+
+export type TabletSettingOutcome =
+  | { outcome: 'applied' | 'noop' | 'device_not_allowed' | 'action_id_reused' | 'item_not_found' }
+  | { outcome: 'duplicate'; stored: StoredOutcome };
+
 export interface OnlineStore {
   setPrintRegister(restaurantId: string, deviceId: string | null, updatedBy: string): Promise<void>;
   /** pos_restaurant_settings (null = no row). */
@@ -156,6 +182,7 @@ export interface OnlineStore {
   completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop'): Promise<ActionCompleteOutcome>;
   orderAction(a: OrderActionInput): Promise<OrderActionOutcome>;
   settingsChange(c: SettingsChangeInput): Promise<SettingsChangeOutcome>;
+  tabletSettingChange(c: TabletSettingInput): Promise<TabletSettingOutcome>;
 }
 
 export class OnlineStoreError extends Error {
@@ -193,7 +220,7 @@ export interface MemAction {
 }
 /** The live tables the order actions read / write (tests: FakeSupabase rows). */
 // deno-lint-ignore no-explicit-any
-export interface MemLiveTables { orders: () => Record<string, any>[]; restaurants: () => Record<string, any>[] }
+export interface MemLiveTables { orders: () => Record<string, any>[]; restaurants: () => Record<string, any>[]; menu_items?: () => Record<string, any>[] }
 
 /** Deep-equal for JSON values (jsonb `=` compares semantically, key order irrelevant). */
 function jsonEq(a: unknown, b: unknown): boolean {
@@ -463,6 +490,50 @@ export class MemoryOnlineStore implements OnlineStore {
     });
     return Promise.resolve({ outcome: out });
   }
+
+  /** 112 pos_online_tablet_setting_change, mirrored: the web tablet's exact write on the live tables. */
+  tabletSettingChange(c: TabletSettingInput): Promise<TabletSettingOutcome> {
+    if (!this.live) return Promise.reject(new Error('MemoryOnlineStore: no live tables bound (restaurants / menu_items)'));
+    const mins = (n: number | null) => n !== null && Number.isInteger(n) && n >= 1 && n <= 240;
+    if (!['estimates', 'delivery_available', 'item_availability'].includes(c.kind)) return Promise.reject(new OnlineStoreError('invalid_input', 'kind'));
+    if (c.kind === 'estimates' && !(mins(c.pickupMinutes) && mins(c.deliveryMinutes))) return Promise.reject(new OnlineStoreError('invalid_input', 'estimates'));
+    if (c.kind !== 'estimates' && typeof c.on !== 'boolean') return Promise.reject(new OnlineStoreError('invalid_input', 'on'));
+    if (c.kind === 'item_availability' && !c.itemId) return Promise.reject(new OnlineStoreError('invalid_input', 'item_id'));
+    if (!this.activeDevice(c.deviceId, c.restaurantId)) return Promise.resolve({ outcome: 'device_not_allowed' });
+    const cur = this.actions.get(c.actionId);
+    if (cur) {
+      if (cur.fn !== 'settings' || cur.restaurant_id !== c.restaurantId || cur.device_id !== c.deviceId || cur.action !== c.kind || !jsonEq(cur.request, c.request)) {
+        return Promise.resolve({ outcome: 'action_id_reused' });
+      }
+      return Promise.resolve({ outcome: 'duplicate', stored: cur.outcome! });
+    }
+    let changed = false;
+    if (c.kind === 'item_availability') {
+      const item = (this.live.menu_items?.() ?? []).find((m) => m.id === c.itemId && m.restaurant_id === c.restaurantId);
+      if (!item) return Promise.resolve({ outcome: 'item_not_found' });
+      if (item.is_available !== c.on) {
+        item.is_available = c.on;
+        changed = true;
+      }
+    } else {
+      const r = this.live.restaurants().find((x) => x.id === c.restaurantId);
+      if (r && c.kind === 'estimates' && (r.estimated_pickup_minutes !== c.pickupMinutes || r.estimated_delivery_minutes !== c.deliveryMinutes)) {
+        r.estimated_pickup_minutes = c.pickupMinutes;
+        r.estimated_delivery_minutes = c.deliveryMinutes;
+        changed = true;
+      }
+      if (r && c.kind === 'delivery_available' && r.delivery_available !== c.on) {
+        r.delivery_available = c.on;
+        changed = true;
+      }
+    }
+    const out = changed ? 'applied' : 'noop';
+    this.newAction({
+      action_id: c.actionId, fn: 'settings', restaurant_id: c.restaurantId, device_id: c.deviceId, channel: null, order_id: null, action: c.kind,
+      request: c.request, outcome: out, order_ids: [], ready_email_sent: false, actor: c.actor, approver: c.approver, device_time: c.deviceTime,
+    });
+    return Promise.resolve({ outcome: out });
+  }
 }
 
 // ---- Postgres (service role) -------------------------------------------------------------------------
@@ -548,6 +619,13 @@ export class PgOnlineStore implements OnlineStore {
     return this.call<SettingsChangeOutcome>('pos_online_settings_change', {
       p_action_id: c.actionId, p_restaurant_id: c.restaurantId, p_device_id: c.deviceId, p_kind: c.kind, p_print_device_id: c.printDeviceId,
       p_on: c.on, p_request: c.request, p_actor: c.actor, p_approver: c.approver, p_device_time: c.deviceTime,
+    });
+  }
+  tabletSettingChange(c: TabletSettingInput) {
+    return this.call<TabletSettingOutcome>('pos_online_tablet_setting_change', {
+      p_action_id: c.actionId, p_restaurant_id: c.restaurantId, p_device_id: c.deviceId, p_kind: c.kind, p_pickup_minutes: c.pickupMinutes,
+      p_delivery_minutes: c.deliveryMinutes, p_on: c.on, p_item_id: c.itemId, p_request: c.request, p_actor: c.actor, p_approver: c.approver,
+      p_device_time: c.deviceTime,
     });
   }
 }

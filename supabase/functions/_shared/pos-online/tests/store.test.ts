@@ -260,9 +260,9 @@ Deno.test('actions: started → pending → completed → duplicate (stored outc
   assertEquals(await s.completeAction(fakeId('a'), DEV_A, 'applied'), { outcome: 'not_found' });
 });
 
-// ---- Pg wrapper: names must match 109 / 110 / 111 -------------------------------------------------------
+// ---- Pg wrapper: names must match 109–112 -----------------------------------------------------------
 
-Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 functions; error codes mapped', async () => {
+Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 / 112 functions; error codes mapped', async () => {
   const calls: [string, Record<string, unknown>][] = [];
   const reads: string[] = [];
   let next: { data: unknown; error: { code?: string; message: string } | null } = { data: { outcome: 'ok' }, error: null };
@@ -297,6 +297,7 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 functio
     { outcome: 'duplicate', stored: 'applied', error_status: null, error_code: null, error_message: null, order_ids: [o] });
   next = { data: { outcome: 'noop' }, error: null };
   await pg.settingsChange({ actionId: 'act4', restaurantId: R1, deviceId: DEV_A, kind: 'online_auto_print', printDeviceId: null, on: true, request: {}, actor: 'register', approver: null, deviceTime: null });
+  await pg.tabletSettingChange({ actionId: 'act5', restaurantId: R1, deviceId: DEV_A, kind: 'estimates', pickupMinutes: 20, deliveryMinutes: 45, on: null, itemId: null, request: {}, actor: 'register', approver: null, deviceTime: null });
   await pg.setPrintRegister(R1, DEV_A, 'admin');
   assertEquals(await pg.getSettings(R1), null);
   assertEquals(reads, ['pos_restaurant_settings']);
@@ -309,6 +310,7 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 functio
     ['pos_online_order_action', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_action', 'p_expected_status', 'p_quoted_ready_minutes', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_order_action', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_action', 'p_expected_status', 'p_quoted_ready_minutes', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_settings_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_kind', 'p_print_device_id', 'p_on', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
+    ['pos_online_tablet_setting_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_kind', 'p_pickup_minutes', 'p_delivery_minutes', 'p_on', 'p_item_id', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_set_print_register', ['p_restaurant_id', 'p_device_id', 'p_updated_by']],
   ]);
   next = { data: null, error: { code: '23514', message: 'print register must be an active register of this restaurant' } };

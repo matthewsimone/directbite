@@ -11,6 +11,7 @@ import { MemoryOnlineStore } from '../store.ts';
 import type { OnlineOrderWire } from '../wire.ts';
 import { FakeSupabase } from './fakeSupabase.ts';
 import { parseOnlineOrder } from './referenceParse.ts';
+import { fakeSnapshotDb } from './snapshotDb.ts';
 
 export const CAT_PIZZA = 'c0000000-0000-4000-8000-0000000000c1';
 export const CAT_SIDES = 'c0000000-0000-4000-8000-0000000000c2';
@@ -89,13 +90,13 @@ export async function world(o: { restaurant?: Record<string, unknown> } = {}) {
   const B = ok<Registered>(await h.register(h.req((await h.enroll()).code)));
   const X = ok<Registered>(await h.register(h.req((await h.enroll({ restaurantId: R2 })).code)));
   const db = new FakeSupabase();
-  const online = new MemoryOnlineStore(h.clock.now, { orders: () => db.rows('orders'), restaurants: () => db.rows('restaurants') });
+  const online = new MemoryOnlineStore(h.clock.now, { orders: () => db.rows('orders'), restaurants: () => db.rows('restaurants'), menu_items: () => db.rows('menu_items') });
   for (const d of [A, B, X]) online.devices.set(d.device_id, { id: d.device_id, restaurant_id: d.restaurant_id, status: 'active' });
   db.insertRow('restaurants', restaurantRow(o.restaurant));
   db.insertRow('restaurants', restaurantRow({ id: R2 }));
   for (let d = 0; d < 7; d++) db.insertRow('hours', { restaurant_id: R1, day_of_week: d, is_open: true, open_time: '11:00', close_time: '22:00' });
   const readyEmails: string[] = [];
-  const deps: OnlineDeps = { ...h.deps, db, online, sleep: () => Promise.resolve(), readyEmail: (id) => void readyEmails.push(id) };
+  const deps: OnlineDeps = { ...h.deps, db, online, sleep: () => Promise.resolve(), readyEmail: (id) => void readyEmails.push(id), snapshotDb: fakeSnapshotDb(db) };
   const nowIso = () => new Date(h.clock.now()).toISOString();
   const call = (fn: typeof handleOnlineOrders, body: unknown, dev: Registered = A) =>
     fn({ method: 'POST', headers: new Headers({ 'x-ordr-api-version': '1', 'x-ordr-client': 'ordr-pos/1.0.0', ...h.asDevice(dev) }), bodyText: JSON.stringify(body), ip: FAKE_IP }, deps);
@@ -130,3 +131,8 @@ export function served(body: unknown): OnlineOrderWire[] {
   return b.orders as OnlineOrderWire[];
 }
 
+
+/** The world's SnapshotDb (the fake's menu rows) — for computing the expected snapshot hash in tests. */
+export function snapshotDbOf(w: { db: FakeSupabase }) {
+  return fakeSnapshotDb(w.db);
+}
