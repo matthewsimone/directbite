@@ -1,5 +1,5 @@
 /**
- * POS online persistence — migrations 109 + 110 + 111 + 112: print register + flags, per-station print claims / results,
+ * POS online persistence — migrations 109–113: print register + flags, per-station print claims / results,
  * the print state read, device actions (idempotency, pos_online_actions in the handoff shape), the Ordr order
  * actions and the POS settings changes. Every write is ONE plpgsql function (one transaction).
  * MemoryOnlineStore mirrors the SQL for tests — keep the two in step (110_smoke.sql / 111_smoke.sql run the same
@@ -78,8 +78,13 @@ export interface StoredAction {
 }
 
 export type ActionBeginOutcome =
-  | { outcome: 'started' | 'pending' | 'action_id_reused' }
+  | { outcome: 'started' | 'action_id_reused' }
+  /** `since` = when the pending row was begun (113): a stale one is a crashed attempt the caller may re-run. */
+  | { outcome: 'pending'; since?: string }
   | ({ outcome: 'duplicate' } & StoredAction);
+
+/** A stored error (113 pos_online_action_finish; replayed verbatim on a resend). */
+export interface ActionError { status: number; code: string; message: string }
 
 export type ActionCompleteOutcome =
   | { outcome: 'completed' | 'not_found' | 'device_mismatch' }
@@ -145,6 +150,27 @@ export type SettingsChangeOutcome =
   | { outcome: 'applied' | 'noop' | 'device_not_allowed' | 'action_id_reused' | 'invalid_print_register' }
   | { outcome: 'duplicate'; stored: StoredOutcome };
 
+/** pos_online_adjustment_request (113). note = trimmed, 1–200 characters, card-number free (the caller checks). */
+export interface AdjustmentInput {
+  actionId: string;
+  restaurantId: string;
+  deviceId: string;
+  orderId: string;
+  expectedStatus: string;
+  type: 'charge' | 'refund';
+  amountCents: number;
+  note: string;
+  request: Record<string, unknown>;
+  actor: string | null;
+  approver: string | null;
+  deviceTime: string | null;
+}
+
+export type AdjustmentOutcome =
+  | { outcome: 'applied' | 'device_not_allowed' | 'action_id_reused' | 'unknown_order' | 'restaurant_mismatch' }
+  | ({ outcome: 'duplicate' } & StoredAction)
+  | { outcome: 'error'; error_status: number; error_code: string; error_message: string };
+
 /** The web tablet's own settings (112): restaurants estimates / delivery_available, menu_items.is_available. */
 export type TabletSettingKind = 'estimates' | 'delivery_available' | 'item_availability';
 
@@ -180,6 +206,10 @@ export interface OnlineStore {
   printState(restaurantId: string, orderIds: string[]): Promise<PrintState>;
   beginAction(a: ActionBegin): Promise<ActionBeginOutcome>;
   completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop'): Promise<ActionCompleteOutcome>;
+  /** 113: complete a pending action with applied | noop | error (money errors are stored). */
+  finishAction(actionId: string, deviceId: string, outcome: StoredOutcome, error?: ActionError | null): Promise<ActionCompleteOutcome>;
+  /** 113: the tablet's ADJUST insert + the action row (one transaction). */
+  adjustmentRequest(a: AdjustmentInput): Promise<AdjustmentOutcome>;
   orderAction(a: OrderActionInput): Promise<OrderActionOutcome>;
   settingsChange(c: SettingsChangeInput): Promise<SettingsChangeOutcome>;
   tabletSettingChange(c: TabletSettingInput): Promise<TabletSettingOutcome>;
@@ -220,7 +250,13 @@ export interface MemAction {
 }
 /** The live tables the order actions read / write (tests: FakeSupabase rows). */
 // deno-lint-ignore no-explicit-any
-export interface MemLiveTables { orders: () => Record<string, any>[]; restaurants: () => Record<string, any>[]; menu_items?: () => Record<string, any>[] }
+type LiveRow = Record<string, any>;
+export interface MemLiveTables {
+  orders: () => LiveRow[];
+  restaurants: () => LiveRow[];
+  menu_items?: () => LiveRow[];
+  adjustment_requests?: () => LiveRow[];
+}
 
 /** Deep-equal for JSON values (jsonb `=` compares semantically, key order irrelevant). */
 function jsonEq(a: unknown, b: unknown): boolean {
@@ -401,8 +437,70 @@ export class MemoryOnlineStore implements OnlineStore {
         cur.action !== a.action || !jsonEq(cur.request, a.request)) {
       return Promise.resolve({ outcome: 'action_id_reused' });
     }
-    if (cur.outcome === null) return Promise.resolve({ outcome: 'pending' });
+    if (cur.outcome === null) return Promise.resolve({ outcome: 'pending', since: new Date(cur.created_at).toISOString() });
     return Promise.resolve({ outcome: 'duplicate', ...this.stored(cur) });
+  }
+
+  /** 113 pos_online_action_finish, mirrored. */
+  finishAction(actionId: string, deviceId: string, outcome: StoredOutcome, error: ActionError | null = null): Promise<ActionCompleteOutcome> {
+    if (!['applied', 'noop', 'error'].includes(outcome) || (outcome === 'error') !== (error !== null)) return Promise.reject(new OnlineStoreError('invalid_input', 'outcome / error'));
+    const cur = this.actions.get(actionId);
+    if (!cur) return Promise.resolve({ outcome: 'not_found' });
+    if (cur.device_id !== deviceId) return Promise.resolve({ outcome: 'device_mismatch' });
+    if (cur.outcome !== null) return Promise.resolve({ outcome: 'already_completed', stored: cur.outcome });
+    cur.outcome = outcome;
+    cur.completed_at = this.now();
+    if (error) {
+      cur.error_status = error.status;
+      cur.error_code = error.code;
+      cur.error_message = error.message.slice(0, 500);
+    }
+    return Promise.resolve({ outcome: 'completed' });
+  }
+
+  /**
+   * 113 pos_online_adjustment_request, mirrored. The insert goes to the live adjustment_requests rows AND (the fake
+   * PostgREST has no joins) into the order row's embedded adjustment_requests, so the served order shows it.
+   */
+  adjustmentRequest(a: AdjustmentInput): Promise<AdjustmentOutcome> {
+    if (!this.live) return Promise.reject(new Error('MemoryOnlineStore: no live tables bound'));
+    if (!['charge', 'refund'].includes(a.type) || !Number.isSafeInteger(a.amountCents) || a.amountCents < 1 || a.note !== a.note.trim() || a.note.length < 1 || a.note.length > 200) {
+      return Promise.reject(new OnlineStoreError('invalid_input', 'type / amount / note'));
+    }
+    if (!this.activeDevice(a.deviceId, a.restaurantId)) return Promise.resolve({ outcome: 'device_not_allowed' });
+    const cur = this.actions.get(a.actionId);
+    if (cur) {
+      if (cur.fn !== 'order_action' || cur.restaurant_id !== a.restaurantId || cur.device_id !== a.deviceId || cur.order_id !== a.orderId ||
+          cur.action !== 'adjustment_request' || !jsonEq(cur.request, a.request)) {
+        return Promise.resolve({ outcome: 'action_id_reused' });
+      }
+      return Promise.resolve({ outcome: 'duplicate', ...this.stored(cur) });
+    }
+    const o = this.live.orders().find((x) => x.id === a.orderId);
+    if (!o || o.items_written_at == null) return Promise.resolve({ outcome: 'unknown_order' });
+    if (o.restaurant_id !== a.restaurantId) return Promise.resolve({ outcome: 'restaurant_mismatch' });
+    const base = {
+      action_id: a.actionId, fn: 'order_action' as const, restaurant_id: a.restaurantId, device_id: a.deviceId, channel: 'ordr' as const,
+      order_id: a.orderId, action: 'adjustment_request', request: a.request, order_ids: [], ready_email_sent: false, actor: a.actor,
+      approver: a.approver, device_time: a.deviceTime,
+    };
+    const err = o.status !== a.expectedStatus ? { status: 409, code: 'status_conflict', message: `the order is ${o.status}` }
+      : o.status !== 'complete' ? { status: 400, code: 'action_not_allowed', message: 'an adjustment is requested on a complete order' }
+      : null;
+    if (err) {
+      const row = this.newAction({ ...base, outcome: 'error' });
+      Object.assign(row, { error_status: err.status, error_code: err.code, error_message: err.message });
+      return Promise.resolve({ outcome: 'error', error_status: err.status, error_code: err.code, error_message: err.message });
+    }
+    // OrdersTab.jsx :729-736 — amount in dollars; status / created_at = the table's defaults
+    const adj = {
+      id: crypto.randomUUID(), order_id: a.orderId, order_number: o.order_number, restaurant_id: a.restaurantId, type: a.type,
+      amount: a.amountCents / 100, note: a.note, status: 'pending', approved_at: null, stripe_refund_id: null, created_at: new Date(this.now()).toISOString(),
+    };
+    this.live.adjustment_requests?.().push(structuredClone(adj));
+    (o.adjustment_requests ??= []).push(structuredClone(adj));
+    this.newAction({ ...base, outcome: 'applied' });
+    return Promise.resolve({ outcome: 'applied' });
   }
 
   completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop'): Promise<ActionCompleteOutcome> {
@@ -604,6 +702,20 @@ export class PgOnlineStore implements OnlineStore {
   }
   completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop') {
     return this.call<ActionCompleteOutcome>('pos_online_action_complete', { p_action_id: actionId, p_device_id: deviceId, p_outcome: outcome });
+  }
+  finishAction(actionId: string, deviceId: string, outcome: StoredOutcome, error: ActionError | null = null) {
+    return this.call<ActionCompleteOutcome>('pos_online_action_finish', {
+      p_action_id: actionId, p_device_id: deviceId, p_outcome: outcome, p_error_status: error?.status ?? null,
+      p_error_code: error?.code ?? null, p_error_message: error?.message ?? null,
+    });
+  }
+  async adjustmentRequest(a: AdjustmentInput): Promise<AdjustmentOutcome> {
+    const r = await this.call<Record<string, unknown>>('pos_online_adjustment_request', {
+      p_action_id: a.actionId, p_restaurant_id: a.restaurantId, p_device_id: a.deviceId, p_order_id: a.orderId, p_expected_status: a.expectedStatus,
+      p_type: a.type, p_amount_cents: a.amountCents, p_note: a.note, p_request: a.request, p_actor: a.actor, p_approver: a.approver,
+      p_device_time: a.deviceTime,
+    });
+    return r.outcome === 'duplicate' ? { outcome: 'duplicate', ...storedOf(r) } : (r as AdjustmentOutcome);
   }
   async orderAction(a: OrderActionInput): Promise<OrderActionOutcome> {
     const r = await this.call<Record<string, unknown>>('pos_online_order_action', {

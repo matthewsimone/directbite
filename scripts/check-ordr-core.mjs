@@ -23,6 +23,9 @@
 // else in the directory, and with --source byte-equal to ordr-pos src/core).
 // They are NOT part of pricingModuleHash (only ordr-core/'s manifest is).
 //
+// Also (CP19): the admin-refund handler glue copied into _shared/pos-online/adminRefundGlue.ts — the web source
+// range is pinned by hash (_shared/pos-online/adminRefundPin.json); any change to those lines fails.
+//
 // Exit 0 = clean, 1 = drift (every problem listed), 2 = usage / bad manifest.
 // ============================================================================
 
@@ -150,10 +153,37 @@ if (ext) {
   }
 }
 
+// CP19: the admin-refund glue copied into _shared/pos-online (adminRefundGlue.ts) — its web source range is pinned
+// by hash (adminRefundPin.json). A change to those admin-refund lines fails here: re-copy, re-review, re-pin.
+const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const PIN_PATH = path.join(REPO_ROOT, 'supabase/functions/_shared/pos-online/adminRefundPin.json');
+let adminRefundPin = null;
+try {
+  adminRefundPin = JSON.parse(fs.readFileSync(PIN_PATH, 'utf8'));
+} catch (err) {
+  problems.push(`cannot read ${path.relative(process.cwd(), PIN_PATH)}: ${err.message}`);
+}
+if (adminRefundPin) {
+  const [from, to] = adminRefundPin.lines ?? [];
+  const src = path.join(REPO_ROOT, adminRefundPin.source ?? '');
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) problems.push('adminRefundPin.json: lines must be [from, to]');
+  else if (!fs.existsSync(src)) problems.push(`admin-refund pin: missing ${adminRefundPin.source}`);
+  else {
+    const range = fs.readFileSync(src, 'utf8').split('\n').slice(from - 1, to).join('\n') + '\n';
+    const actual = sha256(Buffer.from(range, 'utf8'));
+    if (actual !== adminRefundPin.sha256) {
+      problems.push(`admin-refund changed: ${adminRefundPin.source}:${from}-${to}\n    pinned  ${adminRefundPin.sha256}\n    on disk ${actual}\n    re-copy into ${adminRefundPin.copy}, re-review, then re-pin`);
+    }
+  }
+  const copy = path.join(REPO_ROOT, adminRefundPin.copy ?? '');
+  if (!fs.existsSync(copy)) problems.push(`admin-refund pin: missing copy ${adminRefundPin.copy}`);
+  else if (!fs.readFileSync(copy, 'utf8').includes(adminRefundPin.sha256)) problems.push(`${adminRefundPin.copy} does not cite the pinned hash (re-pin both together)`);
+}
+
 if (problems.length) {
   console.error(`check-ordr-core: FAIL (${problems.length} problem${problems.length === 1 ? '' : 's'})`);
   for (const p of problems) console.error(`  - ${p}`);
   console.error('Never edit vendored files. Fix ordr-pos, then: node scripts/vendor-ordr-core.mjs <ordr-pos path>');
   process.exit(1);
 }
-console.log(`check-ordr-core: OK — ${manifestPaths.length} files match ${sourceRepo} @ ${sourceCommit.slice(0, 7)}${sourcePath ? ' and the source checkout' : ''}; ordr-core-ext ${Object.keys(ext?.files ?? {}).length} files @ ${String(ext?.sourceCommit ?? '').slice(0, 7)}`);
+console.log(`check-ordr-core: OK — ${manifestPaths.length} files match ${sourceRepo} @ ${sourceCommit.slice(0, 7)}${sourcePath ? ' and the source checkout' : ''}; ordr-core-ext ${Object.keys(ext?.files ?? {}).length} files @ ${String(ext?.sourceCommit ?? '').slice(0, 7)}; admin-refund pin ${adminRefundPin.source}:${adminRefundPin.lines.join('-')} @ ${adminRefundPin.sha256.slice(0, 12)}`);

@@ -12,6 +12,7 @@ import type { OnlineOrderWire } from '../wire.ts';
 import { FakeSupabase } from './fakeSupabase.ts';
 import { parseOnlineOrder } from './referenceParse.ts';
 import { fakeSnapshotDb } from './snapshotDb.ts';
+import { moneyFakes } from './moneyFakes.ts';
 
 export const CAT_PIZZA = 'c0000000-0000-4000-8000-0000000000c1';
 export const CAT_SIDES = 'c0000000-0000-4000-8000-0000000000c2';
@@ -90,13 +91,15 @@ export async function world(o: { restaurant?: Record<string, unknown> } = {}) {
   const B = ok<Registered>(await h.register(h.req((await h.enroll()).code)));
   const X = ok<Registered>(await h.register(h.req((await h.enroll({ restaurantId: R2 })).code)));
   const db = new FakeSupabase();
-  const online = new MemoryOnlineStore(h.clock.now, { orders: () => db.rows('orders'), restaurants: () => db.rows('restaurants'), menu_items: () => db.rows('menu_items') });
+  const online = new MemoryOnlineStore(h.clock.now, { orders: () => db.rows('orders'), restaurants: () => db.rows('restaurants'), menu_items: () => db.rows('menu_items'), adjustment_requests: () => db.rows('adjustment_requests') });
   for (const d of [A, B, X]) online.devices.set(d.device_id, { id: d.device_id, restaurant_id: d.restaurant_id, status: 'active' });
   db.insertRow('restaurants', restaurantRow(o.restaurant));
   db.insertRow('restaurants', restaurantRow({ id: R2 }));
   for (let d = 0; d < 7; d++) db.insertRow('hours', { restaurant_id: R1, day_of_week: d, is_open: true, open_time: '11:00', close_time: '22:00' });
   const readyEmails: string[] = [];
-  const deps: OnlineDeps = { ...h.deps, db, online, sleep: () => Promise.resolve(), readyEmail: (id) => void readyEmails.push(id), snapshotDb: fakeSnapshotDb(db) };
+  const deps: OnlineDeps = { ...h.deps, db, online, sleep: () => Promise.resolve(), readyEmail: (id) => void readyEmails.push(id), snapshotDb: fakeSnapshotDb(db), refund: undefined };
+  const money = moneyFakes(db);
+  deps.refund = { stripe: money.stripe, cancelUberDelivery: money.cancelUberDelivery, refundUberAppFee: money.refundUberAppFee };
   const nowIso = () => new Date(h.clock.now()).toISOString();
   const call = (fn: typeof handleOnlineOrders, body: unknown, dev: Registered = A) =>
     fn({ method: 'POST', headers: new Headers({ 'x-ordr-api-version': '1', 'x-ordr-client': 'ordr-pos/1.0.0', ...h.asDevice(dev) }), bodyText: JSON.stringify(body), ip: FAKE_IP }, deps);
@@ -119,7 +122,7 @@ export async function world(o: { restaurant?: Record<string, unknown> } = {}) {
   };
   const order = (id: string) => db.rows('orders').find((r) => r.id === id)!;
   const logs = (id: string) => db.rows('print_logs').filter((r) => r.order_id === id);
-  return { h, A, B, X, online, db, deps, poll, print, action, settings, autoOn, order, logs, nowIso, readyEmails };
+  return { h, A, B, X, online, db, deps, poll, print, action, settings, autoOn, order, logs, nowIso, readyEmails, money };
 }
 
 export function served(body: unknown): OnlineOrderWire[] {

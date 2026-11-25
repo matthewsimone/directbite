@@ -1,6 +1,6 @@
 /**
  * Minimal in-memory supabase-js for the pos-online handler tests: from(table).select / eq / in / or / order /
- * maybeSingle / insert / update, awaited like PostgREST ({ data, error, count }). `or(...)` is RECORDED, not
+ * single / maybeSingle / insert / update, awaited like PostgREST ({ data, error, count }). `or(...)` is RECORDED, not
  * evaluated (feedQuery.test.ts evaluates the filter strings); eq / in filters are applied. Rows are deep-copied in and out.
  */
 // deno-lint-ignore-file no-explicit-any no-this-alias
@@ -59,6 +59,10 @@ export class FakeSupabase {
         vals = v;
         self.calls.push([table, 'update', v]);
         return q;
+      },
+      single() {
+        const m = self.rows(table).filter((r) => filters.every(([c, f]) => f(r[c])));
+        return Promise.resolve(m.length === 1 ? { data: structuredClone(m[0]), error: null } : { data: null, error: { message: 'JSON object requested, multiple (or no) rows returned' } });
       },
       maybeSingle() {
         const m = self.rows(table).filter((r) => filters.every(([c, f]) => f(r[c])));

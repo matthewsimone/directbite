@@ -1,0 +1,7 @@
+{
+  "comment": "CP19: _shared/pos-online/adminRefundGlue.ts is a copy of the web's admin-refund handler glue. This pins the web source range it was copied from; scripts/check-ordr-core.mjs fails if those lines change (re-copy, re-review, re-pin). Lines are 1-based inclusive; sha256 over the lines joined with \\n plus a final \\n.",
+  "source": "supabase/functions/admin-refund/index.ts",
+  "lines": [102, 254],
+  "sha256": "e4a85d24b5822a5bc52a6609c991985ccb61d8b129307d552120b42cc80cd114",
+  "copy": "supabase/functions/_shared/pos-online/adminRefundGlue.ts"
+}

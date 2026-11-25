@@ -2,7 +2,9 @@
  * pos-v1-online-orders + pos-v1-online-print (ordr-pos @ 7798d52 docs/SYNC-CONTRACT.md §3c :481-591, :673-732;
  * reference test/support/fakeOnline.ts poll :501-537, print :273-316, served :540-545)
  * + pos-v1-online-order-action + pos-v1-online-settings (CP18; ordr-pos @ 86c558d §3c :593-671; reference
- * fakeOnline.ts settingsChange :331-350, action :354-433; src/dev/onlineActionRules.ts, onlineSettingsRules.ts).
+ * fakeOnline.ts settingsChange :331-350, action :354-433; src/dev/onlineActionRules.ts, onlineSettingsRules.ts);
+ * CP19 money: cancel_refund = admin-refund {type: full} via adminRefundGlue.ts (hash-pinned copy), adjustment_request =
+ * the tablet's ADJUST insert (113).
  *
  * Both run the device middleware (§1a) and the body restaurant rule (400 restaurant_mismatch). Handlers are pure
  * over their deps (DeviceRequest → DeviceResult) so tests run without a server.
@@ -26,6 +28,8 @@ import {
   type FeedClient, type FeedRow, type FeedScope,
 } from './feedQuery.ts';
 import { ACK_ACTIONS, ONLINE_ACTIONS, type Cp18Action } from './actionRules.ts';
+import { adminRefundFull, type AdminRefundGlueDeps } from './adminRefundGlue.ts';
+import { containsCardNumber } from '../ordr-core-ext/cardData.ts';
 import { buildMenuSnapshot, type SnapshotDb } from '../pos-sync/menuSnapshot.ts';
 import { writeTabletPrintColumns, type PrintClient } from './printColumns.ts';
 import { tabletWrite, type OnlineStationRef, type PrintResult, type PrintVariant } from './printRules.ts';
@@ -49,6 +53,11 @@ export interface OnlineDeps extends AuthDeps {
    * Absent → menu_snapshot_hash null (the register picks the change up on its next menu pull).
    */
   snapshotDb?: SnapshotDb;
+  /**
+   * Cancel & Refund (CP19): what admin-refund's glue needs besides the service-role client (`db`) — the platform
+   * Stripe client and the two shared modules, imported unchanged by the entry point. Absent → cancel_refund 501.
+   */
+  refund?: Pick<AdminRefundGlueDeps, 'stripe' | 'cancelUberDelivery' | 'refundUberAppFee'>;
 }
 
 const nullableString = (v: unknown) => v === null || v === undefined || typeof v === 'string';
@@ -434,9 +443,9 @@ const isResult = (v: unknown): v is DeviceResult => !!v && typeof v === 'object'
 
 // ---- pos-v1-online-order-action --------------------------------------------------------------------------
 
-/** Not built in CP18 → 501 (the POS reads 501 as "Ordr can't do this yet", onlineActions.ts :66, :224). */
+/** Not built yet → 501 (the POS reads 501 as "Ordr can't do this yet", onlineActions.ts :66, :224). */
 const LATER: Record<string, string> = {
-  cancel_refund: 'CP19', adjustment_request: 'CP19', dispatch_delivery: 'CP20', self_deliver: 'CP20',
+  dispatch_delivery: 'CP20', self_deliver: 'CP20',
   ext_ack: 'CP21', ext_accept: 'CP21', ext_ready: 'CP21', ext_cancel: 'CP21',
 };
 
@@ -493,6 +502,13 @@ export async function handleOnlineOrderAction(req: DeviceRequest, deps: OnlineDe
     if (one.row.restaurant_id !== rid) return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant', { field: 'order_id' });
     // onlineActionRules.ts :120 — an Ordr action on a KitchenHub order
     if (one.channel === 'kitchenhub') return errorResult(400, 'action_not_allowed', `${action} on a kitchenhub order`);
+  }
+  // CP19: the money actions (orderId is set — not bulk)
+  if ((body.action === 'cancel_refund' || body.action === 'adjustment_request') && orderId !== null) {
+    const { device_time: _d, ...req } = body;
+    void _d;
+    const m: MoneyCall = { deps, rid, deviceId: pr.device_id, actionId, orderId, expected: String(body.expected_status), request: req, who, deviceTime: isoOrNullTime(body.device_time) };
+    return body.action === 'cancel_refund' ? cancelRefund(m) : adjustmentRequest(m, body);
   }
 
   // the quoted time only matters to accept; a non-integer reaches the rule as 0 → invalid_payload at its point
@@ -682,4 +698,146 @@ async function tabletSetting(
     result: out.outcome, settings, menu_snapshot_hash: kind === 'item_availability' ? await currentMenuHash(deps, rid) : null,
     server_time: new Date(deps.now()).toISOString(),
   });
+}
+
+// ---- money (CP19): Cancel & Refund = admin-refund unchanged; Adjust = the tablet's adjustment request -------------
+
+interface MoneyCall {
+  deps: OnlineDeps;
+  rid: string;
+  deviceId: string;
+  actionId: string;
+  orderId: string;
+  expected: string;
+  request: Record<string, unknown>;
+  who: { actor: string | null; approver: string | null };
+  deviceTime: string | null;
+}
+
+/** A pending cancel_refund older than this is a crashed attempt: re-run it (safe — adminRefundGlue.ts header). */
+export const PENDING_STALE_MS = 10 * 60_000;
+/** The live statuses the tablet offers Cancel & Refund from (onlineActionRules.ts :244). */
+const CANCEL_FROM = ['new', 'scheduled', 'in_progress', 'self_delivering'];
+/** delivery_failed's reason travels in the stored message as a `[reason] ` prefix (pos_online_actions.error_message). */
+const REASON_PREFIX = /^\[([a-z_]+)\] /;
+
+/** A money error as the wire answers it (fresh or replayed): + the order now (status_conflict / refund_failed), + reason. */
+async function moneyError(m: MoneyCall, status: number, code: string, message: string): Promise<DeviceResult> {
+  const extra: Record<string, unknown> = {};
+  let msg = message;
+  if (code === 'delivery_failed') {
+    const r = REASON_PREFIX.exec(message);
+    extra.reason = r ? r[1] : 'provider_error';
+    if (r) msg = message.slice(r[0].length);
+  }
+  if (code === 'status_conflict' || code === 'refund_failed') extra.order = await currentWire(m.deps, m.rid, m.orderId);
+  return errorResult(status, code, msg, extra);
+}
+
+async function moneyOk(m: MoneyCall, result: 'applied' | 'noop' | 'duplicate'): Promise<DeviceResult> {
+  return okResult({ result, order: await currentWire(m.deps, m.rid, m.orderId), orders: [], server_time: new Date(m.deps.now()).toISOString() });
+}
+
+/**
+ * cancel_refund — §3c:627 + onlineActionRules.ts :159-160, :243-258, run as admin-refund {type:'full'}:
+ * begin (a PENDING pos_online_actions row: a concurrent resend gets 503 action_pending, a crashed one is re-run after
+ * PENDING_STALE_MS) → the order now (select *) → compare-and-set + the statuses the tablet offers it from → the
+ * admin-refund glue (Uber first, then Stripe, the orders writes) → finish: applied, noop, or the error STORED (the
+ * resend answers the same error — never a second Stripe / Uber call, §3c:608-610).
+ */
+async function cancelRefund(m: MoneyCall): Promise<DeviceResult> {
+  const { deps } = m;
+  if (!deps.refund) return errorResult(501, 'not_implemented', 'cancel_refund is not configured on this server');
+  const begin = await deps.online.beginAction({
+    actionId: m.actionId, fn: 'order_action', restaurantId: m.rid, deviceId: m.deviceId, channel: 'ordr', orderId: m.orderId,
+    action: 'cancel_refund', request: m.request, actor: m.who.actor, approver: m.who.approver, deviceTime: m.deviceTime,
+  });
+  if (begin.outcome === 'action_id_reused') return errorResult(409, 'action_id_reused', 'this action_id was used for another request');
+  if (begin.outcome === 'duplicate') {
+    if (begin.stored === 'error') return moneyError(m, begin.error_status ?? 500, begin.error_code ?? 'internal_error', begin.error_message ?? '');
+    return moneyOk(m, 'duplicate');
+  }
+  if (begin.outcome === 'pending') {
+    const since = Date.parse(begin.since ?? '');
+    if (!Number.isFinite(since) || deps.now() - since < PENDING_STALE_MS) {
+      return errorResult(503, 'action_pending', 'this refund is still being processed — try again in a moment', { retryAfterMs: 5_000 });
+    }
+    deps.log('online_refund_rerun', { action_id: m.actionId, order_id: m.orderId });
+  }
+  const fail = async (status: number, code: string, message: string) => {
+    await deps.online.finishAction(m.actionId, m.deviceId, 'error', { status, code, message });
+    return moneyError(m, status, code, message);
+  };
+  const { data: order, error } = await deps.db.from('orders').select('*').eq('id', m.orderId).maybeSingle();
+  if (error) throw new Error(`orders read failed: ${error.message}`);
+  if (!order || order.restaurant_id !== m.rid) return fail(400, 'unknown_order', 'no such order');
+  if (order.status !== m.expected) return fail(409, 'status_conflict', `the order is ${order.status}`);
+  if (!CANCEL_FROM.includes(order.status)) return fail(400, 'action_not_allowed', `cancel from ${order.status}`);
+
+  const r = await adminRefundFull({ supabase: deps.db, log: deps.log, ...deps.refund }, order, m.actionId);
+  switch (r.kind) {
+    case 'idempotent':
+      await deps.online.finishAction(m.actionId, m.deviceId, 'noop');
+      return moneyOk(m, 'noop');
+    case 'already_delivered':
+      return fail(400, 'already_delivered', 'the order was already delivered — no refund');
+    case 'no_payment_intent':
+    case 'no_stripe_account':
+      return fail(400, 'action_not_allowed', r.message);
+    case 'uber_cancel_failed': {
+      // admin-refund :168-180 — nothing refunded; uberCancel.ts 'uber_cancel_failed' = Uber refused (driver has the food)
+      const reason = r.error === 'uber_cancel_failed' ? 'cannot_cancel' : 'provider_error';
+      deps.log('online_refund_uber_cancel_failed', { action_id: m.actionId, order_id: m.orderId, error: r.error });
+      return fail(502, 'delivery_failed', `[${reason}] Uber could not cancel the delivery — NOT refunded`);
+    }
+    case 'stripe_failed':
+      return fail(502, 'refund_failed', r.message || 'the card refund did not go through');
+    case 'refunded':
+      await deps.online.finishAction(m.actionId, m.deviceId, 'applied');
+      return moneyOk(m, 'applied');
+  }
+}
+
+/**
+ * adjustment_request — the tablet's ADJUST (OrdersTab.jsx :725-736; Matt: extra charge / refund after Complete =
+ * this request, an admin approves in /admin → admin-approve-adjustment moves the money). onlineActionRules.ts
+ * :161-170: type charge | refund, amount_cents > 0 (400 amount_invalid), a note 1–200 characters (trimmed, as the
+ * tablet), no card numbers (vendored ordr-core-ext/cardData.ts → 400 card_data_rejected); complete orders only,
+ * compare-and-set (113 SQL, one transaction with the insert + the action row).
+ */
+async function adjustmentRequest(m: MoneyCall, body: Row): Promise<DeviceResult> {
+  const type = body.adjustment_type;
+  if (type !== 'charge' && type !== 'refund') return bad('adjustment_type', 'adjustment_type must be charge or refund');
+  const cents = body.amount_cents;
+  if (typeof cents !== 'number' || !Number.isSafeInteger(cents) || cents < 1) return errorResult(400, 'amount_invalid', 'amount_cents must be > 0', { field: 'amount_cents' });
+  const note = typeof body.reason === 'string' ? body.reason.trim() : '';
+  if (note.length < 1 || note.length > 200) return bad('reason', 'a note (1–200 characters) is required');
+  if (containsCardNumber(note)) return errorResult(400, 'card_data_rejected', 'card-number-like text in the note', { field: 'reason' });
+  let out;
+  try {
+    out = await m.deps.online.adjustmentRequest({
+      actionId: m.actionId, restaurantId: m.rid, deviceId: m.deviceId, orderId: m.orderId, expectedStatus: m.expected, type, amountCents: cents,
+      note, request: m.request, actor: m.who.actor, approver: m.who.approver, deviceTime: m.deviceTime,
+    });
+  } catch (err) {
+    if (err instanceof OnlineStoreError) return bad('reason', err.message);
+    throw err;
+  }
+  switch (out.outcome) {
+    case 'device_not_allowed':
+      return errorResult(403, 'device_not_allowed', 'this register is not active');
+    case 'action_id_reused':
+      return errorResult(409, 'action_id_reused', 'this action_id was used for another request');
+    case 'unknown_order':
+      return errorResult(400, 'unknown_order', 'no such order');
+    case 'restaurant_mismatch':
+      return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant', { field: 'order_id' });
+    case 'error':
+      return moneyError(m, out.error_status, out.error_code, out.error_message);
+    case 'duplicate':
+      if (out.stored === 'error') return moneyError(m, out.error_status ?? 500, out.error_code ?? 'internal_error', out.error_message ?? '');
+      return moneyOk(m, 'duplicate');
+    case 'applied':
+      return moneyOk(m, 'applied');
+  }
 }

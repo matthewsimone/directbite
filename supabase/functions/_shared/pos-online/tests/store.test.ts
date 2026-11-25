@@ -247,7 +247,9 @@ Deno.test('actions: started → pending → completed → duplicate (stored outc
     request: { order_id: 'x', at: 1 }, actor: null, approver: null, deviceTime: null,
   };
   assertEquals(await s.beginAction(a), { outcome: 'started' });
-  assertEquals(await s.beginAction({ ...a, request: { at: 1, order_id: 'x' }, deviceTime: '2026-11-24T15:00:00.000Z' }), { outcome: 'pending' }); // key order irrelevant (jsonb); device_time is not the request
+  const pend = await s.beginAction({ ...a, request: { at: 1, order_id: 'x' }, deviceTime: '2026-11-24T15:00:00.000Z' }); // key order irrelevant (jsonb); device_time is not the request
+  assertEquals(pend.outcome, 'pending');
+  assert(pend.outcome === 'pending' && typeof pend.since === 'string' && Number.isFinite(Date.parse(pend.since)), '113: since = when it was begun');
   assertEquals(await s.completeAction(a.actionId, DEV_B, 'applied'), { outcome: 'device_mismatch' });
   assertEquals(await s.completeAction(a.actionId, DEV_A, 'applied'), { outcome: 'completed' });
   assertEquals(await s.beginAction(a), { outcome: 'duplicate', stored: 'applied', error_status: null, error_code: null, error_message: null, order_ids: [] });
@@ -260,9 +262,9 @@ Deno.test('actions: started → pending → completed → duplicate (stored outc
   assertEquals(await s.completeAction(fakeId('a'), DEV_A, 'applied'), { outcome: 'not_found' });
 });
 
-// ---- Pg wrapper: names must match 109–112 -----------------------------------------------------------
+// ---- Pg wrapper: names must match 109–113 -----------------------------------------------------------
 
-Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 / 112 functions; error codes mapped', async () => {
+Deno.test('PgOnlineStore: RPC + argument names match the 109–113 functions; error codes mapped', async () => {
   const calls: [string, Record<string, unknown>][] = [];
   const reads: string[] = [];
   let next: { data: unknown; error: { code?: string; message: string } | null } = { data: { outcome: 'ok' }, error: null };
@@ -297,6 +299,10 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 / 112 f
     { outcome: 'duplicate', stored: 'applied', error_status: null, error_code: null, error_message: null, order_ids: [o] });
   next = { data: { outcome: 'noop' }, error: null };
   await pg.settingsChange({ actionId: 'act4', restaurantId: R1, deviceId: DEV_A, kind: 'online_auto_print', printDeviceId: null, on: true, request: {}, actor: 'register', approver: null, deviceTime: null });
+  next = { data: { outcome: 'completed' }, error: null };
+  await pg.finishAction('act6', DEV_A, 'error', { status: 502, code: 'refund_failed', message: 'declined' });
+  next = { data: { outcome: 'applied' }, error: null };
+  assertEquals(await pg.adjustmentRequest({ actionId: 'act7', restaurantId: R1, deviceId: DEV_A, orderId: o, expectedStatus: 'complete', type: 'charge', amountCents: 500, note: 'x', request: {}, actor: 'register', approver: null, deviceTime: null }), { outcome: 'applied' });
   await pg.tabletSettingChange({ actionId: 'act5', restaurantId: R1, deviceId: DEV_A, kind: 'estimates', pickupMinutes: 20, deliveryMinutes: 45, on: null, itemId: null, request: {}, actor: 'register', approver: null, deviceTime: null });
   await pg.setPrintRegister(R1, DEV_A, 'admin');
   assertEquals(await pg.getSettings(R1), null);
@@ -310,6 +316,8 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109 / 110 / 111 / 112 f
     ['pos_online_order_action', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_action', 'p_expected_status', 'p_quoted_ready_minutes', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_order_action', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_action', 'p_expected_status', 'p_quoted_ready_minutes', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_settings_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_kind', 'p_print_device_id', 'p_on', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
+    ['pos_online_action_finish', ['p_action_id', 'p_device_id', 'p_outcome', 'p_error_status', 'p_error_code', 'p_error_message']],
+    ['pos_online_adjustment_request', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_expected_status', 'p_type', 'p_amount_cents', 'p_note', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_tablet_setting_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_kind', 'p_pickup_minutes', 'p_delivery_minutes', 'p_on', 'p_item_id', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_set_print_register', ['p_restaurant_id', 'p_device_id', 'p_updated_by']],
   ]);
