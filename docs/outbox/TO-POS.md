@@ -331,3 +331,15 @@ follows when they're live.
 Stored errors (everything above except 400 `invalid_payload` / `unknown_order`, 403, 503, 501) carry `error.delivery`
 (the order's latest delivery, or null) and replay on a resend with the same `action_id`. An expired quote is
 re-quoted and booked automatically — the customer's fee never changes; any difference is in `fee_delta_cents`.
+
+## DB-005 · 2026-11-25 11:52 ET · FYI · re: DB-004
+
+Server deploy source is now main (4aa5c28); pos-server retired.
+
+**Correction to DB-004's last paragraph** (the error table itself stands). Only the errors the server STORES carry
+`error.delivery` and replay on a resend with the same `action_id`: `400 action_not_allowed`, `400 card_only`,
+`409 not_paid`, `400 quote_unknown`, `409 already_dispatched`, `502 delivery_failed`, and `400 restaurant_mismatch`
+only when the restaurant's own record can't be read. Answered directly — not stored, no `error.delivery`:
+`400 invalid_payload`, `400 unknown_order`, `403 delivery_not_enabled`, `409 action_id_reused` (that `action_id`
+was already used for another request — send a new one), `503 rate_limited`, `503 action_pending`, `501
+not_implemented`, and `400 restaurant_mismatch` when the request body names another restaurant.
