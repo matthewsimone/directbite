@@ -36,7 +36,7 @@ import type {
 } from '../ordr-core/order/index.ts';
 import { resolveMode, type RestaurantForMode } from '../uberMode.ts';
 import { applyPassthrough } from '../uberPassthrough.ts';
-import { isCategoryAvailableAt } from './categoryWindow.ts';
+import { isCategoryAvailableAt, normalizeAvailability } from '../ordr-core-ext/availability.ts';
 import type { PricingDb, PromotionRow, RestaurantRow, ToppingRow } from './db.ts';
 import { ApiError, configError } from './errors.ts';
 import type { PriceRequest, RequestTip } from './request.ts';
@@ -394,7 +394,8 @@ export async function loadPricingInput(db: PricingDb, req: PriceRequest, ctx: Lo
     const category = item.category_id ? categoryById.get(item.category_id) : undefined;
     // Promo exemption comes from the item's category (migration 052; useMenu.js).
     const discountExempt = category?.discount_exempt === true;
-    if (category && !isCategoryAvailableAt(category.availability, ctx.now, timeZone)) {
+    // Item 4: the vendored ordr-pos availability.ts (same window semantics on device and server).
+    if (category && !isCategoryAvailableAt(normalizeAvailability(category.availability), ctx.now.getTime(), timeZone)) {
       diagnostics.categoryWindow.push({ lineIndex: i, menuItemId: item.id, categoryId: category.id });
     }
 

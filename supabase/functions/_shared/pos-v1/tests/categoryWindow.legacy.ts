@@ -1,3 +1,5 @@
+// TEST-ONLY copy of the removed _shared/pos-v1/categoryWindow.ts (item 4), kept to prove the
+// vendored availability.ts gives identical verdicts. Do not import outside tests.
 /**
  * Category availability windows (menu_categories.availability, migration 086).
  *

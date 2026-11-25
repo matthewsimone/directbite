@@ -33,6 +33,20 @@ export function isVendoredPath(rel) {
   return /^order\/[^/]+\.ts$/.test(rel) && !rel.endsWith('.test.ts');
 }
 
+/**
+ * Non-pricing vendored ordr-pos files (DIRECTBITE-HANDOFF item 4): byte-identical
+ * copies of src/core/<name> in their own directory + manifest, so they are
+ * drift-checked like ordr-core/ but NEVER part of pricingModuleHash.
+ */
+export const EXT_VENDOR_DIR = path.join(REPO_ROOT, 'supabase/functions/_shared/ordr-core-ext');
+export const EXT_MANIFEST_PATH = path.join(EXT_VENDOR_DIR, 'VENDORED.json');
+export const EXT_FILES = ['availability.ts', 'cardData.ts', 'drawer.ts'];
+/**
+ * Local shims in ordr-core-ext/ (NOT vendored, exact content pinned): drawer.ts imports './money.ts'
+ * byte-identically; this re-export points it at the already-vendored ordr-core/money.ts.
+ */
+export const EXT_SHIMS = { 'money.ts': "export * from '../ordr-core/money.ts';\n" };
+
 export function sha256(buf) {
   return createHash('sha256').update(buf).digest('hex');
 }
