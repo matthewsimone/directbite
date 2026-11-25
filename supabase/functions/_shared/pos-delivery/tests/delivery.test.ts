@@ -13,7 +13,7 @@ import { err, harness, ok, R1, R2, type Registered } from '../../pos-device/test
 import { FakeSupabase } from '../../pos-online/tests/fakeSupabase.ts';
 import { applyPassthrough } from '../../uberPassthrough.ts';
 import type { MenuSnapshot } from '../../pos-sync/menuSnapshot.ts';
-import { handleDeliveryCancel, handleDeliveryDispatch, handleDeliveryStatus, handleQuoteDelivery, PENDING_STALE_MS, POLL_EVERY_MS, type DeliveryDeps } from '../handlers.ts';
+import { handleDeliveryAlert, handleDeliveryCancel, handleDeliveryDispatch, handleDeliveryStatus, handleQuoteDelivery, PENDING_STALE_MS, POLL_EVERY_MS, type DeliveryDeps } from '../handlers.ts';
 import { MemoryDeliveryStore, type PosOrderForDelivery } from '../store.ts';
 import type { GeocodeResult } from '../geocode.ts';
 
@@ -78,7 +78,7 @@ async function world(o: { restaurant?: Record<string, unknown>; uber?: boolean }
   const X = ok<Registered>(await h.register(h.req((await h.enroll({ restaurantId: R2 })).code)));
   const db = new FakeSupabase();
   db.insertRow('restaurants', {
-    id: R1, name: 'Test Pizza', latitude: 40.744, longitude: -74.0324, address: '100 Washington St, Hoboken, NJ', phone: '2015550100',
+    id: R1, name: 'Test Pizza', timezone: 'America/New_York', latitude: 40.744, longitude: -74.0324, address: '100 Washington St, Hoboken, NJ', phone: '2015550100',
     delivery_fulfillment: 'both', uber_credentials_verified_at: '2026-11-01T00:00:00Z', uber_direct_active: true, uber_schedule: null,
     uber_passthrough_mode: 'split', uber_passthrough_value: 50, uber_customer_id: null, uber_environment: 'sandbox', uber_billing_mode: 'platform',
     uber_extends_delivery: false, uber_max_radius_miles: null, ...o.restaurant,
@@ -127,7 +127,7 @@ async function world(o: { restaurant?: Record<string, unknown>; uber?: boolean }
   const status = (ids: string[]) => call(handleDeliveryStatus, { restaurant_id: R1, order_ids: ids });
   /** A quote with Uber for 1 River St → the pq id. */
   const uberQuoteId = async () => ok<{ uber: { quote_id: string } }>(await quote({ street: '1 River St', city: 'Hoboken', zip: '07030' }, { include_uber: true })).uber.quote_id;
-  return { h, A, X, db, store, uber, deps, logs, quote, posOrder, dispatch, cancel, status, uberQuoteId };
+  return { h, A, X, db, store, uber, deps, logs, quote, posOrder, dispatch, cancel, status, uberQuoteId, call };
 }
 
 const errBody = (r: { body: unknown }) => (r.body as { error: Record<string, unknown> }).error;
@@ -488,4 +488,135 @@ Deno.test('status: Uber failed → canceled, canceled_by provider (online treats
   w.uber.state.getStatus = 'failed';
   const d = ok<{ deliveries: { delivery: Record<string, unknown> }[] }>(await w.status([id])).deliveries[0].delivery;
   assertEquals([d.state, d.canceled_by, d.provider_status, d.cancellation_fee_cents], ['canceled', 'provider', 'failed', null]);
+});
+
+// ---- 118: the every-register toast (scope 'restaurant' + pos-v1-delivery-alert) -----------------------------------
+
+type RestBody = { deliveries: { order_id: string; ticket_label: string | null; customer: { name: string | null; phone: string | null }; delivery: Record<string, unknown> }[]; business_day: string; server_time: string };
+
+async function toastWorld() {
+  const w = await world();
+  w.store.enabled.add(R1);
+  const B = ok<Registered>(await w.h.register(w.h.req((await w.h.enroll()).code))); // a second register of Test Pizza
+  const rest = (dev: Registered = w.A) => w.call(handleDeliveryStatus, { restaurant_id: R1, scope: 'restaurant' }, dev);
+  const alert = (body: Record<string, unknown>, dev: Registered = w.A) =>
+    w.call(handleDeliveryAlert, { action_id: crypto.randomUUID(), restaurant_id: R1, choice: 'in_house', actor_staff_id: 'register', approver_staff_id: null, device_time: new Date(w.h.clock.now()).toISOString(), ...body }, dev);
+  return { ...w, B, rest, alert };
+}
+
+Deno.test('status scope restaurant: every register sees every POS Uber delivery of the restaurant (latest per order, live or ended this business day) + ticket / customer; alert computed; another restaurant\'s never', async () => {
+  const w = await toastWorld();
+  const pq = await w.uberQuoteId();
+  const booked = w.posOrder(pq);
+  ok(await w.dispatch(booked));
+  const canceled = w.posOrder(pq, { customer_name: 'Sam Roe', ticket_label: 'F-008' });
+  ok(await w.dispatch(canceled));
+  w.uber.state.getStatus = 'canceled';
+  ok(await w.status([canceled]));          // A's own poll sees Uber's cancel
+  w.uber.state.getStatus = 'pending';
+  const failed = w.posOrder(pq, { ticket_label: 'F-009' });
+  w.uber.state.createStatus = 500;
+  await w.dispatch(failed);                // booking failed for good (provider_error)
+  const limited = w.posOrder(pq, { ticket_label: 'F-010' });
+  w.uber.state.createStatus = 200;
+  w.uber.state.rateLimitNext = 1;
+  await w.dispatch(limited);               // rate limited: the register retries — no toast
+  // register B never took these orders, and still sees all four
+  const b = ok<RestBody>(await w.rest(w.B));
+  const by = Object.fromEntries(b.deliveries.map((d) => [d.ticket_label, d]));
+  assertEquals(Object.keys(by).sort(), ['F-007', 'F-008', 'F-009', 'F-010']);
+  assertEquals([by['F-007'].delivery.state, by['F-007'].delivery.alert], ['booked', null]);
+  assertEquals([by['F-008'].delivery.state, by['F-008'].delivery.canceled_by, by['F-008'].delivery.alert, by['F-008'].customer], ['canceled', 'provider', 'provider_canceled', { name: 'Sam Roe', phone: '+12015550142' }]);
+  assertEquals([by['F-009'].delivery.state, by['F-009'].delivery.alert, by['F-009'].delivery.failure_code], ['failed', 'booking_failed', 'provider_error']);
+  assertEquals([by['F-010'].delivery.state, by['F-010'].delivery.alert], ['failed', null]);
+  assertEquals(by['F-007'].order_id, booked);
+  assertEquals(b.business_day, '2026-11-19');
+  // a re-dispatch supersedes the failed one (latest per order)
+  ok(await w.dispatch(failed));
+  assertEquals(ok<RestBody>(await w.rest()).deliveries.find((d) => d.ticket_label === 'F-009')!.delivery.state, 'booked');
+  // the next business day (04:00 New York): ended ones drop off, live ones stay
+  w.h.clock.advance(24 * 60 * MIN);
+  const next = ok<RestBody>(await w.rest());
+  assertEquals(next.deliveries.map((d) => d.ticket_label).sort(), ['F-007', 'F-009']);
+  // another restaurant's register sees none of it
+  w.db.insertRow('restaurants', { id: R2, name: 'Other', timezone: 'America/New_York' });
+  assertEquals(ok<RestBody>(await w.call(handleDeliveryStatus, { restaurant_id: R2, scope: 'restaurant' }, w.X)).deliveries, []);
+});
+
+Deno.test('status scope restaurant: a booked delivery is refreshed at most once per 30 s however many registers poll', async () => {
+  const w = await toastWorld();
+  const id = w.posOrder(await w.uberQuoteId());
+  ok(await w.dispatch(id));
+  const gets = () => w.uber.calls.filter((c) => c.method === 'GET').length;
+  ok(await w.rest());
+  ok(await w.rest(w.B));
+  ok(await w.status([id]));
+  assertEquals(gets(), 1);
+  w.h.clock.advance(POLL_EVERY_MS + 1);
+  ok(await w.rest(w.B));
+  ok(await w.rest());
+  assertEquals(gets(), 2);
+});
+
+Deno.test('status scope validation: scope must be restaurant; no order_ids with it', async () => {
+  const w = await toastWorld();
+  assertEquals([err(await w.call(handleDeliveryStatus, { restaurant_id: R1, scope: 'all' })).code, errBody(await w.call(handleDeliveryStatus, { restaurant_id: R1, scope: 'all' })).field], ['invalid_payload', 'scope']);
+  assertEquals(errBody(await w.call(handleDeliveryStatus, { restaurant_id: R1, scope: 'restaurant', order_ids: [crypto.randomUUID()] })).field, 'order_ids');
+});
+
+Deno.test('alert: the first register handles it (applied, set once); every register sees the mark on its next poll; a second register → noop with the first mark; resend → duplicate', async () => {
+  const w = await toastWorld();
+  const id = w.posOrder(await w.uberQuoteId());
+  ok(await w.dispatch(id));
+  w.uber.state.getStatus = 'canceled';
+  const d = ok<RestBody>(await w.rest()).deliveries[0].delivery;
+  assertEquals(d.alert, 'provider_canceled');
+  const actionId = crypto.randomUUID();
+  const first = ok<{ result: string; delivery: Record<string, unknown> }>(await w.alert({ action_id: actionId, order_id: id, delivery_id: d.id }, w.B));
+  assertEquals([first.result, first.delivery.alert_choice, first.delivery.alert_handled_by, first.delivery.alert_handled_at], ['applied', 'in_house', 'register', new Date(w.h.clock.now()).toISOString()]);
+  // register A's next poll: handled (the toast clears) — the alert itself stays as history
+  const seen = ok<RestBody>(await w.rest()).deliveries[0].delivery;
+  assertEquals([seen.alert, seen.alert_handled_at !== null, seen.alert_choice], ['provider_canceled', true, 'in_house']);
+  // A handles it too, a moment later: noop, the first mark kept
+  const second = ok<{ result: string; delivery: Record<string, unknown> }>(await w.alert({ order_id: id, delivery_id: d.id, choice: 'acknowledged' }));
+  assertEquals([second.result, second.delivery.alert_choice], ['noop', 'in_house']);
+  assertEquals(ok<{ result: string }>(await w.alert({ action_id: actionId, order_id: id, delivery_id: d.id }, w.B)).result, 'duplicate');
+  assertEquals(err(await w.alert({ action_id: actionId, order_id: id, delivery_id: d.id, choice: 'acknowledged' }, w.B)).code, 'action_id_reused');
+  assertEquals(w.uber.calls.filter((c) => c.path.endsWith('/cancel')).length, 0, 'no provider call');
+});
+
+Deno.test('alert: a failed booking can be handled; nothing to handle → 400 no_alert; a newer delivery → 409 delivery_changed; validation', async () => {
+  const w = await toastWorld();
+  const pq = await w.uberQuoteId();
+  const id = w.posOrder(pq);
+  w.uber.state.createStatus = 500;
+  await w.dispatch(id);
+  const failedRow = w.store.deliveries.at(-1)!;
+  assertEquals(ok<{ result: string }>(await w.alert({ order_id: id, delivery_id: failedRow.id, choice: 'acknowledged' })).result, 'applied');
+  // re-dispatched since → the old delivery's toast is stale
+  w.uber.state.createStatus = 200;
+  ok(await w.dispatch(id));
+  const changed = await w.alert({ order_id: id, delivery_id: failedRow.id });
+  assertEquals([changed.status, err(changed).code, (errBody(changed).delivery as Record<string, unknown>).state], [409, 'delivery_changed', 'booked']);
+  const live = w.store.deliveries.at(-1)!;
+  assertEquals([(await w.alert({ order_id: id, delivery_id: live.id })).status, err(await w.alert({ order_id: id, delivery_id: live.id })).code], [400, 'no_alert']);
+  assertEquals(err(await w.alert({ order_id: crypto.randomUUID(), delivery_id: live.id })).code, 'no_alert');
+  for (const [k, v] of [['choice', 'refund'], ['delivery_id', 'x'], ['order_id', 'x'], ['action_id', 'x']] as const) {
+    const r = await w.alert({ order_id: id, delivery_id: live.id, [k]: v });
+    assertEquals([err(r).code, errBody(r).field], ['invalid_payload', k]);
+  }
+});
+
+Deno.test('PgDeliveryStore.markAlert: one conditional update (alert_handled_at is null) — 0 rows = another register was first', async () => {
+  const { PgDeliveryStore } = await import('../store.ts');
+  const calls: [string, ...unknown[]][] = [];
+  let rows: unknown[] = [{ id: 'd' }];
+  // deno-lint-ignore no-explicit-any
+  const q: any = { update: (v: unknown) => (calls.push(['update', v]), q), eq: (c: string, v: unknown) => (calls.push(['eq', c, v]), q), is: (c: string, v: unknown) => (calls.push(['is', c, v]), q), select: () => Promise.resolve({ data: rows, error: null }) };
+  const pg = new PgDeliveryStore({ rpc: () => Promise.resolve({ data: null, error: null }), from: (t: string) => (calls.push(['from', t]), q) });
+  const mark = { at: '2026-11-25T17:00:00.000Z', by: 'register', deviceId: 'dev', choice: 'in_house' as const };
+  assertEquals(await pg.markAlert('d', mark), 'marked');
+  assertEquals(calls, [['from', 'pos_deliveries'], ['update', { alert_handled_at: mark.at, alert_handled_by: 'register', alert_handled_device_id: 'dev', alert_choice: 'in_house' }], ['eq', 'id', 'd'], ['is', 'alert_handled_at', null]]);
+  rows = [];
+  assertEquals(await pg.markAlert('d', mark), 'already');
 });

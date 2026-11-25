@@ -34,8 +34,23 @@ export interface DeliveryRow {
   driver_tip_cents: number; cancellation_fee_cents: number | null; billing_mode: 'self' | 'platform';
   /** 116: who canceled ('restaurant' = a POS cancel, 'provider' = Uber canceled / returned); set with state canceled. */
   canceled_by: 'restaurant' | 'provider' | null;
+  /** 118: the every-register toast's shared "handled" mark — set once, by the first register (absent before 118 → null). */
+  alert_handled_at: string | null;
+  alert_handled_by: string | null;
+  alert_handled_device_id: string | null;
+  alert_choice: AlertChoice | null;
   provider_environment: 'sandbox' | 'production'; failure_code: string | null; failure_message: string | null;
   last_polled_at: string | null; delivered_at: string | null; canceled_at: string | null; created_at: string; updated_at: string;
+}
+
+/** 118: what staff did about a provider cancel / a failed booking. */
+export type AlertChoice = 'in_house' | 'acknowledged';
+export const ALERT_CHOICES: readonly AlertChoice[] = ['in_house', 'acknowledged'];
+
+/** A delivery + the order facts the every-register toast shows (staff only). */
+export interface RestaurantDelivery {
+  delivery: DeliveryRow;
+  order: { ticket_label: string | null; customer_name: string | null; customer_phone_e164: string | null };
 }
 
 export type NewDelivery = Pick<DeliveryRow, 'pos_order_id' | 'restaurant_id' | 'provider' | 'action_id' | 'provider_quote_ref' |
@@ -75,10 +90,21 @@ export interface DeliveryStore {
   latestDelivery(restaurantId: string, orderId: string): Promise<DeliveryRow | null>;
   /** Claim the right to refresh from the provider: last_polled_at null or older than `cutoffIso` → set to now, true. */
   claimPoll(id: string, cutoffIso: string, nowIso: string): Promise<boolean>;
-  beginAction(a: { actionId: string; restaurantId: string; deviceId: string; orderId: string; action: 'dispatch' | 'cancel'; request: Record<string, unknown>; actor: string | null; approver: string | null; deviceTime: string | null }): Promise<ActionBeginOutcome>;
+  /**
+   * 118: the restaurant's deliveries for the every-register toast — the LATEST delivery of each POS order that is live
+   * (booking / booked) or changed at / after `sinceIso` (the business-day start); + the order's ticket label and the
+   * customer's name / phone. At most `limit` orders, newest first.
+   */
+  restaurantDeliveries(restaurantId: string, sinceIso: string, limit: number): Promise<RestaurantDelivery[]>;
+  /** 118: set the shared handled mark once — 'marked', or 'already' when another register got there first. */
+  markAlert(id: string, mark: { at: string; by: string; deviceId: string; choice: AlertChoice }): Promise<'marked' | 'already'>;
+  beginAction(a: { actionId: string; restaurantId: string; deviceId: string; orderId: string; action: DeliveryAction; request: Record<string, unknown>; actor: string | null; approver: string | null; deviceTime: string | null }): Promise<ActionBeginOutcome>;
   finishAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop' | 'error', error?: { status: number; code: string; message: string } | null): Promise<void>;
   releaseAction(actionId: string, deviceId: string): Promise<void>;
 }
+
+/** pos_delivery_actions.action (115: dispatch / cancel; 118: + alert). */
+export type DeliveryAction = 'dispatch' | 'cancel' | 'alert';
 
 export class DeliveryStoreError extends Error {
   constructor(readonly code: 'invalid_input' | 'guard', message: string) {
@@ -158,7 +184,8 @@ export class MemoryDeliveryStore implements DeliveryStore {
       id: `00000000-0000-4000-8000-${String(++this.seq).padStart(12, '0')}`, state: 'booking', provider_delivery_id: null, tracking_url: null,
       provider_status: null, status_updated_at: null, dispatched_at: null, pickup_ready_dt: null, courier: null, pickup_eta: null, dropoff_eta: null,
       provider_fee_cents: null, restaurant_absorbs_cents: null, cancellation_fee_cents: null, failure_code: null, failure_message: null,
-      canceled_by: null, last_polled_at: null, delivered_at: null, canceled_at: null, created_at: now, updated_at: now, ...structuredClone(d),
+      canceled_by: null, alert_handled_at: null, alert_handled_by: null, alert_handled_device_id: null, alert_choice: null,
+      last_polled_at: null, delivered_at: null, canceled_at: null, created_at: now, updated_at: now, ...structuredClone(d),
     };
     this.deliveries.push(row);
     return Promise.resolve({ outcome: 'claimed' as const, delivery: structuredClone(row) });
@@ -171,6 +198,9 @@ export class MemoryDeliveryStore implements DeliveryStore {
     }
     if (patch.state && patch.state !== row.state && !NEXT[row.state].includes(patch.state)) {
       return Promise.reject(new DeliveryStoreError('guard', `${row.state} → ${patch.state}`));
+    }
+    if (['alert_handled_at', 'alert_handled_by', 'alert_handled_device_id', 'alert_choice'].some((k) => k in patch)) {
+      return Promise.reject(new DeliveryStoreError('guard', 'the alert mark is set through markAlert only'));
     }
     if ((row.state === 'failed' || row.state === 'canceled') && Object.keys(patch).some((k) => k !== 'last_polled_at')) {
       return Promise.reject(new DeliveryStoreError('guard', `${row.state} is final`));
@@ -197,6 +227,31 @@ export class MemoryDeliveryStore implements DeliveryStore {
     if (!row || (row.last_polled_at !== null && row.last_polled_at >= cutoffIso)) return Promise.resolve(false);
     row.last_polled_at = nowIso;
     return Promise.resolve(true);
+  }
+  restaurantDeliveries(rid: string, sinceIso: string, limit: number) {
+    const latest = new Map<string, DeliveryRow>();
+    for (const r of this.deliveries) if (r.restaurant_id === rid) latest.set(r.pos_order_id, r); // insertion order = creation order
+    const out = [...latest.values()]
+      .filter((r) => r.state === 'booking' || r.state === 'booked' || r.updated_at >= sinceIso)
+      .reverse()
+      .slice(0, limit)
+      .map((r) => {
+        const o = this.posOrders.get(r.pos_order_id);
+        return {
+          delivery: structuredClone(r),
+          order: { ticket_label: o?.ticket_label ?? null, customer_name: o?.customer_name ?? null, customer_phone_e164: o?.customer_phone_e164 ?? null },
+        };
+      });
+    return Promise.resolve(out);
+  }
+  markAlert(id: string, mark: { at: string; by: string; deviceId: string; choice: AlertChoice }) {
+    const row = this.deliveries.find((x) => x.id === id);
+    if (!row) return Promise.reject(new DeliveryStoreError('invalid_input', 'no such delivery'));
+    if (!ALERT_CHOICES.includes(mark.choice)) return Promise.reject(new DeliveryStoreError('invalid_input', 'choice'));
+    // 118 guard, mirrored: set once (also on a final canceled / failed row — the only change a final row allows)
+    if (row.alert_handled_at !== null) return Promise.resolve('already' as const);
+    Object.assign(row, { alert_handled_at: mark.at, alert_handled_by: mark.by, alert_handled_device_id: mark.deviceId, alert_choice: mark.choice, updated_at: this.iso() });
+    return Promise.resolve('marked' as const);
   }
   beginAction(a: Parameters<DeliveryStore['beginAction']>[0]): Promise<ActionBeginOutcome> {
     const cur = this.actions.get(a.actionId);
@@ -239,7 +294,9 @@ const iso = (v: unknown): string | null => {
 };
 function normDelivery(r: any): DeliveryRow {
   const out = { ...r };
-  for (const k of ['status_updated_at', 'dispatched_at', 'pickup_ready_dt', 'pickup_eta', 'dropoff_eta', 'last_polled_at', 'delivered_at', 'canceled_at', 'created_at', 'updated_at']) out[k] = iso(r[k]);
+  for (const k of ['status_updated_at', 'dispatched_at', 'pickup_ready_dt', 'pickup_eta', 'dropoff_eta', 'last_polled_at', 'delivered_at', 'canceled_at', 'created_at', 'updated_at', 'alert_handled_at']) out[k] = iso(r[k]);
+  // 118 columns (absent before it is applied)
+  for (const k of ['alert_handled_by', 'alert_handled_device_id', 'alert_choice']) out[k] = r[k] ?? null;
   return out as DeliveryRow;
 }
 
@@ -315,6 +372,36 @@ export class PgDeliveryStore implements DeliveryStore {
     const r = await this.rows<any[]>('pos_deliveries poll claim', this.db.from('pos_deliveries').update({ last_polled_at: nowIso }).eq('id', id)
       .or(`last_polled_at.is.null,last_polled_at.lt.${cutoffIso}`).select('id'));
     return (r ?? []).length > 0;
+  }
+  async restaurantDeliveries(rid: string, sinceIso: string, limit: number): Promise<RestaurantDelivery[]> {
+    // live, or changed since the business-day start; newest first (118 index pos_deliveries_restaurant_recent). Rows of
+    // one order: the newest is the latest (one live booking per order; a new one only after the previous ended).
+    const rows = await this.rows<any[]>('pos_deliveries read', this.db.from('pos_deliveries').select('*').eq('restaurant_id', rid)
+      .or(`state.in.(booking,booked),updated_at.gte."${sinceIso}"`).order('created_at', { ascending: false }).limit(limit * 4));
+    const latest = new Map<string, DeliveryRow>();
+    for (const r of rows ?? []) if (!latest.has(r.pos_order_id)) latest.set(r.pos_order_id, normDelivery(r));
+    const list = [...latest.values()].slice(0, limit);
+    if (!list.length) return [];
+    const orders = await this.rows<any[]>('pos_orders read', this.db.from('pos_orders')
+      .select('order_id, customer_name, customer_phone_e164, ticket_prefix, ticket_counter').eq('restaurant_id', rid).in('order_id', list.map((d) => d.pos_order_id)));
+    const byId = new Map((orders ?? []).map((o) => [o.order_id, o]));
+    return list.map((d) => {
+      const o = byId.get(d.pos_order_id);
+      return {
+        delivery: d,
+        order: {
+          ticket_label: o && typeof o.ticket_prefix === 'string' && Number.isSafeInteger(Number(o.ticket_counter)) ? ticketLabel(o.ticket_prefix, Number(o.ticket_counter)) : null,
+          customer_name: o?.customer_name ?? null, customer_phone_e164: o?.customer_phone_e164 ?? null,
+        },
+      };
+    });
+  }
+  async markAlert(id: string, mark: { at: string; by: string; deviceId: string; choice: AlertChoice }): Promise<'marked' | 'already'> {
+    // conditional on "not handled yet": two registers at once → one 'marked', the other 'already' (no guard error)
+    const r = await this.rows<any[]>('pos_deliveries alert mark', this.db.from('pos_deliveries')
+      .update({ alert_handled_at: mark.at, alert_handled_by: mark.by, alert_handled_device_id: mark.deviceId, alert_choice: mark.choice })
+      .eq('id', id).is('alert_handled_at', null).select('id'));
+    return (r ?? []).length > 0 ? 'marked' : 'already';
   }
   private async call<T>(fn: string, args: Record<string, unknown>): Promise<T> {
     const { data, error } = await this.db.rpc(fn, args);

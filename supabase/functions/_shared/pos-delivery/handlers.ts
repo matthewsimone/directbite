@@ -19,9 +19,12 @@ import { errorResult, okResult, parseJsonObject, type DeviceRequest, type Device
 import { DRIVER_TIP_MAX_CENTS, UUID_RE } from '../pos-sync/orderPayload.ts';
 import { deliveryFeeOf, tiersFromWire, PricingError } from '../pos-sync/orderPricing.ts';
 import type { MenuSnapshot } from '../pos-sync/menuSnapshot.ts';
-import { haversineDistanceMiles } from '../pos-v1/loader.ts';
+import { haversineDistanceMiles, isValidTimeZone } from '../pos-v1/loader.ts';
+import { businessDate } from '../pos-eod/rules.ts';
+import { BUSINESS_DAY_CUTOFF } from '../pos-sync/menuSnapshot.ts';
+import { localTimeToEpochMs } from '../pos-online/feedQuery.ts';
 import type { GeocodeResult } from './geocode.ts';
-import { DeliveryStoreError, type DeliveryRow, type DeliveryStore, type ProviderQuoteRow } from './store.ts';
+import { ALERT_CHOICES, DeliveryStoreError, type AlertChoice, type DeliveryAction, type DeliveryRow, type DeliveryStore, type ProviderQuoteRow } from './store.ts';
 import { scheduledPickupMs, UBER_RESTAURANT_COLUMNS, uberCancel, uberCreate, uberGet, uberQuote, type UberDeps } from './uberCalls.ts';
 
 // deno-lint-ignore no-explicit-any
@@ -98,6 +101,22 @@ export interface DeliveryWire {
   cancellation_fee_cents: number | null;
   canceled_by: 'restaurant' | 'provider' | null;
   failure_code: string | null; updated_at: string;
+  /**
+   * 118 (additive) — the every-register toast: 'provider_canceled' (Uber canceled / returned / failed it) or
+   * 'booking_failed' (the booking failed for good — not a rate limit, which the register retries); null = nothing to
+   * show. The shared handled mark: once one register handles it, every register clears the toast on its next poll.
+   */
+  alert: DeliveryAlert | null;
+  alert_handled_at: string | null;
+  alert_handled_by: string | null;
+  alert_choice: AlertChoice | null;
+}
+export type DeliveryAlert = 'provider_canceled' | 'booking_failed';
+/** What the toast is about (null = nothing). Evaluated on an order's LATEST delivery (a re-dispatch supersedes it). */
+export function alertOf(r: DeliveryRow): DeliveryAlert | null {
+  if (r.state === 'canceled' && r.canceled_by === 'provider') return 'provider_canceled';
+  if (r.state === 'failed' && r.failure_code !== 'rate_limited') return 'booking_failed';
+  return null;
 }
 export function deliveryWire(r: DeliveryRow): DeliveryWire {
   return {
@@ -108,6 +127,7 @@ export function deliveryWire(r: DeliveryRow): DeliveryWire {
     fee_delta_cents: r.provider_fee_cents != null && r.quoted_provider_fee_cents != null ? r.provider_fee_cents - r.quoted_provider_fee_cents : 0,
     cancellation_fee_cents: r.cancellation_fee_cents ?? null, canceled_by: r.canceled_by ?? null,
     failure_code: r.failure_code, updated_at: r.updated_at,
+    alert: alertOf(r), alert_handled_at: r.alert_handled_at ?? null, alert_handled_by: r.alert_handled_by ?? null, alert_choice: r.alert_choice ?? null,
   };
 }
 
@@ -239,7 +259,7 @@ async function retryLater(c: Call, retryAfter: unknown): Promise<DeviceResult> {
 }
 
 type Begun = { go: true; stale: boolean } | { go: false; result: DeviceResult };
-async function begin(c: Call, action: 'dispatch' | 'cancel', request: Row, who: { actor: string | null; approver: string | null }, dt: string | null): Promise<Begun> {
+async function begin(c: Call, action: DeliveryAction, request: Row, who: { actor: string | null; approver: string | null }, dt: string | null): Promise<Begun> {
   const b = await c.deps.delivery.beginAction({ actionId: c.actionId, restaurantId: c.rid, deviceId: c.deviceId, orderId: c.orderId, action, request, actor: who.actor, approver: who.approver, deviceTime: dt });
   if (b.outcome === 'action_id_reused') return { go: false, result: errorResult(409, 'action_id_reused', 'this action_id was used for another request') };
   if (b.outcome === 'duplicate') {
@@ -469,40 +489,116 @@ const DONE_DELIVERED = new Set(['delivered']);
 // + 'failed' (cp23b, Matt): online treats it as terminal (uber-webhook/index.ts :124-129)
 const DONE_CANCELED = new Set(['canceled', 'returned', 'failed']);
 
+/** Refresh a booked delivery from the provider at most every POLL_EVERY_MS (restaurant-wide: claimPoll is shared). */
+async function refreshBooked(deps: DeliveryDeps, rid: string, row: DeliveryRow, cache: { restaurant?: Row | null }, label: string): Promise<DeliveryRow> {
+  const u = uberDeps(deps);
+  if (row.state !== 'booked' || !row.provider_delivery_id || !u) return row;
+  const nowMs = deps.now();
+  const cutoff = new Date(nowMs - POLL_EVERY_MS).toISOString();
+  if (row.last_polled_at !== null && row.last_polled_at >= cutoff) return row; // refreshed < 30 s ago by some register
+  if (!(await deps.delivery.claimPoll(row.id, cutoff, new Date(nowMs).toISOString()))) return row;
+  if (cache.restaurant === undefined) cache.restaurant = await readRestaurant(deps, rid);
+  const g = cache.restaurant ? await uberGet(u, cache.restaurant, row.provider_delivery_id) : null;
+  if (g && g.success) {
+    const now = new Date(nowMs).toISOString();
+    const patch: Row = { courier: g.courier, pickup_eta: g.pickup_eta, dropoff_eta: g.dropoff_eta };
+    if (g.tracking_url) patch.tracking_url = g.tracking_url;
+    if (g.status && g.status !== row.provider_status) Object.assign(patch, { provider_status: g.status, status_updated_at: now });
+    if (g.status && DONE_DELIVERED.has(g.status)) Object.assign(patch, { state: 'delivered', delivered_at: now });
+    if (g.status && DONE_CANCELED.has(g.status)) Object.assign(patch, { state: 'canceled', canceled_by: 'provider', canceled_at: now });
+    try {
+      return await deps.delivery.updateDelivery(row.id, patch);
+    } catch (err) {
+      if (!(err instanceof DeliveryStoreError)) throw err;
+      deps.log('delivery_status_apply_refused', { order_id: label, error: err.message });
+    }
+  } else if (g) deps.log('delivery_status_refresh_failed', { order_id: label, error: g.error });
+  return row;
+}
+
+/** 118: the restaurant-wide read answers at most this many orders. */
+export const RESTAURANT_SCOPE_LIMIT = 100;
+
 export async function handleDeliveryStatus(req: DeviceRequest, deps: DeliveryDeps): Promise<DeviceResult> {
   const au = await auth(req, deps);
   if ('result' in au) return au.result!;
   const { pr, body } = au;
   const rid = pr.restaurant_id;
+  if (body.scope !== undefined && body.scope !== null) {
+    if (body.scope !== 'restaurant') return bad('scope', "scope must be 'restaurant' or absent");
+    if (body.order_ids !== undefined && body.order_ids !== null) return bad('order_ids', "scope 'restaurant' takes no order_ids");
+    return restaurantStatus(deps, rid);
+  }
   const ids = body.order_ids;
   if (!Array.isArray(ids) || ids.length < 1 || ids.length > 50 || !ids.every((x) => typeof x === 'string' && UUID_RE.test(x))) return bad('order_ids', 'order_ids: 1–50 order ids');
-  const u = uberDeps(deps);
   const out: { order_id: string; delivery: DeliveryWire | null }[] = [];
-  let restaurant: Row | null | undefined;
+  const cache: { restaurant?: Row | null } = {};
   for (const raw of [...new Set(ids.map((x: string) => x.toLowerCase()))] as string[]) {
     let row = await deps.delivery.latestDelivery(rid, raw);
-    if (row && row.state === 'booked' && row.provider_delivery_id && u) {
-      const nowMs = deps.now();
-      if (await deps.delivery.claimPoll(row.id, new Date(nowMs - POLL_EVERY_MS).toISOString(), new Date(nowMs).toISOString())) {
-        if (restaurant === undefined) restaurant = await readRestaurant(deps, rid);
-        const g = restaurant ? await uberGet(u, restaurant, row.provider_delivery_id) : null;
-        if (g && g.success) {
-          const now = new Date(nowMs).toISOString();
-          const patch: Row = { courier: g.courier, pickup_eta: g.pickup_eta, dropoff_eta: g.dropoff_eta };
-          if (g.tracking_url) patch.tracking_url = g.tracking_url;
-          if (g.status && g.status !== row.provider_status) Object.assign(patch, { provider_status: g.status, status_updated_at: now });
-          if (g.status && DONE_DELIVERED.has(g.status)) Object.assign(patch, { state: 'delivered', delivered_at: now });
-          if (g.status && DONE_CANCELED.has(g.status)) Object.assign(patch, { state: 'canceled', canceled_by: 'provider', canceled_at: now });
-          try {
-            row = await deps.delivery.updateDelivery(row.id, patch);
-          } catch (err) {
-            if (!(err instanceof DeliveryStoreError)) throw err;
-            deps.log('delivery_status_apply_refused', { order_id: raw, error: err.message });
-          }
-        } else if (g) deps.log('delivery_status_refresh_failed', { order_id: raw, error: g.error });
-      }
-    }
+    if (row) row = await refreshBooked(deps, rid, row, cache, raw);
     out.push({ order_id: raw, delivery: row ? deliveryWire(row) : null });
   }
   return okResult({ deliveries: out, server_time: isoNow(deps) });
+}
+
+/**
+ * 118 — scope 'restaurant' (POS-005, the every-register toast): every POS order's LATEST delivery that is live
+ * (booking / booked) or changed since the business-day start (the restaurant's time zone, 04:00 cutoff — the feed's
+ * rule), newest first, with the ticket label and the customer's name / phone (staff only — device-authed). Booked
+ * deliveries are refreshed exactly as in the order_ids mode (at most once per 30 s per delivery, shared by all
+ * registers).
+ */
+async function restaurantStatus(deps: DeliveryDeps, rid: string): Promise<DeviceResult> {
+  const { data: r, error } = await deps.db.from('restaurants').select('timezone').eq('id', rid).maybeSingle();
+  if (error) throw new Error(`restaurants read failed: ${error.message}`);
+  if (!r || !isValidTimeZone(r.timezone)) return errorResult(500, 'delivery_config_invalid', 'the restaurant has no valid time zone');
+  const nowMs = deps.now();
+  const day = businessDate(nowMs, r.timezone, BUSINESS_DAY_CUTOFF);
+  const since = new Date(localTimeToEpochMs(day, BUSINESS_DAY_CUTOFF, r.timezone)).toISOString();
+  const rows = await deps.delivery.restaurantDeliveries(rid, since, RESTAURANT_SCOPE_LIMIT);
+  const cache: { restaurant?: Row | null } = {};
+  const out = [];
+  for (const x of rows) {
+    const d = await refreshBooked(deps, rid, x.delivery, cache, x.delivery.pos_order_id);
+    out.push({
+      order_id: d.pos_order_id, ticket_label: x.order.ticket_label,
+      customer: { name: x.order.customer_name, phone: x.order.customer_phone_e164 },
+      delivery: deliveryWire(d),
+    });
+  }
+  return okResult({ deliveries: out, business_day: day, server_time: isoNow(deps) });
+}
+
+// ---- pos-v1-delivery-alert (118) ---------------------------------------------------------------------------------
+
+/**
+ * The every-register toast's shared "handled" mark (POS-005): { action_id, restaurant_id, order_id, delivery_id,
+ * choice: in_house | acknowledged, actor_staff_id, approver_staff_id, device_time }. Idempotent by action_id
+ * (pos_delivery_actions, action 'alert'). The FIRST register wins — set once; another register's mark answers noop
+ * with the existing mark. Every register clears the toast on its next status poll (alert_handled_at set).
+ *   - the order's latest delivery isn't `delivery_id` (re-dispatched meanwhile) → 409 delivery_changed (+ the latest)
+ *   - nothing to handle (no provider cancel / failed booking) → 400 no_alert
+ * Errors are stored (a resend replays them). No provider call.
+ */
+export async function handleDeliveryAlert(req: DeviceRequest, deps: DeliveryDeps): Promise<DeviceResult> {
+  const au = await auth(req, deps);
+  if ('result' in au) return au.result!;
+  const { pr, body } = au;
+  const rid = pr.restaurant_id;
+  if (typeof body.action_id !== 'string' || !UUID_RE.test(body.action_id)) return bad('action_id', 'action_id must be a UUID');
+  if (typeof body.order_id !== 'string' || !UUID_RE.test(body.order_id)) return bad('order_id', 'order_id must be a UUID');
+  if (typeof body.delivery_id !== 'string' || !UUID_RE.test(body.delivery_id)) return bad('delivery_id', 'delivery_id must be a UUID');
+  if (!ALERT_CHOICES.includes(body.choice)) return bad('choice', `choice must be ${ALERT_CHOICES.join(' or ')}`);
+  const who = whoOf(body);
+  if (isResult(who)) return who;
+  const c: Call = { deps, rid, deviceId: pr.device_id, actionId: body.action_id.toLowerCase(), orderId: body.order_id.toLowerCase() };
+  const b = await begin(c, 'alert', requestOf(body), who, deviceTime(body.device_time));
+  if (!b.go) return b.result;
+  if (b.stale) deps.log('delivery_alert_rerun', { action_id: c.actionId, order_id: c.orderId }); // set-once: a re-run is safe
+  const row = await deps.delivery.latestDelivery(rid, c.orderId);
+  if (row && row.id !== body.delivery_id.toLowerCase()) return stored(c, 409, 'delivery_changed', 'the order has a newer delivery — refresh');
+  if (!row || alertOf(row) === null) return stored(c, 400, 'no_alert', 'nothing to handle on this delivery');
+  const marked = await deps.delivery.markAlert(row.id, { at: isoNow(deps), by: who.actor ?? 'register', deviceId: c.deviceId, choice: body.choice as AlertChoice });
+  await deps.delivery.finishAction(c.actionId, c.deviceId, marked === 'marked' ? 'applied' : 'noop');
+  return ok(c, marked === 'marked' ? 'applied' : 'noop');
 }
