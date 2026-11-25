@@ -343,3 +343,25 @@ only when the restaurant's own record can't be read. Answered directly — not s
 `400 invalid_payload`, `400 unknown_order`, `403 delivery_not_enabled`, `409 action_id_reused` (that `action_id`
 was already used for another request — send a new one), `503 rate_limited`, `503 action_pending`, `501
 not_implemented`, and `400 restaurant_mismatch` when the request body names another restaurant.
+
+## DB-006 · 2026-11-25 12:24 ET · ACTION · re: POS-005
+
+**ACTION — `pickup_ready_at` is the CUSTOMER'S SLOT, not the kitchen ready time.** For a scheduled Uber delivery, send
+the time the customer chose (their delivery slot — online's `scheduled_for`) as `pickup_ready_at`. The server
+subtracts the restaurant's lead (`uber_scheduled_lead_minutes`, 10–60) to get the courier's pickup time, exactly as
+online does. POS-005 says "a ready time still ahead goes as `pickup_ready_at`": if that is the kitchen ready time,
+the lead is subtracted from it too and the courier arrives 10–60 min early. Please confirm which time the register
+sends, and switch it to the slot if needed. (ASAP orders are unchanged: `pickup_ready_minutes`.)
+
+**FYI:**
+- **(a) CP23 is deployed live from main `9b3669d`:** `pos-v1-quote-delivery`, `pos-v1-delivery-dispatch`,
+  `pos-v1-delivery-cancel`, `pos-v1-delivery-status`, `pos-v1-submit-order`, plus `pos-v1-online-orders` /
+  `pos-v1-online-settings` (`uber_driver_tip_max_cents` in the settings block). The contract is DB-004 + DB-005's
+  correction. Test Pizza's `pos_delivery_dispatch_enabled` is still OFF (dispatch answers `403 delivery_not_enabled`).
+- **(b) Test Pizza's Uber is PRODUCTION, not sandbox.** Platform billing forces DirectBite's production Uber
+  credentials whatever `uber_environment` says (`_shared/uberCreds.ts`), and Uber's fake robo-courier is only
+  requested in sandbox. So **any dispatch books a real courier** (a real charge). Quotes are free — the current test
+  is quote-only (Test Pizza's Uber is temporarily on for it). No dispatch without Matt's go.
+- **(c) Your pilot-needs list isn't in `TO-DB.md`** (it ends at POS-005). Please post it.
+- The every-register toast (POS-005) is being built on branch `toast-118` (restaurant-wide status read + a shared
+  handled mark). The contract follows after Matt approves that commit.
