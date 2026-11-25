@@ -326,3 +326,39 @@ Deno.test('print: unknown / unwritten order, another restaurant\'s order, bad pa
   ]) assertEquals(err(await w.print(bad)).code, 'invalid_payload', JSON.stringify(bad));
   assertEquals(w.logs(row.id), []);
 });
+
+// ---- logging (live print-result 400s, 2026-11-24) ------------------------------------------------------
+
+Deno.test('RESULT_DEBUG_LOG: one line per RESULT call — raw body, status + response, device_id, action_id; none for a claim; never a token', async () => {
+  const w = await world();
+  const row = ordrRow(w.nowIso());
+  w.db.insertRow('orders', row);
+  const before = w.h.logs.length;
+  await w.print({ order_id: row.id, op: 'claim', stations: [COUNTER] });
+  const body = { action_id: crypto.randomUUID(), order_id: row.id, op: 'result', variant: 'manual', result: 'printed', station: COUNTER };
+  const res = await w.print(body);
+  const lines = w.h.logs.slice(before).map((l) => JSON.parse(l)).filter((l) => l.event === 'print_result_debug');
+  assertEquals(lines.length, 1);
+  assertEquals([lines[0].device_id, lines[0].action_id, lines[0].status], [w.A.device_id, body.action_id, 200]);
+  assertEquals(JSON.parse(lines[0].request).station, COUNTER);
+  assertEquals(lines[0].response, res.body);
+  assert(!w.h.logs.slice(before).some((l) => l.includes('odt_')), 'no device token in the log');
+});
+
+Deno.test('logErrorResponse: every 4xx / 5xx → status + code + field (no body); 200 → nothing; not JSON → status only', async () => {
+  const { logErrorResponse } = await import('../handlers.ts');
+  const logs: Record<string, unknown>[] = [];
+  const log = (event: string, data: Record<string, unknown> = {}) => void logs.push({ event, ...data });
+  const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  const r400 = json(400, { error: { code: 'invalid_payload', message: 'action_id must be a UUID', field: 'action_id' } });
+  assertEquals(await logErrorResponse(log, r400), r400);
+  assertEquals(await r400.json(), { error: { code: 'invalid_payload', message: 'action_id must be a UUID', field: 'action_id' } }, 'the body still reads');
+  await logErrorResponse(log, json(500, { error: { code: 'internal_error', message: 'x' } }));
+  await logErrorResponse(log, json(200, { ok: true }));
+  await logErrorResponse(log, new Response('oops', { status: 502 }));
+  assertEquals(logs, [
+    { event: 'error_response', status: 400, code: 'invalid_payload', field: 'action_id' },
+    { event: 'error_response', status: 500, code: 'internal_error', field: null },
+    { event: 'error_response', status: 502, code: null, field: null },
+  ]);
+});

@@ -236,7 +236,65 @@ function stationProblem(s: unknown, items: number, field: string): DeviceResult 
   return null;
 }
 
+// ---- logging -----------------------------------------------------------------------------------------------
+
+/**
+ * TEMPORARY — REMOVE AFTER CP19. Live bug (Test Pizza, 2026-11-24): every pos-v1-online-print RESULT call answered
+ * 400. While true, each RESULT call logs one line: the raw request body (no token — headers are never logged; the
+ * device id comes from x-ordr-device-id), the response status + body, tagged device_id and action_id.
+ */
+export const RESULT_DEBUG_LOG = true;
+const DEBUG_BODY_MAX = 8192;
+
+/**
+ * Every 4xx / 5xx answer of a pos-v1-online-* function — incl. the ones handleDeviceHttp gives itself (405, the
+ * version gate, an oversized body, 500 internal_error): one log line with the status, the error code and the field.
+ * Never a body, a token or PII. Never throws, never changes the response.
+ */
+export async function logErrorResponse(log: (event: string, data?: Record<string, unknown>) => void, res: Response): Promise<Response> {
+  if (res.status >= 400) {
+    let code: string | null = null;
+    let field: string | null = null;
+    try {
+      const e = (await res.clone().json())?.error;
+      code = typeof e?.code === 'string' ? e.code : null;
+      field = typeof e?.field === 'string' ? e.field : null;
+    } catch {
+      // not JSON: status only
+    }
+    try {
+      log('error_response', { status: res.status, code, field });
+    } catch {
+      // a broken logger must never break a request
+    }
+  }
+  return res;
+}
+
 export async function handleOnlinePrint(req: DeviceRequest, deps: OnlineDeps): Promise<DeviceResult> {
+  const res = await handleOnlinePrintInner(req, deps);
+  if (RESULT_DEBUG_LOG) {
+    let body: Row | null = null;
+    try {
+      const v = JSON.parse(req.bodyText);
+      body = v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+    } catch {
+      body = null;
+    }
+    if (body?.op === 'result') {
+      deps.log('print_result_debug', {
+        device_id: req.headers.get('x-ordr-device-id'),
+        action_id: typeof body.action_id === 'string' ? body.action_id : null,
+        status: res.status,
+        request: req.bodyText.slice(0, DEBUG_BODY_MAX),
+        response: res.body,
+      });
+    }
+  }
+  return res;
+}
+
+async function handleOnlinePrintInner(req: DeviceRequest, deps: OnlineDeps): Promise<DeviceResult> {
   const a = await authenticateDevice(req.headers, deps);
   if (!a.ok) return a.result;
   const parsed = parseJsonObject(req.bodyText);

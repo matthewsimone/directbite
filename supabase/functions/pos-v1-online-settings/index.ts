@@ -11,7 +11,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { handleDeviceHttp } from "../_shared/pos-sync/http.ts";
-import { handleOnlineSettings } from "../_shared/pos-online/handlers.ts";
+import { handleOnlineSettings, logErrorResponse } from "../_shared/pos-online/handlers.ts";
 import { PgOnlineStore } from "../_shared/pos-online/store.ts";
 import { supabaseSnapshotDb } from "../_shared/pos-sync/menuSnapshot.ts";
 import { consoleDeviceLog } from "../_shared/pos-device/log.ts";
@@ -27,6 +27,10 @@ const deps = {
   snapshotDb: supabaseSnapshotDb(supabase),
 };
 
-Deno.serve((req: Request) =>
-  handleDeviceHttp(req, (r) => handleOnlineSettings(r, deps), (msg) => deps.log("internal_error", { error: msg }))
+// Every 4xx / 5xx is logged (status + error code + field — never a body or token): logErrorResponse.
+Deno.serve(async (req: Request) =>
+  logErrorResponse(
+    deps.log,
+    await handleDeviceHttp(req, (r) => handleOnlineSettings(r, deps), (msg) => deps.log("internal_error", { error: msg })),
+  )
 );

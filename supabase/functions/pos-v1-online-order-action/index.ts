@@ -11,7 +11,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { handleDeviceHttp } from "../_shared/pos-sync/http.ts";
-import { handleOnlineOrderAction } from "../_shared/pos-online/handlers.ts";
+import { handleOnlineOrderAction, logErrorResponse } from "../_shared/pos-online/handlers.ts";
 import { makeReadyEmail } from "../_shared/pos-online/readyEmail.ts";
 import { PgOnlineStore } from "../_shared/pos-online/store.ts";
 import { consoleDeviceLog } from "../_shared/pos-device/log.ts";
@@ -28,6 +28,10 @@ const deps = {
   readyEmail: makeReadyEmail({ supabaseUrl: Deno.env.get("SUPABASE_URL")!, anonKey: Deno.env.get("SUPABASE_ANON_KEY") ?? "", log }),
 };
 
-Deno.serve((req: Request) =>
-  handleDeviceHttp(req, (r) => handleOnlineOrderAction(r, deps), (msg) => deps.log("internal_error", { error: msg }))
+// Every 4xx / 5xx is logged (status + error code + field — never a body or token): logErrorResponse.
+Deno.serve(async (req: Request) =>
+  logErrorResponse(
+    deps.log,
+    await handleDeviceHttp(req, (r) => handleOnlineOrderAction(r, deps), (msg) => deps.log("internal_error", { error: msg })),
+  )
 );
