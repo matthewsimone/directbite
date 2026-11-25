@@ -123,6 +123,8 @@ export async function buildSettings(
     online_auto_print_enabled: pos.online_auto_print_enabled,
     kitchenhub_auto_print_enabled: pos.kitchenhub_auto_print_enabled,
     pos_online_orders_enabled: pos.pos_online_orders_enabled,
+    // CP23 (additive): the POS hides Dispatch when off; pos-v1-delivery-dispatch still answers 403 delivery_not_enabled
+    pos_delivery_dispatch_enabled: pos.pos_delivery_dispatch_enabled === true,
     dsp_orders_enabled: dsp,
     delivery_providers: [
       { id: 'in_house', label: 'In-house', active: fulfillment === 'in_house' || fulfillment === 'both' },

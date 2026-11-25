@@ -612,6 +612,11 @@ Deno.test('CP23 delivery: quoted reads pos_delivery_quotes, uber reads pos_deliv
   // a malformed driver tip is a payload error
   const bad = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: -1 } as never } });
   assertEquals(errBody(await t.submit(bad)).code, 'invalid_payload');
+  // the driver tip cap (Matt): ≤ 500 — what the customer pays = what the driver receives (Uber gets min(tip, 500))
+  const over = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: 501 } as never } });
+  assertEquals([errBody(await t.submit(over)).code, errBody(await t.submit(over)).field], ['invalid_payload', 'delivery.uber.driver_tip_cents']);
+  const max = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: 500 } as never } });
+  assertEquals(okBody(await t.submit(max)).result, 'applied');
 });
 
 // ---- stored fields (items 2, 6, 8 columns) ---------------------------------------------------------

@@ -20,6 +20,8 @@ export interface OnlinePosSettings {
   pos_online_orders_enabled: boolean;
   online_auto_print_enabled: boolean;
   kitchenhub_auto_print_enabled: boolean;
+  /** CP23 (115): provider delivery dispatch for POS orders (default false; false before 115 is applied). */
+  pos_delivery_dispatch_enabled: boolean;
 }
 /** No pos_restaurant_settings row = every default (handoff DDL). */
 export const DEFAULT_POS_SETTINGS: OnlinePosSettings = {
@@ -27,6 +29,7 @@ export const DEFAULT_POS_SETTINGS: OnlinePosSettings = {
   pos_online_orders_enabled: false,
   online_auto_print_enabled: false,
   kitchenhub_auto_print_enabled: false,
+  pos_delivery_dispatch_enabled: false,
 };
 
 export type ClaimOutcome =
@@ -308,8 +311,8 @@ export class MemoryOnlineStore implements OnlineStore {
   getSettings(restaurantId: string): Promise<OnlinePosSettings | null> {
     const s = this.settings.get(restaurantId);
     if (!s) return Promise.resolve(null);
-    const { print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled } = s;
-    return Promise.resolve({ print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled });
+    const { print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled, pos_delivery_dispatch_enabled } = s;
+    return Promise.resolve({ print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled, pos_delivery_dispatch_enabled: pos_delivery_dispatch_enabled === true });
   }
 
   private activeDevice(deviceId: string, restaurantId: string): boolean {
@@ -675,13 +678,22 @@ export class PgOnlineStore implements OnlineStore {
     await this.call('pos_set_print_register', { p_restaurant_id: restaurantId, p_device_id: deviceId, p_updated_by: updatedBy });
   }
   async getSettings(restaurantId: string): Promise<OnlinePosSettings | null> {
+    // select * (not a column list): pos_delivery_dispatch_enabled arrives with 115 — before it is applied the column is
+    // absent and reads as false, so the live feed never breaks on the deploy order
     const { data, error } = await this.db
       .from('pos_restaurant_settings')
-      .select('print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled')
+      .select('*')
       .eq('restaurant_id', restaurantId)
       .maybeSingle();
     if (error) throw new Error(`pos_restaurant_settings read failed: ${error.message}`);
-    return data ?? null;
+    if (!data) return null;
+    return {
+      print_register_device_id: data.print_register_device_id ?? null,
+      pos_online_orders_enabled: data.pos_online_orders_enabled === true,
+      online_auto_print_enabled: data.online_auto_print_enabled === true,
+      kitchenhub_auto_print_enabled: data.kitchenhub_auto_print_enabled === true,
+      pos_delivery_dispatch_enabled: data.pos_delivery_dispatch_enabled === true,
+    };
   }
   claimPrint(c: ClaimInput) {
     return this.call<ClaimOutcome>('pos_claim_online_print', {

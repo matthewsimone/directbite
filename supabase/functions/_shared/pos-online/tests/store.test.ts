@@ -331,3 +331,22 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109–114 functions; er
   next = { data: null, error: { message: 'boom' } };
   await assertRejects(() => pg.claimPrint({ restaurantId: R1, channel: 'ordr', orderId: o, deviceId: DEV_A, stations: [COUNTER], printStatusPrinted: false }), Error, 'pos_claim_online_print failed');
 });
+
+Deno.test('PgOnlineStore.getSettings: select * — before 115 (no pos_delivery_dispatch_enabled column) it reads false; after, the column', async () => {
+  let row: Record<string, unknown> | null = { restaurant_id: R1, print_register_device_id: DEV_A, pos_online_orders_enabled: true, online_auto_print_enabled: true, kitchenhub_auto_print_enabled: false, updated_by: 'x' };
+  const cols: string[] = [];
+  const pg = new PgOnlineStore({
+    rpc: () => Promise.resolve({ data: null, error: null }),
+    from: () => {
+      // deno-lint-ignore no-explicit-any
+      const q: any = { select: (c: string) => { cols.push(c); return q; }, eq: () => q, maybeSingle: () => Promise.resolve({ data: row, error: null }) };
+      return q;
+    },
+  });
+  assertEquals(await pg.getSettings(R1), { print_register_device_id: DEV_A, pos_online_orders_enabled: true, online_auto_print_enabled: true, kitchenhub_auto_print_enabled: false, pos_delivery_dispatch_enabled: false });
+  row = { ...row, pos_delivery_dispatch_enabled: true };
+  assertEquals((await pg.getSettings(R1))!.pos_delivery_dispatch_enabled, true);
+  row = null;
+  assertEquals(await pg.getSettings(R1), null);
+  assertEquals(cols, ['*', '*', '*']);
+});

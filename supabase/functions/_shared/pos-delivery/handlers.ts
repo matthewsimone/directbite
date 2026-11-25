@@ -16,7 +16,7 @@
  */
 import { authenticateDevice, type AuthDeps } from '../pos-device/auth.ts';
 import { errorResult, okResult, parseJsonObject, type DeviceRequest, type DeviceResult } from '../pos-sync/http.ts';
-import { UUID_RE } from '../pos-sync/orderPayload.ts';
+import { DRIVER_TIP_MAX_CENTS, UUID_RE } from '../pos-sync/orderPayload.ts';
 import { deliveryFeeOf, tiersFromWire, PricingError } from '../pos-sync/orderPricing.ts';
 import type { MenuSnapshot } from '../pos-sync/menuSnapshot.ts';
 import { haversineDistanceMiles } from '../pos-v1/loader.ts';
@@ -319,7 +319,13 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
   if (!pq) return stored(c, 400, 'quote_unknown', 'the order has no Uber quote of this restaurant');
   const dq = await deps.delivery.getQuote(rid, pq.delivery_quote_id);
   if (!dq) return stored(c, 400, 'quote_unknown', 'the delivery quote is missing');
-  const tip = Number.isSafeInteger(d.uber?.driver_tip_cents) && d.uber.driver_tip_cents >= 0 ? d.uber.driver_tip_cents : 0;
+  const rawTip = d.uber?.driver_tip_cents;
+  if (!(rawTip === undefined || rawTip === null || (Number.isSafeInteger(rawTip) && rawTip >= 0 && rawTip <= DRIVER_TIP_MAX_CENTS))) {
+    // submit-order refuses it; an order stored before that rule never reaches Uber with a tip the driver won't get
+    await deps.delivery.finishAction(c.actionId, c.deviceId, 'error', { status: 400, code: 'invalid_payload', message: `delivery.uber.driver_tip_cents must be 0–${DRIVER_TIP_MAX_CENTS}` });
+    return errorResult(400, 'invalid_payload', `delivery.uber.driver_tip_cents must be 0–${DRIVER_TIP_MAX_CENTS}`, { field: 'delivery.uber.driver_tip_cents' });
+  }
+  const tip: number = typeof rawTip === 'number' ? rawTip : 0;
 
   const claim = await deps.delivery.claimDelivery({
     pos_order_id: c.orderId, restaurant_id: rid, provider: 'uber_direct', action_id: c.actionId, provider_quote_ref: pq.id, provider_quote_id: null,

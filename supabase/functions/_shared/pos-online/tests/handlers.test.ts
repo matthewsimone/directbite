@@ -393,3 +393,15 @@ Deno.test('LIVE BUG repro: the POS\'s real result request → 400 invalid_payloa
   }
   assertEquals(w.logs(row.id).length, 2, 'the UUID versions were recorded (tablet print_logs)');
 });
+
+// ---- CP23: pos_delivery_dispatch_enabled in the settings block (additive) ---------------------------------------
+
+Deno.test('settings: pos_delivery_dispatch_enabled travels in the feed settings (default false; on → true, a new hash); the POS parser still reads it', async () => {
+  const w = await world();
+  const s1 = ok<{ settings: OnlineSettingsWire }>(await w.poll()).settings;
+  assertEquals([s1.pos_delivery_dispatch_enabled, settingsProblem(s1)], [false, null]);
+  w.online.setFlags(R1, { pos_delivery_dispatch_enabled: true });
+  const s2 = ok<{ settings: OnlineSettingsWire }>(await w.poll({ if_none_match_settings: s1.hash })).settings;
+  assertEquals([s2.pos_delivery_dispatch_enabled, settingsProblem(s2)], [true, null]);
+  assertNotEquals(s2.hash, s1.hash);
+});

@@ -391,3 +391,18 @@ Deno.test('PgDeliveryStore: RPC + argument names match the 115 action functions'
     ['pos_delivery_action_release', ['p_action_id', 'p_device_id']],
   ]);
 });
+
+Deno.test('dispatch: a stored driver tip over 500 (an order from before the submit-order cap) → 400 invalid_payload, nothing sent to Uber', async () => {
+  const w = await world();
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  const id = w.posOrder(pq, {}, { uber: { quote_id: pq, driver_tip_cents: 600 } });
+  const r = await w.dispatch(id);
+  assertEquals([r.status, err(r).code, errBody(r).field], [400, 'invalid_payload', 'delivery.uber.driver_tip_cents']);
+  assertEquals(w.uber.calls.filter((c) => c.path.endsWith('/deliveries')).length, 0);
+  assertEquals(w.store.deliveries.length, 0);
+  // 500 exactly is fine and reaches Uber as 500
+  const ok500 = w.posOrder(pq, {}, { uber: { quote_id: pq, driver_tip_cents: 500 } });
+  ok(await w.dispatch(ok500));
+  assertEquals(w.uber.calls.find((c) => c.path.endsWith('/deliveries'))!.body!.tip, 500);
+});

@@ -454,6 +454,8 @@ export interface OnlineSettingsWire {
   print_trigger: 'received' | 'in_progress'; auto_print_copies: number; receipt_font: 'normal' | 'large';
   online_print_device_id: string | null; online_auto_print_enabled: boolean; kitchenhub_auto_print_enabled: boolean;
   pos_online_orders_enabled: boolean; dsp_orders_enabled: boolean;
+  /** CP23 (additive): provider delivery dispatch for POS orders is on for this restaurant. */
+  pos_delivery_dispatch_enabled: boolean;
   delivery_providers: { id: string; label: string; active: boolean }[];
   capabilities: { kitchenhub_menu_sync: boolean };
   kitchenhub_providers: { id: string; label: string; paused_until: string | null }[];
