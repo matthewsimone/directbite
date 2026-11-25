@@ -21,6 +21,7 @@ import { PgStaffStore } from "../_shared/pos-staff/store.ts";
 import { PgEodStore } from "../_shared/pos-eod/store.ts";
 import { consoleDeviceLog } from "../_shared/pos-device/log.ts";
 import { PgDeviceStore } from "../_shared/pos-device/store.ts";
+import { PgDeliveryStore } from "../_shared/pos-delivery/store.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -32,6 +33,8 @@ const deps = {
   current: new CurrentSnapshots(supabaseSnapshotDb(supabase), supabasePersistSnapshot(supabase)),
   staff: new PgStaffStore(supabase),
   eod: new PgEodStore(supabase),
+  // CP23 (migration 115): the stored delivery quotes the fee is derived from (fee_source quoted / uber)
+  deliveryQuotes: new PgDeliveryStore(supabase),
   now: () => Date.now(),
   log: consoleDeviceLog("pos-v1-submit-order"),
 };

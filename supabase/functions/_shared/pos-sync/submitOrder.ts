@@ -41,7 +41,7 @@ import { errorResult, okResult, parseJsonObject, type DeviceRequest, type Device
 import { buildMenuSnapshot, SnapshotError, type MenuSnapshot, type SnapshotDb } from './menuSnapshot.ts';
 import { CACHE_TTL_MS } from './menuSnapshotHandler.ts';
 import { cardDataPaths, findRedemptionKey, jsonDepth, MAX_DEPTH, paymentsShapeProblem, scannedPart, UUID_RE, validateOrderPayload, type OrderPayload } from './orderPayload.ts';
-import { availabilityViolation, diffBreakdowns, priceAgainstSnapshot, PricingError, ServerValidation } from './orderPricing.ts';
+import { availabilityViolation, diffBreakdowns, priceAgainstSnapshot, PricingError, ServerValidation, type DeliveryQuoteLookup } from './orderPricing.ts';
 import { decideVersion, type ApplyOutcome, type OrderHead, type OrderStore, type SubmitOrderOk } from './orderStore.ts';
 import { orderStaffFlags, type StaffContext } from '../pos-staff/flags.ts';
 import { orderPostZ, reverifyShifts } from '../pos-eod/handlers.ts';
@@ -78,6 +78,14 @@ export interface SubmitOrderDeps extends AuthDeps {
   /** Item 7: Zs for post_z; closed shifts to re-verify once payments arrive. */
   eod: EodStore;
   moduleHash?: string;
+  /**
+   * CP23: the stored delivery quotes (migration 115 — pos_delivery_quotes / pos_delivery_provider_quotes) the fee is
+   * derived from (fee_source quoted / uber). Absent → those fees are delivery_quote_unknown at the offline fee.
+   */
+  deliveryQuotes?: {
+    getQuote(restaurantId: string, id: string): Promise<{ distance_miles: string; in_radius: boolean; expires_at: string } | null>;
+    getProviderQuote(restaurantId: string, id: string): Promise<{ customer_fee_cents: number; expires_at: string } | null>;
+  };
 }
 
 const STAFF_FLAG_KEYS = ['unknown_actor', 'approval_missing', 'register_actor_after_staff'] as const;
@@ -199,9 +207,17 @@ export async function handleSubmitOrder(req: DeviceRequest, deps: SubmitOrderDep
   const unknown = !pinned;
   const snap = pinned ?? current;
   if (!snap) return invalid('no snapshot to price against', 'menu_snapshot_hash');
+  // CP23: the stored quote the delivery fee comes from (server data — never the device's cents)
+  const lookup: DeliveryQuoteLookup = {};
+  const dl = p.order_type === 'delivery' ? p.delivery : null;
+  if (dl && deps.deliveryQuotes) {
+    if (dl.fee_source === 'quoted' && typeof dl.quote_id === 'string') lookup.quote = await deps.deliveryQuotes.getQuote(rid, dl.quote_id);
+    const uq = (dl.uber as { quote_id?: unknown } | null)?.quote_id;
+    if (dl.fee_source === 'uber' && typeof uq === 'string') lookup.provider = await deps.deliveryQuotes.getProviderQuote(rid, uq);
+  }
   let priced: ReturnType<typeof priceAgainstSnapshot>;
   try {
-    priced = priceAgainstSnapshot(p, snap);
+    priced = priceAgainstSnapshot(p, snap, deps.deliveryQuotes ? lookup : undefined);
   } catch (err) {
     if (err instanceof PricingError) return errorResult(400, `pricing_error:${err.code}`, err.message);
     if (err instanceof ServerValidation) return errorResult(400, err.code, err.message, err.field ? { field: err.field } : {});

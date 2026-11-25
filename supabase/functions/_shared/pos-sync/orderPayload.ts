@@ -85,7 +85,8 @@ export interface WirePayment {
   void_reason: string | null;
 }
 
-export type DeliveryFeeSource = 'pending' | 'quoted' | 'offline' | 'override';
+/** 'uber' (CP23): a provider fee from pos_delivery_provider_quotes by delivery.uber.quote_id. */
+export type DeliveryFeeSource = 'pending' | 'quoted' | 'offline' | 'override' | 'uber';
 
 export interface WireDeliveryOverride { reason: string; actor: string; approved_by?: string | null }
 
@@ -287,6 +288,13 @@ function validateDelivery(v: unknown): void {
     for (const k of ['street', 'city', 'state', 'zip']) need(typeof a[k] === 'string', `${f}.address.${k}`, 'must be a string');
     strOrNull(a.unit ?? null, `${f}.address.unit`);
     strOrNull(a.instructions ?? null, `${f}.address.instructions`);
+  }
+  // CP23: delivery.uber — null, or the reserved object (DELIVERY.md §7.1) + driver_tip_cents (optional, integer ≥ 0)
+  if (d.uber !== undefined && d.uber !== null) {
+    need(isObj(d.uber), `${f}.uber`, 'must be an object or null');
+    const u = d.uber as Record<string, unknown>;
+    strOrNull(u.quote_id ?? null, `${f}.uber.quote_id`);
+    need(u.driver_tip_cents === undefined || u.driver_tip_cents === null || (isInt(u.driver_tip_cents) && (u.driver_tip_cents as number) >= 0), `${f}.uber.driver_tip_cents`, 'must be integer cents ≥ 0 or null');
   }
 }
 

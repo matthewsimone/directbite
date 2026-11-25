@@ -561,6 +561,59 @@ Deno.test('delivery: fee from server data per source + review flags; never a 400
   assert(!('delivery' in okBody(await t.submit(await payload(t.A, t.snap))).flags));
 });
 
+// ---- CP23: the stored delivery quotes (migration 115) ---------------------------------------------------------
+
+Deno.test('CP23 delivery: quoted reads pos_delivery_quotes, uber reads pos_delivery_provider_quotes (the frozen module\'s fixed fee); unknown / expired / out of radius flagged; the Uber minimum; never a 400', async () => {
+  const t = await setup();
+  const quotes = new Map<string, { distance_miles: string; in_radius: boolean; expires_at: string }>([
+    ['dq_near', { distance_miles: '1.20', in_radius: true, expires_at: '2026-11-20T17:00:00Z' }],
+    ['dq_far', { distance_miles: '3.10', in_radius: true, expires_at: '2026-11-20T17:00:00Z' }],
+    ['dq_out', { distance_miles: '7.00', in_radius: false, expires_at: '2026-11-20T17:00:00Z' }],
+    ['dq_old', { distance_miles: '1.20', in_radius: true, expires_at: '2026-11-19T16:00:00Z' }],
+  ]);
+  const pqs = new Map<string, { customer_fee_cents: number; expires_at: string }>([
+    ['pq_live', { customer_fee_cents: 650, expires_at: '2026-11-19T17:10:00Z' }],
+    ['pq_old', { customer_fee_cents: 650, expires_at: '2026-11-19T16:50:00Z' }],
+  ]);
+  t.deps.deliveryQuotes = { getQuote: (_r, id) => Promise.resolve(quotes.get(id) ?? null), getProviderQuote: (_r, id) => Promise.resolve(pqs.get(id) ?? null) };
+  /** The device prices with the quote it holds — the provisional pricing uses the same lookup. */
+  const order = async (d: Partial<NonNullable<OrderPayload['delivery']>>, o: Partial<OrderPayload> = {}) => {
+    const delivery = { ...deliveryOf('offline', 0), ...d } as NonNullable<OrderPayload['delivery']>;
+    const p = await payload(t.A, t.snap, { order_type: 'delivery', delivery, ...o });
+    const lookup = { quote: quotes.get(String(delivery.quote_id)) ?? null, provider: pqs.get(String((delivery.uber as { quote_id?: string } | null)?.quote_id)) ?? null };
+    p.provisional_pricing = priceAgainstSnapshot(p, t.snap, lookup).pricing;
+    p.delivery!.fee_cents = p.provisional_pricing.delivery_fee_cents;
+    p.provisional_pricing = priceAgainstSnapshot(p, t.snap, lookup).pricing;
+    const r = okBody(await t.submit(await rehash(p)));
+    return { r, f: r.flags.delivery as Record<string, unknown> };
+  };
+  const quoted = (id: string) => ({ fee_source: 'quoted' as const, quote_id: id });
+  // quoted: the stored distance + the PINNED snapshot's tiers (tier 1 ≤ 2 mi → 299; tier 2 → 499)
+  const near = await order(quoted('dq_near'));
+  assertEquals([near.r.pricing.delivery_fee_cents, near.f.delivery_quote_unknown, near.f.delivery_quote_expired, near.r.flags.mismatch], [299, false, false, false]);
+  assertEquals((await order(quoted('dq_far'))).r.pricing.delivery_fee_cents, 499);
+  const out = await order(quoted('dq_out'));
+  assertEquals([out.f.delivery_out_of_radius, out.r.pricing.delivery_fee_cents], [true, 499]);
+  const old = await order(quoted('dq_old'));
+  assertEquals([old.f.delivery_quote_expired, old.r.pricing.delivery_fee_cents], [true, 299], 'expired at fee_attached_at (16:59 > 16:00): flagged, its numbers still used (D8)');
+  assertEquals((await order(quoted('dq_nope'))).f.delivery_quote_unknown, true);
+  // uber: the provider quote's customer fee, as the frozen module's fixed fee (D1)
+  const uber = (id: string, driver = 'uber_direct') => ({ fee_source: 'uber' as const, driver_type: driver, uber: { quote_id: id, customer_fee_cents: 650, quote_expires_at: null, delivery_id: null, status: null, driver_tip_cents: 300 } as never });
+  const u = await order(uber('pq_live'));
+  assertEquals([u.r.result, u.r.pricing.delivery_fee_cents, u.f.delivery_quote_unknown, u.f.delivery_fee_mismatch, u.r.flags.mismatch], ['applied', 650, false, false, false]);
+  assertEquals((await order(uber('pq_old'))).f.delivery_quote_expired, true);
+  const unknown = await order(uber('pq_nope'));
+  assertEquals([unknown.f.delivery_quote_unknown, unknown.r.pricing.delivery_fee_cents], [true, 499]);
+  assertEquals((await order(uber('pq_live', 'in_house'))).f.delivery_fee_mismatch, true, 'an Uber fee on an in-house delivery');
+  // the Uber minimum (0 in the fixture) — the in-house one (1500) would flag a small pie
+  const small = () => [line(IDS.pie, IDS.pieSmall)];
+  assertEquals((await order(uber('pq_live'), { lines: small() })).f.delivery_below_minimum, false);
+  assertEquals((await order(quoted('dq_near'), { lines: small() })).f.delivery_below_minimum, true);
+  // a malformed driver tip is a payload error
+  const bad = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: -1 } as never } });
+  assertEquals(errBody(await t.submit(bad)).code, 'invalid_payload');
+});
+
 // ---- stored fields (items 2, 6, 8 columns) ---------------------------------------------------------
 
 Deno.test('note / ready_at / void_reason / actors / delivery / table accepted and stored as sent; note > 500 → 400 (orderDetails)', async () => {

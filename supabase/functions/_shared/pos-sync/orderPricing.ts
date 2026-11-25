@@ -165,6 +165,8 @@ export function deliveryInputFor(source: DeliveryFeeSource, data: { distanceMile
       return { mode: 'uber_direct', customerFee: data.offlineFee };
     case 'pending':
       return { mode: 'uber_direct', customerFee: ZERO };
+    case 'uber':
+      throw new Error('an uber fee comes from its stored provider quote (deliveryPricing)');
   }
 }
 
@@ -181,9 +183,24 @@ export function effectiveDeliveryMinimum(status: string, hasMinimumOverride: boo
   return status === 'closed' && !hasMinimumOverride ? minimum : ZERO;
 }
 
+/** The stored quotes submit-order looked up for this order (CP23, migration 115). */
+export interface DeliveryQuoteLookup {
+  /** pos_delivery_quotes by delivery.quote_id (fee_source quoted). */
+  quote?: { distance_miles: string; in_radius: boolean; expires_at: string } | null;
+  /** pos_delivery_provider_quotes by delivery.uber.quote_id (fee_source uber). */
+  provider?: { customer_fee_cents: number; expires_at: string } | null;
+}
+
+/** D8: a quote that had expired at fee_attached_at (device time) — flagged; its numbers are still used. */
+const expiredAt = (attachedAt: string | null, expiresAt: string) => attachedAt !== null && Date.parse(attachedAt) > Date.parse(expiresAt);
+
 /**
  * Fee from SERVER data per source; review flags; never a 400 for a delivery reason (cash was taken).
- * Until item 5 (pos-v1-quote-delivery + pos_delivery_quotes + server geocoding) exists:
+ * CP23: `quoted` reads the stored pos_delivery_quotes row (in_house, its distance + the PINNED snapshot's tiers); `uber`
+ * reads the stored pos_delivery_provider_quotes row (the frozen module's fixed-fee input = its customer fee — D1);
+ * either one missing → delivery_quote_unknown at the offline fee; expired at fee_attached_at → delivery_quote_expired;
+ * a stored quote out of radius → delivery_out_of_radius at the offline fee. Uber orders use the Uber minimum.
+ * Without a lookup (lookup undefined):
  *  - quoted   → no quote can be found: delivery_quote_unknown, priced at the snapshot's offline fee
  *               (the reference falls back to its own geocode first — no geocoder here yet);
  *  - offline  → snapshot offline fee; the reference's geocode review (delivery_fee_review /
@@ -192,7 +209,7 @@ export function effectiveDeliveryMinimum(status: string, hasMinimumOverride: boo
  *  - pending  → 0; delivery_fee_missing when closed.
  * delivery_unverified echoes the device's value (the reference's starting point).
  */
-export function deliveryPricing(p: OrderPayload, snap: MenuSnapshot): { input: DeliveryInput; minimum: Cents; flags: DeliveryFlags } {
+export function deliveryPricing(p: OrderPayload, snap: MenuSnapshot, lookup?: DeliveryQuoteLookup): { input: DeliveryInput; minimum: Cents; flags: DeliveryFlags } {
   const d = p.delivery;
   if (!d) throw new ServerValidation('invalid_payload', 'delivery order without delivery data', 'delivery');
   const tiers = tiersFromWire(snap.restaurant.delivery);
@@ -211,10 +228,30 @@ export function deliveryPricing(p: OrderPayload, snap: MenuSnapshot): { input: D
   };
   let input: DeliveryInput;
   switch (d.fee_source) {
-    case 'quoted':
-      flags.delivery_quote_unknown = true; // no pos_delivery_quotes yet (item 5)
-      input = deliveryInputFor('offline', { distanceMiles: null, tiers, offlineFee });
+    case 'quoted': {
+      const q = lookup?.quote ?? null;
+      if (q && q.in_radius) {
+        input = deliveryInputFor('quoted', { distanceMiles: q.distance_miles, tiers, offlineFee });
+        if (expiredAt(d.fee_attached_at, q.expires_at)) flags.delivery_quote_expired = true;
+      } else {
+        if (q) flags.delivery_out_of_radius = true;
+        else flags.delivery_quote_unknown = true; // no lookup / unknown or foreign quote id
+        input = deliveryInputFor('offline', { distanceMiles: null, tiers, offlineFee });
+      }
       break;
+    }
+    case 'uber': {
+      const pq = lookup?.provider ?? null;
+      if (pq) {
+        input = { mode: 'uber_direct', customerFee: cents(pq.customer_fee_cents) };
+        if (expiredAt(d.fee_attached_at, pq.expires_at)) flags.delivery_quote_expired = true;
+      } else {
+        flags.delivery_quote_unknown = true;
+        input = deliveryInputFor('offline', { distanceMiles: null, tiers, offlineFee });
+      }
+      if (d.driver_type !== 'uber_direct') flags.delivery_fee_mismatch = true; // an Uber fee on a non-Uber delivery
+      break;
+    }
     case 'offline':
       input = deliveryInputFor('offline', { distanceMiles: null, tiers, offlineFee });
       break;
@@ -230,7 +267,8 @@ export function deliveryPricing(p: OrderPayload, snap: MenuSnapshot): { input: D
       throw new ServerValidation('invalid_payload', 'unknown fee_source', 'delivery.fee_source');
   }
   if (deliveryFeeOf(input) !== d.fee_cents) flags.delivery_fee_mismatch = true;
-  const minimum = effectiveDeliveryMinimum(p.status, d.overrides.minimum !== null, cents(snap.restaurant.delivery.minimum_in_house_cents));
+  const base = d.driver_type === 'uber_direct' ? snap.restaurant.delivery.minimum_uber_direct_cents : snap.restaurant.delivery.minimum_in_house_cents;
+  const minimum = effectiveDeliveryMinimum(p.status, d.overrides.minimum !== null, cents(base));
   return { input, minimum, flags };
 }
 
@@ -241,10 +279,10 @@ export function deliveryPricing(p: OrderPayload, snap: MenuSnapshot): { input: D
  * register is always in-person — service fee 0, recoup 0; the request's pricing_config / channel are
  * stored for reporting only). Throws PricingError (→ 400 pricing_error:<code>) or ServerValidation.
  */
-export function priceAgainstSnapshot(p: OrderPayload, snap: MenuSnapshot): { pricing: WireBreakdown; delivery: DeliveryFlags | null } {
+export function priceAgainstSnapshot(p: OrderPayload, snap: MenuSnapshot, lookup?: DeliveryQuoteLookup): { pricing: WireBreakdown; delivery: DeliveryFlags | null } {
   const input = buildServerInput(p, snap);
   const r = snap.restaurant;
-  const delivery = p.order_type === 'delivery' ? deliveryPricing(p, snap) : null;
+  const delivery = p.order_type === 'delivery' ? deliveryPricing(p, snap, lookup) : null;
   const breakdown = priceOrder(
     { ...input, delivery: delivery ? delivery.input : null },
     {

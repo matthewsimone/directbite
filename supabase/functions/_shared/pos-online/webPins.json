@@ -60,6 +60,66 @@
       "copy": "supabase/functions/_shared/pos-online/uberGlue.ts",
       "what": "cancel Uber → self_delivering → app-fee walk-back (CP20)",
       "sha256": "f269551317e4bd50b4c5ebc48d2ba72d30605958c12604d0496ecc71dc3d0a3e"
+    },
+    {
+      "source": "supabase/functions/uber-quote/index.ts",
+      "lines": [
+        142,
+        300
+      ],
+      "copy": "supabase/functions/_shared/pos-delivery/uberCalls.ts",
+      "what": "Uber delivery_quotes call + parse + passthrough (CP23)",
+      "sha256": "85191b8b701db2bc436cb03aa99cd269714893455349405cb230029f836e18fd"
+    },
+    {
+      "source": "supabase/functions/_shared/uberCreateDelivery.ts",
+      "lines": [
+        383,
+        396
+      ],
+      "copy": "supabase/functions/_shared/pos-delivery/uberCalls.ts",
+      "what": "the price-change guard (CP23)",
+      "sha256": "6e2b1bf76a6b678937df1b60a0f4a654d4bed4f7d19c403722090509de192d0b"
+    },
+    {
+      "source": "supabase/functions/_shared/uberCreateDelivery.ts",
+      "lines": [
+        431,
+        633
+      ],
+      "copy": "supabase/functions/_shared/pos-delivery/uberCalls.ts",
+      "what": "manifest, times, the deliveries payload + POST + parse (CP23)",
+      "sha256": "68b2ae7adae8cd845ff397bc570db34699d9f577fe45bdf9e7826c11431e4181"
+    },
+    {
+      "source": "supabase/functions/_shared/uberCancel.ts",
+      "lines": [
+        122,
+        258
+      ],
+      "copy": "supabase/functions/_shared/pos-delivery/uberCalls.ts",
+      "what": "the Uber cancel call + fee parse (CP23)",
+      "sha256": "5aae70622c78e9527d6d38581bf334021f5d9f59e225f54731913413e6371bbe"
+    },
+    {
+      "source": "supabase/functions/uber-get-delivery/index.ts",
+      "lines": [
+        195,
+        308
+      ],
+      "copy": "supabase/functions/_shared/pos-delivery/uberCalls.ts",
+      "what": "the Uber GET delivery call + parse (CP23)",
+      "sha256": "d8d591ea0dfb3cda10887010b9447e1679a4e6999959107823f3650752350b93"
+    },
+    {
+      "source": "supabase/functions/admin-create-restaurant/index.ts",
+      "lines": [
+        80,
+        98
+      ],
+      "copy": "supabase/functions/_shared/pos-delivery/geocode.ts",
+      "what": "the server geocode (GOOGLE_MAPS_API_KEY) (CP23)",
+      "sha256": "7471a7b6bfa37c4308927106072e607db454299a7c5d15252b3a237d76c7bba9"
     }
   ]
 }

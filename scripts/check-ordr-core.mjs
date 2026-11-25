@@ -188,4 +188,4 @@ if (problems.length) {
   console.error('Never edit vendored files. Fix ordr-pos, then: node scripts/vendor-ordr-core.mjs <ordr-pos path>');
   process.exit(1);
 }
-console.log(`check-ordr-core: OK — ${manifestPaths.length} files match ${sourceRepo} @ ${sourceCommit.slice(0, 7)}${sourcePath ? ' and the source checkout' : ''}; ordr-core-ext ${Object.keys(ext?.files ?? {}).length} files @ ${String(ext?.sourceCommit ?? '').slice(0, 7)}; ${webPins.length} web glue ranges pinned (admin-refund, uber-create-delivery, uber-self-deliver)`);
+console.log(`check-ordr-core: OK — ${manifestPaths.length} files match ${sourceRepo} @ ${sourceCommit.slice(0, 7)}${sourcePath ? ' and the source checkout' : ''}; ordr-core-ext ${Object.keys(ext?.files ?? {}).length} files @ ${String(ext?.sourceCommit ?? '').slice(0, 7)}; ${webPins.length} copied web ranges pinned (webPins.json)`);

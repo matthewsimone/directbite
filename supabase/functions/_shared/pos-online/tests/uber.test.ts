@@ -206,7 +206,9 @@ Deno.test('deliver yourself: from in progress → self_delivering + restaurant_s
   // fake says 'restaurant_self_deliver'; the POS only tests === 'provider' (onlineModel.ts :57); the order's own
   // cancelled_by is the web's 'restaurant_self_deliver'
   assertEquals([b.result, b.order.status, b.order.delivery!.status, b.order.delivery!.cancelled_by, b.order.cancelled_by], ['applied', 'self_delivering', 'cancelled', 'restaurant', 'restaurant_self_deliver']);
-  assertEquals(changed(before, w.order(row.id)), ['cancelled_by', 'status', 'uber_status', 'uber_status_updated_at']);
+  // uber_status_updated_at may land on the same millisecond as the dispatch's stamp — allowed, never required
+  const diff = changed(before, w.order(row.id));
+  assertEquals(diff.filter((k) => k !== 'uber_status_updated_at'), ['cancelled_by', 'status', 'uber_status']);
   assertEquals(w.money.calls.slice(-2), [`uber:${row.id}`, `appfee:${row.id}`], 'cancel first, then the app fee (uber-self-deliver order)');
   const fresh = uberOrder(w);
   assertEquals(okBody(await selfDeliver(w, fresh.id, 'new')).order.status, 'self_delivering');

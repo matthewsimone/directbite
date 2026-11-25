@@ -289,6 +289,20 @@ verify_jwt = false
 [functions.pos-v1-online-settings]
 verify_jwt = false
 
+# CP23 (DELIVERY.md §2 / §6.3): POS delivery quote + provider (Uber Direct) dispatch for counter / phone orders.
+# NOT DEPLOYED; need 115.
+[functions.pos-v1-quote-delivery]
+verify_jwt = false
+
+[functions.pos-v1-delivery-dispatch]
+verify_jwt = false
+
+[functions.pos-v1-delivery-cancel]
+verify_jwt = false
+
+[functions.pos-v1-delivery-status]
+verify_jwt = false
+
 # pos-admin-devices — /admin register management (DEVICE-AUTH §6). Same
 # pattern as admin-refund / kh-admin: verify_jwt = false, handler checks the
 # Bearer JWT against admin_users.
