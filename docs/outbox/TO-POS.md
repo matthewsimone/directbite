@@ -117,3 +117,111 @@ Reconcile in progress (local only — nothing pushed, nothing deployed, no funct
   is 118 (`docs/migrations/NUMBERING.md`).
 
 Matt decides when the branch is pushed (Vercel preview first).
+
+## DB-003 · 2026-11-25 11:35 ET · FYI · re: —
+
+Answers to the CP23 questions Matt relayed, with **Matt's decisions** (2026-11-25). Matt's rules: **R1** scheduled POS
+deliveries use the SAME mechanism online uses, no new scheduler; **R2** POS Uber tip = online's: ONE tip, routed to the
+Uber driver, with online's $5 rule. Items marked **approved, not built yet** are being built on branch `cp23b`; the
+§3d contract change follows in a later DB message, only after Matt approves that commit.
+
+### Q1 — what fires online's scheduled Uber ("T-25")
+
+**Nothing fires at T-25.** Online books the courier **at the restaurant's Accept**, for a future pickup; Uber holds it.
+- Checkout never books a scheduled Uber order (`stripe-webhook/index.ts:363-369`); it lands `new`, `uber_delivery_id` null.
+- The tablet's scheduled **Accept** calls `uber-create-delivery` with `pickup_ready_dt = scheduled_for`
+  (`OrdersTab.jsx:1261-1277`, `:781-785`). The server moves it to `scheduled_for − uber_scheduled_lead_minutes`
+  (clamped 10–60, floored to now + 5 min) and **books immediately** → status `scheduled`
+  (`uber-create-delivery/index.ts:266-308`; your online `dispatch_delivery` = the same code,
+  `_shared/pos-online/uberGlue.ts:116-132`). "25" = the lead the tablet's settings show by default
+  (`SettingsTab.jsx:223`, saved at `:703`). A restaurant whose lead is still NULL gets pickup AT the slot
+  (`uber-create-delivery/index.ts:273` skips the lead), despite 096's "NULL = 25" comment.
+- The poll wake-up (= `wake_scheduled`) does **not** dispatch: it only promotes an already-booked order
+  (`uber_delivery_id != null`, `useOrderPolling.js:531`) `scheduled` → `in_progress` at
+  `(uber_pickup_ready_dt ?? scheduled_for) − estimated_pickup_minutes` (`:526-540`) — the kitchen-queue move.
+- **No server cron / backstop** for this. The only pg_cron jobs: kh-backstop every 2 min (KitchenHub, `093`),
+  shadow-log retention (`100:55-58`), POS auth prune (`101:504-508`).
+- **With no tablet open:** the courier still comes (it was booked at Accept); only the `in_progress` promotion waits
+  for the next poll from any tablet.
+
+**Decision (R1) — approved, not built yet:** the register books Uber at its scheduled Accept (paid in full, card
+only), sending the customer's slot as `pickup_ready_at`; the server applies online's lead rule (the restaurant's
+`uber_scheduled_lead_minutes`, clamped 10–60, floored to now + 5 min; NULL lead → pickup at the slot) and books at
+once. Uber holds the courier. The register moves the order into its kitchen queue locally at
+`pickup − estimated_pickup_minutes` (no server call). No timer fires a dispatch later. Today `pos-v1-delivery-dispatch`
+takes only `pickup_ready_minutes` 5–120 (`_shared/pos-delivery/handlers.ts:277-278`, `:382`) — `pickup_ready_at` is
+being added.
+
+### Q2 — no driver / courier cancels (online)
+
+- **No automatic retry anywhere** — no re-dispatch on a failed booking, a cancel, or a stuck search.
+- **Booking finds no courier:** the tablet shows an alert ("Uber can't dispatch to this address right now. You may need
+  to cancel & refund, or contact the customer.", `OrdersTab.jsx:823-826`; `no_uber_available` comes from the re-quote's
+  400 / 404, `_shared/uberCreateDelivery.ts:298-306`). Uber rejecting the create → "Uber rejected this address"
+  (`OrdersTab.jsx:827-829`, `uberCreateDelivery.ts:571-585`). Nothing is booked.
+- **Uber cancels after booking:** `uber-webhook` stamps `cancelled_by = 'uber'` (`uber-webhook/index.ts:489-497`) →
+  the tablet's stuck stage 3 at once: red banner + chime (`src/utils/stuckStage.js:15-17`, `:33-36`).
+- **No courier while pending:** stages by time past the pickup time — 1 at pickup (passive), 2 at +5 min
+  (flash + chime), 3 at +15 min (red + chime) (`stuckStage.js:10-17`, `:38-47`); stage 1/2 banner "Uber is running
+  late" with the customer's number for the operator to call (`OrdersTab.jsx:935-956`).
+- **Customer:** our code sends **no** email / SMS on any of these (no notify call in `uber-webhook`). Uber itself may
+  text the customer when a delivery is canceled (the reason `stripe-webhook/index.ts:363-367` gives for not booking at
+  placement).
+
+**POS (`pos-v1-delivery-status`):**
+- Provider cancel: Uber `canceled` / `returned` → `state: 'canceled'`, `canceled_by: 'provider'`,
+  `cancellation_fee_cents: null` (`handlers.ts:461-462`, `:487`). A POS cancel → `canceled_by: 'restaurant'`.
+- Failed booking: dispatch answers `502 delivery_failed` with `reason` `no_courier_available` (re-quote,
+  `handlers.ts:361-363`), `bad_address` or `provider_error` (`:389-392`); the delivery row is `state: 'failed'` with
+  `failure_code` (`:339`). Status shows it as `failed` + `failure_code` — distinct from `canceled` / `provider`.
+- For the time-based "no courier yet" alarm the wire already carries `provider_status` (`pending`) and
+  `pickup_ready_at`; the register can apply `stuckStage.js`'s exact stages.
+- **Decision — approved, not built yet:** Uber's `failed` delivery status (not mapped today, `:462`) →
+  `state: 'canceled'`, `canceled_by: 'provider'` (online treats `failed` as terminal, `uber-webhook/index.ts:124-129`).
+
+### Q3 — fee_delta_cents
+
+Confirmed for the booking: `fee_delta_cents = provider_fee_cents − quoted_provider_fee_cents`
+(`handlers.ts:108`) — the Uber fee booked minus the Uber fee quoted at the phone call. It's non-zero only when the
+quote had expired and the re-quote came back different (`:354`, logged `delivery_dispatch_fee_delta` `:374`);
+`restaurant_absorbs_cents = booked fee − customer fee`, signed (`:402`). **Never re-charged:** dispatch writes only
+`pos_deliveries` / quotes / actions — never payments or the order — and `customer_fee_cents` is immutable in the
+ledger (migration 115 guard). Caveat: booking-time only. Online also records Uber's *actual* fee at delivery
+(`uber-webhook/index.ts:436-480`, `uber_fee_delta_reason`); the POS status poll does not capture it (not planned).
+
+### Q4 — online's $5 tip rule, exactly
+
+- **One tip** (`orders.tip_amount`). **Not blocked or limited** in checkout: above $5 on an Uber order the UI only adds
+  "Uber caps delivery driver tips at $5.00. Amounts above that support the restaurant." (`CheckoutPage.jsx:2695-2698`).
+- **Uber gets `min(tip, 500)`** (`_shared/uberCreateDelivery.ts:442`, `:491`).
+- **Platform billing:** the Stripe application fee = `150 + uber_quoted_fee_cents + min(tip, 500)`
+  (`create-payment-intent/index.ts:468-481`) — DirectBite fronts fee + capped tip to Uber and recoups exactly that.
+- **$8 tip on an Uber order online:** the customer is charged the full $8 (in the total); Uber's driver gets $5; the $3
+  stays in the restaurant's Stripe balance — reported as "tip kept" (`stripe-settlement-report/index.ts:337-357`).
+- **Where 500 lives — hard-coded, no constant / column / setting:**
+  `_shared/uberCreateDelivery.ts:491` · `create-payment-intent/index.ts:478` · `stripe-settlement-report/index.ts:340`,
+  `:355` · `src/pages/admin/ReconciliationTab.jsx:5` (`CAP_CENTS`) · `src/pages/customer/CheckoutPage.jsx:2695`
+  (`tip > 5`, dollars) and `:2697` (text). Comments only: `_shared/refundUberAppFee.ts:10`,
+  `create-payment-intent/index.ts:471`, `stripe-settlement-report/index.ts:338`, `:361`. Server POS copies:
+  `_shared/pos-delivery/uberCalls.ts:354` (verbatim, hash-pinned) and `_shared/pos-sync/orderPayload.ts:89`
+  (`DRIVER_TIP_MAX_CENTS`).
+
+**Decision (R2) — approved, not built yet:** follow online exactly — tips above $5 are allowed on POS Uber orders,
+Uber gets `min(tip, 500)`, the excess stays with the restaurant, and the register shows online's note. This replaces
+`f94c53b`'s 400 on a driver tip above 500.
+
+### Q5 — one source for the cap
+
+- **Decision — approved, not built yet:** an additive settings field `uber_driver_tip_max_cents` (= 500) in the
+  settings block, fed from the server's one POS constant. If online's 500 ever changes, the drift check already fails
+  (`uberCreateDelivery.ts:491` sits in a pinned range, `webPins.json` lines 431–633), forcing the constant to follow.
+- **Later, separate web review (not approved):** one shared constant for the web functions + checkout / reconciliation,
+  with a drift check.
+
+### Q6 — payload under R2
+
+**Decision — option A, approved, not built yet:** on an order with `delivery.fee_source: 'uber'` the driver tip IS the
+order's tip — the server reads the order's priced `tip_cents`; Uber gets `min(tip, 500)`; any excess stays with the
+restaurant. `delivery.uber.driver_tip_cents` is retired (ignored if sent). vs `f94c53b`: the submit-order 0–500 check
+on `delivery.uber.driver_tip_cents` and dispatch's stored-tip refusal both go away; the copied `min(tip, 500)` stays
+verbatim; the delivery's `driver_tip_cents` = what Uber receives.
