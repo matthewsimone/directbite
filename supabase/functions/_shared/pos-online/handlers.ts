@@ -29,6 +29,7 @@ import {
 } from './feedQuery.ts';
 import { ACK_ACTIONS, ONLINE_ACTIONS, type Cp18Action } from './actionRules.ts';
 import { adminRefundFull, type AdminRefundGlueDeps } from './adminRefundGlue.ts';
+import type { FeedMenuHash } from './menuHash.ts';
 import { containsCardNumber } from '../ordr-core-ext/cardData.ts';
 import { buildMenuSnapshot, type SnapshotDb } from '../pos-sync/menuSnapshot.ts';
 import { writeTabletPrintColumns, type PrintClient } from './printColumns.ts';
@@ -58,6 +59,11 @@ export interface OnlineDeps extends AuthDeps {
    * Stripe client and the two shared modules, imported unchanged by the entry point. Absent → cancel_refund 501.
    */
   refund?: Pick<AdminRefundGlueDeps, 'stripe' | 'cancelUberDelivery' | 'refundUberAppFee'>;
+  /**
+   * The feed's menu_snapshot_hash (menuHash.ts: pos-v1-menu-snapshot's builder behind the 30 s per-restaurant
+   * cache; one per function instance). Absent → menu_snapshot_hash null.
+   */
+  menuHash?: FeedMenuHash;
 }
 
 const nullableString = (v: unknown) => v === null || v === undefined || typeof v === 'string';
@@ -185,13 +191,15 @@ export async function handleOnlineOrders(req: DeviceRequest, deps: OnlineDeps): 
     throw err;
   }
   const ids = [...rows.orders, ...rows.kitchenhub].map((r) => String(r.id));
-  const [state, pos, hours, providers] = await Promise.all([
+  const [state, pos, hours, providers, menuHash] = await Promise.all([
     deps.online.printState(rid, ids),
     deps.online.getSettings(rid),
     readRows<HoursRow>('hours', deps.db.from('hours').select('day_of_week, is_open, open_time, close_time').eq('restaurant_id', rid).order('day_of_week')),
     dsp
       ? readRows<{ provider_id: string; pause_until: string | null }>('dsp_provider_status', deps.db.from('dsp_provider_status').select('provider_id, pause_until').eq('restaurant_id', rid))
       : Promise.resolve([]),
+    // never throws, never fails the poll; cache hit = 0 queries, miss = one menu build (menuHash.ts)
+    deps.menuHash ? deps.menuHash.get(rid, nowMs, deps.log) : Promise.resolve(null),
   ]);
   const orders = servedOrders(rows, state);
   const settings = await buildSettings(restaurant, hours, pos ?? DEFAULT_POS_SETTINGS, providers);
@@ -202,7 +210,8 @@ export async function handleOnlineOrders(req: DeviceRequest, deps: OnlineDeps): 
     orders: notModified ? [] : orders,
     token,
     settings: body.if_none_match_settings === settings.hash ? { not_modified: true, hash: settings.hash } : settings,
-    menu_snapshot_hash: null,
+    // NOT in the token (§3c:507-508): it travels on every answer, not_modified or not (§3c:489-490)
+    menu_snapshot_hash: menuHash,
     server_time: new Date(nowMs).toISOString(),
   });
 }
