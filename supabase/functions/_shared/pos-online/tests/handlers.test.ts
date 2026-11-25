@@ -327,22 +327,20 @@ Deno.test('print: unknown / unwritten order, another restaurant\'s order, bad pa
   assertEquals(w.logs(row.id), []);
 });
 
-// ---- logging (live print-result 400s, 2026-11-24) ------------------------------------------------------
+// ---- logging (status / code / field only) ------------------------------------------------------
 
-Deno.test('RESULT_DEBUG_LOG: one line per RESULT call — raw body, status + response, device_id, action_id; none for a claim; never a token', async () => {
+Deno.test('print RESULT calls log no request / response body (the temporary RESULT_DEBUG_LOG is gone) — never a token', async () => {
   const w = await world();
   const row = ordrRow(w.nowIso());
   w.db.insertRow('orders', row);
   const before = w.h.logs.length;
-  await w.print({ order_id: row.id, op: 'claim', stations: [COUNTER] });
   const body = { action_id: crypto.randomUUID(), order_id: row.id, op: 'result', variant: 'manual', result: 'printed', station: COUNTER };
-  const res = await w.print(body);
-  const lines = w.h.logs.slice(before).map((l) => JSON.parse(l)).filter((l) => l.event === 'print_result_debug');
-  assertEquals(lines.length, 1);
-  assertEquals([lines[0].device_id, lines[0].action_id, lines[0].status], [w.A.device_id, body.action_id, 200]);
-  assertEquals(JSON.parse(lines[0].request).station, COUNTER);
-  assertEquals(lines[0].response, res.body);
-  assert(!w.h.logs.slice(before).some((l) => l.includes('odt_')), 'no device token in the log');
+  ok(await w.print(body));
+  await w.print({ ...body, action_id: 'pr-not-a-uuid' }); // a 400
+  const logs = w.h.logs.slice(before);
+  assert(!logs.some((l) => l.includes('print_result_debug')), 'no debug line');
+  assert(!logs.some((l) => l.includes(COUNTER.station) || l.includes(body.action_id)), 'no body / ids from the request');
+  assert(!logs.some((l) => l.includes('odt_')), 'no device token');
 });
 
 Deno.test('logErrorResponse: every 4xx / 5xx → status + code + field (no body); 200 → nothing; not JSON → status only', async () => {
