@@ -29,14 +29,18 @@ export interface DeliveryRow {
   tracking_url: string | null; provider_status: string | null; status_updated_at: string | null; dispatched_at: string | null;
   pickup_ready_dt: string | null; courier: { name: string | null; phone: string | null } | null; pickup_eta: string | null;
   dropoff_eta: string | null; provider_fee_cents: number | null; customer_fee_cents: number; restaurant_absorbs_cents: number | null;
+  /** 116: the provider fee quoted at the phone call (the order's quote) — fee_delta = provider_fee_cents − this. null before 116. */
+  quoted_provider_fee_cents: number | null;
   driver_tip_cents: number; cancellation_fee_cents: number | null; billing_mode: 'self' | 'platform';
+  /** 116: who canceled ('restaurant' = a POS cancel, 'provider' = Uber canceled / returned); set with state canceled. */
+  canceled_by: 'restaurant' | 'provider' | null;
   provider_environment: 'sandbox' | 'production'; failure_code: string | null; failure_message: string | null;
   last_polled_at: string | null; delivered_at: string | null; canceled_at: string | null; created_at: string; updated_at: string;
 }
 
 export type NewDelivery = Pick<DeliveryRow, 'pos_order_id' | 'restaurant_id' | 'provider' | 'action_id' | 'provider_quote_ref' |
-  'provider_quote_id' | 'customer_fee_cents' | 'driver_tip_cents' | 'billing_mode' | 'provider_environment'>;
-export type DeliveryPatch = Partial<Omit<DeliveryRow, 'id' | 'pos_order_id' | 'restaurant_id' | 'provider' | 'action_id' | 'created_at' | 'updated_at'>>;
+  'provider_quote_id' | 'customer_fee_cents' | 'quoted_provider_fee_cents' | 'driver_tip_cents' | 'billing_mode' | 'provider_environment'>;
+export type DeliveryPatch = Partial<Omit<DeliveryRow, 'id' | 'pos_order_id' | 'restaurant_id' | 'provider' | 'action_id' | 'quoted_provider_fee_cents' | 'created_at' | 'updated_at'>>;
 
 /** The POS order as dispatch reads it (pos_orders + active lines + payments). */
 export interface PosOrderForDelivery {
@@ -101,7 +105,7 @@ interface MemAction {
   outcome: 'applied' | 'noop' | 'error' | null; error: { status: number; code: string; message: string } | null; created_at: number;
 }
 
-const SET_ONCE: (keyof DeliveryRow)[] = ['provider_delivery_id', 'provider_fee_cents', 'restaurant_absorbs_cents', 'cancellation_fee_cents', 'provider_quote_id'];
+const SET_ONCE: (keyof DeliveryRow)[] = ['provider_delivery_id', 'provider_fee_cents', 'restaurant_absorbs_cents', 'cancellation_fee_cents', 'provider_quote_id', 'canceled_by'];
 const NEXT: Record<DeliveryState, DeliveryState[]> = { booking: ['booked', 'failed'], booked: ['delivered', 'canceled'], delivered: [], canceled: [], failed: [] };
 
 export class MemoryDeliveryStore implements DeliveryStore {
@@ -152,7 +156,7 @@ export class MemoryDeliveryStore implements DeliveryStore {
       id: `00000000-0000-4000-8000-${String(++this.seq).padStart(12, '0')}`, state: 'booking', provider_delivery_id: null, tracking_url: null,
       provider_status: null, status_updated_at: null, dispatched_at: null, pickup_ready_dt: null, courier: null, pickup_eta: null, dropoff_eta: null,
       provider_fee_cents: null, restaurant_absorbs_cents: null, cancellation_fee_cents: null, failure_code: null, failure_message: null,
-      last_polled_at: null, delivered_at: null, canceled_at: null, created_at: now, updated_at: now, ...structuredClone(d),
+      canceled_by: null, last_polled_at: null, delivered_at: null, canceled_at: null, created_at: now, updated_at: now, ...structuredClone(d),
     };
     this.deliveries.push(row);
     return Promise.resolve({ outcome: 'claimed' as const, delivery: structuredClone(row) });
@@ -171,6 +175,11 @@ export class MemoryDeliveryStore implements DeliveryStore {
     }
     Object.assign(row, structuredClone(patch), { updated_at: this.iso() });
     if (row.state === 'booked' && !row.provider_delivery_id) return Promise.reject(new DeliveryStoreError('guard', 'booked without an id'));
+    // 116 checks: canceled ⇔ canceled_by; absorbs = provider fee − customer fee (signed: negative when the provider got cheaper)
+    if (row.state === 'canceled' && !row.canceled_by) return Promise.reject(new DeliveryStoreError('guard', 'canceled without canceled_by'));
+    if (row.provider_fee_cents !== null && row.restaurant_absorbs_cents !== null && row.restaurant_absorbs_cents !== row.provider_fee_cents - row.customer_fee_cents) {
+      return Promise.reject(new DeliveryStoreError('guard', 'absorbs is not provider − customer'));
+    }
     return Promise.resolve(structuredClone(row));
   }
   deliveryByAction(actionId: string) {

@@ -9,7 +9,8 @@
  *     (token, creds, the delivery_quotes payload, fetch, 429 / 400 / 404 / non-2xx mapping, id / fee / expires / eta
  *      parse, applyPassthrough)
  *   _shared/uberCreateDelivery.ts     :383-396  sha256 6e2b1bf76a6b678937df1b60a0f4a654d4bed4f7d19c403722090509de192d0b
- *     (the price-change guard: |Δ customer fee| ≥ 200 cents → quote_price_changed)
+ *     (the price-change guard: |Δ customer fee| ≥ 200 cents → quote_price_changed — kept pinned for drift only; POS
+ *      dispatch does NOT branch on it: the customer's fee is locked at the phone call, Matt's CP23 change)
  *   _shared/uberCreateDelivery.ts     :431-633  sha256 68b2ae7adae8cd845ff397bc570db34699d9f577fe45bdf9e7826c11431e4181
  *     (the manifest rule, ready / deadline times, the deliveries payload incl. the sandbox robo-courier gate and the
  *      coordinate guard, the POST, 429 / 400 / 404 / non-2xx mapping, id / tracking / status parse)

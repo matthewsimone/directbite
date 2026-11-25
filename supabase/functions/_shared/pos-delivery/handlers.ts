@@ -22,7 +22,7 @@ import type { MenuSnapshot } from '../pos-sync/menuSnapshot.ts';
 import { haversineDistanceMiles } from '../pos-v1/loader.ts';
 import type { GeocodeResult } from './geocode.ts';
 import { DeliveryStoreError, type DeliveryRow, type DeliveryStore, type ProviderQuoteRow } from './store.ts';
-import { priceChanged, UBER_RESTAURANT_COLUMNS, uberCancel, uberCreate, uberGet, uberQuote, type UberDeps } from './uberCalls.ts';
+import { UBER_RESTAURANT_COLUMNS, uberCancel, uberCreate, uberGet, uberQuote, type UberDeps } from './uberCalls.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -91,13 +91,22 @@ export interface DeliveryWire {
   id: string; order_id: string; provider: string; state: string; provider_status: string | null; tracking_url: string | null;
   courier: { name: string | null; phone: string | null } | null; pickup_ready_at: string | null; pickup_eta: string | null;
   dropoff_eta: string | null; dispatched_at: string | null; delivered_at: string | null; canceled_at: string | null;
-  customer_fee_cents: number; driver_tip_cents: number; failure_code: string | null; updated_at: string;
+  customer_fee_cents: number; driver_tip_cents: number;
+  /** Matt (CP23 change): the provider fee booked − the one quoted at the phone call; the restaurant absorbs it (0 normally). */
+  fee_delta_cents: number;
+  /** null = none charged / not canceled; integer cents when Uber charged one (a POS cancel). */
+  cancellation_fee_cents: number | null;
+  canceled_by: 'restaurant' | 'provider' | null;
+  failure_code: string | null; updated_at: string;
 }
 export function deliveryWire(r: DeliveryRow): DeliveryWire {
   return {
     id: r.id, order_id: r.pos_order_id, provider: r.provider, state: r.state, provider_status: r.provider_status, tracking_url: r.tracking_url,
     courier: r.courier, pickup_ready_at: r.pickup_ready_dt, pickup_eta: r.pickup_eta, dropoff_eta: r.dropoff_eta, dispatched_at: r.dispatched_at,
     delivered_at: r.delivered_at, canceled_at: r.canceled_at, customer_fee_cents: r.customer_fee_cents, driver_tip_cents: r.driver_tip_cents,
+    // != null: a row read before 116 has no quoted_provider_fee_cents (undefined) → 0
+    fee_delta_cents: r.provider_fee_cents != null && r.quoted_provider_fee_cents != null ? r.provider_fee_cents - r.quoted_provider_fee_cents : 0,
+    cancellation_fee_cents: r.cancellation_fee_cents ?? null, canceled_by: r.canceled_by ?? null,
     failure_code: r.failure_code, updated_at: r.updated_at,
   };
 }
@@ -200,7 +209,7 @@ export async function handleQuoteDelivery(req: DeviceRequest, deps: DeliveryDeps
 
 interface Call { deps: DeliveryDeps; rid: string; deviceId: string; actionId: string; orderId: string }
 
-/** A stored / fresh error as the wire answers it: delivery_failed carries reason; quote_price_changed carries quote. */
+/** A stored / fresh error as the wire answers it: delivery_failed carries reason. */
 function deliveryError(status: number, code: string, message: string, extra: Record<string, unknown> = {}): DeviceResult {
   let msg = message;
   const x: Record<string, unknown> = { ...extra };
@@ -208,15 +217,6 @@ function deliveryError(status: number, code: string, message: string, extra: Rec
     const r = REASON_PREFIX.exec(message);
     x.reason = r ? r[1] : 'provider_error';
     if (r) msg = message.slice(r[0].length);
-  }
-  if (code === 'quote_price_changed') {
-    try {
-      const j = JSON.parse(message);
-      msg = typeof j.message === 'string' ? j.message : 'the delivery price changed';
-      x.quote = j.quote ?? null;
-    } catch {
-      x.quote = null;
-    }
   }
   return errorResult(status, code, msg, x);
 }
@@ -257,8 +257,11 @@ async function begin(c: Call, action: 'dispatch' | 'cancel', request: Row, who: 
 }
 
 function requestOf(body: Row): Row {
-  const { device_time: _d, ...rest } = body;
+  // accepted_quote_id: retired (Matt, CP23 change) — ignored if an older POS sends it, and kept out of the request hash so
+  // a resend with / without it is the same request
+  const { device_time: _d, accepted_quote_id: _a, ...rest } = body;
   void _d;
+  void _a;
   return rest;
 }
 
@@ -273,8 +276,6 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
   if (typeof body.order_id !== 'string' || !UUID_RE.test(body.order_id)) return bad('order_id', 'order_id must be a UUID');
   const prep = body.pickup_ready_minutes;
   if (!(typeof prep === 'number' && Number.isInteger(prep) && prep >= PREP.min && prep <= PREP.max)) return bad('pickup_ready_minutes', `pickup_ready_minutes must be ${PREP.min}–${PREP.max}`);
-  const aq = body.accepted_quote_id;
-  if (!(aq === null || aq === undefined || (typeof aq === 'string' && /^pq_[0-9a-f]{32}$/.test(aq)))) return bad('accepted_quote_id', 'accepted_quote_id must be a pq_ quote id or null');
   const who = whoOf(body);
   if (isResult(who)) return who;
   const u = uberDeps(deps);
@@ -329,7 +330,8 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
 
   const claim = await deps.delivery.claimDelivery({
     pos_order_id: c.orderId, restaurant_id: rid, provider: 'uber_direct', action_id: c.actionId, provider_quote_ref: pq.id, provider_quote_id: null,
-    customer_fee_cents: pq.customer_fee_cents, driver_tip_cents: tip, billing_mode: pq.billing_mode, provider_environment: pq.provider_environment,
+    customer_fee_cents: pq.customer_fee_cents, quoted_provider_fee_cents: pq.provider_fee_cents, driver_tip_cents: tip, billing_mode: pq.billing_mode,
+    provider_environment: pq.provider_environment,
   });
   if (claim.outcome === 'active_exists') return stored(c, 409, 'already_dispatched', `this order already has a ${claim.delivery.state} delivery`);
   const row = claim.delivery;
@@ -343,17 +345,13 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
     return stored(c, 400, 'restaurant_mismatch', 'unknown restaurant');
   }
 
-  // the quote to book against: the order's (fresh), the operator-accepted re-quote, or a silent re-quote within $2
+  // Matt (CP23 change): the customer's fee is LOCKED at the phone call. The order's quote if still fresh; else the
+  // server re-quotes and books automatically — never a 409, never a staff prompt, the customer never re-charged. Any
+  // difference (+ or −) is the restaurant's (restaurant_absorbs_cents, signed). The copied price guard (priceChanged,
+  // webPins.json) stays pinned but is not branched on.
   let use: ProviderQuoteRow = pq;
   const fresh = (q: ProviderQuoteRow) => Date.parse(q.expires_at) > deps.now() + 60_000; // the web's 60 s buffer
-  if (typeof aq === 'string') {
-    const acc = await deps.delivery.getProviderQuote(rid, aq);
-    if (!acc || acc.delivery_quote_id !== pq.delivery_quote_id || !fresh(acc)) {
-      await failRow('accepted_quote_expired', 'the accepted quote expired');
-      return stored(c, 409, 'quote_expired', 'the accepted delivery price expired — dispatch again for a new price');
-    }
-    use = acc;
-  } else if (!fresh(pq)) {
+  if (!fresh(pq)) {
     const q = await uberQuote(u, restaurant, { dropoff_address: dq.normalized_address, dropoff_lat: Number(dq.lat), dropoff_lng: Number(dq.lng), dropoff_phone: order.customer_phone_e164, scheduled_for: null });
     if (!q.success) {
       if (q.error === 'rate_limited') {
@@ -372,10 +370,8 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
       expires_at: q.expires_at ? new Date(q.expires_at).toISOString() : new Date(nowMs + 5 * 60_000).toISOString(), created_at: new Date(nowMs).toISOString(),
     };
     await deps.delivery.insertProviderQuote(fresher);
-    const changed = priceChanged(pq.customer_fee_cents, fresher.customer_fee_cents, fresher.id);
-    if (changed) {
-      await failRow('quote_price_changed', `customer fee ${pq.customer_fee_cents} → ${fresher.customer_fee_cents}`);
-      return stored(c, 409, 'quote_price_changed', JSON.stringify({ message: 'the delivery price changed', quote: changed }));
+    if (fresher.provider_fee_cents !== pq.provider_fee_cents) {
+      deps.log('delivery_dispatch_fee_delta', { order_id: c.orderId, action_id: c.actionId, quoted_cents: pq.provider_fee_cents, booked_cents: fresher.provider_fee_cents });
     }
     use = fresher;
   }
@@ -401,8 +397,9 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
       state: 'booked', provider_delivery_id: created.delivery_id, tracking_url: created.tracking_url, provider_status: created.status, status_updated_at: now,
       dispatched_at: now, pickup_ready_dt: created.pickup_ready_dt, provider_quote_ref: use.id, provider_quote_id: use.provider_quote_id,
       provider_fee_cents: use.provider_fee_cents,
-      // the restaurant covers whatever the customer's fee (paid on the ticket) does not
-      restaurant_absorbs_cents: Math.max(0, use.provider_fee_cents - row.customer_fee_cents),
+      // the restaurant covers whatever the customer's locked fee does not — signed, never floored (Matt): negative when
+      // Uber got cheaper than the customer paid
+      restaurant_absorbs_cents: use.provider_fee_cents - row.customer_fee_cents,
     });
   } catch (err) {
     // the courier IS booked; the row could not say so — one loud line for the manual reconcile, never retried
@@ -449,7 +446,11 @@ export async function handleDeliveryCancel(req: DeviceRequest, deps: DeliveryDep
     return stored(c, 502, 'delivery_failed', reason === 'cannot_cancel' ? '[cannot_cancel] Uber could not cancel — the driver may already have the food' : `[provider_error] Uber could not cancel the delivery (${r.error})`);
   }
   const now = isoNow(deps);
-  await deps.delivery.updateDelivery(row.id, { state: 'canceled', canceled_at: now, provider_status: 'canceled', status_updated_at: now, cancellation_fee_cents: r.uberFee ?? 0 });
+  await deps.delivery.updateDelivery(row.id, {
+    state: 'canceled', canceled_by: 'restaurant', canceled_at: now, provider_status: 'canceled', status_updated_at: now,
+    // null = Uber charged none (uberCancel.ts gives uberFee only when Uber reports a fee)
+    cancellation_fee_cents: Number.isSafeInteger(r.uberFee) && (r.uberFee as number) > 0 ? r.uberFee as number : null,
+  });
   await deps.delivery.finishAction(c.actionId, c.deviceId, 'applied');
   return ok(c, 'applied');
 }
@@ -483,7 +484,7 @@ export async function handleDeliveryStatus(req: DeviceRequest, deps: DeliveryDep
           if (g.tracking_url) patch.tracking_url = g.tracking_url;
           if (g.status && g.status !== row.provider_status) Object.assign(patch, { provider_status: g.status, status_updated_at: now });
           if (g.status && DONE_DELIVERED.has(g.status)) Object.assign(patch, { state: 'delivered', delivered_at: now });
-          if (g.status && DONE_CANCELED.has(g.status)) Object.assign(patch, { state: 'canceled', canceled_at: now });
+          if (g.status && DONE_CANCELED.has(g.status)) Object.assign(patch, { state: 'canceled', canceled_by: 'provider', canceled_at: now });
           try {
             row = await deps.delivery.updateDelivery(row.id, patch);
           } catch (err) {

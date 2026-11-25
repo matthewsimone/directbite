@@ -215,6 +215,7 @@ Deno.test('dispatch: switched off by default → 403 delivery_not_enabled (quote
   const row = w.store.deliveries[0];
   assertEquals([row.provider_delivery_id, row.provider_fee_cents, row.customer_fee_cents, row.restaurant_absorbs_cents, row.driver_tip_cents, row.cancellation_fee_cents, row.billing_mode, row.provider_environment],
     ['del_1', 900, 450, 450, 300, null, 'platform', 'sandbox']);
+  assertEquals([row.quoted_provider_fee_cents, row.canceled_by, (b.delivery as unknown as Record<string, unknown>).fee_delta_cents], [900, null, 0]);
 });
 
 Deno.test('dispatch refused (stored): not paid in full / open → 409 not_paid; any cash → 400 card_only; not an Uber delivery; no quote; already dispatched → 409; pickup outside 5–120 → 400; not configured → 501', async () => {
@@ -239,32 +240,40 @@ Deno.test('dispatch refused (stored): not paid in full / open → 409 not_paid; 
   assertEquals(err(await none.dispatch(none.posOrder('pq_x'))).status, 501);
 });
 
-Deno.test('dispatch: an expired quote is re-quoted — within $2 silently (the restaurant absorbs the difference), ≥ $2 → 409 quote_price_changed + quote; Dispatch anyway (accepted_quote_id) → booked once', async () => {
+Deno.test('dispatch (Matt, CP23 change): the customer fee is LOCKED — an expired quote is re-quoted and booked automatically, any Δ (+ or −) absorbed by the restaurant (signed), fee_delta_cents on the wire; never 409 quote_price_changed; accepted_quote_id ignored', async () => {
   const w = await world();
   w.store.enabled.add(R1);
-  const pq = await w.uberQuoteId();
-  w.store.providerQuotes.get(pq)!.expires_at = new Date(w.h.clock.now() - MIN).toISOString();
-  w.uber.state.quoteFee = 1100; // customer share 550 (was 450): Δ 100 < 200
-  const id = w.posOrder(pq);
-  ok(await w.dispatch(id));
-  const row = w.store.deliveries[0];
-  assertEquals([row.provider_fee_cents, row.customer_fee_cents, row.restaurant_absorbs_cents, row.provider_quote_id], [1100, 450, 650, 'dqt_2']);
-  // ≥ $2
-  const pq2 = await w.uberQuoteId();
-  w.store.providerQuotes.get(pq2)!.expires_at = new Date(w.h.clock.now() - MIN).toISOString();
-  w.uber.state.quoteFee = 1700; // customer 850 vs 550 → Δ 300
-  const id2 = w.posOrder(pq2);
+  // a fresh quote → fee_delta 0, absorbs = 900 − 450
+  const fresh = ok<DispatchBody>(await w.dispatch(w.posOrder(await w.uberQuoteId())));
+  assertEquals((fresh.delivery as unknown as Record<string, unknown>).fee_delta_cents, 0);
+  assertEquals(w.store.deliveries[0].restaurant_absorbs_cents, 450);
+  // expired + Uber now $5 dearer (900 → 1400; the old guard's customer-share Δ = 250 ≥ 200 would have been a 409)
+  const pqUp = await w.uberQuoteId();
+  w.store.providerQuotes.get(pqUp)!.expires_at = new Date(w.h.clock.now() - MIN).toISOString();
+  w.uber.state.quoteFee = 1400;
+  const up = await w.dispatch(w.posOrder(pqUp), { accepted_quote_id: 'pq_' + 'f'.repeat(32) }); // an older POS's field: ignored
+  assertEquals(up.status, 200);
+  const upB = ok<DispatchBody>(up);
+  assertEquals([upB.delivery!.state, upB.delivery!.customer_fee_cents, (upB.delivery as unknown as Record<string, unknown>).fee_delta_cents], ['booked', 450, 500]);
+  const rowUp = w.store.deliveries.at(-1)!;
+  assertEquals([rowUp.provider_fee_cents, rowUp.customer_fee_cents, rowUp.restaurant_absorbs_cents, rowUp.quoted_provider_fee_cents], [1400, 450, 950, 900]);
+  assertEquals(w.logs.filter((l) => l.event === 'delivery_dispatch_fee_delta').map((l) => [l.quoted_cents, l.booked_cents]), [[900, 1400]]);
+  // expired + Uber now cheaper than the customer paid (900 → 300): absorbs NEGATIVE, stored, not floored
+  w.uber.state.quoteFee = 900;
+  const pqDown = await w.uberQuoteId();
+  w.store.providerQuotes.get(pqDown)!.expires_at = new Date(w.h.clock.now() - MIN).toISOString();
+  w.uber.state.quoteFee = 300;
+  const down = ok<DispatchBody>(await w.dispatch(w.posOrder(pqDown)));
+  assertEquals((down.delivery as unknown as Record<string, unknown>).fee_delta_cents, -600);
+  const rowDown = w.store.deliveries.at(-1)!;
+  assertEquals([rowDown.provider_fee_cents, rowDown.customer_fee_cents, rowDown.restaurant_absorbs_cents], [300, 450, -150]);
+  assert(!w.logs.some((l) => l.code === 'quote_price_changed' || l.error_code === 'quote_price_changed'));
+  assertEquals(w.store.deliveries.map((d) => d.state), ['booked', 'booked', 'booked']);
+  // a resend with / without accepted_quote_id is the same request (not action_id_reused)
+  const id = w.posOrder(await w.uberQuoteId());
   const actionId = crypto.randomUUID();
-  const r = await w.dispatch(id2, { action_id: actionId });
-  assertEquals([r.status, err(r).code], [409, 'quote_price_changed']);
-  const quote = errBody(r).quote as Record<string, unknown>;
-  assertEquals([quote.original_fee_cents, quote.new_fee_cents, quote.delta_cents], [550, 850, 300]);
-  assertEquals(errBody(await w.dispatch(id2, { action_id: actionId })).quote, quote, 'the stored answer replays the quote');
-  const bookingsBefore = w.uber.calls.filter((c) => c.path.endsWith('/deliveries')).length;
-  const anyway = ok<DispatchBody>(await w.dispatch(id2, { accepted_quote_id: quote.new_quote_id }));
-  assertEquals(anyway.delivery!.state, 'booked');
-  assertEquals(w.uber.calls.filter((c) => c.path.endsWith('/deliveries')).length, bookingsBefore + 1);
-  assertEquals(w.store.deliveries.filter((d) => d.pos_order_id === id2).map((d) => d.state), ['failed', 'booked']);
+  ok(await w.dispatch(id, { action_id: actionId }));
+  assertEquals(ok<DispatchBody>(await w.dispatch(id, { action_id: actionId, accepted_quote_id: 'pq_' + 'a'.repeat(32) })).result, 'duplicate');
 });
 
 Deno.test('dispatch: Uber refuses (bad address) → stored 502 delivery_failed bad_address; rate_limited → 503 Retry-After, NOT stored (released); a lost answer → duplicate, one booking', async () => {
@@ -293,9 +302,9 @@ Deno.test('dispatch never double-books: pending → 503; STALE with a booking ro
   const pq = await w.uberQuoteId();
   const id = w.posOrder(pq);
   const actionId = crypto.randomUUID();
-  const body = { action_id: actionId, restaurant_id: R1, order_id: id, pickup_ready_minutes: 20, accepted_quote_id: null, actor_staff_id: 'register', approver_staff_id: null };
+  const body = { action_id: actionId, restaurant_id: R1, order_id: id, pickup_ready_minutes: 20, actor_staff_id: 'register', approver_staff_id: null };
   await w.store.beginAction({ actionId, restaurantId: R1, deviceId: w.A.device_id, orderId: id, action: 'dispatch', request: body, actor: 'register', approver: null, deviceTime: null });
-  const claim = await w.store.claimDelivery({ pos_order_id: id, restaurant_id: R1, provider: 'uber_direct', action_id: actionId, provider_quote_ref: pq, provider_quote_id: null, customer_fee_cents: 450, driver_tip_cents: 0, billing_mode: 'platform', provider_environment: 'sandbox' });
+  const claim = await w.store.claimDelivery({ pos_order_id: id, restaurant_id: R1, provider: 'uber_direct', action_id: actionId, provider_quote_ref: pq, provider_quote_id: null, customer_fee_cents: 450, quoted_provider_fee_cents: 900, driver_tip_cents: 0, billing_mode: 'platform', provider_environment: 'sandbox' });
   assertEquals((await w.dispatch(id, body)).status, 503);
   w.h.clock.advance(PENDING_STALE_MS);
   const unknown = await w.dispatch(id, body);
@@ -326,12 +335,22 @@ Deno.test('cancel: a booked delivery → Uber cancel → canceled + cancellation
   const pq = await w.uberQuoteId();
   const id = w.posOrder(pq);
   ok(await w.dispatch(id));
-  w.uber.state.cancelFee = 0;
+  w.uber.state.cancelFee = 0; // Uber says 0 → none charged → null
   const c = ok<DispatchBody>(await w.cancel(id));
-  assertEquals([c.result, c.delivery!.state], ['applied', 'canceled']);
+  const cw = c.delivery as unknown as Record<string, unknown>;
+  assertEquals([c.result, cw.state, cw.cancellation_fee_cents, cw.canceled_by], ['applied', 'canceled', null, 'restaurant']);
   assertEquals(w.uber.calls.at(-1)!.path, '/v1/customers/cust_platform/deliveries/del_1/cancel');
-  assertEquals(w.store.deliveries[0].cancellation_fee_cents, 0);
-  assertEquals(ok<DispatchBody>(await w.cancel(id)).result, 'noop');
+  assertEquals([w.store.deliveries[0].cancellation_fee_cents, w.store.deliveries[0].canceled_by], [null, 'restaurant']);
+  const again = ok<DispatchBody>(await w.cancel(id));
+  assertEquals([again.result, (again.delivery as unknown as Record<string, unknown>).canceled_by], ['noop', 'restaurant']);
+  // Uber charged one → integer cents on the 200 answer and in status polls
+  const id2 = w.posOrder(pq);
+  ok(await w.dispatch(id2));
+  w.uber.state.cancelFee = 725;
+  const c2 = ok<DispatchBody>(await w.cancel(id2)).delivery as unknown as Record<string, unknown>;
+  assertEquals([c2.cancellation_fee_cents, c2.canceled_by], [725, 'restaurant']);
+  const polled = ok<{ deliveries: { delivery: Record<string, unknown> }[] }>(await w.status([id2])).deliveries[0].delivery;
+  assertEquals([polled.state, polled.cancellation_fee_cents, polled.canceled_by], ['canceled', 725, 'restaurant']);
   // re-dispatch after a cancel is allowed (a new booking)
   assertEquals(ok<DispatchBody>(await w.dispatch(id)).delivery!.state, 'booked');
   w.uber.state.cancelStatus = 409;
@@ -366,7 +385,23 @@ Deno.test('status: a booked delivery is refreshed from Uber at most every 30 s (
   w.h.clock.advance(POLL_EVERY_MS);
   ok(await w.status([id]));
   assertEquals(gets(), 2, 'a delivered one is not polled');
+  assertEquals([s2.deliveries[0].delivery!.cancellation_fee_cents, s2.deliveries[0].delivery!.canceled_by], [null, null]);
   assertEquals(err(await w.status([])).code, 'invalid_payload');
+});
+
+Deno.test('status: Uber canceled / returned it → canceled, canceled_by provider, cancellation_fee_cents null', async () => {
+  const w = await world();
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  type S = { deliveries: { order_id: string; delivery: Record<string, unknown> | null }[] };
+  for (const st of ['canceled', 'returned']) {
+    const id = w.posOrder(pq);
+    ok(await w.dispatch(id));
+    w.uber.state.getStatus = st;
+    const d = ok<S>(await w.status([id])).deliveries[0].delivery!;
+    assertEquals([d.state, d.canceled_by, d.cancellation_fee_cents, d.provider_status], ['canceled', 'provider', null, st]);
+    w.uber.state.getStatus = 'pending';
+  }
 });
 
 // ---- the Pg store: names must match 115 --------------------------------------------------------------------------
