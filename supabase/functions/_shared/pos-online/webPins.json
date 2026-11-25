@@ -1,0 +1,65 @@
+{
+  "comment": "Web source ranges copied into _shared/pos-online (handler glue only; the shared modules are imported unchanged). scripts/check-ordr-core.mjs fails if a pinned range changes, or if its copy stops citing the pinned hash — then re-copy, re-review, re-pin. Lines are 1-based inclusive; sha256 over the lines joined with \\n plus a final \\n.",
+  "pins": [
+    {
+      "source": "supabase/functions/admin-refund/index.ts",
+      "lines": [
+        102,
+        254
+      ],
+      "copy": "supabase/functions/_shared/pos-online/adminRefundGlue.ts",
+      "what": "admin-refund handler glue after auth + order fetch (CP19)",
+      "sha256": "e4a85d24b5822a5bc52a6609c991985ccb61d8b129307d552120b42cc80cd114"
+    },
+    {
+      "source": "supabase/functions/uber-create-delivery/index.ts",
+      "lines": [
+        170,
+        182
+      ],
+      "copy": "supabase/functions/_shared/pos-online/uberGlue.ts",
+      "what": "pickup_ready_dt must be in the future (CP20)",
+      "sha256": "4339fd63ea3c250892a6213a54a6e4ee88d8b0fdd55ad7872d0cbdb57fa51387"
+    },
+    {
+      "source": "supabase/functions/uber-create-delivery/index.ts",
+      "lines": [
+        212,
+        233
+      ],
+      "copy": "supabase/functions/_shared/pos-online/uberGlue.ts",
+      "what": "the order + restaurant select passed to createUberDelivery (CP20)",
+      "sha256": "5bb22a6e385d7d863fe2ea09835950ef3fd5113b3e46a42a6ac3f2204f417c76"
+    },
+    {
+      "source": "supabase/functions/uber-create-delivery/index.ts",
+      "lines": [
+        266,
+        315
+      ],
+      "copy": "supabase/functions/_shared/pos-online/uberGlue.ts",
+      "what": "scheduled lead time (migration 096) + the createUberDelivery call (CP20)",
+      "sha256": "39825159b1873e80e0246a33c47a709c83d321f8688bb03552a77164af75595b"
+    },
+    {
+      "source": "supabase/functions/uber-self-deliver/index.ts",
+      "lines": [
+        100,
+        112
+      ],
+      "copy": "supabase/functions/_shared/pos-online/uberGlue.ts",
+      "what": "the order + restaurant select (CP20)",
+      "sha256": "5b56b8282b9fe7b9a3e6d4054e4bb0031bdf0392153e82af84f815332ae0124d"
+    },
+    {
+      "source": "supabase/functions/uber-self-deliver/index.ts",
+      "lines": [
+        143,
+        187
+      ],
+      "copy": "supabase/functions/_shared/pos-online/uberGlue.ts",
+      "what": "cancel Uber → self_delivering → app-fee walk-back (CP20)",
+      "sha256": "f269551317e4bd50b4c5ebc48d2ba72d30605958c12604d0496ecc71dc3d0a3e"
+    }
+  ]
+}

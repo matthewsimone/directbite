@@ -100,6 +100,7 @@ export async function world(o: { restaurant?: Record<string, unknown> } = {}) {
   const deps: OnlineDeps = { ...h.deps, db, online, sleep: () => Promise.resolve(), readyEmail: (id) => void readyEmails.push(id), snapshotDb: fakeSnapshotDb(db), refund: undefined };
   const money = moneyFakes(db);
   deps.refund = { stripe: money.stripe, cancelUberDelivery: money.cancelUberDelivery, refundUberAppFee: money.refundUberAppFee };
+  deps.uber = { createUberDelivery: money.createUberDelivery };
   const nowIso = () => new Date(h.clock.now()).toISOString();
   const call = (fn: typeof handleOnlineOrders, body: unknown, dev: Registered = A) =>
     fn({ method: 'POST', headers: new Headers({ 'x-ordr-api-version': '1', 'x-ordr-client': 'ordr-pos/1.0.0', ...h.asDevice(dev) }), bodyText: JSON.stringify(body), ip: FAKE_IP }, deps);

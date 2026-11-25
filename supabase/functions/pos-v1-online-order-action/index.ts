@@ -3,13 +3,17 @@
 // schedule, complete, complete_all_in_progress, wake_scheduled — each EXACTLY the web tablet's write, compare-and-set
 // on expected_status, idempotent by action_id (SYNC-CONTRACT §3c). CP19 money: cancel_refund = admin-refund {type:
 // 'full'} UNCHANGED (its glue copied + hash-pinned, the shared Uber / app-fee modules imported unchanged),
-// adjustment_request = the tablet's ADJUST insert. Uber / KitchenHub actions → 501 (CP20–21).
+// adjustment_request = the tablet's ADJUST insert. CP20 Uber: dispatch_delivery = uber-create-delivery (the shared
+// core createUberDelivery imported unchanged), self_deliver = uber-self-deliver (cancelUberDelivery + refundUberAppFee
+// imported unchanged); their handler glue copied + hash-pinned (_shared/pos-online/uberGlue.ts, webPins.json).
+// KitchenHub actions → 501 (CP21).
 // ============================================================================
 // Device-authed (DEVICE-AUTH §4.2). Logic: _shared/pos-online/handlers.ts (handleOnlineOrderAction) + migration 111
 // (pos_online_order_action). verify_jwt = false (supabase/config.toml).
 // Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY (the ready email is called like the tablet calls it),
-// STRIPE_SECRET_KEY (the platform key admin-refund uses; unset → cancel_refund 501) + the Uber env uberCancel.ts reads.
-// Needs migrations 101 (pos_devices), 109–111, 113 (pending cancel_refund, finish, adjustment request). NOT DEPLOYED.
+// STRIPE_SECRET_KEY (the platform key admin-refund / uber-self-deliver use; unset → cancel_refund / dispatch_delivery /
+// self_deliver 501) + the Uber env the shared Uber modules read (the same secrets uber-create-delivery /
+// uber-self-deliver use). Needs migrations 101, 109–111, 113, 114 (pending dispatch / self-deliver + the release).
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
@@ -17,6 +21,8 @@ import Stripe from "https://esm.sh/stripe@17.7.0";
 // admin-refund's shared modules, imported UNCHANGED (the glue that calls them: _shared/pos-online/adminRefundGlue.ts)
 import { cancelUberDelivery } from "../_shared/uberCancel.ts";
 import { refundUberAppFee } from "../_shared/refundUberAppFee.ts";
+// uber-create-delivery's shared core, imported UNCHANGED (the glue that calls it: _shared/pos-online/uberGlue.ts)
+import { createUberDelivery } from "../_shared/uberCreateDelivery.ts";
 import { handleDeviceHttp } from "../_shared/pos-sync/http.ts";
 import { handleOnlineOrderAction, logErrorResponse } from "../_shared/pos-online/handlers.ts";
 import { makeReadyEmail } from "../_shared/pos-online/readyEmail.ts";
@@ -35,6 +41,7 @@ const deps = {
   log,
   readyEmail: makeReadyEmail({ supabaseUrl: Deno.env.get("SUPABASE_URL")!, anonKey: Deno.env.get("SUPABASE_ANON_KEY") ?? "", log }),
   refund: stripeKey ? { stripe: new Stripe(stripeKey), cancelUberDelivery, refundUberAppFee } : undefined,
+  uber: { createUberDelivery },
 };
 
 // Every 4xx / 5xx is logged (status + error code + field — never a body or token): logErrorResponse.

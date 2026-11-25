@@ -262,9 +262,9 @@ Deno.test('actions: started → pending → completed → duplicate (stored outc
   assertEquals(await s.completeAction(fakeId('a'), DEV_A, 'applied'), { outcome: 'not_found' });
 });
 
-// ---- Pg wrapper: names must match 109–113 -----------------------------------------------------------
+// ---- Pg wrapper: names must match 109–114 -----------------------------------------------------------
 
-Deno.test('PgOnlineStore: RPC + argument names match the 109–113 functions; error codes mapped', async () => {
+Deno.test('PgOnlineStore: RPC + argument names match the 109–114 functions; error codes mapped', async () => {
   const calls: [string, Record<string, unknown>][] = [];
   const reads: string[] = [];
   let next: { data: unknown; error: { code?: string; message: string } | null } = { data: { outcome: 'ok' }, error: null };
@@ -301,6 +301,8 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109–113 functions; er
   await pg.settingsChange({ actionId: 'act4', restaurantId: R1, deviceId: DEV_A, kind: 'online_auto_print', printDeviceId: null, on: true, request: {}, actor: 'register', approver: null, deviceTime: null });
   next = { data: { outcome: 'completed' }, error: null };
   await pg.finishAction('act6', DEV_A, 'error', { status: 502, code: 'refund_failed', message: 'declined' });
+  next = { data: { outcome: 'released' }, error: null };
+  assertEquals(await pg.releaseAction('act8', DEV_A), { outcome: 'released' });
   next = { data: { outcome: 'applied' }, error: null };
   assertEquals(await pg.adjustmentRequest({ actionId: 'act7', restaurantId: R1, deviceId: DEV_A, orderId: o, expectedStatus: 'complete', type: 'charge', amountCents: 500, note: 'x', request: {}, actor: 'register', approver: null, deviceTime: null }), { outcome: 'applied' });
   await pg.tabletSettingChange({ actionId: 'act5', restaurantId: R1, deviceId: DEV_A, kind: 'estimates', pickupMinutes: 20, deliveryMinutes: 45, on: null, itemId: null, request: {}, actor: 'register', approver: null, deviceTime: null });
@@ -317,6 +319,7 @@ Deno.test('PgOnlineStore: RPC + argument names match the 109–113 functions; er
     ['pos_online_order_action', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_action', 'p_expected_status', 'p_quoted_ready_minutes', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_settings_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_kind', 'p_print_device_id', 'p_on', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_action_finish', ['p_action_id', 'p_device_id', 'p_outcome', 'p_error_status', 'p_error_code', 'p_error_message']],
+    ['pos_online_action_release', ['p_action_id', 'p_device_id']],
     ['pos_online_adjustment_request', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_order_id', 'p_expected_status', 'p_type', 'p_amount_cents', 'p_note', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_online_tablet_setting_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_kind', 'p_pickup_minutes', 'p_delivery_minutes', 'p_on', 'p_item_id', 'p_request', 'p_actor', 'p_approver', 'p_device_time']],
     ['pos_set_print_register', ['p_restaurant_id', 'p_device_id', 'p_updated_by']],

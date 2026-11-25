@@ -1,5 +1,5 @@
 /**
- * POS online persistence — migrations 109–113: print register + flags, per-station print claims / results,
+ * POS online persistence — migrations 109–114: print register + flags, per-station print claims / results,
  * the print state read, device actions (idempotency, pos_online_actions in the handoff shape), the Ordr order
  * actions and the POS settings changes. Every write is ONE plpgsql function (one transaction).
  * MemoryOnlineStore mirrors the SQL for tests — keep the two in step (110_smoke.sql / 111_smoke.sql run the same
@@ -208,6 +208,8 @@ export interface OnlineStore {
   completeAction(actionId: string, deviceId: string, outcome: 'applied' | 'noop'): Promise<ActionCompleteOutcome>;
   /** 113: complete a pending action with applied | noop | error (money errors are stored). */
   finishAction(actionId: string, deviceId: string, outcome: StoredOutcome, error?: ActionError | null): Promise<ActionCompleteOutcome>;
+  /** 114: delete a PENDING dispatch_delivery / self_deliver that provably did nothing (Uber rate_limited). */
+  releaseAction(actionId: string, deviceId: string): Promise<{ outcome: 'released' | 'not_found' | 'device_mismatch' | 'not_pending' }>;
   /** 113: the tablet's ADJUST insert + the action row (one transaction). */
   adjustmentRequest(a: AdjustmentInput): Promise<AdjustmentOutcome>;
   orderAction(a: OrderActionInput): Promise<OrderActionOutcome>;
@@ -439,6 +441,16 @@ export class MemoryOnlineStore implements OnlineStore {
     }
     if (cur.outcome === null) return Promise.resolve({ outcome: 'pending', since: new Date(cur.created_at).toISOString() });
     return Promise.resolve({ outcome: 'duplicate', ...this.stored(cur) });
+  }
+
+  /** 114 pos_online_action_release, mirrored. */
+  releaseAction(actionId: string, deviceId: string): Promise<{ outcome: 'released' | 'not_found' | 'device_mismatch' | 'not_pending' }> {
+    const cur = this.actions.get(actionId);
+    if (!cur) return Promise.resolve({ outcome: 'not_found' });
+    if (cur.device_id !== deviceId) return Promise.resolve({ outcome: 'device_mismatch' });
+    if (cur.outcome !== null || cur.fn !== 'order_action' || !['dispatch_delivery', 'self_deliver'].includes(cur.action)) return Promise.resolve({ outcome: 'not_pending' });
+    this.actions.delete(actionId);
+    return Promise.resolve({ outcome: 'released' });
   }
 
   /** 113 pos_online_action_finish, mirrored. */
@@ -708,6 +720,9 @@ export class PgOnlineStore implements OnlineStore {
       p_action_id: actionId, p_device_id: deviceId, p_outcome: outcome, p_error_status: error?.status ?? null,
       p_error_code: error?.code ?? null, p_error_message: error?.message ?? null,
     });
+  }
+  releaseAction(actionId: string, deviceId: string) {
+    return this.call<{ outcome: 'released' | 'not_found' | 'device_mismatch' | 'not_pending' }>('pos_online_action_release', { p_action_id: actionId, p_device_id: deviceId });
   }
   async adjustmentRequest(a: AdjustmentInput): Promise<AdjustmentOutcome> {
     const r = await this.call<Record<string, unknown>>('pos_online_adjustment_request', {

@@ -3,7 +3,7 @@
  *
  * COPIED from supabase/functions/admin-refund/index.ts :102-254 (the handler glue after auth + the order fetch),
  * pinned by hash: sha256 e4a85d24b5822a5bc52a6609c991985ccb61d8b129307d552120b42cc80cd114
- * (_shared/pos-online/adminRefundPin.json; scripts/check-ordr-core.mjs fails if those web lines change —
+ * (_shared/pos-online/webPins.json; scripts/check-ordr-core.mjs fails if those web lines change —
  * then re-copy, re-review, re-pin). The shared modules are IMPORTED UNCHANGED by the caller and passed in:
  * _shared/uberCancel.ts cancelUberDelivery, _shared/refundUberAppFee.ts refundUberAppFee (the entry point binds
  * the real ones; tests pass fakes).

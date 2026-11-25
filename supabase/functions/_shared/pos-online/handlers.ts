@@ -30,6 +30,7 @@ import {
 import { ACK_ACTIONS, ONLINE_ACTIONS, type Cp18Action } from './actionRules.ts';
 import { adminRefundFull, type AdminRefundGlueDeps } from './adminRefundGlue.ts';
 import type { FeedMenuHash } from './menuHash.ts';
+import { dispatchFetched, fetchForDispatch, fetchForSelfDeliver, selfDeliverFetched, type UberGlueDeps } from './uberGlue.ts';
 import { containsCardNumber } from '../ordr-core-ext/cardData.ts';
 import { buildMenuSnapshot, type SnapshotDb } from '../pos-sync/menuSnapshot.ts';
 import { writeTabletPrintColumns, type PrintClient } from './printColumns.ts';
@@ -59,6 +60,8 @@ export interface OnlineDeps extends AuthDeps {
    * Stripe client and the two shared modules, imported unchanged by the entry point. Absent → cancel_refund 501.
    */
   refund?: Pick<AdminRefundGlueDeps, 'stripe' | 'cancelUberDelivery' | 'refundUberAppFee'>;
+  /** dispatch_delivery (CP20): _shared/uberCreateDelivery.ts createUberDelivery, imported unchanged. Absent → 501. */
+  uber?: Pick<UberGlueDeps, 'createUberDelivery'>;
   /**
    * The feed's menu_snapshot_hash (menuHash.ts: pos-v1-menu-snapshot's builder behind the 30 s per-restaurant
    * cache; one per function instance). Absent → menu_snapshot_hash null.
@@ -454,7 +457,6 @@ const isResult = (v: unknown): v is DeviceResult => !!v && typeof v === 'object'
 
 /** Not built yet → 501 (the POS reads 501 as "Ordr can't do this yet", onlineActions.ts :66, :224). */
 const LATER: Record<string, string> = {
-  dispatch_delivery: 'CP20', self_deliver: 'CP20',
   ext_ack: 'CP21', ext_accept: 'CP21', ext_ready: 'CP21', ext_cancel: 'CP21',
 };
 
@@ -505,19 +507,23 @@ export async function handleOnlineOrderAction(req: DeviceRequest, deps: OnlineDe
   const actionId = body.action_id.toLowerCase();
   const orderId = bulk ? null : String(body.order_id).toLowerCase();
 
+  let one: OneOrder | null = null;
   if (orderId !== null) {
-    const one = await readOneOrder(deps.db, orderId);
+    one = await readOneOrder(deps.db, orderId);
     if (!one || (one.channel === 'ordr' && !one.row.items_written_at)) return errorResult(400, 'unknown_order', 'no such order');
     if (one.row.restaurant_id !== rid) return errorResult(400, 'restaurant_mismatch', 'the order belongs to another restaurant', { field: 'order_id' });
     // onlineActionRules.ts :120 — an Ordr action on a KitchenHub order
     if (one.channel === 'kitchenhub') return errorResult(400, 'action_not_allowed', `${action} on a kitchenhub order`);
   }
-  // CP19: the money actions (orderId is set — not bulk)
-  if ((body.action === 'cancel_refund' || body.action === 'adjustment_request') && orderId !== null) {
+  // CP19 money + CP20 Uber (orderId is set — not bulk)
+  if (['cancel_refund', 'adjustment_request', 'dispatch_delivery', 'self_deliver'].includes(body.action) && orderId !== null && one) {
     const { device_time: _d, ...req } = body;
     void _d;
     const m: MoneyCall = { deps, rid, deviceId: pr.device_id, actionId, orderId, expected: String(body.expected_status), request: req, who, deviceTime: isoOrNullTime(body.device_time) };
-    return body.action === 'cancel_refund' ? cancelRefund(m) : adjustmentRequest(m, body);
+    if (body.action === 'cancel_refund') return cancelRefund(m);
+    if (body.action === 'adjustment_request') return adjustmentRequest(m, body);
+    if (body.action === 'dispatch_delivery') return dispatchDelivery(m, body, one);
+    return selfDeliver(m, one);
   }
 
   // the quoted time only matters to accept; a non-integer reaches the rule as 0 → invalid_payload at its point
@@ -739,6 +745,16 @@ async function moneyError(m: MoneyCall, status: number, code: string, message: s
     extra.reason = r ? r[1] : 'provider_error';
     if (r) msg = message.slice(r[0].length);
   }
+  if (code === 'quote_price_changed') {
+    // stored as JSON {message, quote} (pos_online_actions.error_message) so the replay carries error.quote
+    try {
+      const j = JSON.parse(message);
+      msg = typeof j.message === 'string' ? j.message : 'the delivery price changed';
+      extra.quote = j.quote ?? null;
+    } catch {
+      extra.quote = null;
+    }
+  }
   if (code === 'status_conflict' || code === 'refund_failed') extra.order = await currentWire(m.deps, m.rid, m.orderId);
   return errorResult(status, code, msg, extra);
 }
@@ -849,4 +865,171 @@ async function adjustmentRequest(m: MoneyCall, body: Row): Promise<DeviceResult>
     case 'applied':
       return moneyOk(m, 'applied');
   }
+}
+
+// ---- Uber (CP20): dispatch_delivery = uber-create-delivery, self_deliver = uber-self-deliver -----------------------
+
+/** ASAP pickup time (the contract's 5–120; onlineActionRules.ts PREP_MINUTES :83). */
+const PREP = { min: 5, max: 120 } as const;
+const UNKNOWN_DISPATCH = 'outcome unknown — check the Uber dashboard before dispatching again';
+
+function uberGlue(m: MoneyCall): UberGlueDeps | null {
+  const { deps } = m;
+  if (!deps.refund) return null;
+  return {
+    supabase: deps.db, log: deps.log, stripe: deps.refund.stripe, cancelUberDelivery: deps.refund.cancelUberDelivery,
+    refundUberAppFee: deps.refund.refundUberAppFee,
+    createUberDelivery: deps.uber?.createUberDelivery ?? (() => Promise.reject(new Error('createUberDelivery not configured'))),
+  };
+}
+
+type Begun = { go: true; stale: boolean } | { go: false; result: DeviceResult };
+
+/** begin (pending row) → reused 409 | duplicate replay | in flight 503 | stale (caller decides) | started. */
+async function beginUber(m: MoneyCall, action: 'dispatch_delivery' | 'self_deliver'): Promise<Begun> {
+  const { deps } = m;
+  const begin = await deps.online.beginAction({
+    actionId: m.actionId, fn: 'order_action', restaurantId: m.rid, deviceId: m.deviceId, channel: 'ordr', orderId: m.orderId,
+    action, request: m.request, actor: m.who.actor, approver: m.who.approver, deviceTime: m.deviceTime,
+  });
+  if (begin.outcome === 'action_id_reused') return { go: false, result: errorResult(409, 'action_id_reused', 'this action_id was used for another request') };
+  if (begin.outcome === 'duplicate') {
+    if (begin.stored === 'error') return { go: false, result: await moneyError(m, begin.error_status ?? 500, begin.error_code ?? 'internal_error', begin.error_message ?? '') };
+    return { go: false, result: await moneyOk(m, 'duplicate') };
+  }
+  if (begin.outcome === 'pending') {
+    const since = Date.parse(begin.since ?? '');
+    if (!Number.isFinite(since) || deps.now() - since < PENDING_STALE_MS) {
+      return { go: false, result: errorResult(503, 'action_pending', 'this delivery request is still being processed — try again in a moment', { retryAfterMs: 5_000 }) };
+    }
+    return { go: true, stale: true };
+  }
+  return { go: true, stale: false };
+}
+
+/** Uber answered rate_limited: nothing was booked / released → drop the pending row, 503 + Retry-After (NOT stored). */
+async function uberRetryLater(m: MoneyCall, retryAfter: unknown): Promise<DeviceResult> {
+  await m.deps.online.releaseAction(m.actionId, m.deviceId);
+  const s = Number(retryAfter);
+  return errorResult(503, 'rate_limited', 'Uber is busy — trying again shortly', { retryAfterMs: (Number.isFinite(s) && s > 0 ? s : 60) * 1000 });
+}
+
+/**
+ * dispatch_delivery — §3c:629 + onlineActionRules.ts :195-217, run as uber-create-delivery (createUberDelivery
+ * unchanged): from `new`, an Uber Direct delivery, not booked; ASAP prep_minutes 5–120 → in_progress, scheduled →
+ * booked for scheduled_for (− the restaurant's lead) → scheduled. A STALE pending dispatch is NEVER re-run (CP20
+ * decision 1): booked (uber_delivery_id set) → applied; else stored 502 "outcome unknown".
+ */
+async function dispatchDelivery(m: MoneyCall, body: Row, one: OneOrder): Promise<DeviceResult> {
+  const g = uberGlue(m);
+  if (!g || !m.deps.uber) return errorResult(501, 'not_implemented', 'dispatch_delivery is not configured on this server');
+  const scheduled = one.row.scheduled_for != null;
+  const prep = body.prep_minutes;
+  if (!scheduled && !(typeof prep === 'number' && Number.isInteger(prep) && prep >= PREP.min && prep <= PREP.max)) {
+    return bad('prep_minutes', `prep_minutes must be ${PREP.min}–${PREP.max}`);
+  }
+  const aq = body.accepted_quote_id;
+  if (!(aq === null || aq === undefined || (typeof aq === 'string' && aq.length >= 1 && aq.length <= 200))) return bad('accepted_quote_id', 'accepted_quote_id must be a string or null');
+
+  const b = await beginUber(m, 'dispatch_delivery');
+  if (!b.go) return b.result;
+  const { deps } = m;
+  const fail = async (status: number, code: string, message: string) => {
+    await deps.online.finishAction(m.actionId, m.deviceId, 'error', { status, code, message });
+    return moneyError(m, status, code, message);
+  };
+  const f = await fetchForDispatch(g, m.orderId);
+  if (f.kind === 'db_error') {
+    if (!b.stale) await deps.online.releaseAction(m.actionId, m.deviceId); // nothing sent to Uber yet
+    throw new Error(`orders read failed: ${f.message}`);
+  }
+  if (f.kind !== 'ok' || f.order.restaurant_id !== m.rid) return fail(400, 'unknown_order', 'no such order');
+  const { order, restaurant } = f;
+
+  if (b.stale) {
+    // decision 1: never re-run — the first attempt may have booked a courier that was never saved
+    deps.log('online_dispatch_stale', { action_id: m.actionId, order_id: m.orderId, booked: !!order.uber_delivery_id });
+    if (order.uber_delivery_id) {
+      await deps.online.finishAction(m.actionId, m.deviceId, 'applied');
+      return moneyOk(m, 'applied');
+    }
+    return fail(502, 'delivery_failed', `[provider_error] ${UNKNOWN_DISPATCH}`);
+  }
+
+  if (order.status !== m.expected) return fail(409, 'status_conflict', `the order is ${order.status}`);
+  if (order.status !== 'new') return fail(400, 'action_not_allowed', `dispatch from ${order.status}`);
+  if (one.row.order_type !== 'delivery' || order.delivery_fulfillment_method !== 'uber_direct') return fail(400, 'action_not_allowed', 'not an Uber delivery');
+  if (order.uber_delivery_id) return fail(400, 'action_not_allowed', 'already dispatched');
+  if (order.scheduled_for == null && !(typeof prep === 'number' && prep >= PREP.min && prep <= PREP.max)) return fail(400, 'invalid_payload', `prep_minutes must be ${PREP.min}–${PREP.max}`);
+
+  const r = await dispatchFetched(g, order, restaurant, { pickup_ready_minutes: order.scheduled_for == null ? (prep as number) : null, accepted_quote_id: typeof aq === 'string' ? aq : null });
+  if (r.kind === 'pickup_ready_dt_invalid') return fail(400, 'action_not_allowed', 'the scheduled time has passed');
+  const res = r.body;
+  if (res.success === true) {
+    const idem = res.idempotent === true;
+    await deps.online.finishAction(m.actionId, m.deviceId, idem ? 'noop' : 'applied');
+    return moneyOk(m, idem ? 'noop' : 'applied');
+  }
+  const code = String(res.error ?? 'unknown');
+  switch (code) {
+    case 'rate_limited':
+      return uberRetryLater(m, res.retry_after);
+    case 'quote_price_changed': {
+      const quote = { original_fee_cents: res.original_fee_cents, new_fee_cents: res.new_fee_cents, delta_cents: res.delta_cents, new_quote_id: res.new_quote_id };
+      return fail(409, 'quote_price_changed', JSON.stringify({ message: 'the delivery price changed', quote }));
+    }
+    case 'no_uber_available':
+      return fail(502, 'delivery_failed', '[no_courier_available] no Uber courier is available for this address right now');
+    case 'bad_address':
+      return fail(502, 'delivery_failed', '[bad_address] Uber rejected this address');
+    case 'invalid_status':
+    case 'not_uber_direct':
+      return fail(400, 'action_not_allowed', String(res.detail ?? code));
+    case 'db_error':
+      if (res.delivery_id) {
+        // decision 2: Uber booked, the orders row was NOT updated — one loud line for the manual reconcile, never retried
+        deps.log('ONLINE_DISPATCH_UNPERSISTED_RECONCILE', { order_id: m.orderId, uber_delivery_id: res.delivery_id, action_id: m.actionId });
+        return fail(502, 'delivery_failed', '[provider_error] Uber booked a courier but the order could not be updated — check the Uber dashboard');
+      }
+      break;
+  }
+  deps.log('online_dispatch_failed', { order_id: m.orderId, action_id: m.actionId, error: code, step: res.step ?? null });
+  return fail(502, 'delivery_failed', `[provider_error] Uber could not book the delivery (${code})`);
+}
+
+/**
+ * self_deliver — §3c:630 + onlineActionRules.ts :219-227, run as uber-self-deliver (cancelUberDelivery +
+ * refundUberAppFee unchanged): an Uber Direct delivery not complete / cancelled / self_delivering (approved stricter
+ * than the web, which has no status check). Uber refuses (the driver has the food) → 502 cannot_cancel, nothing
+ * changes. A stale pending self_deliver is re-run (every step is idempotent).
+ */
+async function selfDeliver(m: MoneyCall, one: OneOrder): Promise<DeviceResult> {
+  const g = uberGlue(m);
+  if (!g) return errorResult(501, 'not_implemented', 'self_deliver is not configured on this server');
+  const b = await beginUber(m, 'self_deliver');
+  if (!b.go) return b.result;
+  const { deps } = m;
+  if (b.stale) deps.log('online_self_deliver_rerun', { action_id: m.actionId, order_id: m.orderId });
+  const fail = async (status: number, code: string, message: string) => {
+    await deps.online.finishAction(m.actionId, m.deviceId, 'error', { status, code, message });
+    return moneyError(m, status, code, message);
+  };
+  const f = await fetchForSelfDeliver(g, m.orderId);
+  if (f.kind === 'db_error') throw new Error(`orders read failed: ${f.message}`); // pending stays: the re-run is safe
+  if (f.kind !== 'ok' || f.order.restaurant_id !== m.rid) return fail(400, 'unknown_order', 'no such order');
+  const { order, restaurant } = f;
+  if (order.status !== m.expected) return fail(409, 'status_conflict', `the order is ${order.status}`);
+  if (one.row.order_type !== 'delivery' || order.delivery_fulfillment_method !== 'uber_direct') return fail(400, 'action_not_allowed', 'not an Uber delivery');
+  if (['complete', 'cancelled', 'self_delivering'].includes(order.status)) return fail(400, 'action_not_allowed', `self-deliver from ${order.status}`);
+
+  const r = await selfDeliverFetched(g, order, restaurant, m.orderId);
+  if (r.kind === 'cancel_failed') {
+    if (r.error === 'rate_limited') return uberRetryLater(m, r.retry_after);
+    const reason = r.error === 'uber_cancel_failed' ? 'cannot_cancel' : 'provider_error';
+    deps.log('online_self_deliver_cancel_failed', { order_id: m.orderId, action_id: m.actionId, error: r.error });
+    return fail(502, 'delivery_failed', `[${reason}] Uber could not cancel the delivery — nothing changed`);
+  }
+  if (r.kind === 'db_error') throw new Error(`orders update failed: ${r.message}`); // pending stays: the re-run is safe
+  await deps.online.finishAction(m.actionId, m.deviceId, 'applied');
+  return moneyOk(m, 'applied');
 }
