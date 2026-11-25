@@ -362,3 +362,34 @@ Deno.test('logErrorResponse: every 4xx / 5xx → status + code + field (no body)
     { event: 'error_response', status: 502, code: null, field: null },
   ]);
 });
+
+// ---- the live 400 (Test Pizza, 2026-11-24): the POS's real RESULT request ----------------------------------
+
+/**
+ * ordr-pos @ 4f729e4: src/db/repo/onlinePrint.ts :186-199 queues a print_result with action_id
+ * `pr-${job.id}-${result}` (job.id = a uuid, print.ts :170 / :351) and payload {variant, result, error, station,
+ * device_time}; src/sync/onlineFeed.ts :136-151 sends {action_id, restaurant_id, order_id, op: 'result',
+ * stations: null, station, variant, result, error, device_time}.
+ */
+function posResultRequest(orderId: string, jobId: string, result: 'printed' | 'failed', station: typeof COUNTER, at: string) {
+  return {
+    action_id: `pr-${jobId}-${result}`, restaurant_id: R1, order_id: orderId, op: 'result', stations: null, station,
+    variant: 'auto', result, error: result === 'failed' ? 'did not print' : null, device_time: at,
+  };
+}
+
+Deno.test('LIVE BUG repro: the POS\'s real result request → 400 invalid_payload field action_id (pr-<job>-<result> is not a UUID); the same request with a UUID action_id → 200 recorded', async () => {
+  const w = await world();
+  await w.autoOn();
+  const row = ordrRow(w.nowIso());
+  w.db.insertRow('orders', row);
+  assertEquals(ok<{ result: string }>(await w.print({ order_id: row.id, op: 'claim', stations: [COUNTER, OVEN] })).result, 'applied');
+  for (const [res, st] of [['printed', COUNTER], ['failed', OVEN]] as const) {
+    const real = posResultRequest(row.id, crypto.randomUUID(), res, st, w.nowIso());
+    const r = await w.print(real);
+    assertEquals([r.status, (r.body as { error: { code: string; field: string } }).error.code, (r.body as { error: { field: string } }).error.field], [400, 'invalid_payload', 'action_id']);
+    // every other field of the real request passes: only the action_id differs
+    assertEquals(ok<{ result: string }>(await w.print({ ...real, action_id: crypto.randomUUID() })).result, 'applied', res);
+  }
+  assertEquals(w.logs(row.id).length, 2, 'the UUID versions were recorded (tablet print_logs)');
+});
