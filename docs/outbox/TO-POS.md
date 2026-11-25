@@ -225,3 +225,109 @@ order's tip — the server reads the order's priced `tip_cents`; Uber gets `min(
 restaurant. `delivery.uber.driver_tip_cents` is retired (ignored if sent). vs `f94c53b`: the submit-order 0–500 check
 on `delivery.uber.driver_tip_cents` and dispatch's stored-tip refusal both go away; the copied `min(tip, 500)` stays
 verbatim; the delivery's `driver_tip_cents` = what Uber receives.
+
+## DB-004 · 2026-11-25 11:40 ET · ACTION · re: DB-003
+
+**§3d contract change (CP23b), approved by Matt — committed `49f3de7` on branch `cp23b`.** Update
+`SYNC-CONTRACT.md` §3d from that commit (`_shared/pos-delivery/handlers.ts` dispatch / status,
+`_shared/pos-delivery/uberCalls.ts` `scheduledPickupMs`, `_shared/pos-sync/orderPayload.ts`,
+`_shared/pos-online/handlers.ts` settings).
+
+**Not deployed yet.** The dispatch / status / tip changes ship with the CP23 delivery functions
+(`pos-v1-quote-delivery`, `-delivery-dispatch`, `-delivery-cancel`, `-delivery-status`) + the `pos-v1-submit-order`
+redeploy. The settings field ships on the next `pos-v1-online-orders` / `pos-v1-online-settings` redeploy. A DB message
+follows when they're live.
+
+### The 4 changes
+
+1. **Dispatch request:** exactly one of `pickup_ready_minutes` (ASAP, 5–120) or `pickup_ready_at` (ISO, future).
+   - **Scheduled order:** at the register's scheduled Accept, send the customer's slot as `pickup_ready_at`. The server
+     books immediately for slot − the restaurant's lead (`uber_scheduled_lead_minutes`, clamped 10–60, floored to
+     now + 5 min; not set → the slot itself) — online's rule.
+   - **New errors:** `400 invalid_payload` with field `pickup_ready_minutes` (both or neither sent), or
+     `pickup_ready_at` (not a future ISO time).
+   - **The delivery's `pickup_ready_at`** is the time Uber was asked for. The register moves the order into its kitchen
+     queue locally at `pickup_ready_at − estimated_pickup_minutes`. No dispatch timer.
+2. **Tip:**
+   - There's one tip, the order's own (`pricing.tip`). On a `fee_source: 'uber'` order it's the driver tip: Uber gets
+     `min(tip, uber_driver_tip_max_cents)`.
+   - There's no limit and no 400 above $5. Above the cap, show online's note: "Uber caps delivery driver tips at $5.00.
+     Amounts above that support the restaurant."
+   - Stop sending `delivery.uber.driver_tip_cents` (ignored if sent, any value).
+   - The delivery's `driver_tip_cents` = the amount sent to Uber.
+3. **Status:** Uber `failed` now arrives as `state: 'canceled'`, `canceled_by: 'provider'`. Alarm it like any provider
+   cancel.
+4. **Settings:** read `uber_driver_tip_max_cents` (500) from the settings block; don't hardcode it.
+
+### `pos-v1-delivery-dispatch` — request / response at `49f3de7`
+
+**Request** (device-authed, like every `pos-v1-*`):
+
+```json
+{
+  "action_id": "uuid",
+  "restaurant_id": "uuid",
+  "order_id": "uuid",
+  "pickup_ready_minutes": 20,          // ASAP: 5–120, else null / absent
+  "pickup_ready_at": "ISO" | null,     // scheduled: the customer's slot (future), else null / absent
+  "actor_staff_id": "uuid" | "register" | null,
+  "approver_staff_id": "uuid" | null,
+  "device_time": "ISO" | null
+}
+```
+
+- Exactly one of `pickup_ready_minutes` / `pickup_ready_at`.
+- `accepted_quote_id` is retired: ignored if sent, and left out of the idempotency hash.
+- Idempotent by `action_id`: the same id + the same body (minus `device_time`) → the first outcome again (`duplicate`,
+  or the same stored error); the same id + another body → `409 action_id_reused`.
+- The order must be synced first, a `delivery` order with `driver_type: 'uber_direct'` and `fee_source: 'uber'`, with
+  a `delivery.uber.quote_id` (`pq_…`) from `pos-v1-quote-delivery`, closed and paid in full by card.
+
+**200:**
+
+```json
+{ "result": "applied" | "duplicate" | "noop", "delivery": Delivery, "server_time": "ISO" }
+```
+
+**`Delivery`** (also in the cancel and status answers):
+
+```json
+{
+  "id": "uuid", "order_id": "uuid", "provider": "uber_direct",
+  "state": "booking" | "booked" | "delivered" | "canceled" | "failed",
+  "provider_status": "string" | null, "tracking_url": "string" | null,
+  "courier": { "name": "string" | null, "phone": "string" | null } | null,
+  "pickup_ready_at": "ISO" | null, "pickup_eta": "ISO" | null, "dropoff_eta": "ISO" | null,
+  "dispatched_at": "ISO" | null, "delivered_at": "ISO" | null, "canceled_at": "ISO" | null,
+  "customer_fee_cents": 450,
+  "driver_tip_cents": 500,              // what Uber receives = min(order tip, uber_driver_tip_max_cents)
+  "fee_delta_cents": 0,                 // Uber fee booked − Uber fee quoted at the phone call; restaurant absorbs it
+  "cancellation_fee_cents": null,       // integer cents only when Uber charged one
+  "canceled_by": "restaurant" | "provider" | null,
+  "failure_code": "string" | null,
+  "updated_at": "ISO"
+}
+```
+
+**Errors** — `{ "error": { "code", "message", "field"?, "reason"?, "delivery"? } }`:
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `invalid_payload` | a bad field (`action_id`, `order_id`, `pickup_ready_minutes`, `pickup_ready_at`, `actor_staff_id`, `approver_staff_id`, `device_time`) |
+| 403 | `delivery_not_enabled` | the restaurant's dispatch switch is off (settings `pos_delivery_dispatch_enabled`) |
+| 400 | `unknown_order` | the order isn't synced |
+| 400 | `action_not_allowed` | not an Uber delivery (`driver_type uber_direct` + `fee_source uber`) |
+| 400 | `card_only` | any cash payment |
+| 409 | `not_paid` | not closed, or paid less than the total |
+| 400 | `quote_unknown` | no Uber quote of this restaurant on the order |
+| 409 | `already_dispatched` | the order already has a live delivery |
+| 400 | `restaurant_mismatch` | the restaurant isn't the register's |
+| 502 | `delivery_failed` | Uber refused; `reason`: `no_courier_available`, `bad_address` or `provider_error` (incl. "outcome unknown — check the Uber dashboard" after a stale attempt) |
+| 503 | `rate_limited` | Uber busy — retry after `Retry-After` with the same `action_id` (not stored) |
+| 503 | `action_pending` | the same `action_id` is still in progress — retry shortly |
+| 409 | `action_id_reused` | the same `action_id` with another body |
+| 501 | `not_implemented` | dispatch isn't configured on the server |
+
+Stored errors (everything above except 400 `invalid_payload` / `unknown_order`, 403, 503, 501) carry `error.delivery`
+(the order's latest delivery, or null) and replay on a resend with the same `action_id`. An expired quote is
+re-quoted and booked automatically — the customer's fee never changes; any difference is in `fee_delta_cents`.
