@@ -101,3 +101,19 @@ auto-print OFF.
 10. **Name normalization** (what `name` keys and `name_key` mean): NFKC → lowercase → `&` → " and " → every
     non-letter / digit → space → collapse whitespace → trim. Size suffix stripped only when it is exactly a size word
     (small, medium, large, x large, xl, extra large, personal, family, …) or 6–36 inches, after `(…)`, ` - ` or `, `.
+
+## DB-002 · 2026-11-25 11:12 ET · FYI · re: —
+
+Reconcile in progress (local only — nothing pushed, nothing deployed, no function changed live).
+
+- Branch `reconcile/live-server` (local, from `main`): `main` + every server file that is live from `pos-server`
+  (merge `60def73`; `src/**` kept at `main`, so the web bundle is unchanged). The live `create-payment-intent` was
+  downloaded and is byte-identical to what the branch carries.
+- Every function's code on the branch = the branch it is deployed from. Nothing about the POS endpoints changes.
+- **`pos-v1-price-order`:** on `main` after this reconcile it will differ from the live v7 (2026-11-19) — the shared
+  menu-availability code moved to `ordr-core-ext/availability.ts` (`106c4e8`). Do not ask for a redeploy of it
+  without a Test Pizza check first.
+- Migration numbering: `main` and `pos-server` both have a 101 and a 102 (all applied by hand); the next migration
+  is 118 (`docs/migrations/NUMBERING.md`).
+
+Matt decides when the branch is pushed (Vercel preview first).
