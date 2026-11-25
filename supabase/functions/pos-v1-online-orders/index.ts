@@ -12,6 +12,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { handleDeviceHttp } from "../_shared/pos-sync/http.ts";
 import { handleOnlineOrders, logErrorResponse } from "../_shared/pos-online/handlers.ts";
 import { PgOnlineStore } from "../_shared/pos-online/store.ts";
+// the KitchenHub mapping reads, 30 s per restaurant keyed by the maps revision (one per function instance)
+import { KhContextCache } from "../_shared/pos-online/khContextCache.ts";
 import { FeedMenuHash } from "../_shared/pos-online/menuHash.ts";
 import { supabaseSnapshotDb } from "../_shared/pos-sync/menuSnapshot.ts";
 import { consoleDeviceLog } from "../_shared/pos-device/log.ts";
@@ -22,6 +24,7 @@ const deps = {
   store: new PgDeviceStore(supabase),
   db: supabase,
   online: new PgOnlineStore(supabase),
+  khContext: new KhContextCache(),
   now: () => Date.now(),
   log: consoleDeviceLog("pos-v1-online-orders"),
   // module scope: lives as long as the function instance (the 30 s cache)

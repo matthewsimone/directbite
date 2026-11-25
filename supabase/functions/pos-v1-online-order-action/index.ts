@@ -31,6 +31,8 @@ import { handleDeviceHttp } from "../_shared/pos-sync/http.ts";
 import { handleOnlineOrderAction, logErrorResponse } from "../_shared/pos-online/handlers.ts";
 import { makeReadyEmail } from "../_shared/pos-online/readyEmail.ts";
 import { PgOnlineStore } from "../_shared/pos-online/store.ts";
+// the KitchenHub mapping reads, 30 s per restaurant keyed by the maps revision (one per function instance)
+import { KhContextCache } from "../_shared/pos-online/khContextCache.ts";
 import { consoleDeviceLog } from "../_shared/pos-device/log.ts";
 import { PgDeviceStore } from "../_shared/pos-device/store.ts";
 
@@ -41,6 +43,7 @@ const deps = {
   store: new PgDeviceStore(supabase),
   db: supabase,
   online: new PgOnlineStore(supabase),
+  khContext: new KhContextCache(),
   now: () => Date.now(),
   log,
   readyEmail: makeReadyEmail({ supabaseUrl: Deno.env.get("SUPABASE_URL")!, anonKey: Deno.env.get("SUPABASE_ANON_KEY") ?? "", log }),

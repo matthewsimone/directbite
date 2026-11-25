@@ -10,6 +10,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.102.1";
 import { handleDeviceHttp } from "../_shared/pos-sync/http.ts";
 import { handleOnlinePrint, logErrorResponse } from "../_shared/pos-online/handlers.ts";
 import { PgOnlineStore } from "../_shared/pos-online/store.ts";
+// the KitchenHub mapping reads, 30 s per restaurant keyed by the maps revision (one per function instance)
+import { KhContextCache } from "../_shared/pos-online/khContextCache.ts";
 import { consoleDeviceLog } from "../_shared/pos-device/log.ts";
 import { PgDeviceStore } from "../_shared/pos-device/store.ts";
 
@@ -18,6 +20,7 @@ const deps = {
   store: new PgDeviceStore(supabase),
   db: supabase,
   online: new PgOnlineStore(supabase),
+  khContext: new KhContextCache(),
   now: () => Date.now(),
   log: consoleDeviceLog("pos-v1-online-print"),
 };

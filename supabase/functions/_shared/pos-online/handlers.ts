@@ -39,6 +39,7 @@ import { DEFAULT_POS_SETTINGS, OnlineStoreError, stationRefProblem, type OnlineP
 import { intIn, khWireStatus, MARKETPLACE_LABELS, servedOrders, type OnlineOrderWire, type OnlineSettingsWire } from './wire.ts';
 import { khStatusChange, REQUIRED_STATUS, storeEnabled, TARGET, type Action as KhAct, type KhGlueDeps } from './khGlue.ts';
 import { EMPTY_KH_CONTEXT, khMapContext, type ItemMapRow, type KhMapContext } from './khItems.ts';
+import type { KhContextCache, KhContextData } from './khContextCache.ts';
 
 export interface OnlineDeps extends AuthDeps {
   /** Service-role supabase-js client (reads orders / external_orders / restaurants; the tablet's print write). */
@@ -74,6 +75,11 @@ export interface OnlineDeps extends AuthDeps {
    * Absent → those three answer 501 (ext_ack needs no KitchenHub call).
    */
   khFetch?: KhGlueDeps['khFetch'];
+  /**
+   * The KitchenHub mapping reads behind a 30 s per-restaurant cache keyed by the maps revision (khContextCache.ts; one
+   * per function instance). Absent → read on every call (tests).
+   */
+  khContext?: KhContextCache;
 }
 
 const nullableString = (v: unknown) => v === null || v === undefined || typeof v === 'string';
@@ -107,19 +113,34 @@ export async function readRows<T>(what: string, q: PromiseLike<{ data: unknown; 
 
 /**
  * The CP21 mapping context for KitchenHub lines (khItems.ts): pos_kitchenhub_item_maps (117) + the restaurant's
- * current menu_items (id → category) + menu_categories ids + the fallback category. 3 reads in parallel, made only
- * when there are KitchenHub rows to serve. NEVER fails the caller: any read error (e.g. 117 not applied yet) → logged,
- * lines served unmapped (the counter ticket) — exactly today's behaviour.
+ * current menu_items (id → category) + menu_categories ids — behind deps.khContext (30 s, keyed by
+ * pos_restaurant_settings.kitchenhub_maps_rev, so a set / clear shows on the next poll) — + the fallback category from
+ * the FRESH settings row. Asked only when there are KitchenHub rows to serve. NEVER fails the caller: any read error
+ * (e.g. 117 not applied yet) → logged (once per 30 s with the cache), lines served unmapped (the counter ticket).
  */
 export async function khContextFor(deps: OnlineDeps, rid: string, pos?: OnlinePosSettings | null): Promise<KhMapContext> {
-  try {
-    const [maps, items, cats, settings] = await Promise.all([
+  const load = async (): Promise<KhContextData> => {
+    const [maps, items, categories] = await Promise.all([
       readRows<ItemMapRow>('pos_kitchenhub_item_maps', deps.db.from('pos_kitchenhub_item_maps').select('provider,match_kind,match_key,menu_item_id,category_id,label').eq('restaurant_id', rid)),
       readRows<{ id: string; category_id: string | null }>('menu_items', deps.db.from('menu_items').select('id,category_id').eq('restaurant_id', rid)),
       readRows<{ id: string }>('menu_categories', deps.db.from('menu_categories').select('id').eq('restaurant_id', rid)),
-      pos !== undefined ? Promise.resolve(pos) : deps.online.getSettings(rid),
     ]);
-    return khMapContext(maps, items, cats, settings?.kitchenhub_fallback_category_id ?? null);
+    return { maps, items, categories };
+  };
+  try {
+    const settings = pos !== undefined ? pos : await deps.online.getSettings(rid);
+    const rev = settings?.kitchenhub_maps_rev ?? 0;
+    let data: KhContextData | null;
+    if (deps.khContext) data = await deps.khContext.get(rid, rev, deps.now(), load, deps.log);
+    else {
+      try {
+        data = await load();
+      } catch (err) {
+        deps.log('online_kh_mapping_unavailable', { restaurant_id: rid, error: err instanceof Error ? err.message : String(err) });
+        data = null;
+      }
+    }
+    return data ? khMapContext(data.maps, data.items, data.categories, settings?.kitchenhub_fallback_category_id ?? null) : EMPTY_KH_CONTEXT;
   } catch (err) {
     deps.log('online_kh_mapping_unavailable', { restaurant_id: rid, error: err instanceof Error ? err.message : String(err) });
     return EMPTY_KH_CONTEXT;

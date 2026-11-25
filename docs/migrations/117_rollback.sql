@@ -1,6 +1,7 @@
 set lock_timeout = '3s';
 -- 117_rollback.sql — undo migration 117: drop pos_kitchenhub_item_maps, pos_kitchenhub_menu_pulls,
--- pos_kitchenhub_item_map_change and pos_restaurant_settings.kitchenhub_fallback_category_id; restore 114's outcome
+-- pos_kitchenhub_item_map_change and pos_restaurant_settings.kitchenhub_fallback_category_id / kitchenhub_maps_rev;
+-- restore 114's outcome
 -- CHECK, release guard and release function (dispatch_delivery / self_deliver only). Run as postgres in the SQL editor.
 -- Leaves 109–116.
 --
@@ -33,7 +34,8 @@ $$;
 drop function if exists public.pos_kitchenhub_item_map_change(uuid, uuid, uuid, text, text, text, text, uuid, uuid, text, jsonb, text, uuid, timestamptz);
 drop table if exists public.pos_kitchenhub_item_maps;
 drop table if exists public.pos_kitchenhub_menu_pulls;
-alter table public.pos_restaurant_settings drop column if exists kitchenhub_fallback_category_id;
+alter table public.pos_restaurant_settings drop column if exists kitchenhub_fallback_category_id,
+                                          drop column if exists kitchenhub_maps_rev;
 
 -- 114's outcome CHECK, release guard and release function, verbatim
 alter table public.pos_online_actions drop constraint pos_online_actions_outcome_check;

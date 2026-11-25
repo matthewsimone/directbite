@@ -11,6 +11,9 @@ set lock_timeout = '3s';
 --                             failed before anything was sent to KitchenHub; a failed ack write — the ack is idempotent).
 --   pos_restaurant_settings   + kitchenhub_fallback_category_id uuid NULL (no FK): the category an UNMAPPED marketplace
 --                             line routes as; NULL = the counter ticket only (UNMAPPED).
+--                             + kitchenhub_maps_rev bigint NOT NULL DEFAULT 0: bumped by the function below in the SAME
+--                             transaction as every applied map set / clear — the feed's mapping-cache version key (the
+--                             feed reads this row every poll, so a change shows on the next poll at no extra query).
 --   pos_kitchenhub_item_maps  staff-confirmed maps: (restaurant, marketplace or '*', item_id | name, key) → menu item XOR
 --                             category. A name key is stored NORMALIZED by the TS (khItems.ts normalizeItemName). No FK
 --                             to menu_items / menu_categories (would block the web admin's deletes): a map whose target
@@ -107,7 +110,8 @@ $$;
 -- ---------------------------------------------------------------------------------------------
 
 alter table public.pos_restaurant_settings
-  add column kitchenhub_fallback_category_id uuid;   -- menu_categories.id of the restaurant; NO FK (live table)
+  add column kitchenhub_fallback_category_id uuid,                        -- menu_categories.id of the restaurant; NO FK (live table)
+  add column kitchenhub_maps_rev bigint not null default 0 check (kitchenhub_maps_rev >= 0);  -- the mapping cache key
 
 create table public.pos_kitchenhub_item_maps (
   id                   uuid primary key default gen_random_uuid(),
@@ -227,6 +231,15 @@ begin
     end if;
   end if;
 
+  -- a map changed → the maps revision moves (the feed's mapping cache key), same transaction
+  if v_out = 'applied' and p_kind <> 'fallback' then
+    perform pg_advisory_xact_lock(hashtextextended('pos_restaurant_settings:' || p_restaurant_id::text, 0));
+    insert into public.pos_restaurant_settings (restaurant_id, kitchenhub_maps_rev, updated_at, updated_by)
+    values (p_restaurant_id, 1, v_now, coalesce(p_actor, 'register'))
+    on conflict (restaurant_id) do update
+      set kitchenhub_maps_rev = public.pos_restaurant_settings.kitchenhub_maps_rev + 1;
+  end if;
+
   insert into public.pos_online_actions (action_id, function, restaurant_id, device_id, order_channel, order_id, action,
                                          request, request_hash, outcome, actor_staff_id, approver_staff_id, device_time,
                                          created_at, completed_at)
@@ -263,6 +276,7 @@ revoke all on function public.pos_online_actions_release_guard() from public, an
 comment on table public.pos_kitchenhub_item_maps is 'POS: staff-confirmed marketplace item → Ordr menu item / category maps (KitchenHub line routing). No FK to the menu: a gone target is skipped.';
 comment on table public.pos_kitchenhub_menu_pulls is 'POS: cached KitchenHub marketplace menu pull per restaurant (names / ids only; ≥ 5 min).';
 comment on column public.pos_restaurant_settings.kitchenhub_fallback_category_id is 'The category an unmapped KitchenHub line routes as (NULL = the counter ticket only).';
+comment on column public.pos_restaurant_settings.kitchenhub_maps_rev is 'Bumped with every applied KitchenHub map set / clear (pos_kitchenhub_item_map_change): the feed''s mapping-cache version key.';
 comment on function public.pos_kitchenhub_item_map_change(uuid, uuid, uuid, text, text, text, text, uuid, uuid, text, jsonb, text, uuid, timestamptz) is
   'pos-v1-kitchenhub-items set / clear: the map (or the fallback category) + the action row, in one transaction.';
 

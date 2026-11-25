@@ -434,3 +434,92 @@ Deno.test('PgOnlineStore.kitchenhubMapChange: RPC + argument names match 117', a
   await pg.kitchenhubMapChange({ actionId: 'a', restaurantId: R1, deviceId: 'd', op: 'set', kind: 'name', provider: 'doordash', key: 'x', menuItemId: ITEM_CHEESE, categoryId: null, label: 'X', request: {}, actor: null, approver: null, deviceTime: null });
   assertEquals(calls, [['pos_kitchenhub_item_map_change', ['p_action_id', 'p_restaurant_id', 'p_device_id', 'p_op', 'p_kind', 'p_provider', 'p_key', 'p_menu_item_id', 'p_category_id', 'p_label', 'p_request', 'p_actor', 'p_approver', 'p_device_time']]]);
 });
+
+// ---- the mapping cache (CP21 follow-up) --------------------------------------------------------------------------
+
+Deno.test('KhContextCache: 30 s per restaurant + revision; one in-flight build; a failure cached 30 s and logged once', async () => {
+  const { KhContextCache, KH_CONTEXT_TTL_MS } = await import('../khContextCache.ts');
+  const c = new KhContextCache();
+  const logs: string[] = [];
+  const log = (e: string) => void logs.push(e);
+  let loads = 0;
+  let fail = false;
+  const load = () => {
+    loads++;
+    return fail ? Promise.reject(new Error('relation "public.pos_kitchenhub_item_maps" does not exist')) : Promise.resolve({ maps: [], items: [], categories: [{ id: `v${loads}` }] });
+  };
+  const [a, b] = await Promise.all([c.get(R1, 0, 0, load, log), c.get(R1, 0, 0, load, log)]);
+  assertEquals([loads, a === b], [1, true], 'concurrent misses share one build');
+  await c.get(R1, 0, KH_CONTEXT_TTL_MS - 1, load, log);
+  assertEquals(loads, 1, 'hit');
+  assertEquals((await c.get(R1, 1, KH_CONTEXT_TTL_MS - 1, load, log))!.categories, [{ id: 'v2' }], 'a new revision rebuilds at once');
+  await c.get(R1, 1, 2 * KH_CONTEXT_TTL_MS, load, log);
+  assertEquals(loads, 3, 'expired');
+  fail = true;
+  const t0 = 3 * KH_CONTEXT_TTL_MS;
+  assertEquals(await c.get(R1, 1, t0, load, log), null);
+  for (const dt of [1, 1000, KH_CONTEXT_TTL_MS - 1]) assertEquals(await c.get(R1, 2, t0 + dt, load, log), null);
+  assertEquals([loads, logs.length], [4, 1], 'failure remembered 30 s (even across a revision), logged once');
+  await c.get(R1, 2, t0 + KH_CONTEXT_TTL_MS, load, log);
+  assertEquals([loads, logs.length], [5, 2]);
+  fail = false;
+  assertEquals((await c.get(R1, 2, t0 + 2 * KH_CONTEXT_TTL_MS, load, log))!.categories, [{ id: 'v6' }], 'recovers');
+});
+
+Deno.test('feed with the cache: a hit makes no mapping reads; a set / clear via pos-v1-kitchenhub-items shows on the NEXT poll (maps revision); a noop does not rebuild', async () => {
+  const { KhContextCache } = await import('../khContextCache.ts');
+  const w = await khWorld();
+  const cache = new KhContextCache();
+  w.deps.khContext = cache;
+  w.db.insertRow('external_orders', khRow(w.nowIso(), { items: [{ name: 'Mystery Box' }] }));
+  const mapReads = () => w.db.calls.filter(([t, op]) => (t === 'pos_kitchenhub_item_maps' || t === 'menu_items' || t === 'menu_categories') && op === 'select').length;
+  assertEquals((await itemsOf(w))[0].mapped, false);
+  const r1 = mapReads();
+  assertEquals([cache.builds, r1], [1, 3]);
+  await itemsOf(w);
+  assertEquals([cache.builds, mapReads()], [1, r1], 'hit: 0 mapping reads');
+  const key = { kind: 'name', provider: 'doordash', value: 'Mystery Box' };
+  ok(await w.items({ op: 'set', action_id: crypto.randomUUID(), key, menu_item_id: ITEM_KNOTS }));
+  assertEquals((await itemsOf(w))[0].category_id, CAT_SIDES, 'the next poll, not 30 s later');
+  assertEquals(cache.builds, 2);
+  ok(await w.items({ op: 'set', action_id: crypto.randomUUID(), key, menu_item_id: ITEM_KNOTS })); // noop: no revision bump
+  await itemsOf(w);
+  assertEquals(cache.builds, 2);
+  ok(await w.items({ op: 'clear', action_id: crypto.randomUUID(), key }));
+  assertEquals((await itemsOf(w))[0].mapped, false, 'a clear shows on the next poll too');
+  // the fallback is not cached (fresh settings every poll)
+  ok(await w.items({ op: 'set', action_id: crypto.randomUUID(), key: { kind: 'fallback' }, category_id: CAT_DRINKS }));
+  const builds = cache.builds;
+  assertEquals((await itemsOf(w))[0].category_id, CAT_DRINKS);
+  assertEquals(cache.builds, builds);
+});
+
+Deno.test('feed with the cache, 117 not applied: polls stay 200, lines unmapped, the read failure logged once per 30 s (not per poll)', async () => {
+  const { KhContextCache, KH_CONTEXT_TTL_MS } = await import('../khContextCache.ts');
+  const w = await khWorld();
+  w.deps.khContext = new KhContextCache();
+  w.db.insertRow('external_orders', khRow(w.nowIso()));
+  w.db.failReads.add('pos_kitchenhub_item_maps');
+  const logged = () => w.h.logs.filter((l) => l.includes('online_kh_mapping_unavailable')).length;
+  for (let i = 0; i < 5; i++) {
+    assert((await itemsOf(w)).every((it) => !it.mapped && it.category_id === null));
+    w.h.clock.advance(5_000);
+  }
+  assertEquals(logged(), 1);
+  w.h.clock.advance(KH_CONTEXT_TTL_MS);
+  await itemsOf(w);
+  assertEquals(logged(), 2);
+});
+
+Deno.test('PgOnlineStore.getSettings: kitchenhub_maps_rev (bigint as number or string; absent before 117 → 0)', async () => {
+  const { PgOnlineStore } = await import('../store.ts');
+  let row: Record<string, unknown> = { restaurant_id: R1, print_register_device_id: null, pos_online_orders_enabled: true };
+  // deno-lint-ignore no-explicit-any
+  const q: any = { select: () => q, eq: () => q, maybeSingle: () => Promise.resolve({ data: row, error: null }) };
+  const pg = new PgOnlineStore({ rpc: () => Promise.resolve({ data: null, error: null }), from: () => q });
+  assertEquals((await pg.getSettings(R1))!.kitchenhub_maps_rev, 0);
+  row = { ...row, kitchenhub_maps_rev: '7' };
+  assertEquals((await pg.getSettings(R1))!.kitchenhub_maps_rev, 7);
+  row = { ...row, kitchenhub_maps_rev: 8 };
+  assertEquals((await pg.getSettings(R1))!.kitchenhub_maps_rev, 8);
+});

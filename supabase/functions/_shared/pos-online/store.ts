@@ -24,6 +24,8 @@ export interface OnlinePosSettings {
   pos_delivery_dispatch_enabled: boolean;
   /** CP21 (117): the category an UNMAPPED KitchenHub line routes as (null = the counter ticket only). */
   kitchenhub_fallback_category_id: string | null;
+  /** CP21 (117): bumped with every applied map set / clear — the mapping cache's version key (0 before 117). */
+  kitchenhub_maps_rev: number;
 }
 /** No pos_restaurant_settings row = every default (handoff DDL). */
 export const DEFAULT_POS_SETTINGS: OnlinePosSettings = {
@@ -33,6 +35,7 @@ export const DEFAULT_POS_SETTINGS: OnlinePosSettings = {
   kitchenhub_auto_print_enabled: false,
   pos_delivery_dispatch_enabled: false,
   kitchenhub_fallback_category_id: null,
+  kitchenhub_maps_rev: 0,
 };
 
 export type ClaimOutcome =
@@ -360,6 +363,7 @@ export class MemoryOnlineStore implements OnlineStore {
     return Promise.resolve({
       print_register_device_id, pos_online_orders_enabled, online_auto_print_enabled, kitchenhub_auto_print_enabled,
       pos_delivery_dispatch_enabled: pos_delivery_dispatch_enabled === true, kitchenhub_fallback_category_id: s.kitchenhub_fallback_category_id ?? null,
+      kitchenhub_maps_rev: s.kitchenhub_maps_rev ?? 0,
     });
   }
 
@@ -702,6 +706,11 @@ export class MemoryOnlineStore implements OnlineStore {
       }
     }
     const out = changed ? 'applied' : 'noop';
+    if (changed && !fallback) {
+      // 117: the maps revision, bumped in the same transaction (the feed's mapping cache key)
+      const s = this.settings.get(c.restaurantId) ?? { ...DEFAULT_POS_SETTINGS, updated_at: this.now(), updated_by: c.actor ?? 'register' };
+      this.settings.set(c.restaurantId, { ...s, kitchenhub_maps_rev: (s.kitchenhub_maps_rev ?? 0) + 1 });
+    }
     this.newAction({
       action_id: c.actionId, fn: 'settings', restaurant_id: c.restaurantId, device_id: c.deviceId, channel: null, order_id: null, action,
       request: c.request, outcome: out, order_ids: [], ready_email_sent: false, actor: c.actor, approver: c.approver, device_time: c.deviceTime,
@@ -812,6 +821,8 @@ export class PgOnlineStore implements OnlineStore {
       pos_delivery_dispatch_enabled: data.pos_delivery_dispatch_enabled === true,
       // 117 (absent before it is applied → null)
       kitchenhub_fallback_category_id: typeof data.kitchenhub_fallback_category_id === 'string' ? data.kitchenhub_fallback_category_id : null,
+      // bigint → a JSON number or a numeric string, by PostgREST setting
+      kitchenhub_maps_rev: Number.isSafeInteger(Number(data.kitchenhub_maps_rev)) ? Number(data.kitchenhub_maps_rev) : 0,
     };
   }
   claimPrint(c: ClaimInput) {

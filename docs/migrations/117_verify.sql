@@ -4,7 +4,8 @@
 --   - pos_kitchenhub_item_map_change: SECURITY INVOKER, EXECUTE for service_role only; the release function still
 --     service_role only; the guard not executable.
 --   - pos_online_actions: the outcome CHECK allows a pending ext_*; the release guard / function know ext_*.
---   - pos_restaurant_settings.kitchenhub_fallback_category_id: uuid, nullable, no FK.
+--   - pos_restaurant_settings.kitchenhub_fallback_category_id: uuid, nullable, no FK; kitchenhub_maps_rev: bigint not
+--     null default 0, bumped by the map function.
 --   - FK targets of the new tables: only restaurants / pos_devices; NO FK to menu_items / menu_categories /
 --     external_orders / kitchenhub_stores; no trigger on external_orders / menu_items / menu_categories calls a pos_ fn.
 --   - what the TS reads (NOT granted by 117): service_role SELECT on external_orders / kitchenhub_stores /
@@ -82,6 +83,13 @@ checks(check_name, pass) as (
   select 'release guard trigger on pos_online_actions DELETE',
          exists (select 1 from pg_trigger t where t.tgrelid = 'public.pos_online_actions'::regclass and not t.tgisinternal
                     and t.tgfoid = 'public.pos_online_actions_release_guard()'::regprocedure and (t.tgtype & 8) <> 0)
+  union all
+  select 'pos_restaurant_settings.kitchenhub_maps_rev bigint not null default 0',
+         exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'pos_restaurant_settings'
+                    and column_name = 'kitchenhub_maps_rev' and data_type = 'bigint' and is_nullable = 'NO' and column_default = '0')
+  union all
+  select 'map_change bumps kitchenhub_maps_rev',
+         position('kitchenhub_maps_rev + 1' in (select prosrc from pg_proc where oid = to_regprocedure('public.pos_kitchenhub_item_map_change(uuid, uuid, uuid, text, text, text, text, uuid, uuid, text, jsonb, text, uuid, timestamptz)'))) > 0
   union all
   select 'pos_restaurant_settings.kitchenhub_fallback_category_id uuid nullable',
          exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'pos_restaurant_settings'

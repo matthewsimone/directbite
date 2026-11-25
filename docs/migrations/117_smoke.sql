@@ -29,6 +29,7 @@ declare
   a9 uuid := '11700000-0000-4000-8000-000000000009';
   r  jsonb;
   q  text;
+  v_rev bigint;
 begin
   select id into v_r from public.restaurants where slug = 'test';
   if v_r is null then raise exception 'SMOKE FAIL: Test Pizza (slug test) not found'; end if;
@@ -70,14 +71,21 @@ begin
   n := n + 1;
 
   -- 2. a name map → a menu item: applied, the same again (new action) → noop, the resend → duplicate, reused → 409
+  select coalesce((select kitchenhub_maps_rev from public.pos_restaurant_settings where restaurant_id = v_r), 0) into v_rev;
   r := public.pos_kitchenhub_item_map_change(a3, v_r, v_dev, 'set', 'name', 'doordash', 'cheese pizza', v_item, null, 'Cheese Pizza', '{"k":"a3"}', 'register', null, v_now);
   if r->>'outcome' <> 'applied' then raise exception 'SMOKE FAIL: 2 set: %', r; end if;
+  if (select kitchenhub_maps_rev from public.pos_restaurant_settings where restaurant_id = v_r) is distinct from v_rev + 1 then
+    raise exception 'SMOKE FAIL: 2 an applied set did not bump kitchenhub_maps_rev';
+  end if;
   if not exists (select 1 from public.pos_kitchenhub_item_maps where restaurant_id = v_r and provider = 'doordash' and match_kind = 'name'
                   and match_key = 'cheese pizza' and menu_item_id = v_item and updated_by_device_id = v_dev) then
     raise exception 'SMOKE FAIL: 2 the map row';
   end if;
   r := public.pos_kitchenhub_item_map_change(a4, v_r, v_dev, 'set', 'name', 'doordash', 'cheese pizza', v_item, null, 'Cheese Pizza', '{"k":"a4"}', 'register', null, v_now);
   if r->>'outcome' <> 'noop' then raise exception 'SMOKE FAIL: 2 same again: %', r; end if;
+  if (select kitchenhub_maps_rev from public.pos_restaurant_settings where restaurant_id = v_r) is distinct from v_rev + 1 then
+    raise exception 'SMOKE FAIL: 2 a noop bumped kitchenhub_maps_rev';
+  end if;
   r := public.pos_kitchenhub_item_map_change(a3, v_r, v_dev, 'set', 'name', 'doordash', 'cheese pizza', v_item, null, 'Cheese Pizza', '{"k":"a3"}', 'register', null, v_now);
   if r->>'outcome' <> 'duplicate' or r->>'stored' <> 'applied' then raise exception 'SMOKE FAIL: 2 duplicate: %', r; end if;
   r := public.pos_kitchenhub_item_map_change(a3, v_r, v_dev, 'set', 'name', 'doordash', 'cheese pizza', v_item, null, 'Cheese Pizza', '{"k":"other"}', 'register', null, v_now);
