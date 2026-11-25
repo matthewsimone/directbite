@@ -478,6 +478,8 @@ export interface OnlineSettingsWire {
   pos_delivery_dispatch_enabled: boolean;
   /** CP21 (additive): the category an unmapped KitchenHub line routes as; null = counter ticket only. */
   kitchenhub_fallback_category_id: string | null;
+  /** cp23b (additive): Uber gets min(order tip, this) on an Uber delivery; above it the tip stays with the restaurant. */
+  uber_driver_tip_max_cents: number;
   delivery_providers: { id: string; label: string; active: boolean }[];
   /** kitchenhub_item_mapping (CP21, additive): KitchenHub lines carry the staff-confirmed mapping (mapped / category). */
   capabilities: { kitchenhub_menu_sync: boolean; kitchenhub_item_mapping: boolean };

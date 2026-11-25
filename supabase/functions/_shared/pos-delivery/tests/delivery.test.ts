@@ -113,8 +113,8 @@ async function world(o: { restaurant?: Record<string, unknown>; uber?: boolean }
   const posOrder = (pq: string | null, o: Partial<PosOrderForDelivery> = {}, delivery: Record<string, unknown> = {}) => {
     const id = crypto.randomUUID();
     store.posOrders.set(id, {
-      order_id: id, restaurant_id: R1, order_type: 'delivery', channel: 'phone', status: 'closed', total_cents: 3100, subtotal_cents: 2400,
-      delivery: { fee_source: 'uber', driver_type: 'uber_direct', address: { instructions: 'Ring twice' }, uber: { quote_id: pq, driver_tip_cents: 300 }, ...delivery },
+      order_id: id, restaurant_id: R1, order_type: 'delivery', channel: 'phone', status: 'closed', total_cents: 3100, subtotal_cents: 2400, tip_cents: 300,
+      delivery: { fee_source: 'uber', driver_type: 'uber_direct', address: { instructions: 'Ring twice' }, uber: { quote_id: pq }, ...delivery },
       customer_name: 'Pat Doe', customer_phone_e164: '+12015550142', note: null, ticket_label: 'F-007',
       lines: [{ item_name: 'Large Cheese', quantity: 2, base_price_cents: 1200 }], payments: [{ method: 'external_card', amount_cents: 3100, status: 'captured' }], ...o,
     });
@@ -427,17 +427,65 @@ Deno.test('PgDeliveryStore: RPC + argument names match the 115 action functions'
   ]);
 });
 
-Deno.test('dispatch: a stored driver tip over 500 (an order from before the submit-order cap) → 400 invalid_payload, nothing sent to Uber', async () => {
+Deno.test('dispatch tip (Matt, R2 — online exactly): the ORDER\'s tip is the driver tip; Uber gets min(tip, 500); the excess stays with the restaurant; delivery.uber.driver_tip_cents ignored', async () => {
   const w = await world();
   w.store.enabled.add(R1);
   const pq = await w.uberQuoteId();
-  const id = w.posOrder(pq, {}, { uber: { quote_id: pq, driver_tip_cents: 600 } });
-  const r = await w.dispatch(id);
-  assertEquals([r.status, err(r).code, errBody(r).field], [400, 'invalid_payload', 'delivery.uber.driver_tip_cents']);
-  assertEquals(w.uber.calls.filter((c) => c.path.endsWith('/deliveries')).length, 0);
-  assertEquals(w.store.deliveries.length, 0);
-  // 500 exactly is fine and reaches Uber as 500
-  const ok500 = w.posOrder(pq, {}, { uber: { quote_id: pq, driver_tip_cents: 500 } });
-  ok(await w.dispatch(ok500));
-  assertEquals(w.uber.calls.find((c) => c.path.endsWith('/deliveries'))!.body!.tip, 500);
+  const sentTip = () => w.uber.calls.filter((c) => c.path.endsWith('/deliveries') && c.method === 'POST').at(-1)!.body!.tip;
+  // $8 tip: allowed (no 400), Uber gets $5, the ledger + the wire say $5 (what the driver receives)
+  const big = ok<DispatchBody>(await w.dispatch(w.posOrder(pq, { tip_cents: 800, total_cents: 3600, payments: [{ method: 'external_card', amount_cents: 3600, status: 'captured' }] }, { uber: { quote_id: pq, driver_tip_cents: 9999 } })));
+  assertEquals([big.result, sentTip(), big.delivery!.driver_tip_cents, w.store.deliveries.at(-1)!.driver_tip_cents], ['applied', 500, 500, 500]);
+  // exactly $5 and under: all of it
+  ok(await w.dispatch(w.posOrder(pq, { tip_cents: 500, total_cents: 3300, payments: [{ method: 'external_card', amount_cents: 3300, status: 'captured' }] })));
+  assertEquals(sentTip(), 500);
+  ok(await w.dispatch(w.posOrder(pq, { tip_cents: 0, total_cents: 2800, payments: [{ method: 'external_card', amount_cents: 2800, status: 'captured' }] }, { uber: { quote_id: pq, driver_tip_cents: 300 } })));
+  assertEquals([sentTip(), w.store.deliveries.at(-1)!.driver_tip_cents], [0, 0], 'the retired field never adds a tip');
+});
+
+Deno.test('dispatch pickup_ready_at (Matt, R1 — online\'s scheduled mechanism): booked NOW for slot − the restaurant\'s lead (10–60, floored to now + 5 min); NULL lead → the slot; exactly one timing; future only', async () => {
+  const w = await world({ restaurant: { uber_scheduled_lead_minutes: 25 } });
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  const now = () => w.h.clock.now();
+  const ready = () => Date.parse(String(w.uber.calls.filter((c) => c.path.endsWith('/deliveries') && c.method === 'POST').at(-1)!.body!.pickup_ready_dt));
+  const slot = now() + 3 * 60 * MIN;
+  const b = ok<DispatchBody>(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(slot).toISOString() }));
+  assertEquals([b.result, ready(), Date.parse(String(b.delivery!.pickup_ready_at))], ['applied', slot - 25 * MIN, slot - 25 * MIN]);
+  assert(w.logs.some((l) => l.event === 'scheduled_lead_applied' && l.lead_minutes === 25));
+  // the lead is clamped 10–60
+  for (const [lead, applied] of [[5, 10], [90, 60]] as const) {
+    w.db.rows('restaurants')[0].uber_scheduled_lead_minutes = lead;
+    ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(slot).toISOString() }));
+    assertEquals(ready(), slot - applied * MIN, `lead ${lead}`);
+  }
+  // a slot closer than the lead → floored to now + 5 min
+  w.db.rows('restaurants')[0].uber_scheduled_lead_minutes = 25;
+  ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(now() + 20 * MIN).toISOString() }));
+  assertEquals(ready(), now() + 5 * MIN);
+  // NULL lead → the slot itself (online's code, uber-create-delivery :273)
+  w.db.rows('restaurants')[0].uber_scheduled_lead_minutes = null;
+  ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(slot).toISOString() }));
+  assertEquals(ready(), slot);
+  // ASAP is unchanged
+  ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: 20 }));
+  assertEquals(ready(), now() + 20 * MIN);
+  // exactly one; future only; ISO
+  const bad = async (extra: Record<string, unknown>) => {
+    const r = await w.dispatch(w.posOrder(pq), extra);
+    return [r.status, err(r).code, errBody(r).field];
+  };
+  assertEquals(await bad({ pickup_ready_minutes: 20, pickup_ready_at: new Date(slot).toISOString() }), [400, 'invalid_payload', 'pickup_ready_minutes']);
+  assertEquals(await bad({ pickup_ready_minutes: null }), [400, 'invalid_payload', 'pickup_ready_minutes']);
+  assertEquals(await bad({ pickup_ready_minutes: null, pickup_ready_at: new Date(now() - MIN).toISOString() }), [400, 'invalid_payload', 'pickup_ready_at']);
+  assertEquals(await bad({ pickup_ready_minutes: null, pickup_ready_at: 'tomorrow' }), [400, 'invalid_payload', 'pickup_ready_at']);
+});
+
+Deno.test('status: Uber failed → canceled, canceled_by provider (online treats failed as terminal)', async () => {
+  const w = await world();
+  w.store.enabled.add(R1);
+  const id = w.posOrder(await w.uberQuoteId());
+  ok(await w.dispatch(id));
+  w.uber.state.getStatus = 'failed';
+  const d = ok<{ deliveries: { delivery: Record<string, unknown> }[] }>(await w.status([id])).deliveries[0].delivery;
+  assertEquals([d.state, d.canceled_by, d.provider_status, d.cancellation_fee_cents], ['canceled', 'provider', 'failed', null]);
 });

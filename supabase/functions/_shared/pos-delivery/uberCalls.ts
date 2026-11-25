@@ -18,6 +18,9 @@
  *     (token, creds, POST …/cancel, 429, non-2xx → uber_cancel_failed, the cancellation-fee parse)
  *   uber-get-delivery/index.ts        :195-308  sha256 d8d591ea0dfb3cda10887010b9447e1679a4e6999959107823f3650752350b93
  *     (token, creds, GET …/deliveries/{id}, 429 / non-2xx, status / courier / dropoff_eta parse)
+ *   uber-create-delivery/index.ts     :266-288  sha256 7b5e8f9640bec7471490b59b1df96c20f5e4330521d521180546036263d62386
+ *     (cp23b, R1: the scheduled lead — migration 096's uber_scheduled_lead_minutes, clamped 10–60, floored to
+ *      now + 5 min; NULL lead → the slot unchanged) — scheduledPickupMs below
  * The copies differ ONLY in: (1) inputs come from the POS record (pos_orders / pos_order_lines / the POS quote) instead
  * of an orders / order_items row, the order number label is the POS ticket; (2) no write to orders / uber_quotes — the
  * caller writes pos_* rows; (3) return values are typed results instead of HTTP responses; (4) console.* → the injected
@@ -52,7 +55,7 @@ export interface UberDeps {
 export const UBER_RESTAURANT_COLUMNS =
   'id, name, latitude, longitude, address, phone, delivery_fulfillment, uber_credentials_verified_at, uber_direct_active, ' +
   'uber_schedule, uber_passthrough_mode, uber_passthrough_value, uber_customer_id, uber_environment, uber_billing_mode, ' +
-  'uber_extends_delivery, uber_max_radius_miles';
+  'uber_extends_delivery, uber_max_radius_miles, uber_scheduled_lead_minutes';
 
 export type UberFail = { success: false; step?: string; error: string; detail?: string; status?: number; retry_after?: number };
 
@@ -691,4 +694,35 @@ export async function uberGet(d: UberDeps, restaurant: any, deliveryId: string):
     pickup_eta: typeof deliveryBody?.pickup_eta === 'string' ? deliveryBody.pickup_eta : null,
     tracking_url: typeof deliveryBody?.tracking_url === 'string' ? deliveryBody.tracking_url : null,
   };
+}
+
+// ---- scheduled lead — uber-create-delivery/index.ts :266-288 (cp23b, Matt's R1) -------------------------------------
+
+/**
+ * The pickup time Uber is asked for on a SCHEDULED delivery: online's rule, verbatim in logic. The register sends the
+ * customer's slot (as the tablet sends pickup_ready_dt = order.scheduled_for); the restaurant's
+ * uber_scheduled_lead_minutes moves it earlier (clamped 10–60), floored to now + 5 min. NULL lead → the slot unchanged.
+ * Adaptations: the slot comes from the register (a POS order has no server-side scheduled_for), the clock and the log
+ * are injected, and the result is epoch ms (the copied create call's pickup_ready_ms).
+ */
+export function scheduledPickupMs(restaurant: any, slotMs: number, nowMs: number, log: (event: string, data?: Record<string, unknown>) => void): number {
+  // -------- Scheduled lead time (migration 096) --------
+  // Scheduled path only: ask Uber to pick up uber_scheduled_lead_minutes
+  // before the customer's slot instead of at it, floored to now + 5 min.
+  // NULL lead → pickup_ready_dt passes through unchanged.
+  let effectivePickupReadyMs = slotMs;
+  const leadRaw = restaurant.uber_scheduled_lead_minutes;
+  if (leadRaw != null) {
+    const lead = Math.min(60, Math.max(10, Number(leadRaw)));
+    const target = slotMs - lead * 60_000;
+    const floor = nowMs + 5 * 60_000;
+    effectivePickupReadyMs = Math.max(target, floor);
+    log('scheduled_lead_applied', {
+      restaurant_id: restaurant.id,
+      lead_minutes: lead,
+      requested_pickup_ready_dt: new Date(slotMs).toISOString(),
+      effective_pickup_ready_dt: new Date(effectivePickupReadyMs).toISOString(),
+    });
+  }
+  return effectivePickupReadyMs;
 }

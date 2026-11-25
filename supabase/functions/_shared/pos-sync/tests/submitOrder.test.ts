@@ -609,14 +609,14 @@ Deno.test('CP23 delivery: quoted reads pos_delivery_quotes, uber reads pos_deliv
   const small = () => [line(IDS.pie, IDS.pieSmall)];
   assertEquals((await order(uber('pq_live'), { lines: small() })).f.delivery_below_minimum, false);
   assertEquals((await order(quoted('dq_near'), { lines: small() })).f.delivery_below_minimum, true);
-  // a malformed driver tip is a payload error
-  const bad = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: -1 } as never } });
+  // a malformed delivery.uber is still a payload error (the object itself; quote_id a string or null)
+  const bad = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: 42 } as never } });
   assertEquals(errBody(await t.submit(bad)).code, 'invalid_payload');
-  // the driver tip cap (Matt): ≤ 500 — what the customer pays = what the driver receives (Uber gets min(tip, 500))
-  const over = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: 501 } as never } });
-  assertEquals([errBody(await t.submit(over)).code, errBody(await t.submit(over)).field], ['invalid_payload', 'delivery.uber.driver_tip_cents']);
-  const max = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: 500 } as never } });
-  assertEquals(okBody(await t.submit(max)).result, 'applied');
+  // delivery.uber.driver_tip_cents is RETIRED (Matt, R2 / option A: the order's tip is the driver tip) — ignored, any value
+  for (const v of [501, 9999, -1, 'x', null]) {
+    const legacy = await payload(t.A, t.snap, { order_type: 'delivery', delivery: { ...deliveryOf('offline', 499), uber: { quote_id: null, driver_tip_cents: v } as never } });
+    assertEquals(okBody(await t.submit(legacy)).result, 'applied', String(v));
+  }
 });
 
 // ---- stored fields (items 2, 6, 8 columns) ---------------------------------------------------------

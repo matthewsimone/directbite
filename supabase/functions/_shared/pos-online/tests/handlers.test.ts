@@ -403,3 +403,9 @@ Deno.test('settings: pos_delivery_dispatch_enabled travels in the feed settings 
   assertEquals([s2.pos_delivery_dispatch_enabled, settingsProblem(s2)], [true, null]);
   assertNotEquals(s2.hash, s1.hash);
 });
+
+Deno.test('settings: uber_driver_tip_max_cents = 500 (cp23b, additive — the POS\'s one source for online\'s Uber tip rule); the POS parser still reads it', async () => {
+  const w = await world();
+  const s = ok<{ settings: OnlineSettingsWire }>(await w.poll()).settings;
+  assertEquals([s.uber_driver_tip_max_cents, settingsProblem(s)], [500, null]);
+});

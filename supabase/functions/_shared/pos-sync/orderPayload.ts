@@ -85,7 +85,12 @@ export interface WirePayment {
   void_reason: string | null;
 }
 
-/** CP23: the driver tip cap (= the Uber create call's min(tip, 500)). */
+/**
+ * The Uber driver tip cap — online's rule (Matt, R2): the order has ONE tip; on an Uber delivery Uber gets
+ * min(tip, this) and anything above stays with the restaurant (_shared/uberCreateDelivery.ts :491 sends
+ * tip: Math.min(tipCents, 500); that line is in a pinned range, webPins.json, so a change there fails the drift check).
+ * The POS's one source: served in the settings block as uber_driver_tip_max_cents.
+ */
 export const DRIVER_TIP_MAX_CENTS = 500;
 
 /** 'uber' (CP23): a provider fee from pos_delivery_provider_quotes by delivery.uber.quote_id. */
@@ -292,14 +297,12 @@ function validateDelivery(v: unknown): void {
     strOrNull(a.unit ?? null, `${f}.address.unit`);
     strOrNull(a.instructions ?? null, `${f}.address.instructions`);
   }
-  // CP23: delivery.uber — null, or the reserved object (DELIVERY.md §7.1) + driver_tip_cents (optional, integer ≥ 0)
+  // CP23: delivery.uber — null, or the reserved object (DELIVERY.md §7.1). driver_tip_cents is RETIRED (Matt, R2 /
+  // option A: the order's own tip is the driver tip) — ignored if an older register still sends it, never validated.
   if (d.uber !== undefined && d.uber !== null) {
     need(isObj(d.uber), `${f}.uber`, 'must be an object or null');
     const u = d.uber as Record<string, unknown>;
     strOrNull(u.quote_id ?? null, `${f}.uber.quote_id`);
-    // CP23 (Matt): ≤ 500 cents — Uber gets min(tip, 500) (the copied create call), so what the customer pays = what
-    // the driver receives
-    need(u.driver_tip_cents === undefined || u.driver_tip_cents === null || (isInt(u.driver_tip_cents) && (u.driver_tip_cents as number) >= 0 && (u.driver_tip_cents as number) <= DRIVER_TIP_MAX_CENTS), `${f}.uber.driver_tip_cents`, `must be integer cents 0–${DRIVER_TIP_MAX_CENTS} or null`);
   }
 }
 

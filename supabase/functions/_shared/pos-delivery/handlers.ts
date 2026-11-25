@@ -22,7 +22,7 @@ import type { MenuSnapshot } from '../pos-sync/menuSnapshot.ts';
 import { haversineDistanceMiles } from '../pos-v1/loader.ts';
 import type { GeocodeResult } from './geocode.ts';
 import { DeliveryStoreError, type DeliveryRow, type DeliveryStore, type ProviderQuoteRow } from './store.ts';
-import { UBER_RESTAURANT_COLUMNS, uberCancel, uberCreate, uberGet, uberQuote, type UberDeps } from './uberCalls.ts';
+import { scheduledPickupMs, UBER_RESTAURANT_COLUMNS, uberCancel, uberCreate, uberGet, uberQuote, type UberDeps } from './uberCalls.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -274,8 +274,17 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
   const rid = pr.restaurant_id;
   if (typeof body.action_id !== 'string' || !UUID_RE.test(body.action_id)) return bad('action_id', 'action_id must be a UUID');
   if (typeof body.order_id !== 'string' || !UUID_RE.test(body.order_id)) return bad('order_id', 'order_id must be a UUID');
+  // ASAP: pickup_ready_minutes (5–120) from now. Scheduled (cp23b, Matt's R1 — online's mechanism): pickup_ready_at =
+  // the customer's slot; booked NOW for slot − the restaurant's lead (scheduledPickupMs). Exactly one of the two.
   const prep = body.pickup_ready_minutes;
-  if (!(typeof prep === 'number' && Number.isInteger(prep) && prep >= PREP.min && prep <= PREP.max)) return bad('pickup_ready_minutes', `pickup_ready_minutes must be ${PREP.min}–${PREP.max}`);
+  const slot = body.pickup_ready_at;
+  const hasPrep = prep !== undefined && prep !== null;
+  const hasSlot = slot !== undefined && slot !== null;
+  if (hasPrep === hasSlot) return bad('pickup_ready_minutes', 'send exactly one of pickup_ready_minutes / pickup_ready_at');
+  if (hasPrep && !(typeof prep === 'number' && Number.isInteger(prep) && prep >= PREP.min && prep <= PREP.max)) return bad('pickup_ready_minutes', `pickup_ready_minutes must be ${PREP.min}–${PREP.max}`);
+  const slotMs = hasSlot && typeof slot === 'string' ? Date.parse(slot) : NaN;
+  // uber-create-delivery :170-182: an absolute pickup time must be in the future
+  if (hasSlot && !(Number.isFinite(slotMs) && slotMs > deps.now())) return bad('pickup_ready_at', 'pickup_ready_at must be a future ISO-8601 time');
   const who = whoOf(body);
   if (isResult(who)) return who;
   const u = uberDeps(deps);
@@ -320,17 +329,14 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
   if (!pq) return stored(c, 400, 'quote_unknown', 'the order has no Uber quote of this restaurant');
   const dq = await deps.delivery.getQuote(rid, pq.delivery_quote_id);
   if (!dq) return stored(c, 400, 'quote_unknown', 'the delivery quote is missing');
-  const rawTip = d.uber?.driver_tip_cents;
-  if (!(rawTip === undefined || rawTip === null || (Number.isSafeInteger(rawTip) && rawTip >= 0 && rawTip <= DRIVER_TIP_MAX_CENTS))) {
-    // submit-order refuses it; an order stored before that rule never reaches Uber with a tip the driver won't get
-    await deps.delivery.finishAction(c.actionId, c.deviceId, 'error', { status: 400, code: 'invalid_payload', message: `delivery.uber.driver_tip_cents must be 0–${DRIVER_TIP_MAX_CENTS}` });
-    return errorResult(400, 'invalid_payload', `delivery.uber.driver_tip_cents must be 0–${DRIVER_TIP_MAX_CENTS}`, { field: 'delivery.uber.driver_tip_cents' });
-  }
-  const tip: number = typeof rawTip === 'number' ? rawTip : 0;
+  // Matt, R2 / option A — online's rule: ONE tip, the order's own; Uber gets min(tip, 500) (the copied create call),
+  // anything above stays with the restaurant. delivery.uber.driver_tip_cents is retired (ignored).
+  const tip = order.tip_cents;
+  const driverTip = Math.min(tip, DRIVER_TIP_MAX_CENTS);
 
   const claim = await deps.delivery.claimDelivery({
     pos_order_id: c.orderId, restaurant_id: rid, provider: 'uber_direct', action_id: c.actionId, provider_quote_ref: pq.id, provider_quote_id: null,
-    customer_fee_cents: pq.customer_fee_cents, quoted_provider_fee_cents: pq.provider_fee_cents, driver_tip_cents: tip, billing_mode: pq.billing_mode,
+    customer_fee_cents: pq.customer_fee_cents, quoted_provider_fee_cents: pq.provider_fee_cents, driver_tip_cents: driverTip, billing_mode: pq.billing_mode,
     provider_environment: pq.provider_environment,
   });
   if (claim.outcome === 'active_exists') return stored(c, 409, 'already_dispatched', `this order already has a ${claim.delivery.state} delivery`);
@@ -379,7 +385,8 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
   const created = await uberCreate(u, restaurant, {
     quote_id: use.provider_quote_id, order_label: order.ticket_label, customer_name: order.customer_name, customer_phone: order.customer_phone_e164,
     delivery_address: dq.normalized_address, dropoff_notes: d.address?.instructions ?? order.note ?? null, dropoff_lat: Number(dq.lat), dropoff_lng: Number(dq.lng),
-    lines: order.lines, subtotal_cents: order.subtotal_cents, tip_cents: tip, pickup_ready_ms: deps.now() + prep * 60_000, external_id: c.orderId,
+    lines: order.lines, subtotal_cents: order.subtotal_cents, tip_cents: tip,
+    pickup_ready_ms: hasSlot ? scheduledPickupMs(restaurant, slotMs, deps.now(), deps.log) : deps.now() + (prep as number) * 60_000, external_id: c.orderId,
   });
   if (!created.success) {
     if (created.error === 'rate_limited') {
@@ -459,7 +466,8 @@ export async function handleDeliveryCancel(req: DeviceRequest, deps: DeliveryDep
 
 /** Uber's delivery statuses that end a booking (the webhook's own words: delivered / canceled / returned). */
 const DONE_DELIVERED = new Set(['delivered']);
-const DONE_CANCELED = new Set(['canceled', 'returned']);
+// + 'failed' (cp23b, Matt): online treats it as terminal (uber-webhook/index.ts :124-129)
+const DONE_CANCELED = new Set(['canceled', 'returned', 'failed']);
 
 export async function handleDeliveryStatus(req: DeviceRequest, deps: DeliveryDeps): Promise<DeviceResult> {
   const au = await auth(req, deps);

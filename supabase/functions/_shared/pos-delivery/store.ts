@@ -45,7 +45,9 @@ export type DeliveryPatch = Partial<Omit<DeliveryRow, 'id' | 'pos_order_id' | 'r
 /** The POS order as dispatch reads it (pos_orders + active lines + payments). */
 export interface PosOrderForDelivery {
   order_id: string; restaurant_id: string; order_type: string; channel: string; status: string; total_cents: number;
-  subtotal_cents: number; delivery: Record<string, any> | null; customer_name: string | null; customer_phone_e164: string | null;
+  subtotal_cents: number;
+  /** The order's tip (pricing.tip_cents). On an Uber delivery it IS the driver tip (Uber gets min(tip, 500)). */
+  tip_cents: number; delivery: Record<string, any> | null; customer_name: string | null; customer_phone_e164: string | null;
   note: string | null; ticket_label: string;
   lines: { item_name: string; quantity: number; base_price_cents: number }[];
   payments: { method: string; amount_cents: number; status: string }[];
@@ -279,6 +281,8 @@ export class PgDeliveryStore implements DeliveryStore {
     return {
       order_id: o.order_id, restaurant_id: o.restaurant_id, order_type: o.order_type, channel: o.channel, status: o.status,
       total_cents: Number(o.total_cents), subtotal_cents: Number(o.pricing?.subtotal_cents ?? 0), delivery: o.delivery ?? null,
+      // the order's ONE tip (pricing = the priced breakdown, verified by submit-order) — the driver tip on an Uber order
+      tip_cents: Number.isSafeInteger(Number(o.pricing?.tip_cents)) && Number(o.pricing?.tip_cents) >= 0 ? Number(o.pricing.tip_cents) : 0,
       customer_name: o.customer_name, customer_phone_e164: o.customer_phone_e164, note: o.note, ticket_label: ticketLabel(o.ticket_prefix, o.ticket_counter),
       lines: (lines ?? []).filter((l) => l.status === 'active').map((l) => ({ item_name: l.item_name, quantity: Number(l.quantity), base_price_cents: Number(l.base_price_cents) })),
       payments: (payments ?? []).map((p) => ({ method: p.method, amount_cents: Number(p.amount_cents), status: p.status })),

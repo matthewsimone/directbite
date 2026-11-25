@@ -19,7 +19,7 @@ import { authenticateDevice, type AuthDeps } from '../pos-device/auth.ts';
 import { restaurantIdentity } from '../pos-device/identity.ts';
 import { contentHash } from '../pos-sync/canonicalJson.ts';
 import { errorResult, okResult, parseJsonObject, type DeviceRequest, type DeviceResult } from '../pos-sync/http.ts';
-import { UUID_RE } from '../pos-sync/orderPayload.ts';
+import { DRIVER_TIP_MAX_CENTS, UUID_RE } from '../pos-sync/orderPayload.ts';
 import { BUSINESS_DAY_CUTOFF } from '../pos-sync/menuSnapshot.ts';
 import { getEffectiveSchedule, type HoursRow } from '../hours/serviceHours.ts';
 import { isValidTimeZone } from '../pos-v1/loader.ts';
@@ -176,6 +176,8 @@ export async function buildSettings(
     pos_delivery_dispatch_enabled: pos.pos_delivery_dispatch_enabled === true,
     // CP21 (additive)
     kitchenhub_fallback_category_id: pos.kitchenhub_fallback_category_id ?? null,
+    // cp23b (additive): the POS's one source for online's Uber tip rule
+    uber_driver_tip_max_cents: DRIVER_TIP_MAX_CENTS,
     dsp_orders_enabled: dsp,
     delivery_providers: [
       { id: 'in_house', label: 'In-house', active: fulfillment === 'in_house' || fulfillment === 'both' },
