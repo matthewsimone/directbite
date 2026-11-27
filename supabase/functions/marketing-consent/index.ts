@@ -175,6 +175,9 @@ async function subscribe(
     return "unchanged";
   }
 
+  // Email: an explicit unsubscribe is never undone by a later order notice.
+  if (channel === "email") return "unchanged";
+
   // Was 'unsubscribed'. Conditional on status so a concurrent request can't
   // flip it twice and write two events.
   const { data: flipped, error } = await supabase
@@ -293,6 +296,10 @@ serve(async (req: Request) => {
       return json(200, { ok: true, skipped: "already_processed" });
     }
 
+    const { data: rest } = await supabase.from("restaurants").select("name").eq("id", order.restaurant_id).maybeSingle();
+    const restaurantName = (rest as { name?: string } | null)?.name || "this restaurant";
+    const fill = (t: string) => t.split("{restaurant}").join(restaurantName);
+
     const ctx: EventContext = {
       source: source as Source,
       policyVersion: policy_version,
@@ -308,7 +315,7 @@ serve(async (req: Request) => {
     if (!phone) {
       smsResult = "no_phone";
     } else if (sms) {
-      smsResult = await subscribe(order, "sms", phone, sms_text, ctx);
+      smsResult = await subscribe(order, "sms", phone, fill(sms_text), ctx);
     } else {
       smsResult = "unchanged";
     }
@@ -317,7 +324,7 @@ serve(async (req: Request) => {
     if (!email) {
       emailResult = "no_email";
     } else if (email_opt) {
-      emailResult = await subscribe(order, "email", email, email_text, ctx);
+      emailResult = await subscribe(order, "email", email, fill(email_text), ctx);
     } else {
       emailResult = await unsubscribe(order, "email", email, ctx);
     }

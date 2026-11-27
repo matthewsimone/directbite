@@ -9,6 +9,7 @@ import { formatScheduledLabel } from '../../utils/scheduling'
 import { getNativeBrand } from '../../lib/nativeBrand'
 import { IS_NATIVE } from '../../lib/native'
 import { getPushPermission, requestPushPermission } from '../../lib/nativePush'
+import { recordEmailConsent } from '../../lib/marketingNotice'
 
 // Copied verbatim from src/components/RewardsView.jsx — keep the two in sync.
 function withAlpha(hex, alpha) {
@@ -65,6 +66,13 @@ export default function ConfirmationPage() {
   const stripePaymentIntentId = searchParams.get('payment_intent')
   const redirectStatus = searchParams.get('redirect_status')
   const isStripeRedirect = stripePaymentIntentId && redirectStatus === 'succeeded'
+  const consentPi = state?.paymentIntentId || (isStripeRedirect ? stripePaymentIntentId : null)
+  const consentSent = useRef(false)
+  useEffect(() => {
+    if (!consentPi || consentSent.current) return
+    consentSent.current = true
+    recordEmailConsent(consentPi)
+  }, [consentPi])
 
 
   // If no state AND no Stripe redirect, show not found
