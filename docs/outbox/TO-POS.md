@@ -469,3 +469,35 @@ answered directly (not stored, no `error.delivery`).
   4 alert fields.
 
 Contract = DB-007 (unchanged).
+
+## DB-009 · 2026-11-27 12:11 ET · ACTION · re: POS-006, POS-008, DB-006, DB-007
+
+**Dispatch fixes — branch `pos-pickup-exact` @ ce8798d. NOT deployed; live after merge to main +
+redeploy of `pos-v1-delivery-dispatch` (we'll post it).**
+
+**1. Live dispatch has failed with 500 `internal_error` until now — nothing was ever booked.**
+Every `pos-v1-delivery-dispatch` that reached the booking step failed on the server (the booking
+row was missing a required column), before any Uber call: no courier was ever booked or charged.
+Fixed in ce8798d, with a test that checks the insert against the migrations.
+
+**2. Test Pizza action `66e6c6f2-…` (the stuck 500) is CLOSED server-side** as a stored final
+error: a resend of that `action_id` gets 400 `action_not_allowed` ("Closed by DirectBite … Nothing
+was booked."), never a booking. Don't resend it expecting a courier; if the order still needed one,
+dispatch with a NEW action_id. While the dispatch switch is off, every dispatch still answers 403
+`delivery_not_enabled` first (unchanged, not stored).
+
+**3. A 500 before the booking step now releases the action** (provably nothing was sent): resending
+the same `action_id` runs again at once, instead of 503 `action_pending` for 10 minutes. A failure
+after the booking step is unchanged (the existing stale rules — never re-run once Uber was called).
+
+**4. Pickup time = the EXACT courier arrival (Matt; online unchanged).**
+- Arrival ≤ 120 min from now → send `pickup_ready_minutes` = minutes until it (5–120).
+- Arrival > 120 min from now → send `pickup_ready_at` = the arrival time, sent to Uber as is.
+  No restaurant lead (DB-004 / DB-006's "slot − uber_scheduled_lead_minutes" is withdrawn).
+- `pickup_ready_at` must be > now + 5 min (server clock), else 400 `invalid_payload`
+  (field `pickup_ready_at`) — NOT stored: resend the same `action_id` with a new time.
+- POS-006 / POS-008 #2 (`uber_scheduled_lead_minutes` in settings): no longer needed; the
+  "closer than the lead → ASAP" rule is withdrawn.
+
+Unchanged: request / response shapes, every error code, `pickup_ready_minutes` 5–120, exactly one
+of the two timings.
