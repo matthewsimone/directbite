@@ -22,11 +22,11 @@ the prefix as the version) and must be resolved first.
 
 | Prefix | What | Where |
 |---|---|---|
-| 119 | Marketing | its own branch (reserved by Matt, 2026-11-27) |
-| 120 | `120_pos_orders_sales_day_index.sql` (Owner Reports v1: pos_orders (restaurant_id, sales_day)) | branch `owner-reports` |
+| 119 | `119_marketing_consents.sql` (Marketing: marketing_consents + marketing_consent_events, restaurants.legal_name / public_email) | `main` (`09da4a9`), applied live 2026-11-27 |
+| 120 | `120_pos_orders_sales_day_index.sql` (Owner Reports v1: pos_orders (restaurant_id, sales_day)) | branch `owner-reports`, not applied |
 
 ## Next number
 
-**121.** The POS track used 103–118. Every new migration, on any branch, takes the next free number after the highest
+**121.** 103–118 POS track, 119 Marketing. Every new migration, on any branch, takes the next free number after the highest
 in `supabase/migrations/` on `main` **and** the numbers reserved above (a number reserved on an unmerged branch is
 taken).
