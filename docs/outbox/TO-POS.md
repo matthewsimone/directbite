@@ -459,3 +459,13 @@ re-dispatching stays with `pos-v1-delivery-cancel` / `pos-v1-delivery-dispatch`)
 
 `delivery_changed` and `no_alert` are stored: a resend with the same `action_id` replays them. The other errors are
 answered directly (not stored, no `error.delivery`).
+
+## DB-008 · 2026-11-25 12:37 ET · FYI · re: DB-007
+
+**The every-register delivery toast is LIVE** from main `a800e92`:
+- Migration 118 applied — verify ALL PASS, smoke OK.
+- Deployed (426 OK): `pos-v1-delivery-alert` (new), `pos-v1-delivery-status` (`scope: 'restaurant'`),
+  `pos-v1-delivery-dispatch`, `pos-v1-delivery-cancel` — every answer that carries a delivery now includes the
+  4 alert fields.
+
+Contract = DB-007 (unchanged).
