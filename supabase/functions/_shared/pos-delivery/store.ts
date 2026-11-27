@@ -66,11 +66,6 @@ export interface PosOrderForDelivery {
   note: string | null; ticket_label: string;
   lines: { item_name: string; quantity: number; base_price_cents: number }[];
   payments: { method: string; amount_cents: number; status: string }[];
-  /** pos_orders.sales_day: the business day of the version that first closed / voided it (104, sticky). */
-  sales_day: string | null;
-  /** The first CLOSED version (pos_order_submissions): its device_time and when the server received it — the
-   *  dispatch window (Matt, pos-pickup-exact). null = no closed version on record. */
-  first_closed: { device_time: string | null; received_at: string } | null;
 }
 
 export interface StoredAction { stored: 'applied' | 'noop' | 'error'; error_status: number | null; error_code: string | null; error_message: string | null }
@@ -333,17 +328,13 @@ export class PgDeliveryStore implements DeliveryStore {
   }
   async getPosOrder(rid: string, orderId: string): Promise<PosOrderForDelivery | null> {
     const o = await this.rows<any>('pos_orders read', this.db.from('pos_orders')
-      .select('order_id, restaurant_id, order_type, channel, status, total_cents, pricing, delivery, customer_name, customer_phone_e164, note, ticket_prefix, ticket_counter, sales_day')
+      .select('order_id, restaurant_id, order_type, channel, status, total_cents, pricing, delivery, customer_name, customer_phone_e164, note, ticket_prefix, ticket_counter')
       .eq('order_id', orderId).eq('restaurant_id', rid).maybeSingle());
     if (!o) return null;
-    const [lines, payments, closed] = await Promise.all([
+    const [lines, payments] = await Promise.all([
       this.rows<any[]>('pos_order_lines read', this.db.from('pos_order_lines').select('item_name, quantity, base_price_cents, status').eq('order_id', orderId)),
       this.rows<any[]>('pos_payments read', this.db.from('pos_payments').select('method, amount_cents, status').eq('order_id', orderId)),
-      // the first version that closed it (primary key (order_id, version) → one index range)
-      this.rows<any[]>('pos_order_submissions read', this.db.from('pos_order_submissions').select('version, received_at, device_time:payload->>device_time')
-        .eq('order_id', orderId).eq('payload->>status', 'closed').order('version', { ascending: true }).limit(1)),
     ]);
-    const fc = (closed ?? [])[0];
     return {
       order_id: o.order_id, restaurant_id: o.restaurant_id, order_type: o.order_type, channel: o.channel, status: o.status,
       total_cents: Number(o.total_cents), subtotal_cents: Number(o.pricing?.subtotal_cents ?? 0), delivery: o.delivery ?? null,
@@ -352,8 +343,6 @@ export class PgDeliveryStore implements DeliveryStore {
       customer_name: o.customer_name, customer_phone_e164: o.customer_phone_e164, note: o.note, ticket_label: ticketLabel(o.ticket_prefix, o.ticket_counter),
       lines: (lines ?? []).filter((l) => l.status === 'active').map((l) => ({ item_name: l.item_name, quantity: Number(l.quantity), base_price_cents: Number(l.base_price_cents) })),
       payments: (payments ?? []).map((p) => ({ method: p.method, amount_cents: Number(p.amount_cents), status: p.status })),
-      sales_day: typeof o.sales_day === 'string' ? o.sales_day : null,
-      first_closed: fc ? { device_time: typeof fc.device_time === 'string' ? fc.device_time : null, received_at: iso(fc.received_at)! } : null,
     };
   }
   async claimDelivery(d: NewDelivery) {

@@ -13,10 +13,8 @@
  * is re-run only when NO booking row exists (provably nothing sent), else never (booked → applied; booking → stored
  * "outcome unknown"); a provider booking whose row could not be updated → one loud reconcile line; rate_limited →
  * 503 + Retry-After, not stored. No Stripe; nothing touches orders / order_items / uber_quotes.
- * pos-pickup-exact (Matt): pickup_ready_at = the exact courier arrival (no lead), > now + 5 min; dispatch only within
- * 120 min of the order's close on the same business day (409 dispatch_window_passed) and while the restaurant still
- * resolves to Uber (409 uber_not_active), both checked after the replay and before the claim; a throw before the claim
- * releases the action.
+ * pos-pickup-exact (Matt): pickup_ready_at = the exact courier arrival (no lead), > now + 5 min; a throw between begin
+ * and the claim releases the action (nothing was sent).
  */
 import { authenticateDevice, type AuthDeps } from '../pos-device/auth.ts';
 import { errorResult, okResult, parseJsonObject, type DeviceRequest, type DeviceResult } from '../pos-sync/http.ts';
@@ -56,8 +54,6 @@ export const PENDING_STALE_MS = 10 * 60_000;
 const PREP = { min: 5, max: 120 } as const;
 /** pickup_ready_at must be strictly later than now + this (Matt, pos-pickup-exact). */
 const PICKUP_AT_MIN_LEAD_MS = 5 * 60_000;
-/** Dispatch only within this long of the order's close, and on the same business day (Matt, pos-pickup-exact). */
-export const DISPATCH_WINDOW_MS = 120 * 60_000;
 const UNKNOWN = 'outcome unknown — check the Uber dashboard before dispatching again';
 const REASON_PREFIX = /^\[([a-z_]+)\] /;
 
@@ -80,7 +76,7 @@ async function auth(req: DeviceRequest, deps: DeliveryDeps, restaurantOptional =
 }
 
 async function readRestaurant(deps: DeliveryDeps, rid: string): Promise<Row | null> {
-  const { data, error } = await deps.db.from('restaurants').select(`${UBER_RESTAURANT_COLUMNS}, timezone`).eq('id', rid).maybeSingle();
+  const { data, error } = await deps.db.from('restaurants').select(UBER_RESTAURANT_COLUMNS).eq('id', rid).maybeSingle();
   if (error) throw new Error(`restaurants read failed: ${error.message}`);
   return data ?? null;
 }
@@ -295,25 +291,7 @@ function requestOf(body: Row): Row {
 
 // ---- pos-v1-delivery-dispatch ------------------------------------------------------------------------------------
 
-type PreClaim = { pq: ProviderQuoteRow; dq: DeliveryQuoteRow; restaurant: Row; tip: number; row: DeliveryRow };
-
-/**
- * Matt (pos-pickup-exact): dispatch only while the order is fresh — closed on TODAY's business day (restaurant time
- * zone, 04:00 cutoff) and at most DISPATCH_WINDOW_MS ago. The close time = the first CLOSED version's device_time,
- * capped at when the server received it (a register clock running fast can't extend the window; an order closed
- * offline and synced late keeps its real close time). Returns the refusal message, or null when inside the window.
- */
-export function dispatchWindowPassed(order: Pick<PosOrderForDelivery, 'sales_day' | 'first_closed'>, timeZone: string, nowMs: number): string | null {
-  const today = businessDate(nowMs, timeZone, BUSINESS_DAY_CUTOFF);
-  if (order.sales_day !== today) return `the order closed on an earlier business day (${order.sales_day ?? 'unknown'}, today ${today}) — Uber can no longer be booked for it`;
-  const fc = order.first_closed;
-  const received = fc ? Date.parse(fc.received_at) : NaN;
-  if (!Number.isFinite(received)) return 'the order has no closed version on record — Uber can no longer be booked for it';
-  const device = fc!.device_time ? Date.parse(fc!.device_time) : NaN;
-  const closedMs = Number.isFinite(device) ? Math.min(device, received) : received;
-  if (nowMs - closedMs > DISPATCH_WINDOW_MS) return `the order closed more than ${DISPATCH_WINDOW_MS / 60_000} minutes ago — Uber can no longer be booked for it`;
-  return null;
-}
+type PreClaim = { pq: ProviderQuoteRow; dq: DeliveryQuoteRow; tip: number; row: DeliveryRow };
 
 async function releaseAfterThrow(c: Call, err: unknown) {
   c.deps.log('delivery_dispatch_released_after_error', { action_id: c.actionId, order_id: c.orderId, error: err instanceof Error ? err.message : String(err) });
@@ -342,25 +320,6 @@ async function dispatchPreClaim(c: Call, order: PosOrderForDelivery, hasSlot: bo
   if (captured.some((p) => p.method === 'cash')) return stored(c, 400, 'card_only', 'Uber deliveries are paid by card only');
   const paid = captured.reduce((s, p) => s + p.amount_cents, 0);
   if (order.status !== 'closed' || paid < order.total_cents) return stored(c, 409, 'not_paid', 'the order must be paid in full before dispatch');
-
-  const restaurant = await readRestaurant(deps, rid);
-  if (!restaurant) return stored(c, 400, 'restaurant_mismatch', 'unknown restaurant');
-  if (!isValidTimeZone(restaurant.timezone)) {
-    // a configuration fault, not the order's: not stored, so a resend works once it is fixed
-    await deps.delivery.releaseAction(c.actionId, c.deviceId);
-    return errorResult(500, 'delivery_config_invalid', 'the restaurant has no valid time zone');
-  }
-  // Matt (pos-pickup-exact): never book a courier for a stale order (an offline register's late resend)
-  const late = dispatchWindowPassed(order, restaurant.timezone, deps.now());
-  if (late) {
-    deps.log('delivery_dispatch_window_passed', { action_id: c.actionId, order_id: c.orderId, sales_day: order.sales_day });
-    return stored(c, 409, 'dispatch_window_passed', late);
-  }
-  // Matt (pos-pickup-exact): the restaurant must still resolve to Uber (the quote's own rule, _shared/uberMode.ts)
-  if (deps.resolveMode(restaurant).resolved_mode !== 'uber_direct') {
-    return stored(c, 409, 'uber_not_active', "Uber Direct is not the restaurant's active delivery method right now — deliver in-house");
-  }
-
   const quoteRef = d.uber?.quote_id;
   const pq = typeof quoteRef === 'string' ? await deps.delivery.getProviderQuote(rid, quoteRef) : null;
   if (!pq) return stored(c, 400, 'quote_unknown', 'the order has no Uber quote of this restaurant');
@@ -377,7 +336,7 @@ async function dispatchPreClaim(c: Call, order: PosOrderForDelivery, hasSlot: bo
     provider_environment: pq.provider_environment,
   });
   if (claim.outcome === 'active_exists') return stored(c, 409, 'already_dispatched', `this order already has a ${claim.delivery.state} delivery`);
-  return { pq, dq, restaurant, tip, row: claim.delivery };
+  return { pq, dq, tip, row: claim.delivery };
 }
 
 export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryDeps): Promise<DeviceResult> {
@@ -441,10 +400,16 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
     throw err;
   }
   if (isResult(pre)) return pre;
-  const { pq, dq, restaurant, tip, row } = pre;
+  const { pq, dq, tip, row } = pre;
   const failRow = async (code: string, message: string) => {
     await deps.delivery.updateDelivery(row.id, { state: 'failed', failure_code: code, failure_message: message.slice(0, 500) });
   };
+
+  const restaurant = await readRestaurant(deps, rid);
+  if (!restaurant) {
+    await failRow('restaurant_not_found', 'restaurant not found');
+    return stored(c, 400, 'restaurant_mismatch', 'unknown restaurant');
+  }
 
   // Matt (CP23 change): the customer's fee is LOCKED at the phone call. The order's quote if still fresh; else the
   // server re-quotes and books automatically — never a 409, never a staff prompt, the customer never re-charged. Any
