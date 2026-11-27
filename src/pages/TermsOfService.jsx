@@ -8,7 +8,7 @@ export default function TermsOfService() {
       </header>
       <div className="max-w-[720px] mx-auto px-6 py-12">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Terms of Service</h1>
-        <p className="text-sm text-gray-500 mb-8">Last updated: August 13, 2026</p>
+        <p className="text-sm text-gray-500 mb-8">Last updated: November 27, 2026</p>
 
         <div className="prose prose-sm max-w-none text-gray-700 space-y-6">
           <section>
@@ -25,7 +25,7 @@ export default function TermsOfService() {
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">3. Accounts</h2>
             <p>Restaurant operator accounts are created by invitation from Ordr.</p>
             <p>Customers may place orders as guests without creating an account. Customers may also create an optional account, verified by a one-time code sent via SMS to their mobile number. Your account is with Ordr and is used across the restaurants on our platform, but your order history, saved payment methods, and loyalty balances are held separately for each restaurant. A restaurant can see only its own customers' information.</p>
-            <p>Your mobile number is the identifier for your account. If you change your mobile number, you will not be able to access the account associated with your previous number, including any loyalty balances held under it. You may delete your account at any time by contacting us.</p>
+            <p>Your mobile number is the identifier for your account. If you change your mobile number, you will not be able to access the account associated with your previous number, including any loyalty balances held under it. You may delete your account at any time by contacting us or, in our mobile apps, under Account → Delete account.</p>
           </section>
 
           <section>
@@ -56,7 +56,7 @@ export default function TermsOfService() {
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">8. SMS Programs</h2>
-            <p>Ordr operates two SMS programs. Both are transactional only and are never used for marketing.</p>
+            <p>Ordr operates the two transactional SMS programs below. Restaurants may also run promotional SMS programs through Ordr; those are governed by each restaurant's own terms.</p>
             <p className="font-semibold mt-4">Ordr Restaurant Alerts</p>
             <ul className="list-disc pl-6 space-y-1">
               <li><strong>Program name:</strong> Ordr Restaurant Alerts</li>
