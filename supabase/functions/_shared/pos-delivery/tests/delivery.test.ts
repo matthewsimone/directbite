@@ -8,7 +8,7 @@
  * ordr-pos @ 4f729e4 DELIVERY.md §2 (the quote: request / response / address_not_found / 24 h / out of radius),
  * §6.3 (the Uber flow), §7.1 (delivery.uber).
  */
-import { assert, assertEquals } from 'jsr:@std/assert@1';
+import { assert, assertEquals, assertRejects } from 'jsr:@std/assert@1';
 import { err, harness, ok, R1, R2, type Registered } from '../../pos-device/tests/harness.ts';
 import { FakeSupabase } from '../../pos-online/tests/fakeSupabase.ts';
 import { applyPassthrough } from '../../uberPassthrough.ts';
@@ -16,6 +16,8 @@ import type { MenuSnapshot } from '../../pos-sync/menuSnapshot.ts';
 import { handleDeliveryAlert, handleDeliveryCancel, handleDeliveryDispatch, handleDeliveryStatus, handleQuoteDelivery, PENDING_STALE_MS, POLL_EVERY_MS, type DeliveryDeps } from '../handlers.ts';
 import { MemoryDeliveryStore, type PosOrderForDelivery } from '../store.ts';
 import type { GeocodeResult } from '../geocode.ts';
+import { businessDate } from '../../pos-eod/rules.ts';
+import { BUSINESS_DAY_CUTOFF } from '../../pos-sync/menuSnapshot.ts';
 
 const MIN = 60_000;
 const HASH = 'snap-hash-1';
@@ -116,7 +118,10 @@ async function world(o: { restaurant?: Record<string, unknown>; uber?: boolean }
       order_id: id, restaurant_id: R1, order_type: 'delivery', channel: 'phone', status: 'closed', total_cents: 3100, subtotal_cents: 2400, tip_cents: 300,
       delivery: { fee_source: 'uber', driver_type: 'uber_direct', address: { instructions: 'Ring twice' }, uber: { quote_id: pq }, ...delivery },
       customer_name: 'Pat Doe', customer_phone_e164: '+12015550142', note: null, ticket_label: 'F-007',
-      lines: [{ item_name: 'Large Cheese', quantity: 2, base_price_cents: 1200 }], payments: [{ method: 'external_card', amount_cents: 3100, status: 'captured' }], ...o,
+      lines: [{ item_name: 'Large Cheese', quantity: 2, base_price_cents: 1200 }], payments: [{ method: 'external_card', amount_cents: 3100, status: 'captured' }],
+      // closed a minute ago, today (the dispatch window)
+      sales_day: businessDate(h.clock.now(), 'America/New_York', BUSINESS_DAY_CUTOFF),
+      first_closed: { device_time: new Date(h.clock.now() - MIN).toISOString(), received_at: new Date(h.clock.now()).toISOString() }, ...o,
     });
     return id;
   };
@@ -643,4 +648,236 @@ Deno.test('PgDeliveryStore.markAlert: one conditional update (alert_handled_at i
   assertEquals(calls, [['from', 'pos_deliveries'], ['update', { alert_handled_at: mark.at, alert_handled_by: 'register', alert_handled_device_id: 'dev', alert_choice: 'in_house' }], ['eq', 'id', 'd'], ['is', 'alert_handled_at', null]]);
   rows = [];
   assertEquals(await pg.markAlert('d', mark), 'already');
+});
+
+// ---- pos-pickup-exact: the claim's NOT NULL columns, the dispatch window, uber_not_active, release on a throw ----------
+
+/** pos_deliveries' NOT NULL columns WITHOUT a default, parsed from every migration (115's create table + any later
+ *  `alter table … add column`), so a store fake that fills a column itself can never hide a missing one again. */
+function requiredDeliveryColumns(): Set<string> {
+  const dir = new URL('../../../../migrations/', import.meta.url);
+  const out = new Set<string>();
+  const files = [...Deno.readDirSync(dir)].map((e) => e.name).filter((n) => n.endsWith('.sql')).sort();
+  for (const f of files) {
+    const sql = Deno.readTextFileSync(new URL(f, dir)).replace(/--[^\n]*/g, '');
+    const create = /create table public\.pos_deliveries \(([\s\S]*?)\n\);/.exec(sql);
+    if (create) {
+      for (const line of create[1].split('\n')) {
+        const m = /^\s*([a-z_]+)\s+\S/.exec(line);
+        if (!m || ['check', 'unique', 'constraint', 'primary', 'foreign', 'exclude'].includes(m[1])) continue;
+        if (/\bnot null\b/.test(line) && !/\bdefault\b/.test(line)) out.add(m[1]);
+      }
+    }
+    for (const alt of sql.matchAll(/alter table public\.pos_deliveries\b([\s\S]*?);/g)) {
+      for (const add of alt[1].split(/\badd column\s+/).slice(1)) {
+        const name = /^([a-z_]+)/.exec(add)?.[1];
+        if (name && /\bnot null\b/.test(add) && !/\bdefault\b/.test(add)) out.add(name);
+      }
+    }
+  }
+  return out;
+}
+
+Deno.test('PgDeliveryStore.claimDelivery: the dispatch claim\'s INSERT carries every NOT NULL column without a default of pos_deliveries (parsed from the migrations) — state \'booking\' (live dispatch failed 23502 → 500 without it)', async () => {
+  const required = requiredDeliveryColumns();
+  // the parser found 115's table (sanity): these are the columns the claim must send
+  assertEquals([...required].sort(), ['action_id', 'billing_mode', 'customer_fee_cents', 'pos_order_id', 'provider', 'provider_environment', 'restaurant_id', 'state']);
+  // the claim exactly as dispatch makes it (the memory store would fill state itself — so capture the handler's argument)
+  const w = await world();
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  let seen: Parameters<typeof w.store.claimDelivery>[0] | null = null;
+  const claim = w.store.claimDelivery.bind(w.store);
+  w.store.claimDelivery = (d) => ((seen = d), claim(d));
+  ok(await w.dispatch(w.posOrder(pq)));
+  assert(seen, 'dispatch claimed');
+  // … through the Pg store: the payload PostgREST would insert
+  const { PgDeliveryStore } = await import('../store.ts');
+  let inserted: Record<string, unknown> = {};
+  // deno-lint-ignore no-explicit-any
+  const q: any = { insert: (v: Record<string, unknown>) => ((inserted = v), q), select: () => q, single: () => Promise.resolve({ data: { id: 'x', ...inserted }, error: null }) };
+  const pg = new PgDeliveryStore({ rpc: () => Promise.resolve({ data: null, error: null }), from: () => q });
+  const r = await pg.claimDelivery(seen!);
+  assertEquals(r.outcome, 'claimed');
+  const missing = [...required].filter((k) => inserted[k] === undefined || inserted[k] === null);
+  assertEquals(missing, [], `the insert lacks NOT NULL column(s) without a default: ${missing.join(', ')}`);
+  assertEquals(inserted.state, 'booking');
+});
+
+Deno.test('PgDeliveryStore.getPosOrder: sales_day + the FIRST closed version (pos_order_submissions: payload status closed, lowest version) → first_closed { device_time, received_at }', async () => {
+  const { PgDeliveryStore } = await import('../store.ts');
+  const calls: unknown[][] = [];
+  const result: Record<string, unknown> = {
+    pos_orders: { order_id: 'o', restaurant_id: R1, order_type: 'delivery', channel: 'phone', status: 'closed', total_cents: 3100, pricing: { subtotal_cents: 2400, tip_cents: 300 }, delivery: null, customer_name: null, customer_phone_e164: null, note: null, ticket_prefix: 'F', ticket_counter: 7, sales_day: '2026-11-19' },
+    pos_order_lines: [], pos_payments: [],
+    pos_order_submissions: [{ version: 3, received_at: '2026-11-19T16:59:00.123456+00:00', device_time: '2026-11-19T16:58:30.000Z' }],
+  };
+  const chain = (t: string) => {
+    // deno-lint-ignore no-explicit-any
+    const q: any = {};
+    for (const m of ['select', 'eq', 'order', 'limit']) q[m] = (...a: unknown[]) => (calls.push([t, m, ...a]), q);
+    q.maybeSingle = () => Promise.resolve({ data: result[t], error: null });
+    q.then = (f: (v: unknown) => unknown, r?: (e: unknown) => unknown) => Promise.resolve({ data: result[t], error: null }).then(f, r);
+    return q;
+  };
+  const pg = new PgDeliveryStore({ rpc: () => Promise.resolve({ data: null, error: null }), from: chain });
+  const o = (await pg.getPosOrder(R1, 'o'))!;
+  assertEquals([o.sales_day, o.first_closed], ['2026-11-19', { device_time: '2026-11-19T16:58:30.000Z', received_at: '2026-11-19T16:59:00.123Z' }]);
+  assertEquals(calls.filter((c) => c[0] === 'pos_order_submissions'), [
+    ['pos_order_submissions', 'select', 'version, received_at, device_time:payload->>device_time'],
+    ['pos_order_submissions', 'eq', 'order_id', 'o'],
+    ['pos_order_submissions', 'eq', 'payload->>status', 'closed'],
+    ['pos_order_submissions', 'order', 'version', { ascending: true }],
+    ['pos_order_submissions', 'limit', 1],
+  ]);
+  assert(calls.some((c) => c[0] === 'pos_orders' && c[1] === 'select' && String(c[2]).endsWith(', sales_day')));
+  result.pos_order_submissions = [];
+  assertEquals((await pg.getPosOrder(R1, 'o'))!.first_closed, null);
+});
+
+Deno.test('dispatch window (Matt, pos-pickup-exact): closed today and ≤ 120 min ago (first closed device_time, capped at received_at) → books; else stored 409 dispatch_window_passed — nothing claimed, no Uber call, a resend replays it', async () => {
+  const w = await world();
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  const now = () => w.h.clock.now();
+  const at = (ms: number) => new Date(ms).toISOString();
+  const uberCalls = () => w.uber.calls.filter((c) => c.path.includes('/deliveries')).length;
+  const closed = (deviceAgo: number, receivedAgo = deviceAgo) => ({ first_closed: { device_time: at(now() - deviceAgo), received_at: at(now() - receivedAgo) } });
+  const refused = async (o: Partial<PosOrderForDelivery>) => {
+    const id = w.posOrder(pq, o);
+    const actionId = crypto.randomUUID();
+    const [rows, calls] = [w.store.deliveries.length, uberCalls()];
+    const r = await w.dispatch(id, { action_id: actionId });
+    assertEquals([r.status, err(r).code], [409, 'dispatch_window_passed']);
+    assertEquals([w.store.deliveries.length, uberCalls()], [rows, calls], 'nothing claimed, no Uber call');
+    assertEquals(w.store.actions.get(actionId)!.outcome, 'error', 'stored');
+    const again = await w.dispatch(id, { action_id: actionId });
+    assertEquals([again.status, err(again).code, uberCalls()], [409, 'dispatch_window_passed', calls], 'a resend replays the stored refusal');
+    return String(err(r).message);
+  };
+  // closed 10 min ago → books
+  assertEquals(ok<DispatchBody>(await w.dispatch(w.posOrder(pq, closed(10 * MIN)))).result, 'applied');
+  // exactly 120 min → books; 120 min + 1 s → refused
+  assertEquals(ok<DispatchBody>(await w.dispatch(w.posOrder(pq, closed(120 * MIN)))).result, 'applied');
+  assert((await refused(closed(120 * MIN + 1000))).includes('more than 120 minutes'));
+  // closed offline 3 h ago, synced just now → judged by the real close (device_time)
+  await refused(closed(180 * MIN, 0));
+  // a register clock running FAST (device_time in the future) → capped at received_at (121 min ago → refused)
+  await refused(closed(-60 * MIN, 121 * MIN));
+  // … and a fast clock with a recent receipt → books
+  assertEquals(ok<DispatchBody>(await w.dispatch(w.posOrder(pq, closed(-60 * MIN, 10 * MIN)))).result, 'applied');
+  // closed, but no closed version on record → refused (fail closed)
+  assert((await refused({ first_closed: null })).includes('no closed version'));
+  // no sales day → refused
+  await refused({ sales_day: null });
+});
+
+Deno.test('dispatch window: a prior business day is refused even within 120 min (closed 03:50 New York, dispatched 04:10)', async () => {
+  const w = await world();
+  w.store.enabled.add(R1);
+  w.h.clock.advance(Date.parse('2026-11-20T09:10:00Z') - w.h.clock.now()); // 04:10 EST, business day 2026-11-20
+  const pq = await w.uberQuoteId();
+  const id = w.posOrder(pq, { sales_day: '2026-11-19', first_closed: { device_time: '2026-11-20T08:50:00.000Z', received_at: '2026-11-20T08:50:02.000Z' } });
+  const r = await w.dispatch(id);
+  assertEquals([r.status, err(r).code], [409, 'dispatch_window_passed']);
+  assert(String(err(r).message).includes('earlier business day (2026-11-19, today 2026-11-20)'));
+  assertEquals(w.store.deliveries.length, 0);
+  // the same close time on today's business day → books
+  assertEquals(ok<DispatchBody>(await w.dispatch(w.posOrder(pq, { sales_day: '2026-11-20', first_closed: { device_time: '2026-11-20T09:00:00.000Z', received_at: '2026-11-20T09:00:01.000Z' } }))).result, 'applied');
+});
+
+Deno.test('dispatch window vs the replay: a STALE action whose courier was booked still answers applied for an old order; the 66e6c6f2 case (STALE, no row, order closed days ago) → stored 409, zero Uber calls', async () => {
+  const w = await world();
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  const twoDays = new Date(w.h.clock.now() - 2 * 24 * 60 * MIN).toISOString();
+  const old = { first_closed: { device_time: twoDays, received_at: twoDays }, sales_day: '2026-11-17' };
+  const seed = async (id: string, actionId: string) => {
+    const body = { action_id: actionId, restaurant_id: R1, order_id: id, pickup_ready_minutes: 30, actor_staff_id: 'register', approver_staff_id: null };
+    await w.store.beginAction({ actionId, restaurantId: R1, deviceId: w.A.device_id, orderId: id, action: 'dispatch', request: body, actor: 'register', approver: null, deviceTime: null });
+    return body;
+  };
+  // a booked courier behind a stale action: the replay comes first → applied, never the window refusal
+  const booked = w.posOrder(pq, old);
+  const a1 = crypto.randomUUID();
+  const b1 = await seed(booked, a1);
+  const c = await w.store.claimDelivery({ pos_order_id: booked, restaurant_id: R1, provider: 'uber_direct', action_id: a1, provider_quote_ref: pq, provider_quote_id: null, customer_fee_cents: 450, quoted_provider_fee_cents: 900, driver_tip_cents: 0, billing_mode: 'platform', provider_environment: 'production' });
+  await w.store.updateDelivery(c.delivery.id, { state: 'booked', provider_delivery_id: 'del_x', dispatched_at: new Date(w.h.clock.now()).toISOString() });
+  // the 66e6c6f2 shape: begun, then nothing (no row), the order closed two days ago
+  const stuck = w.posOrder(pq, old);
+  const a2 = crypto.randomUUID();
+  const b2 = await seed(stuck, a2);
+  w.h.clock.advance(PENDING_STALE_MS);
+  assertEquals(ok<DispatchBody>(await w.dispatch(booked, b1)).result, 'applied');
+  const r = await w.dispatch(stuck, b2);
+  assertEquals([r.status, err(r).code], [409, 'dispatch_window_passed']);
+  assertEquals([w.store.deliveries.length, w.uber.calls.filter((x) => x.path.includes('/deliveries')).length, w.store.actions.get(a2)!.outcome], [1, 0, 'error']);
+});
+
+Deno.test('dispatch uber_not_active (Matt, pos-pickup-exact): the restaurant no longer resolves to Uber (resolveMode) → stored 409 uber_not_active — nothing claimed, no Uber call; same position as the window', async () => {
+  for (const off of [{ uber_direct_active: false }, { delivery_fulfillment: 'in_house' }]) {
+    const w = await world();
+    w.store.enabled.add(R1);
+    const pq = await w.uberQuoteId(); // quoted while Uber was on
+    Object.assign(w.db.rows('restaurants')[0], off);
+    const id = w.posOrder(pq);
+    const actionId = crypto.randomUUID();
+    const r = await w.dispatch(id, { action_id: actionId });
+    assertEquals([r.status, err(r).code], [409, 'uber_not_active'], JSON.stringify(off));
+    assertEquals([w.store.deliveries.length, w.uber.calls.filter((x) => x.path.includes('/deliveries')).length, w.store.actions.get(actionId)!.outcome], [0, 0, 'error']);
+    const again = await w.dispatch(id, { action_id: actionId });
+    assertEquals(err(again).code, 'uber_not_active');
+  }
+});
+
+Deno.test('dispatch: a THROW between begin and the claim releases the action (nothing was sent), the 500 propagates; a resend then runs; a throw AFTER the claim leaves it pending (the row exists)', async () => {
+  const w = await world();
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  const id = w.posOrder(pq);
+  const actionId = crypto.randomUUID();
+  // a quote read fails
+  const getPq = w.store.getProviderQuote.bind(w.store);
+  w.store.getProviderQuote = () => Promise.reject(new Error('db down'));
+  await assertRejects(() => w.dispatch(id, { action_id: actionId }), Error, 'db down');
+  assertEquals(w.store.actions.has(actionId), false, 'released');
+  assert(w.logs.some((l) => l.event === 'delivery_dispatch_released_after_error' && l.action_id === actionId));
+  w.store.getProviderQuote = getPq;
+  // the claim insert itself fails (what 23502 did live) → released, no row
+  const claim = w.store.claimDelivery.bind(w.store);
+  w.store.claimDelivery = (() => Promise.reject(new Error('pos_deliveries insert failed: null value in column "state"'))) as typeof claim;
+  await assertRejects(() => w.dispatch(id, { action_id: actionId }));
+  assertEquals([w.store.actions.has(actionId), w.store.deliveries.length], [false, 0]);
+  w.store.claimDelivery = claim;
+  // the restaurant read fails → released
+  const from = w.db.from.bind(w.db);
+  // deno-lint-ignore no-explicit-any
+  (w.db as any).from = (t: string) => (t === 'restaurants' ? { select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: 'down' } }) }) }) } : from(t));
+  await assertRejects(() => w.dispatch(id, { action_id: actionId }), Error, 'restaurants read failed');
+  assertEquals(w.store.actions.has(actionId), false);
+  // deno-lint-ignore no-explicit-any
+  (w.db as any).from = from;
+  // the resend under the same id now runs
+  assertEquals(ok<DispatchBody>(await w.dispatch(id, { action_id: actionId })).result, 'applied');
+  assertEquals(w.uber.calls.filter((x) => x.path.endsWith('/deliveries') && x.method === 'POST').length, 1, 'booked once');
+  // after the claim: an expired quote's re-quote save fails → NOT released (a booking row exists; the stale rules own it)
+  const pq2 = await w.uberQuoteId();
+  w.store.providerQuotes.get(pq2)!.expires_at = new Date(w.h.clock.now() - MIN).toISOString();
+  const id2 = w.posOrder(pq2);
+  const a2 = crypto.randomUUID();
+  w.store.insertProviderQuote = () => Promise.reject(new Error('db down'));
+  await assertRejects(() => w.dispatch(id2, { action_id: a2 }), Error, 'db down');
+  assertEquals([w.store.actions.get(a2)?.outcome, w.store.deliveries.at(-1)!.state], [null, 'booking']);
+});
+
+Deno.test('dispatch: the restaurant has no valid time zone → 500 delivery_config_invalid, NOT stored (released) — a resend works once fixed', async () => {
+  const w = await world({ restaurant: { timezone: 'Mars/Olympus' } });
+  w.store.enabled.add(R1);
+  const pq = await w.uberQuoteId();
+  const id = w.posOrder(pq);
+  const actionId = crypto.randomUUID();
+  const r = await w.dispatch(id, { action_id: actionId });
+  assertEquals([r.status, err(r).code, w.store.actions.has(actionId)], [500, 'delivery_config_invalid', false]);
+  w.db.rows('restaurants')[0].timezone = 'America/New_York';
+  assertEquals(ok<DispatchBody>(await w.dispatch(id, { action_id: actionId })).result, 'applied');
 });
