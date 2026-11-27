@@ -160,16 +160,6 @@
       "copy": "supabase/functions/_shared/pos-online/khGlue.ts",
       "what": "KitchenHub PUT status + 409 GET sync / 403 / error mapping (CP21)",
       "sha256": "2707efa1f8c22798baee79102e763f897b4e63762eb0f8a879530a62413f2274"
-    },
-    {
-      "source": "supabase/functions/uber-create-delivery/index.ts",
-      "lines": [
-        266,
-        288
-      ],
-      "copy": "supabase/functions/_shared/pos-delivery/uberCalls.ts",
-      "what": "scheduled lead (096) for POS scheduled deliveries (cp23b)",
-      "sha256": "7b5e8f9640bec7471490b59b1df96c20f5e4330521d521180546036263d62386"
     }
   ]
 }

@@ -1,0 +1,75 @@
+{
+  "version": "5",
+  "specifiers": {
+    "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.14"
+  },
+  "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.14": {
+      "integrity": "291516b3d4c35024d6ffbc0a9df5bf4c64116e05b50012cf846710152d2ffdf7"
+    }
+  },
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.102.1": "b941ace7548fb53a97c5e666abbee8e432e55130d4cb3ea7f0c7ff1122c53e6a",
+    "https://esm.sh/stripe@17.7.0": "3c3e5f9024cb4652c585a5e715f5da184c608f6ac3613e0d6b506d2bb47669bd"
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@capacitor-community/stripe@8.4.0",
+        "npm:@capacitor-firebase/messaging@8.6.0",
+        "npm:@capacitor/android@^8.6.2",
+        "npm:@capacitor/app@^8.1.2",
+        "npm:@capacitor/browser@^8.0.5",
+        "npm:@capacitor/cli@^8.6.2",
+        "npm:@capacitor/core@^8.6.2",
+        "npm:@capacitor/ios@^8.6.2",
+        "npm:@capacitor/preferences@^8.0.1",
+        "npm:@eslint/js@^9.39.4",
+        "npm:@fontsource/archivo-black@5.3.0",
+        "npm:@googlemaps/js-api-loader@^2.0.2",
+        "npm:@stripe/react-stripe-js@^6.1.0",
+        "npm:@stripe/stripe-js@^9.1.0",
+        "npm:@supabase/supabase-js@^2.102.1",
+        "npm:@tailwindcss/vite@^4.2.2",
+        "npm:@types/react-dom@^19.2.3",
+        "npm:@types/react@^19.2.14",
+        "npm:@vercel/functions@^3.5.0",
+        "npm:@vitejs/plugin-legacy@^8.0.1",
+        "npm:@vitejs/plugin-react@^6.0.1",
+        "npm:axios@^1.14.0",
+        "npm:cheerio@^1.2.0",
+        "npm:eslint-plugin-react-hooks@^7.0.1",
+        "npm:eslint-plugin-react-refresh@~0.5.2",
+        "npm:eslint@^9.39.4",
+        "npm:firebase@12.19.0",
+        "npm:globals@^17.4.0",
+        "npm:patch-package@8.0.1",
+        "npm:pdfjs-dist@^6.0.227",
+        "npm:qrcode@^1.5.4",
+        "npm:react-dom@^19.2.4",
+        "npm:react-hot-toast@^2.6.0",
+        "npm:react-router-dom@^7.14.0",
+        "npm:react@^19.2.4",
+        "npm:resend@^6.10.0",
+        "npm:sharp@~0.34.5",
+        "npm:tailwindcss@^4.2.2",
+        "npm:terser@^5.46.1",
+        "npm:twilio@^5.13.1",
+        "npm:vite@^8.0.4"
+      ],
+      "overrides": {
+        "@capacitor-community/stripe": {
+          "react": "$react",
+          "@stripe/stripe-js": "$@stripe/stripe-js"
+        }
+      }
+    }
+  }
+}

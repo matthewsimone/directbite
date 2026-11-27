@@ -25,7 +25,7 @@ import { BUSINESS_DAY_CUTOFF } from '../pos-sync/menuSnapshot.ts';
 import { localTimeToEpochMs } from '../pos-online/feedQuery.ts';
 import type { GeocodeResult } from './geocode.ts';
 import { ALERT_CHOICES, DeliveryStoreError, type AlertChoice, type DeliveryAction, type DeliveryRow, type DeliveryStore, type ProviderQuoteRow } from './store.ts';
-import { scheduledPickupMs, UBER_RESTAURANT_COLUMNS, uberCancel, uberCreate, uberGet, uberQuote, type UberDeps } from './uberCalls.ts';
+import { UBER_RESTAURANT_COLUMNS, uberCancel, uberCreate, uberGet, uberQuote, type UberDeps } from './uberCalls.ts';
 
 // deno-lint-ignore no-explicit-any
 type Row = Record<string, any>;
@@ -50,6 +50,8 @@ export const QUOTE_TTL_MS = 24 * 3600_000;
 export const POLL_EVERY_MS = 30_000;
 export const PENDING_STALE_MS = 10 * 60_000;
 const PREP = { min: 5, max: 120 } as const;
+/** pickup_ready_at must be strictly later than now + this (Matt, pos-pickup-exact). */
+const PICKUP_AT_MIN_LEAD_MS = 5 * 60_000;
 const UNKNOWN = 'outcome unknown — check the Uber dashboard before dispatching again';
 const REASON_PREFIX = /^\[([a-z_]+)\] /;
 
@@ -294,8 +296,9 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
   const rid = pr.restaurant_id;
   if (typeof body.action_id !== 'string' || !UUID_RE.test(body.action_id)) return bad('action_id', 'action_id must be a UUID');
   if (typeof body.order_id !== 'string' || !UUID_RE.test(body.order_id)) return bad('order_id', 'order_id must be a UUID');
-  // ASAP: pickup_ready_minutes (5–120) from now. Scheduled (cp23b, Matt's R1 — online's mechanism): pickup_ready_at =
-  // the customer's slot; booked NOW for slot − the restaurant's lead (scheduledPickupMs). Exactly one of the two.
+  // ASAP: pickup_ready_minutes (5–120) from now. Timed (Matt, pos-pickup-exact — POS only): pickup_ready_at = the EXACT
+  // time the courier should arrive at the restaurant, sent to Uber as is (NO lead: the restaurant's
+  // uber_scheduled_lead_minutes is online's rule and is not applied here). Exactly one of the two.
   const prep = body.pickup_ready_minutes;
   const slot = body.pickup_ready_at;
   const hasPrep = prep !== undefined && prep !== null;
@@ -303,8 +306,9 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
   if (hasPrep === hasSlot) return bad('pickup_ready_minutes', 'send exactly one of pickup_ready_minutes / pickup_ready_at');
   if (hasPrep && !(typeof prep === 'number' && Number.isInteger(prep) && prep >= PREP.min && prep <= PREP.max)) return bad('pickup_ready_minutes', `pickup_ready_minutes must be ${PREP.min}–${PREP.max}`);
   const slotMs = hasSlot && typeof slot === 'string' ? Date.parse(slot) : NaN;
-  // uber-create-delivery :170-182: an absolute pickup time must be in the future
-  if (hasSlot && !(Number.isFinite(slotMs) && slotMs > deps.now())) return bad('pickup_ready_at', 'pickup_ready_at must be a future ISO-8601 time');
+  // the format here; the window (> now + 5 min) after begin, so a resend of an answered dispatch replays its answer even
+  // once the time is inside the window
+  if (hasSlot && !Number.isFinite(slotMs)) return bad('pickup_ready_at', 'pickup_ready_at must be an ISO-8601 time');
   const who = whoOf(body);
   if (isResult(who)) return who;
   const u = uberDeps(deps);
@@ -334,6 +338,12 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
       return stored(c, 502, 'delivery_failed', `[provider_error] ${prior.failure_message ?? 'the earlier attempt failed'}`);
     }
     // no booking row: the claim precedes every provider call → provably nothing sent; run it now
+  }
+  // Matt: pickup_ready_at must be more than 5 min from now (the same floor as pickup_ready_minutes' minimum). Nothing was
+  // claimed or sent → release the action (not stored): the register may resend with a new time under the same id.
+  if (hasSlot && !(slotMs > deps.now() + PICKUP_AT_MIN_LEAD_MS)) {
+    await deps.delivery.releaseAction(c.actionId, c.deviceId);
+    return bad('pickup_ready_at', 'pickup_ready_at must be more than 5 minutes from now');
   }
 
   // the order: a provider delivery, paid in full, card only (Matt)
@@ -406,7 +416,7 @@ export async function handleDeliveryDispatch(req: DeviceRequest, deps: DeliveryD
     quote_id: use.provider_quote_id, order_label: order.ticket_label, customer_name: order.customer_name, customer_phone: order.customer_phone_e164,
     delivery_address: dq.normalized_address, dropoff_notes: d.address?.instructions ?? order.note ?? null, dropoff_lat: Number(dq.lat), dropoff_lng: Number(dq.lng),
     lines: order.lines, subtotal_cents: order.subtotal_cents, tip_cents: tip,
-    pickup_ready_ms: hasSlot ? scheduledPickupMs(restaurant, slotMs, deps.now(), deps.log) : deps.now() + (prep as number) * 60_000, external_id: c.orderId,
+    pickup_ready_ms: hasSlot ? slotMs : deps.now() + (prep as number) * 60_000, external_id: c.orderId,
   });
   if (!created.success) {
     if (created.error === 'rate_limited') {

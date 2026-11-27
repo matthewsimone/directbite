@@ -442,42 +442,66 @@ Deno.test('dispatch tip (Matt, R2 — online exactly): the ORDER\'s tip is the d
   assertEquals([sentTip(), w.store.deliveries.at(-1)!.driver_tip_cents], [0, 0], 'the retired field never adds a tip');
 });
 
-Deno.test('dispatch pickup_ready_at (Matt, R1 — online\'s scheduled mechanism): booked NOW for slot − the restaurant\'s lead (10–60, floored to now + 5 min); NULL lead → the slot; exactly one timing; future only', async () => {
+Deno.test('dispatch pickup_ready_at (Matt, pos-pickup-exact): the EXACT courier arrival time, sent to Uber as is — no lead, whatever the restaurant\'s uber_scheduled_lead_minutes; > now + 5 min; exactly one timing', async () => {
   const w = await world({ restaurant: { uber_scheduled_lead_minutes: 25 } });
   w.store.enabled.add(R1);
   const pq = await w.uberQuoteId();
   const now = () => w.h.clock.now();
-  const ready = () => Date.parse(String(w.uber.calls.filter((c) => c.path.endsWith('/deliveries') && c.method === 'POST').at(-1)!.body!.pickup_ready_dt));
-  const slot = now() + 3 * 60 * MIN;
-  const b = ok<DispatchBody>(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(slot).toISOString() }));
-  assertEquals([b.result, ready(), Date.parse(String(b.delivery!.pickup_ready_at))], ['applied', slot - 25 * MIN, slot - 25 * MIN]);
-  assert(w.logs.some((l) => l.event === 'scheduled_lead_applied' && l.lead_minutes === 25));
-  // the lead is clamped 10–60
-  for (const [lead, applied] of [[5, 10], [90, 60]] as const) {
+  const posts = () => w.uber.calls.filter((c) => c.path.endsWith('/deliveries') && c.method === 'POST');
+  const ready = () => Date.parse(String(posts().at(-1)!.body!.pickup_ready_dt));
+  // the time itself, with a lead set (25) — online's lead is not applied on the POS path
+  const at = now() + 3 * 60 * MIN;
+  const b = ok<DispatchBody>(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(at).toISOString() }));
+  assertEquals([b.result, ready(), Date.parse(String(b.delivery!.pickup_ready_at))], ['applied', at, at]);
+  assert(!w.logs.some((l) => l.event === 'scheduled_lead_applied'));
+  // closer than the lead → still the exact time (no ASAP switch, no floor)
+  const near = now() + 6 * MIN;
+  ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(near).toISOString() }));
+  assertEquals(ready(), near);
+  // NULL lead / any lead: the same
+  for (const lead of [null, 5, 90]) {
     w.db.rows('restaurants')[0].uber_scheduled_lead_minutes = lead;
-    ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(slot).toISOString() }));
-    assertEquals(ready(), slot - applied * MIN, `lead ${lead}`);
+    ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(at).toISOString() }));
+    assertEquals(ready(), at, `lead ${lead}`);
   }
-  // a slot closer than the lead → floored to now + 5 min
-  w.db.rows('restaurants')[0].uber_scheduled_lead_minutes = 25;
-  ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(now() + 20 * MIN).toISOString() }));
-  assertEquals(ready(), now() + 5 * MIN);
-  // NULL lead → the slot itself (online's code, uber-create-delivery :273)
-  w.db.rows('restaurants')[0].uber_scheduled_lead_minutes = null;
-  ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(slot).toISOString() }));
-  assertEquals(ready(), slot);
   // ASAP is unchanged
   ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: 20 }));
   assertEquals(ready(), now() + 20 * MIN);
-  // exactly one; future only; ISO
+  // exactly one; ISO; strictly > now + 5 min (exactly 5 min, 4 min, the past → refused); nothing claimed or sent
   const bad = async (extra: Record<string, unknown>) => {
     const r = await w.dispatch(w.posOrder(pq), extra);
     return [r.status, err(r).code, errBody(r).field];
   };
-  assertEquals(await bad({ pickup_ready_minutes: 20, pickup_ready_at: new Date(slot).toISOString() }), [400, 'invalid_payload', 'pickup_ready_minutes']);
+  const sent = posts().length;
+  const claimed = w.store.deliveries.length;
+  assertEquals(await bad({ pickup_ready_minutes: 20, pickup_ready_at: new Date(at).toISOString() }), [400, 'invalid_payload', 'pickup_ready_minutes']);
   assertEquals(await bad({ pickup_ready_minutes: null }), [400, 'invalid_payload', 'pickup_ready_minutes']);
-  assertEquals(await bad({ pickup_ready_minutes: null, pickup_ready_at: new Date(now() - MIN).toISOString() }), [400, 'invalid_payload', 'pickup_ready_at']);
   assertEquals(await bad({ pickup_ready_minutes: null, pickup_ready_at: 'tomorrow' }), [400, 'invalid_payload', 'pickup_ready_at']);
+  for (const off of [5 * MIN, 4 * MIN, 0, -MIN]) {
+    assertEquals(await bad({ pickup_ready_minutes: null, pickup_ready_at: new Date(now() + off).toISOString() }), [400, 'invalid_payload', 'pickup_ready_at'], `now + ${off / MIN} min`);
+  }
+  ok(await w.dispatch(w.posOrder(pq), { pickup_ready_minutes: null, pickup_ready_at: new Date(now() + 5 * MIN + 1000).toISOString() }));
+  assertEquals([posts().length, w.store.deliveries.length], [sent + 1, claimed + 1], 'only the valid one claimed + sent');
+
+  // a too-close time is NOT stored: the action is released, so the same id can be resent with a new time
+  const order = w.posOrder(pq);
+  const id = crypto.randomUUID();
+  const r1 = await w.dispatch(order, { action_id: id, pickup_ready_minutes: null, pickup_ready_at: new Date(now() + 3 * MIN).toISOString() });
+  assertEquals([r1.status, err(r1).code], [400, 'invalid_payload']);
+  assertEquals(w.store.actions.has(id), false, 'released');
+  const later = now() + 30 * MIN;
+  ok(await w.dispatch(order, { action_id: id, pickup_ready_minutes: null, pickup_ready_at: new Date(later).toISOString() }));
+  assertEquals(ready(), later);
+
+  // a resend of an ANSWERED dispatch after its time has come inside the window → the stored answer, never a 400 / re-book
+  const o2 = w.posOrder(pq);
+  const id2 = crypto.randomUUID();
+  const body2 = { action_id: id2, pickup_ready_minutes: null, pickup_ready_at: new Date(now() + 7 * MIN).toISOString() };
+  ok(await w.dispatch(o2, body2));
+  const booked = posts().length;
+  w.h.clock.advance(4 * MIN);
+  const again = ok<DispatchBody>(await w.dispatch(o2, body2));
+  assertEquals([again.result, posts().length], ['duplicate', booked]);
 });
 
 Deno.test('status: Uber failed → canceled, canceled_by provider (online treats failed as terminal)', async () => {
