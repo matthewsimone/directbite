@@ -18,7 +18,15 @@ as-is: renaming an applied migration would misstate what ran when.
 If anyone ever switches to `supabase db push` / `supabase migration list`, these two prefixes collide (the CLI reads
 the prefix as the version) and must be resolved first.
 
+## Taken numbers after 118
+
+| Prefix | What | Where |
+|---|---|---|
+| 119 | Marketing | its own branch (reserved by Matt, 2026-11-27) |
+| 120 | `120_pos_orders_sales_day_index.sql` (Owner Reports v1: pos_orders (restaurant_id, sales_day)) | branch `owner-reports` |
+
 ## Next number
 
-**118.** The POS track used 103–117 (all applied live). Every new migration, on any branch, takes the next free
-number after the highest in `supabase/migrations/` on `main`.
+**121.** The POS track used 103–118. Every new migration, on any branch, takes the next free number after the highest
+in `supabase/migrations/` on `main` **and** the numbers reserved above (a number reserved on an unmerged branch is
+taken).

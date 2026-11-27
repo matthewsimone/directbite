@@ -17,7 +17,7 @@
 // (money.ts + order/*.ts, non-test) has files the manifest does not. Any diff
 // means re-vendor (scripts/vendor-ordr-core.mjs), never edit the copy.
 //
-// Also (items 4, 7): _shared/ordr-core-ext/ — availability.ts + cardData.ts + drawer.ts (+ the pinned
+// Also (items 4, 7, Owner Reports): _shared/ordr-core-ext/ — availability.ts + cardData.ts + drawer.ts + eod.ts (+ the pinned
 // money.ts re-export shim drawer.ts imports), with
 // their own VENDORED.json — gets the same checks (bytes = manifest, nothing
 // else in the directory, and with --source byte-equal to ordr-pos src/core).

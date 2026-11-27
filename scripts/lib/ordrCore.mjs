@@ -40,7 +40,7 @@ export function isVendoredPath(rel) {
  */
 export const EXT_VENDOR_DIR = path.join(REPO_ROOT, 'supabase/functions/_shared/ordr-core-ext');
 export const EXT_MANIFEST_PATH = path.join(EXT_VENDOR_DIR, 'VENDORED.json');
-export const EXT_FILES = ['availability.ts', 'cardData.ts', 'drawer.ts'];
+export const EXT_FILES = ['availability.ts', 'cardData.ts', 'drawer.ts', 'eod.ts'];
 /**
  * Local shims in ordr-core-ext/ (NOT vendored, exact content pinned): drawer.ts imports './money.ts'
  * byte-identically; this re-export points it at the already-vendored ordr-core/money.ts.

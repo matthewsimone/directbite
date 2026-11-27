@@ -1,10 +1,11 @@
 {
   "sourceRepo": "https://github.com/matthewsimone/ordr-pos.git",
-  "sourceCommit": "fc83fe5d05997fd0ecbee418fd689b5bba13a38e",
+  "sourceCommit": "6f38487fc28dae7eafc34dcdee2db44d93f388f0",
   "files": {
     "availability.ts": "712510742cb45e694fc3bce8d3bd0219d741ec554704133438b5824a0b51e8c4",
     "cardData.ts": "8419ea0a6bc9f21b907a86842fb39532f37e2dc3ae90b95c79cd7eaad0727cff",
-    "drawer.ts": "eceac5b6572a4b63bfb8e3a503da44c09460810d383ad9bfbbc5e32a2e4aafb7"
+    "drawer.ts": "eceac5b6572a4b63bfb8e3a503da44c09460810d383ad9bfbbc5e32a2e4aafb7",
+    "eod.ts": "3e352d71614d7ee92e846237bd358db50de2123e4e81ef58f474bf3b7ec2f0e5"
   },
   "shims": {
     "money.ts": "export * from '../ordr-core/money.ts';\n"
