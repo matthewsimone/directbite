@@ -883,14 +883,15 @@ function PaymentForm({ onSuccess, total, customerInfo, orderData, slug, restaura
       )}
 
       <p className="text-xs text-gray-500 text-center mt-4">
-        By placing your order, you agree to the{' '}
+        By placing your order, you agree to receive promotional emails from {restaurant?.name || 'this restaurant'} sent through Ordr, and to our{' '}
         <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">
-          Terms of Service
+          Terms
         </a>{' '}
         and{' '}
         <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline">
           Privacy Policy
         </a>
+        . You can unsubscribe at any time. We may also text or email you about this order and your account.
       </p>
 
       {/* Floating payment bar */}

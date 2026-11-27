@@ -56,7 +56,7 @@ export default function TermsOfService() {
 
           <section>
             <h2 className="text-lg font-semibold text-gray-900 mt-8 mb-3">8. SMS Programs</h2>
-            <p>Ordr operates the two transactional SMS programs below. Restaurants may also run promotional SMS programs through Ordr; those are governed by each restaurant's own terms.</p>
+            <p>Ordr operates the two transactional SMS programs below. Ordr does not send promotional text messages.</p>
             <p className="font-semibold mt-4">Ordr Restaurant Alerts</p>
             <ul className="list-disc pl-6 space-y-1">
               <li><strong>Program name:</strong> Ordr Restaurant Alerts</li>
